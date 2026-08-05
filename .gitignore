@@ -1,0 +1,25 @@
+# Secretos y configuración local
+.env
+.env.local
+
+# Base de datos local
+*.db
+*.db-journal
+*.sqlite3
+backend/data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Editor / SO
+.DS_Store
+.idea/
+.vscode/
