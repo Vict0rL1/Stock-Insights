@@ -308,3 +308,17 @@ def test_el_backtest_de_cripto_usa_los_stops_de_su_clase():
     accion = run_rule_backtest(universo, fechas, solo_momentum=True, clase="accion")
     cripto = run_rule_backtest(universo, fechas, solo_momentum=True, clase="cripto")
     assert cripto["operaciones"][0]["stop_pct"] > accion["operaciones"][0]["stop_pct"]
+
+
+def test_el_veredicto_no_afirma_una_ventaja_que_no_se_pudo_medir():
+    """Sin referencia de comprar a ciegas, `ventaja_pct` es None y el texto caía
+    en «Supera en — puntos a comprar a ciegas. Es una ventaja real»: un
+    desconocido contado como victoria."""
+    from app.routers.signals import _rule_verdict
+
+    resultado = {"n_operaciones": 40, "fiable": True, "tasa_acierto": 0.55,
+                 "esperanza_pct": 1.2, "ventaja_pct": None, "referencia_pct": None,
+                 "racha_perdedora": 3}
+    texto = _rule_verdict(resultado, {"n_operaciones": 0})
+    assert "Supera" not in texto and "ventaja real" not in texto
+    assert "no se puede decir" in texto

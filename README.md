@@ -605,13 +605,14 @@ Cada decisión lleva un campo `confidence` con tres valores que importan:
 |---|---|
 | **calibrada** | El backtest de reglas tiene ≥ 30 operaciones, esperanza positiva y supera a comprar a ciegas. |
 | **refutada** | Se probaron y **perdieron dinero**, o ganaron menos que no hacer nada. |
-| **sin calibrar** | No se ha ejecutado el backtest, o no hay muestra suficiente. |
+| **sin calibrar** | No se ha ejecutado el backtest, no hay muestra suficiente, o falta la esperanza o la comparación con comprar a ciegas (lo que no se pudo medir no cuenta a favor). |
 
 `refutada` es el estado que ninguna herramienta enseña y el único que de verdad
 ahorra dinero, así que no va en gris: la fila desplegada lo pinta en rojo y dice
 que la operación mostrada es lo que dictan las reglas, no una recomendación.
 Pesa más que una probabilidad del modelo de factores, porque son cosas distintas
-—el modelo puede ordenar bien y las reglas perder igualmente.
+—el modelo puede ordenar bien y las reglas perder igualmente—; por lo mismo, una
+probabilidad calibrada del modelo tampoco basta para llamar «calibradas» a las reglas.
 
 Las reglas son defendibles —dimensionar el stop por volatilidad, no comprar
 contra la tendencia, arriesgar lo mismo en cada idea—, pero *razonable* y

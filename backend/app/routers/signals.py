@@ -1391,6 +1391,13 @@ def _rule_verdict(resultado: dict, sin_filtro: dict) -> str:
             f"Pero comprar el universo entero a ciegas daba {fmt_pct(resultado['referencia_pct'], 2, signo=True, en_puntos=True)}: "
             "las reglas ganan menos que no hacer nada. El trabajo extra no se paga."
         )
+    elif ventaja is None:
+        # Sin referencia el texto caía en «Supera en — puntos… una ventaja real»:
+        # un desconocido contado como victoria.
+        partes.append(
+            "No hay referencia de comprar a ciegas con la que compararlas, así que "
+            "no se puede decir que ganen a no hacer nada: siguen sin validar."
+        )
     else:
         partes.append(
             f"Supera en {fmt_num(ventaja, signo=True)} puntos a comprar a ciegas. Es una ventaja "

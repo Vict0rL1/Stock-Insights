@@ -328,7 +328,7 @@ def decide(
             "reasons": razones,
             "levels": niveles_posicion,
             "triggers": disparadores,
-            "confidence": _confianza(signal, reglas_ext),
+            "confidence": _confianza(reglas_ext),
             "escenarios": _escenarios(reglas_ext),
             "owned": True,
             "pnl_pct": pnl_pct,
@@ -451,7 +451,7 @@ def decide(
         "reasons": razones,
         "levels": niveles if accion in {"comprar", "vigilar"} else None,
         "triggers": disparadores,
-        "confidence": _confianza(signal, reglas_ext),
+        "confidence": _confianza(reglas_ext),
         "escenarios": _escenarios(reglas_ext),
         "owned": False,
         "reglas": reglas,
@@ -668,27 +668,32 @@ def _escenarios(reglas: dict | None) -> dict | None:
     }
 
 
-def _confianza(signal: dict, reglas: dict | None = None) -> str:
+def _confianza(reglas: dict | None = None) -> str:
     """En qué apoyarse: reglas probadas, reglas refutadas o solo razonables.
 
     `reglas` es el resumen guardado por el backtest de reglas. Tiene tres
     desenlaces posibles y los tres importan:
 
-    - **refutada**: se probaron y perdieron dinero. Es el caso que ninguna app
-      enseña, y el único que de verdad te ahorra dinero. Pesa más que cualquier
-      otra señal, así que se devuelve aunque el modelo de factores esté calibrado.
-    - **calibrada**: hay respaldo histórico con muestra suficiente.
-    - **sin_calibrar**: son razonables y nada más.
+    - **refutada**: se probaron y perdieron dinero, o ganaron menos que comprar
+      a ciegas. Es el caso que ninguna app enseña, y el único que de verdad te
+      ahorra dinero.
+    - **calibrada**: backtest fiable (≥ 30 operaciones) con esperanza positiva
+      Y ventaja positiva sobre comprar a ciegas, las dos medidas.
+    - **sin_calibrar**: todo lo demás. Son razonables y nada más.
+
+    Solo cuenta el backtest de REGLAS. Una probabilidad calibrada del modelo de
+    factores daba antes «calibrada» sin backtest de reglas, y Hoy decía «Reglas
+    validadas contra el histórico» de unas reglas que nadie había probado: el
+    modelo puede ordenar bien y las reglas perder igualmente. Y una esperanza o
+    una ventaja desconocidas no se dan por buenas: no se pudo comprobar.
     """
-    if reglas and reglas.get("fiable"):
-        esperanza = reglas.get("esperanza_pct")
-        ventaja = reglas.get("ventaja_pct")
-        if esperanza is not None and (
-            esperanza <= 0 or (ventaja is not None and ventaja <= 0)
-        ):
-            return "refutada"
-        return "calibrada"
-    if signal.get("probability") is not None:
+    if not reglas or not reglas.get("fiable"):
+        return "sin_calibrar"
+    esperanza = reglas.get("esperanza_pct")
+    ventaja = reglas.get("ventaja_pct")
+    if (esperanza is not None and esperanza <= 0) or (ventaja is not None and ventaja <= 0):
+        return "refutada"
+    if esperanza is not None and ventaja is not None:
         return "calibrada"
     return "sin_calibrar"
 
