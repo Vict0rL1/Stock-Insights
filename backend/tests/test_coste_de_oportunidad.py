@@ -190,3 +190,21 @@ def test_el_analisis_incluye_el_coste_de_oportunidad_con_efectivo_anotado(sessio
         assert c.get("/api/portfolio/efectivo").json()["saldos"][0]["importe"] == 100000
     finally:
         app.dependency_overrides.clear()
+
+
+def test_el_efectivo_de_entonces_es_la_ultima_anotacion_ya_hecha(session_factory):
+    """Se cogía la última anotación de cada moneda y, si era posterior al
+    momento analizado, se descartaba: el efectivo de entonces salía
+    «no anotado» en vez de ser la anotación anterior."""
+    from app.db.models import CashBalance
+    from app.oportunidad import efectivo_usd
+
+    ahora = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
+    with session_factory() as s:
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(days=10)))
+        s.add(CashBalance(moneda="USD", importe=5000.0, as_of=ahora + timedelta(days=3)))
+        s.commit()
+        entonces = efectivo_usd(s, {}, ahora)
+        hoy = efectivo_usd(s, {}, ahora + timedelta(days=5))
+    assert entonces["estado"] == "valido" and entonces["usd"] == 1000.0
+    assert hoy["usd"] == 5000.0

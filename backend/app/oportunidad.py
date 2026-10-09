@@ -17,27 +17,38 @@ from __future__ import annotations
 from datetime import datetime
 
 import numpy as np
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app import snapshots as sn
 from app.analysis import coste_de_oportunidad as motor
-from app.analysis import portfolio_risk
+from app.analysis import fx, portfolio_risk
 from app.analysis.rule_backtest import costes_por_lado
 from app.analysis.sizing import MAX_POR_POSICION_PCT, dimensionar
 from app.db.models import CashBalance, DecisionSnapshot
 
 
+def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]:
+    """La última anotación de cada moneda que ya existía en `ahora`.
+
+    Antes se cogía la última de cada moneda y, si era posterior a `ahora`, se
+    descartaba: en un análisis a fecha pasada el efectivo de entonces salía «no
+    anotado» en vez de ser la anotación anterior. Son pocas filas: se filtran
+    aquí, con el punto en el tiempo, en vez de en SQL.
+    """
+    filas = session.execute(select(CashBalance).order_by(CashBalance.id)).scalars().all()
+    por_moneda: dict[str, CashBalance] = {}
+    for c in filas:
+        if pit.disponible_en(c.as_of, ahora) is not False:
+            por_moneda[c.moneda] = c
+    return list(por_moneda.values())
+
+
 def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
     """{usd, detalle}. Una moneda sin tipo de cambio deja el total DESCONOCIDO."""
-    ultimas = session.execute(
-        select(CashBalance).where(
-            CashBalance.id.in_(select(func.max(CashBalance.id)).group_by(CashBalance.moneda))
-        )
-    ).scalars().all()
-    ultimas = [c for c in ultimas if pit.disponible_en(c.as_of, ahora) is not False]
+    ultimas = _ultimas_anotaciones(session, ahora)
     if not ultimas:
         return {"usd": None, "estado": "desconocido", "motivo": "no hay efectivo anotado"}
     total, detalle = 0.0, []
@@ -55,6 +66,20 @@ def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
         detalle.append({"moneda": c.moneda, "importe": c.importe, "usd": round(usd, 2),
                         "as_of": sn.iso_utc(c.as_of)})
     return {"usd": round(total, 2), "estado": "valido", "detalle": detalle}
+
+
+def efectivo_con_cambio(session: Session, service, ahora: datetime) -> dict:
+    """`efectivo_usd` para quien no tiene ya el contexto de cartera (la lista de Hoy).
+
+    Solo pide tipos de cambio si hay efectivo en otra moneda: con todo en dólares
+    no cuesta ninguna llamada. Es la misma conversión que usa el coste de
+    oportunidad, para que la misma idea no salga con dos tamaños.
+    """
+    from app.routers.portfolio import _fx_completo
+
+    monedas = {c.moneda for c in _ultimas_anotaciones(session, ahora)} - {fx.BASE}
+    fx_series = _fx_completo(service, monedas)[1] if monedas else {}
+    return efectivo_usd(session, {"fx_series": fx_series}, ahora)
 
 
 def _lectura_congelada(session: Session, symbol: str, ahora: datetime) -> dict:
@@ -144,6 +169,7 @@ def evaluar(
                       "peso_pct": (p["peso_capital"] if efectivo["usd"] is not None else p["peso"]) * 100,
                       "vol_anual_pct": _pct((por_contrib.get(p["symbol"]) or {}).get("volatilidad"))}
                      for p in posiciones],
+            base_cartera="capital" if efectivo["usd"] is not None else "invertido",
         )
         tamano = (sizing["pesos"].get(symbol) or 0.0) / 100
 

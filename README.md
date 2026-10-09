@@ -694,9 +694,11 @@ tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los
 pesos que salen del dimensionador son **lo que se añade**, no el peso final.
 
 Dos supuestos que van escritos en la respuesta y en pantalla: el peso de lo que
-tienes se mide sobre el valor de tus posiciones abiertas —la app no registra tu
-efectivo—, así que si guardas liquidez fuera tu concentración real es menor y
-los topes aprietan antes de lo debido; y las posiciones que un barrido no cubre
+tienes se mide sobre tu capital total —posiciones más el efectivo anotado en
+Cartera (migración 0008), con la misma conversión que el coste de oportunidad—,
+y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
+valor de las posiciones abiertas: tu concentración real es entonces menor y los
+topes aprietan antes de lo debido, y la nota lo dice; y las posiciones que un barrido no cubre
 (otro mercado, sin precio) quedan fuera de los topes, lo cual se avisa en vez de
 dejar que un tope calculado sobre media cartera pase por completo.
 
