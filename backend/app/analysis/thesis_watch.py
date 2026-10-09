@@ -131,18 +131,32 @@ def evaluar_crecimiento(config: dict, crecimiento: dict) -> dict:
     return _comprobar_umbral(crecimiento.get(clave), config, etiqueta)
 
 
-def evaluar_noticia(config: dict, noticias: list[dict], dias: int = DIAS_NOTICIAS) -> dict:
+def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS) -> dict:
     """Palabras clave en titulares. Búsqueda de palabras, no comprensión.
 
     Se declara en cada resultado, porque la diferencia con los otros dos tipos es
     grande y no se ve: un disparador de margen que salta es un hecho de los
     estados financieros; este es una coincidencia de texto que puede ser
     cualquier cosa.
+
+    `noticias=None` es «no se pudieron descargar», y no es lo mismo que una lista
+    vacía. Antes las dos llegaban como `[]`: con la fuente caída el punto contaba
+    como comprobado («Ninguno de los 0 titulares…») y la tesis salía intacta
+    justo cuando no se había podido mirar.
     """
     palabras = [p for p in (config.get("palabras") or []) if p.strip()]
     if not palabras:
         return {"salta": False, "medible": False,
                 "motivo": "El disparador de noticias no tiene palabras que buscar."}
+    if noticias is None:
+        return {
+            "salta": False,
+            "medible": False,
+            "motivo": (
+                "Las noticias no se pudieron descargar, así que no se revisó ningún "
+                "titular. El disparador queda sin comprobar en vez de darse por bueno."
+            ),
+        }
 
     corte = datetime.now(timezone.utc) - timedelta(days=dias)
     coincidencias = []
@@ -207,7 +221,8 @@ def evaluar(disparador: dict, datos: dict) -> dict:
     elif kind == "crecimiento":
         r = evaluar_crecimiento(config, datos.get("crecimiento") or {})
     elif kind == "noticia":
-        r = evaluar_noticia(config, datos.get("noticias") or [])
+        # Sin `or []`: una clave ausente o None es un fallo de descarga, no cero titulares.
+        r = evaluar_noticia(config, datos.get("noticias"))
     else:
         r = {"salta": False, "medible": False, "motivo": f"Tipo desconocido: {kind}"}
     return {**disparador, **r}
@@ -284,6 +299,14 @@ def instantanea(
             {"descripcion": d.get("descripcion"), "detalle": d.get("detalle")}
             for d in vigilancia.get("disparadores", [])
             if d.get("salta")
+        ],
+        # Lo que no se pudo mirar también se congela: sin esto, una decisión
+        # tomada con las noticias caídas quedaba como «0 puntos saltando», sin
+        # rastro de que no se había comprobado.
+        "disparadores_sin_comprobar": [
+            {"descripcion": d.get("descripcion"), "motivo": d.get("motivo")}
+            for d in vigilancia.get("disparadores", [])
+            if not d.get("medible")
         ],
         "disparadores_totales": vigilancia.get("total", 0),
         "capturado_en": datetime.now(timezone.utc).isoformat(),

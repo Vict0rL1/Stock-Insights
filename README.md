@@ -792,7 +792,9 @@ opina sobre qué hacer: solo se acuerda de mirar.
 
 Y **«no se pudo medir» nunca se cuenta como «está bien»**. Van en contadores
 separados: confundirlos convertiría un fallo de datos en tranquilidad, justo
-cuando falta información.
+cuando falta información. Eso incluye las noticias: si no se pudieron descargar,
+el punto de noticias queda sin comprobar (no «ninguno de los 0 titulares…»), y la
+instantánea de una decisión guarda también qué puntos no se pudieron comprobar.
 
 ### El registro de decisiones: lo que sabías, no lo que recuerdas
 

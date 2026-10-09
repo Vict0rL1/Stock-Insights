@@ -17,6 +17,7 @@ from app.db.engine import get_session
 from app.deps import get_service
 from app.main import app
 from app.providers.base import DataNotFoundError, iso_utc
+from app.providers.router import AllProvidersFailedError
 
 
 def _periodos():
@@ -47,13 +48,16 @@ def _periodos():
 
 
 class FakeService:
-    def __init__(self, titular="Resultados en línea con lo esperado"):
+    def __init__(self, titular="Resultados en línea con lo esperado", noticias_caidas=False):
         self.titular = titular
+        self.noticias_caidas = noticias_caidas
         self.llamadas: dict[str, int] = {}
 
     def get(self, data_type, **kwargs):
         self.llamadas[data_type] = self.llamadas.get(data_type, 0) + 1
         common = {"source": "fake", "as_of": iso_utc(), "cached": False}
+        if data_type == "news" and self.noticias_caidas:
+            raise AllProvidersFailedError("news", {"finnhub": "timeout"})
         if data_type == "quote":
             return {**common, "symbol": kwargs["symbol"], "price": 120.0}
         if data_type == "profile":
@@ -218,6 +222,28 @@ def test_una_noticia_sobre_el_riesgo_vigilado_salta(client):
     assert disparador["salta"] is True
     assert disparador["coincidencias"][0]["url"] == "https://news/1"
     assert "BUSCA PALABRAS" in disparador["aviso"]
+
+
+def test_con_las_noticias_caidas_el_punto_queda_sin_comprobar(client):
+    """El router se tragaba el fallo y vigilaba sobre una lista vacía: «Ninguno
+    de los 0 titulares…» y la tesis sin avisos, justo cuando no se había mirado."""
+    c, _ = client(noticias_caidas=True)
+    tid = _crear_tesis(c)
+    c.post(f"/api/theses/{tid}/triggers", json={
+        "kind": "noticia", "descripcion": "Si hay un recall",
+        "config": {"palabras": ["recall"]},
+    })
+    v = c.get("/api/theses/vigilancia").json()["tesis"][0]["vigilancia"]
+    assert v["sin_medir"] == 1 and v["saltan"] == 0
+    assert v["disparadores"][0]["medible"] is False
+
+    r = c.post("/api/theses/decisiones", json={
+        "symbol": "AAPL", "accion": "comprar", "thesis_id": tid,
+        "razonamiento": "Entro aunque no haya podido mirar las noticias hoy.",
+    })
+    ctx = r.json()["contexto"]
+    assert ctx["disparadores_saltando"] == []
+    assert [d["descripcion"] for d in ctx["disparadores_sin_comprobar"]] == ["Si hay un recall"]
 
 
 def test_las_noticias_solo_se_piden_si_alguna_tesis_las_vigila(client):
