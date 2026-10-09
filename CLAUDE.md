@@ -67,11 +67,17 @@ código nuevo, comentarios, mensajes de error, textos de UI, docs y commits.
 
 ## Comandos
 
+Lo mismo que bloquea el CI (`.github/workflows/ci.yml`, Python 3.11 y Node 22):
+
 ```bash
-cd backend && python -m pytest -q -p no:cacheprovider     # suite completa (~30 s)
-cd frontend && npx tsc -b && npm run build                 # type-check + build
+cd backend && ruff check . && python -m pytest -q -p no:cacheprovider   # ruff va aparte de requirements
+cd frontend && npx tsc -b && npm run lint && npm test && npm run build  # tipos, ESLint, Vitest, build
 ./start.sh validar                                        # coherencia con datos reales e informe (necesita claves)
 ```
+
+`tsc -b`, nunca `tsc --noEmit`: el tsconfig raíz solo tiene referencias y `--noEmit` no comprueba
+nada. Golden master: `python -m tests.golden.generar --escribir` solo con visto bueno de Victor.
+Capturas: `cd frontend && npm run capturas -- <salida>`.
 
 Dobles de prueba: `session_factory` (SQLite en memoria) y
 `tests/fakes_empresa.py` (`ServicioFalso`, `periodo`, `trimestre`, `barras`).
@@ -83,7 +89,10 @@ inyectado, nunca con datos del usuario.
 
 ## Documentación
 
+`HANDOFF.md` (de dónde viene el repo), `docs/FIX_PLAN.md` y `docs/PROGRESS.md` (plan en curso),
 `docs/DECISION_REPLAY.md`, `docs/EXPECTATION_TRACKING.md`,
-`docs/PORTFOLIO_RISK.md`, `docs/RC1_CHECKLIST.md` y el README. Si un cambio
+`docs/PORTFOLIO_RISK.md`, `docs/RC1_CHECKLIST.md` y el README. Los documentos anteriores al
+2026-10-09 citan identificadores de commit del repositorio viejo: `docs/EQUIVALENCIAS_COMMITS.md`
+da el de aquí. Si un cambio
 altera una regla, un umbral o un contrato de la API, actualizar el documento
 que lo describe en el mismo commit.

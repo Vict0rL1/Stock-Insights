@@ -6,6 +6,11 @@ Estados: `pendiente` · `en curso` · `hecho` · `parcial` · `necesita a Victor
 Material de partida: `docs/REVISION_GENERAL.md` (revisión del 8-oct-2026) y sus 25 capturas en
 `docs/revision/` (el conjunto «antes»).
 
+**Hashes.** Las filas de las Fases 0 y 1 (ítems, R1–R13, S1–S14) citan los identificadores del
+repositorio anterior, que aquí no existen: `docs/EQUIVALENCIAS_COMMITS.md` da el nuevo de cada uno
+(ver `HANDOFF.md`). La tabla de cierres y todo lo escrito desde el 2026-10-09 usan los de este
+repositorio.
+
 ## Fase 0 — Red de seguridad
 
 - [x] **0.1** Tests de frontend (Vitest + Testing Library + jsdom, `npm test`) — estado: hecho · commit: `a3aa047` · nota: vitest 5 + jsdom 30; tests junto al código (`*.test.tsx`), también pasan por `tsc -b`.
@@ -71,9 +76,9 @@ Material de partida: `docs/REVISION_GENERAL.md` (revisión del 8-oct-2026) y sus
 
 | Fase | Etiqueta de inicio | Revisión independiente | Capturas «después» | Etiqueta de cierre |
 |---|---|---|---|---|
-| 0 | `fase-0-inicio` = `e917365` | hecha: 13 hallazgos, 12 arreglados y 1 para Victor (R1–R13, abajo) | no toca pantallas (las capturas de 0.6 se verificaron) | `fase-0-hecha` = `d78926e` |
-| 1 | `fase-1-inicio` = `d78926e` | hecha: el revisor dio 4 listas (A–D); 14 grupos arreglados (S1–S14) y 4 para Victor o la Fase 2 (abajo) | `docs/revision/despues-fase1/` (66, todas a 1440 y 390; comparadas con `revision/`) | `fase-1-hecha` = `81d6cae` |
-| 2 | `fase-2-inicio` = `81d6cae` | — | — | — |
+| 0 | `fase-0-inicio` = `de14316` | hecha: 13 hallazgos, 12 arreglados y 1 para Victor (R1–R13, abajo) | no toca pantallas (las capturas de 0.6 se verificaron) | `fase-0-hecha` = `877428d` |
+| 1 | `fase-1-inicio` = `877428d` | hecha: el revisor dio 4 listas (A–D); 14 grupos arreglados (S1–S14) y 4 para Victor o la Fase 2 (abajo) | `docs/revision/despues-fase1/` (66, todas a 1440 y 390; comparadas con `revision/`) | `fase-1-hecha` = `f2c2af9` |
+| 2 | `fase-2-inicio` = `f2c2af9` | — | — | — |
 | 3 | — | — | — | — |
 | 4 | — | — | — | — |
 
@@ -116,24 +121,32 @@ la red de seguridad tenía agujeros. Cada hallazgo, su arreglo y su commit:
 | S12 | (revisor A7, B1, B5) «Sharpe (0.83)», «alfa 0.05»; numpy y Decimal salían «—»; un instante futuro era «hace segundos»; `Intl.NumberFormat()` sin `new` escapaba a ESLint | hecho: `fmt_num`; `_cifra()` acepta numpy/Decimal; más de 5 min en el futuro = «con fecha futura» (gemelos y tabla); ESLint ve la llamada sin `new`. Guardas: tests y casos de tabla | `f6f3d59` |
 | S13 | (revisor D4) Ejes y cruz del gráfico en inglés («123.45», «1.2M», «12 Sep '26») | hecho: `LOCALIZACION` y volumen con `fmtCompacto`; fecha de barra diaria en UTC. Guarda: test | `d97b44a` |
 | S14 | (revisor D3, D5) Unas 30 fechas ISO en pantalla y en frases del backend; la hora de una cotización sin la zona del mercado | hecho: `fmtFecha`/`fmt_fecha` en todas; ET para la hora del dato de mercado. Multifactor no: sus «desde–hasta» son ejercicios. Guarda: patrón `fecha_iso` en los dos trinquetes (14 sitios en pantalla y 7 frases del backend) y test del rótulo ET | `1aeb8f0` |
-| — | (revisor A6) Los commits llevan `Co-Authored-By: Claude Opus 5.5`, y CLAUDE.md dice «sin identificadores de modelo en commits» | **para Victor**: es la línea de atribución que pide el entorno en cada commit; quitarla de los ya publicados exige reescribir el historial del PR. Decide tú si se reescribe o si la regla de CLAUDE.md se refiere al cuerpo del mensaje | — |
+| — | (revisor A6) Los commits llevan `Co-Authored-By: Claude Opus 5.5`, y CLAUDE.md dice «sin identificadores de modelo en commits» | **decidido por Victor (2026-10-09)**: manda CLAUDE.md. Desde ese día los commits van sin identificador de modelo; los 147 anteriores no se reescriben (exigiría forzar `main`) | — |
 | — | (revisor B6) Las bandas de tipo de cambio no ven una inversión cerca de la paridad (EUR del revés da 1,09 por dólar, dentro de 0,5–1,8; también GBP y CHF) | **para Victor**: estrecharlas es cambiar un umbral (§3). Propuesta: banda por divisa alrededor de su rango de 30 años | — |
 | — | (revisor B5) Un instante sin zona: el backend lo escribe en UTC y el frontend en la hora del navegador | **para la Fase 2**: decidir si la pantalla rotula la hora local o escribe siempre UTC; hoy lo rotulado (replay, informe, datos de mercado) ya es explícito | — |
 | — | (revisor B1) La guarda AST no ve un float crudo en un subíndice o una variable local (`f"{est['sharpe']}"`), ni ESLint un `${x}` con un float | **límite conocido**: los tipos no se ven sin ejecutar; lo cubren los trinquetes de fugas (`decimal_punto`) sobre el paquete de casos extremos |  — |
 
 ## Etiquetas
 
-El proxy de este entorno deja empujar la rama pero corta los push de etiquetas, así que
-las etiquetas viven en local. Cada sesión nueva las recrea desde la tabla de arriba:
-`git tag fase-0-inicio e917365`, `git tag fase-0-hecha d78926e`, `git tag fase-1-inicio d78926e`,
-`git tag fase-1-hecha 81d6cae` y `git tag fase-2-inicio 81d6cae` (y así con las que vengan).
+Las etiquetas nunca llegaron a GitHub: en el repositorio anterior el proxy cortaba su push, y en
+este los permisos de la sesión tampoco dejan crearlas ni empujarlas sin una regla explícita. Hasta
+que estén en el remoto, cada sesión las recrea desde la tabla de arriba (son las que necesita la
+revisión de cierre, `git diff fase-N-inicio..HEAD`):
+
+```bash
+git tag fase-0-inicio de14316 && git tag fase-0-hecha 877428d && git tag fase-1-inicio 877428d
+git tag fase-1-hecha f2c2af9 && git tag fase-2-inicio f2c2af9
+git push origin 'refs/tags/fase-*:refs/tags/fase-*'   # cuando se pueda; después ya no hará falta
+```
 
 ## Hallazgos fuera de la lista (para decidir en su fase)
 
 - **`thesis_watch.evaluar_noticia` usa la hora real** (`datetime.now`) para la ventana de noticias, no el
   momento del análisis: un análisis a fecha pasada filtra las noticias de la tesis con la ventana de hoy.
   Posible fuga de «punto en el tiempo». Encontrado al montar el golden (que congela el reloj por esto).
-  Tocarlo cambia decisiones del replay: requiere tu visto bueno.
+  Tocarlo cambia decisiones del replay: requiere tu visto bueno. (Revisión del 9-oct: hoy es latente,
+  porque el replay solo lee lo congelado y ningún camino con `ahora` pasado tiene tesis; y la raíz
+  también está en el proveedor: `FinnhubProvider.get_news` pide `from/to` con `datetime.now`.)
 - **El tipo de cambio de la cartera también usa la hora real** (encontrado por el revisor de la Fase 0).
   `contexto_cartera` llama a `_fx_completo` (`routers/portfolio.py`) sin pasarle el momento del
   análisis; `fx.inicio_de_ventana()` y `fx.tipo_desde_observaciones()` usan `date.today()` y no
@@ -146,13 +159,20 @@ las etiquetas viven en local. Cada sesión nueva las recrea desde la tabla de ar
   existe». Para el ítem 2.1 (estados de dato); hasta entonces la captura `empresa_sin_datos` fotografía eso.
 - **`?? 0` en el frontend** (`grep -rn "?? 0" frontend/src`): la mayoría solo eligen un color por el
   signo, pero alguno puede pintar un 0 donde falta el dato. En 1.7 se arreglaron los que pintaban una
-  cifra (tasa de acierto, minutos de un precio viejo, alertas nuevas); quedan los de color y orden.
-  Para 2.1 (estados de dato).
-- **El panel de mercado convierte cualquier fallo en «vacío»**: índices, sectores, curva y macro hacen
-  `() => setX([])` al fallar, así que un error se pinta como «no hay datos». En 1.10 se arregló el
-  calendario (el que llevaba el mensaje desfasado); los otros cuatro, para 2.1 (estados de dato).
-- **Las posiciones cerradas no traen su moneda** (`ClosedPosition` en la API): con dos divisas, su P&L
-  realizado sale sin código. Arreglarlo cambia el contrato de `/api/portfolio`; para 2.1 o 3.x.
+  cifra (tasa de acierto, minutos de un precio viejo, alertas nuevas). La revisión del 9-oct contó 26
+  líneas y no son solo de color y orden: «Posiciones 0» y «+0,0 %» en Cartera, la prima de opciones,
+  «0 seguidas» en Señales y «0 ideas» en Hoy pintan una cifra si falta el campo; y `?? 0.05` en
+  `ValuationSection` rellena un 5 % de crecimiento sin decirlo. Para 2.1 (estados de dato).
+- **Un fallo se pinta como «vacío»**: índices y sectores del panel de mercado hacen `() => setX([])` al
+  fallar (curva y macro ya se arreglaron en S11; el calendario en 1.10). El mismo patrón, también como
+  `() => setX(null)`, está en unas 15 cargas más; la peor, las alertas de Portafolio («Sin alertas
+  configuradas» si la carga falla, un control de riesgo que se calla), y después el efectivo de Cartera,
+  `sinTesis` de Vigilancia, Screener, Resultados, Valoración, Señales, Multifactor y las secciones de la
+  ficha. Para 2.1 (estados de dato).
+- **Las posiciones cerradas salen sin moneda**: con dos divisas, su P&L realizado sale sin código. La
+  API ya manda `currency` y `opened_at` en cada cerrada (`routers/portfolio.py`); lo que falta es el
+  tipo `ClosedPosition` del frontend y pasar la moneda a `<Pnl>` (también en «Realizado (cerradas)»).
+  No cambia el contrato. Para 2.1.
 - **El texto de la IA sale con el Markdown en crudo** («\*\*Lectura…\*\*»): `content_md` se pinta con
   `whitespace-pre-wrap`, sin interpretar. Visto en las capturas `con_ia` del ítem 1.3. Para 2.x (o
   pedir texto plano al modelo).
@@ -163,6 +183,32 @@ las etiquetas viven en local. Cada sesión nueva las recrea desde la tabla de ar
 - **Los sectores de las acciones salen en inglés** («Health Care», «Information Technology»): son los
   nombres GICS del universo, un dato y no un código, así que 1.8 no los tocó; los de un ETF (claves de
   yfinance) ya salen en español. Decidir en 2.x (glosario) si se traducen y con qué nombres.
+
+## Revisión del 9-oct-2026 (tras la mudanza)
+
+Siete lectores y un verificador por lector contrastaron README, PROGRESS, TODO y los documentos del
+RC1 con el código. CI en verde (backend 1654 + 2 saltados por falta de grabaciones; frontend 160).
+Lo que encontraron y adónde va:
+
+| # | Hallazgo | Destino |
+|---|---|---|
+| M1 | Si falla la descarga de noticias, el disparador de noticias de la tesis cuenta 0 titulares como comprobados y la tesis sale «intacta» (UNKNOWN convertido en PASS) | arreglar ya (visto bueno de Victor) |
+| M2 | «Calibrada» sale con solo la probabilidad del modelo de factores, o con ventaja desconocida: Hoy dice «Reglas validadas contra el histórico» sin backtest de reglas | arreglar ya (visto bueno de Victor) |
+| M3 | Hoy dimensiona sobre lo invertido aunque haya efectivo anotado (0008) y dice «la app no registra tu efectivo»; el coste de oportunidad sí lo usa | arreglar ya (visto bueno de Victor) |
+| M4 | La matriz de sensibilidad de la ficha pinta el valor total de la empresa como «valor/acción» si faltan las acciones (`valuation.py`, `value_per_share or equity_value`, hermano de P0-9) | 3.3 o antes |
+| M5 | Hay tres DCF, no dos: el «precargado» del informe (`deep_dive._dcf_defaults`) aplica un 3 % supuesto sin decirlo y no lee la deuda parcial; la ficha supone un 5 % en el frontend y sube a 0 % un crecimiento negativo medido; con crecimiento negativo, bajista y alcista se invierten | 3.3 (incluir el tercero) |
+| M6 | Opciones: volumen e interés abierto ausentes cuentan como 0 (`or 0`), sin marcar parcial | 2.1 o suelto |
+| M7 | Las líneas de cron del README usan `/usr/bin/python3` (sin las dependencias del `.venv`: fallarían al importar) y dicen «horas en UTC» (cron usa la hora local) | corregir el README |
+| M8 | README desfasado: sección «Tests» sin lint/Vitest/ruff, «ocho condiciones» del motor (faltan la banda de tendencia, resultados próximos, precio viejo, datos mínimos), yfinance como «solo respaldo» (es la única fuente de momentum, opciones, histórico largo y ETF), TTL del histórico (6 h, no 15 min), holdout fijo | 4.3 o antes |
+| M9 | TODO.md sin tocar desde el 30-sep: casillas parcialmente hechas (ajuste por sector, eventos de noticias, riesgos cualitativos), errores (catalizadores sin eventos, tres juegos de WACC, migraciones 0001-0006) | actualizar con 4.3 |
+| M10 | El backtest de reglas puntúa con un z-score global; Hoy, dentro de cada sector: el veredicto que enseña Hoy sale de otro sistema | para Victor |
+| M11 | El parser de EDGAR no lee 40-F, IFRS ni CAD: las canadienses del universo no tienen «los mismos datos que una estadounidense» (sin comprobar con datos reales) | para Victor (`./start.sh validar`) |
+| M12 | `requirements.txt` solo con `>=`, sin lock: la CI instala lo último en cada push; `anthropic>=0.60` se queda corto para lo que usa el proveedor (`fallbacks`, `output_format`, `thinking`) y un SDK viejo fallaría con un 500 | 4.5 o suelto |
+| M13 | `ubuntu-latest` pasa a Ubuntu 26 el 19-oct-2026; las acciones `@v4/@v5` corren en Node 20, obsoleto | vigilar el CI |
+| M14 | `frontend/tsconfig.node.tsbuildinfo` está versionado aunque `.gitignore` lo ignora; `tsc -b` lo reescribe (hoy idéntico) | `git rm --cached` cuando se toque |
+| M15 | Informe de validación (`coherencia.py`): «1 periodos», fechas ISO y listas de Python en crudo; los trinquetes no lo ven | suelto |
+| M16 | Altman Z cuenta como negativo en la lectura conjunta del informe también en bancos; el aviso solo está en Salud. ROIC con el 21 % supuesto entra en Multifactor y en disparadores sin aviso | para Victor |
+| M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | con M1 |
 
 ## Informe del repaso de seguridad (0.9)
 
@@ -180,8 +226,9 @@ las etiquetas viven en local. Cada sesión nueva las recrea desde la tabla de ar
 
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
-Fase 1 cerrada. Lo siguiente es la Fase 2 de `docs/FIX_PLAN.md`, empezando por 2.1 (estados de
-dato), que ya tiene anotados: la ficha sin cotización, los `?? 0` de color y orden, los índices y
-sectores del panel de mercado que convierten un fallo en vacío, y las posiciones cerradas sin moneda.
-Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en `thesis_watch` y
-en el tipo de cambio, las bandas de FX cerca de la paridad y la atribución de los commits.
+Fase 1 cerrada. Orden acordado con Victor el 9-oct: M1, M2 y M3 (revisión del 9-oct, arriba) y
+después la Fase 2 de `docs/FIX_PLAN.md`, empezando por 2.1 (estados de dato), que ya tiene anotados:
+la ficha sin cotización, los `?? 0`, los fallos que se pintan como vacío y las posiciones cerradas sin
+moneda. Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
+`thesis_watch` y en el tipo de cambio, las bandas de FX cerca de la paridad, M10, M11 y M16, y una
+regla de permisos para crear y empujar las etiquetas.

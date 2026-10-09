@@ -1,6 +1,11 @@
 # Claude Code prompt — "Análisis Bursátil": fix & polish plan (v2)
 
 > Paste into Claude Code at the repo root, on branch `claude/stock-analysis-app-nt3ge9`.
+>
+> [Nota del 2026-10-09: el proyecto vive ahora en `Vict0rL1/Stock-Insights` (ver `HANDOFF.md`); se
+> trabaja en la rama asignada a cada sesión, como dice `CLAUDE.md`. Donde este plan dice
+> `tsc --noEmit`, usar `npx tsc -b`: el tsconfig raíz solo tiene referencias y `--noEmit` no
+> comprueba nada.]
 
 ---
 
