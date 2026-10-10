@@ -1221,6 +1221,10 @@ def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session
         raise HTTPException(status_code=422, detail=f"Fecha inválida: {body.as_of!r}") from None
     if cuando.tzinfo is None:
         cuando = cuando.replace(tzinfo=timezone.utc)
+    # SQLite guarda la hora de pared sin zona y se relee como UTC: un saldo de
+    # hace un minuto en +02:00 quedaba fechado dos horas en el futuro y el punto
+    # en el tiempo lo descartaba (revisión de M3).
+    cuando = cuando.astimezone(timezone.utc)
     if cuando > datetime.now(timezone.utc) + timedelta(minutes=5):
         raise HTTPException(status_code=422, detail="Un saldo no puede estar fechado en el futuro.")
     fila = CashBalance(moneda=moneda, importe=body.importe, as_of=cuando, nota=body.nota)

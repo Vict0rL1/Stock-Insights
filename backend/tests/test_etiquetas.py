@@ -47,6 +47,7 @@ INTERNAS = {
     "serie": "identificador de la serie de FRED: es la fuente, como un ticker",
     "asset_class": "clase de activo; decide los topes del stop, no se enseña",
     "confidence": "elige qué explicación de la confianza se escribe; no se enseña",
+    "base_cartera": "sobre qué se midieron los pesos; la pantalla enseña la nota del tamaño, que lo dice",
     "descripcion": "texto del usuario (punto de su tesis)",
     "punto": "texto del usuario (punto de su tesis)",
     "palabras": "palabras clave que escribió el usuario",

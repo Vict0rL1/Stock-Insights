@@ -2305,6 +2305,7 @@
      ],
      "nota": "30 empresas cumplen las condiciones de compra; aquí están las 5 de mayor convicción, con un máximo de 2 por sector. Las demás siguen en «Comprar»: no se han descartado, se han ordenado.",
      "sizing": {
+      "base_cartera": "invertido",
       "cartera_actual": {},
       "clusters": [
        [
@@ -2343,6 +2344,7 @@
         "vol_supuesta_pct": null
        }
       ],
+      "efectivo": null,
       "escala_aplicada": 1.0,
       "invertido_pct": 36.7,
       "invertido_total_pct": 36.7,
@@ -7029,6 +7031,7 @@
      ],
      "nota": "57 empresas cumplen las condiciones de compra; aquí están las 5 de mayor convicción, con un máximo de 2 por sector. Las demás siguen en «Comprar»: no se han descartado, se han ordenado.",
      "sizing": {
+      "base_cartera": "invertido",
       "cartera_actual": {},
       "clusters": [
        [
@@ -7067,6 +7070,7 @@
         "vol_supuesta_pct": null
        }
       ],
+      "efectivo": null,
       "escala_aplicada": 1.0,
       "invertido_pct": 40.0,
       "invertido_total_pct": 40.0,

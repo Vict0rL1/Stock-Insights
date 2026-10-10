@@ -262,6 +262,7 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
 _BACKTEST = ("parámetro del backtest de reglas, que se ejecuta aparte (botón en Señales) y se guarda; "
              "el análisis lee ese resultado guardado, no lo recalcula")
 EXENTOS: dict[str, str] = {
+    "app.analysis.markets.VERSION_LISTA_DIARIA": "versión de la forma de la lista en caché; no decide nada",
     "app.analysis.decision.STOP_MIN_PCT": "se copia en TOPES_STOP al importar: lo que se lee es la tabla (cubierta)",
     "app.analysis.decision.STOP_MAX_PCT": "se copia en TOPES_STOP al importar: lo que se lee es la tabla (cubierta)",
     "app.analysis.sizing.SESIONES_ANO": "sin uso en sizing: la anualización vive en portfolio_risk (cubierta)",

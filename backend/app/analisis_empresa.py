@@ -469,14 +469,14 @@ def _senal_cacheada(service, symbol: str) -> dict | None:
     lista sale y de cuándo es. No se recalcula aquí porque puntuar una empresa
     sola no tiene sentido — los factores se miden contra sus comparables.
     """
-    from app.analysis.markets import MARKETS
+    from app.analysis.markets import MARKETS, parametros_lista_diaria
 
     cache = getattr(service, "cache", None)
     if cache is None:
         return None
     for clave in MARKETS:
         try:
-            lista = cache.get("daily_picks", {"v": 6, "market": clave})
+            lista = cache.get("daily_picks", parametros_lista_diaria(clave))
         except Exception:  # noqa: BLE001 — una caché ilegible no es una señal
             log("cache").exception("análisis: lista diaria ilegible (%s)", clave)
             continue

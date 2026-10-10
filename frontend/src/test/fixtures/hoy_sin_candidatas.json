@@ -1195,8 +1195,10 @@
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
      "sizing": {
       "aviso_cartera": "1 posición abierta no entra en los topes por sector y correlación (CHIP): este barrido no la cubre o no tiene precio. Tu concentración real es mayor que la que se ve aquí.",
+      "base_cartera": "invertido",
       "clusters": [],
       "controles": [],
+      "efectivo": null,
       "nota": "Sin candidatas que dimensionar.",
       "pesos": {},
       "recortes": [],
@@ -3653,8 +3655,10 @@
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
      "sizing": {
       "aviso_cartera": "1 posición abierta no entra en los topes por sector y correlación (CHIP): este barrido no la cubre o no tiene precio. Tu concentración real es mayor que la que se ve aquí.",
+      "base_cartera": "invertido",
       "clusters": [],
       "controles": [],
+      "efectivo": null,
       "nota": "Sin candidatas que dimensionar.",
       "pesos": {},
       "recortes": [],

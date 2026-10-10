@@ -48,15 +48,25 @@ class FredProvider(DataProvider):
             raise DataNotFoundError(f"fred: serie desconocida {series_id}")
         if resp.status_code != 200:
             raise ProviderError(f"fred: HTTP {resp.status_code}")
-        observations = resp.json().get("observations") or []
+        # Un 200 que no es el JSON de FRED (una página de mantenimiento o de un
+        # proxy) salía como ValueError sin capturar y tumbaba quien la pidiera:
+        # la lista de Hoy entera con efectivo en CAD (revisión de M3). Es un
+        # fallo del proveedor, como en Finnhub.
+        try:
+            observations = resp.json().get("observations") or []
+        except (ValueError, AttributeError) as exc:
+            raise ProviderError(f"fred: respuesta ilegible para {series_id}") from exc
         if not observations:
             raise DataNotFoundError(f"fred: sin observaciones para {series_id}")
-        points = [
-            {
-                "ts": obs["date"],
-                # FRED marca los huecos con "."; se conservan como None.
-                "value": float(obs["value"]) if obs.get("value") not in (".", None) else None,
-            }
-            for obs in observations
-        ]
+        try:
+            points = [
+                {
+                    "ts": obs["date"],
+                    # FRED marca los huecos con "."; se conservan como None.
+                    "value": float(obs["value"]) if obs.get("value") not in (".", None) else None,
+                }
+                for obs in observations
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProviderError(f"fred: observación ilegible en {series_id}") from exc
         return {"series_id": series_id, "points": points, "as_of": iso_utc()}

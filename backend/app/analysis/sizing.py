@@ -205,6 +205,12 @@ def volatilidad_cartera(
 
 # --- El dimensionador ---------------------------------------------------------
 
+
+def _frase_base(base_cartera: str, detalle_base: str | None) -> str:
+    """La frase de BASE_CARTERA, con el detalle dentro antes del punto final."""
+    frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
+    return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
+
 # Sobre qué se miden los pesos de lo que ya tienes, dicho en la nota del tamaño.
 BASE_CARTERA = {
     "capital": (
@@ -216,6 +222,15 @@ BASE_CARTERA = {
         "abiertas, porque no hay efectivo anotado que sumar (o no se pudo pasar a "
         "dólares): si guardas liquidez, tu concentración real es menor y los topes "
         "aprietan antes de lo debido. Puedes anotarlo en Cartera."
+    ),
+    # Con posiciones que el barrido no valora, sumar todo el efectivo a media
+    # cartera inventaría liquidez (revisión de M3): se mide sin él y se dice.
+    "invertido_parcial": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar, sin sumar el efectivo anotado: hay posiciones "
+        "fuera del barrido, y sumar todo el efectivo a una parte de la cartera daría "
+        "una liquidez que no tienes. Los topes aprietan antes de lo debido, que es el "
+        "lado prudente."
     ),
 }
 
@@ -230,13 +245,16 @@ def dimensionar(
     max_sector_pct: float = MAX_POR_SECTOR_PCT,
     max_cluster_pct: float = MAX_POR_CLUSTER_PCT,
     base_cartera: str = "invertido",
+    detalle_base: str | None = None,
 ) -> dict:
     """Convierte ideas en pesos de cartera, aplicando todos los límites.
 
     `base_cartera` dice sobre qué se midieron los pesos de `cartera`: «capital»
     (posiciones más el efectivo anotado) o «invertido» (solo posiciones, sin
-    efectivo conocido). Solo cambia la nota, que antes afirmaba siempre que la
-    app no registra el efectivo, también después de la migración 0008.
+    efectivo conocido), o «invertido_parcial» (había efectivo, pero no se sumó
+    porque faltan posiciones por valorar). Solo cambia la nota, que antes
+    afirmaba siempre que la app no registra el efectivo, también después de la
+    migración 0008. `detalle_base` se añade a esa frase (qué efectivo y de cuándo).
 
     `candidatas`: [{symbol, sector, peso_bruto_pct, vol_anual_pct}]. El peso
     bruto es el que sale del riesgo por operación — el que `decision.py` calcula
@@ -540,7 +558,7 @@ def dimensionar(
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y " + BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
+            "dato—, y " + _frase_base(base_cartera, detalle_base)
         ),
     }
 

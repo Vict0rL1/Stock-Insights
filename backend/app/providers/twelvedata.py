@@ -42,7 +42,11 @@ class TwelveDataProvider(DataProvider):
             raise RateLimitError("twelvedata: rate limit alcanzado")
         if resp.status_code != 200:
             raise ProviderError(f"twelvedata: HTTP {resp.status_code}")
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            # Como en Finnhub: un 200 que no es JSON es un fallo del proveedor.
+            raise ProviderError("twelvedata: respuesta no es JSON") from exc
         # Twelve Data devuelve errores como 200 con status="error" en el body.
         if isinstance(data, dict) and data.get("status") == "error":
             code = data.get("code")

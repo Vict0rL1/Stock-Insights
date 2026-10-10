@@ -208,3 +208,70 @@ def test_el_efectivo_de_entonces_es_la_ultima_anotacion_ya_hecha(session_factory
         hoy = efectivo_usd(s, {}, ahora + timedelta(days=5))
     assert entonces["estado"] == "valido" and entonces["usd"] == 1000.0
     assert hoy["usd"] == 5000.0
+
+
+def _cliente(session_factory, servicio):
+    from fastapi.testclient import TestClient
+
+    from app.db.engine import get_session
+    from app.deps import get_service
+    from app.main import app
+
+    def override():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = override
+    app.dependency_overrides[get_service] = lambda: servicio
+    return TestClient(app)
+
+
+def test_un_saldo_con_desfase_horario_se_guarda_en_utc_y_vale_ya(session_factory):
+    """SQLite guarda la hora de pared y la relee como UTC: un saldo de hace un
+    minuto en +02:00 quedaba dos horas en el futuro y Hoy usaba el anterior en
+    silencio mientras Cartera enseñaba el nuevo (revisión de M3)."""
+    from app.main import app
+    from app.oportunidad import efectivo_usd
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    hace_un_minuto = (datetime.now(timezone.utc) - timedelta(minutes=1)).astimezone(timezone(timedelta(hours=2)))
+    try:
+        c = _cliente(session_factory, ServicioFalso(AHORA))
+        assert c.post("/api/portfolio/efectivo", json={"moneda": "USD", "importe": 1000,
+                                                       "as_of": (hace_un_minuto - timedelta(days=2)).isoformat()}).status_code == 200
+        r = c.post("/api/portfolio/efectivo", json={"moneda": "USD", "importe": 50000, "as_of": hace_un_minuto.isoformat()})
+        assert r.status_code == 200, r.text
+        assert r.json()["as_of"].endswith("Z") or r.json()["as_of"].endswith("+00:00")
+    finally:
+        app.dependency_overrides.clear()
+    with session_factory() as s:
+        assert efectivo_usd(s, {}, datetime.now(timezone.utc))["usd"] == 50000.0
+
+
+def test_la_ficha_convierte_el_efectivo_en_una_moneda_sin_posiciones(session_factory):
+    """Con la cartera toda en dólares y efectivo en CAD, el contexto de cartera
+    no pedía el tipo del CAD: la ficha daba el efectivo por desconocido mientras
+    Hoy lo sumaba, y la misma idea salía con dos tamaños (revisión de M3)."""
+    from app import contexto_cartera
+    from app.db.models import CashBalance, Instrument, Position
+    from app.oportunidad import efectivo_usd
+    from tests.fakes_empresa import AHORA, ServicioFalso
+    from tests.fixtures.extremos import FX_BUENO, _serie_fx
+
+    sv = ServicioFalso(AHORA).empresa("AAPL", precio=100.0, score=None)
+    sv.macro["DEXCAUS"] = _serie_fx(FX_BUENO)
+    ahora = datetime.now(timezone.utc)
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", currency="USD")
+        s.add(inst)
+        s.commit()
+        s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=90.0, opened_at=ahora - timedelta(days=30)))
+        s.add(CashBalance(moneda="CAD", importe=13700.0, as_of=ahora - timedelta(days=1)))
+        s.commit()
+        ctx = contexto_cartera.construir(s, sv, ahora=ahora)
+        efectivo = efectivo_usd(s, ctx, ahora)
+    assert efectivo["estado"] == "valido"
+    assert efectivo["usd"] == pytest.approx(13700.0 / FX_BUENO, rel=0.01)

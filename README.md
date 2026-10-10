@@ -698,7 +698,12 @@ tienes se mide sobre tu capital total —posiciones más el efectivo anotado en
 Cartera (migración 0008), con la misma conversión que el coste de oportunidad—,
 y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
 valor de las posiciones abiertas: tu concentración real es entonces menor y los
-topes aprietan antes de lo debido, y la nota lo dice; y las posiciones que un barrido no cubre
+topes aprietan antes de lo debido, y la nota lo dice. Si hay posiciones que el
+barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
+cartera inventaría liquidez). La nota dice qué efectivo se usó y de qué fecha, y
+la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
+cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
+tras anotar efectivo o abrir una posición, «Actualizar» la recalcula; y las posiciones que un barrido no cubre
 (otro mercado, sin precio) quedan fuera de los topes, lo cual se avisa en vez de
 dejar que un tope calculado sobre media cartera pase por completo.
 

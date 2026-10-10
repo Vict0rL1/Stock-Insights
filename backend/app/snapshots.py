@@ -215,6 +215,10 @@ def congelar_lista_diaria(session: Session, payload: dict, origen: str, ahora: d
             "controles", "todos_los_limites_aplicados", "recortes", "escala_aplicada",
             "vol_estimada_pct", "objetivo_vol_pct", "clusters", "cartera_actual",
             "aviso_cartera", "invertido_total_pct",
+            # Sobre qué se midieron los pesos y con qué efectivo: sin esto, dos
+            # instantáneas antes y después de anotar efectivo tenían pesos no
+            # comparables sin forma de saberlo (revisión de M3).
+            "base_cartera", "efectivo",
         )
     }
     mercado = {

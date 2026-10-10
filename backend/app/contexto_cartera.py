@@ -124,7 +124,14 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
         monedas.add(moneda)
         valoradas.append(a)
 
-    tipos, fx_series, _ = _fx_completo(service, monedas)
+    # También las monedas del efectivo anotado: con toda la cartera en dólares y
+    # efectivo en CAD, la ficha no tenía con qué convertirlo y lo daba por
+    # desconocido mientras Hoy sí lo sumaba; dos tamaños para la misma idea
+    # (revisión de M3).
+    from app.oportunidad import _ultimas_anotaciones
+
+    monedas_efectivo = {c.moneda for c in _ultimas_anotaciones(session, ahora)}
+    tipos, fx_series, _ = _fx_completo(service, monedas | monedas_efectivo)
     for a in valoradas:
         por_usd = 1.0 if a["moneda"] == fx.BASE else datos.numero((tipos.get(a["moneda"]) or {}).get("por_usd"))
         a["valor_usd"] = a["precio"] * a["cantidad"] / por_usd if por_usd else None
