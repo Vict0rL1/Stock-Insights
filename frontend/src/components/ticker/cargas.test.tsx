@@ -16,6 +16,9 @@ import empresaCompleta from '../../test/fixtures/empresa_completa.json'
 import { CalidadSection } from './CalidadSection'
 import { DeepDiveSection } from './DeepDiveSection'
 import { ExpectativasSection } from './ExpectativasSection'
+import { FilingsSection } from './FilingsSection'
+import { FinancialsSection } from './FinancialsSection'
+import { HealthSection } from './HealthSection'
 import { HistorialSection } from './HistorialSection'
 import { OptionsSection } from './OptionsSection'
 import { QueCambioSection } from './QueCambioSection'
@@ -69,6 +72,43 @@ describe('fallo de carga de cada sección de la ficha', () => {
     fireEvent.click(reintentar)
     expect(await screen.findByText(/^Calidad de beneficios \(2025\)/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('un 404 es que la fuente no lo tiene, no un fallo (revisión del 2.1)', () => {
+  /** Todo responde 404 con el motivo de la fuente, como `DataNotFoundError`. */
+  function noLoTiene() {
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      if (url === '/api/meta/llm') return new Response(JSON.stringify({ configured: true, model: 'm' }), { status: 200 })
+      return new Response(JSON.stringify({ detail: 'SHOP.TO no está registrado en la SEC' }), { status: 404 })
+    }))
+  }
+  const casos: [string, ReactElement, string[]][] = [
+    ['Fundamentales', <FinancialsSection symbol="SHOP.TO" />, [
+      'Sin estados financieros: SHOP.TO no está registrado en la SEC',
+      'Sin pares con los que comparar: SHOP.TO no está registrado en la SEC',
+    ]],
+    ['Salud', <HealthSection symbol="SHOP.TO" />, ['Sin datos de salud financiera: SHOP.TO no está registrado en la SEC']],
+    ['Valoración', <ValuationSection symbol="SHOP.TO" />, ['No hay datos para prellenar el DCF: SHOP.TO no está registrado en la SEC']],
+    ['Filings', <FilingsSection symbol="SHOP.TO" />, ['Sin filings: SHOP.TO no está registrado en la SEC']],
+    ['Opciones', <OptionsSection symbol="SHOP.TO" />, ['SHOP.TO no está registrado en la SEC']],
+  ]
+  for (const [sitio, ui, frases] of casos) {
+    it(`${sitio}: lo dice como ausencia, con el motivo de la fuente y sin «Reintentar»`, async () => {
+      noLoTiene()
+      pintar(ui)
+      for (const frase of frases) expect(await screen.findByText(frase)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+      expect(document.body.textContent).not.toMatch(/No se pud/)
+    })
+  }
+
+  it('Informe: su 404 también llega cuando EDGAR cae, así que sigue siendo un fallo con «Reintentar»', async () => {
+    noLoTiene()
+    pintar(<DeepDiveSection symbol="SHOP.TO" />)
+    expect(await screen.findByText('No se pudo cargar el informe: SHOP.TO no está registrado en la SEC')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
 })
 

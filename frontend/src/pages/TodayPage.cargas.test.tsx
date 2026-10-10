@@ -8,7 +8,7 @@
  *   con un día sin ideas, y la pestaña caía a la tabla de todas.
  * - Sin variación del día, el color es neutro: `?? 0` la pintaba en verde.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
@@ -97,5 +97,30 @@ describe('Hoy: cargas que fallan o faltan', () => {
       .find((el) => el.className.includes('text-xs tabular-nums'))!
     expect(enFila.className).toContain('text-slate-400')
     expect(enFila.className).not.toMatch(/emerald|red/)
+  })
+
+  it('un fallo del mercado anterior que llega tarde no tapa la lista del nuevo ni su «Reintentar»', async () => {
+    // Revisión del 2.1: el S&P 500 fallaba después de cambiar a Canadá; su
+    // aviso quedaba sobre la lista de Canadá y «Reintentar» pedía el S&P 500.
+    let fallarSp500: () => void = () => {}
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(url)
+      if (url === HOY) {
+        return new Promise<Response>((r) => {
+          fallarSp500 = () => r(new Response(JSON.stringify({ detail: 'el S&P 500 no respondió' }), { status: 502 }))
+        })
+      }
+      const r = url.startsWith('/api/signals/today?market=canada') ? RUTAS[HOY] : RUTAS[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : { detail: `sin fixture: ${url}` }), { status: r ? r.status : 404 }))
+    }))
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Canadá — cotizadas en EE. UU.' }))
+    expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
+    await act(async () => fallarSp500())
+    expect(screen.queryByText(/No se pudo cargar la lista de hoy/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+    expect(pedidas.filter((u) => u === HOY)).toHaveLength(1)
   })
 })

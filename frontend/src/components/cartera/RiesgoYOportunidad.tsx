@@ -17,11 +17,16 @@ function Caja({ titulo, subtitulo, children }: { titulo: string; subtitulo: stri
 }
 
 export function ContribucionAlRiesgoPanel() {
-  // La primera carga no descarga; cada pulsación del botón es una clave nueva.
-  // El fallo salía como un motivo suelto, sin decir qué no había cargado, y un
-  // error de la descarga se quedaba pegado encima de la tabla anterior (ítem 2.1).
+  // La primera carga no descarga; el botón vuelve a pedir, ya descargando, y
+  // la tabla anterior sigue a la vista mientras tanto (una clave nueva por
+  // pulsación la vaciaba durante minutos; revisión del 2.1). El fallo salía
+  // como un motivo suelto, sin decir qué no había cargado (ítem 2.1).
   const [descargas, setDescargas] = useState(0)
-  const contribucion = useDato(() => api.contribucion(descargas > 0), descargas)
+  const contribucion = useDato(() => api.contribucion(descargas > 0), 'contribucion')
+  const descargar = () => {
+    setDescargas((n) => n + 1)
+    contribucion.refrescar()
+  }
 
   return (
     <>
@@ -86,10 +91,9 @@ export function ContribucionAlRiesgoPanel() {
                   <p className="text-[10px] text-slate-400">{c.metodo}. {c.nota}</p>
                 </>
               )}
-              {/* Mientras descarga, el bloque entero dice «Cargando…»: el botón no se ve. */}
-              <button type="button" onClick={() => setDescargas((n) => n + 1)}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs">
-                Descargar histórico y recalcular
+              <button type="button" onClick={descargar} disabled={contribucion.refrescando}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50">
+                {contribucion.refrescando ? 'Descargando…' : 'Descargar histórico y recalcular'}
               </button>
             </div>
           )}
@@ -123,7 +127,7 @@ export function CosteOportunidadPanel() {
   // era anotarlo otra vez (ítem 2.1). No haberlo anotado y no poder leerlo son
   // cosas distintas.
   const efectivo = useDato(() => api.efectivo(), 'efectivo')
-  const cargarEfectivo = efectivo.reintentar
+  const cargarEfectivo = efectivo.refrescar
   const [importe, setImporte] = useState('')
   const [moneda, setMoneda] = useState('USD')
   const [ticker, setTicker] = useState('')

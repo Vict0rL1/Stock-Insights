@@ -3,7 +3,7 @@ import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../../lib/formato'
-import { useDato } from '../../lib/useDato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
 
@@ -53,12 +53,13 @@ function inputsIniciales(d: ValuationDefaults): Inputs {
 
 export function ValuationSection({ symbol }: { symbol: string }) {
   // Un fallo al traer los valores de partida es un fallo, con «Reintentar»: antes
-  // decía «No hay datos para prellenar el DCF», como si faltaran (ítem 2.1).
-  const carga = useDato(() => api.valuationDefaults(symbol), symbol)
+  // decía «No hay datos para prellenar el DCF», como si faltaran (ítem 2.1). Un
+  // 404 sí es que faltan (sin estados de EDGAR), y se dice así (revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.valuationDefaults(symbol)), symbol)
   // Al cambiar de símbolo el bloque vuelve a «cargando» y `Dcf` se monta de
   // nuevo con los supuestos del nuevo: nada del anterior se queda en los campos.
   return (
-    <BloqueDatos carga={carga} que="los valores de partida del DCF">
+    <BloqueDatos carga={carga} que="los valores de partida del DCF" ausente={(m) => `No hay datos para prellenar el DCF: ${m}`}>
       {(defaults) => <Dcf symbol={symbol} defaults={defaults} />}
     </BloqueDatos>
   )

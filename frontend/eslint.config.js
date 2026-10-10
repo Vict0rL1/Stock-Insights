@@ -31,6 +31,10 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true, allowNullish: false, allowAny: false, allowNever: false, allowRegExp: false },
       ],
+      // Una promesa sin manejador ni `await` es un fallo que nadie ve: un
+      // `.then(setX)` suelto deja «Cargando» para siempre si la petición falla
+      // (revisión del 2.1). Las que ya capturan dentro se marcan con `void`.
+      '@typescript-eslint/no-floating-promises': 'error',
     },
   },
   // Una cifra para una persona solo se escribe con `lib/formato.ts` (ítem 1.7):
@@ -79,6 +83,13 @@ export default tseslint.config(
           selector:
             "CallExpression[callee.property.name='then'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]:nth-child(2), CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]",
           message: 'Un fallo de carga no se traga: usa useDato + BloqueDatos (components/EstadoDato.tsx) o enseña el error.',
+        },
+        // Lo mismo con `try { … } catch { setX([]) }`: la guarda de arriba no
+        // lo veía (revisión del 2.1). Un `catch` que de verdad no necesita el
+        // error lo justifica con un eslint-disable.
+        {
+          selector: 'CatchClause[param=null]',
+          message: 'Un catch sin el error lo traga: nómbralo y enséñalo, o justifica por qué no hace falta.',
         },
       ],
     },

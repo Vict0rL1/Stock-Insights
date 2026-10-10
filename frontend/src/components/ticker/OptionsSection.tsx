@@ -8,7 +8,7 @@ import type {
   SkewSignal,
 } from '../../api/types'
 import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
-import { useDato } from '../../lib/useDato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 
 const pct = (v: number | null | undefined, d = 1) => fmtPct(v, d)
@@ -364,10 +364,12 @@ function Actividad({ a }: { a: ActividadOpciones }) {
 
 export function OptionsSection({ symbol }: { symbol: string }) {
   // Cargando y fallo con las mismas palabras y el mismo «Reintentar» que el
-  // resto de la app (ítem 2.1); antes el fallo era un mensaje suelto.
-  const carga = useDato(() => api.opciones(symbol), symbol)
+  // resto de la app (ítem 2.1); antes el fallo era un mensaje suelto. Un 404
+  // («no cotiza opciones») no es un fallo: el motivo del backend ya es la frase
+  // entera (revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.opciones(symbol)), symbol)
   return (
-    <BloqueDatos carga={carga} que="la cadena de opciones">
+    <BloqueDatos carga={carga} que="la cadena de opciones" ausente={(m) => m}>
       {(datos) => <Opciones datos={datos} />}
     </BloqueDatos>
   )

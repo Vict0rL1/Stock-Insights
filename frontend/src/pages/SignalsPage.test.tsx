@@ -55,6 +55,8 @@ describe('Señales', () => {
     expect(screen.getByRole('button', { name: /Mi watchlist/ })).toBeInTheDocument()
   })
 
+  // Guarda de no regresión (pasa también con el código anterior): el arreglo
+  // del fallo no puede esconder los universos que sí llegan.
   it('universos que llegan se pintan junto a la watchlist', async () => {
     servir({ status: 200, json: { universes: [{ key: 'megacaps', name: 'Megacaps', description: 'Las más grandes.', size: 30 }], note: '' } })
     render(<MemoryRouter><SignalsPage /></MemoryRouter>)

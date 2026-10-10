@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api/client'
-import { ErrorDeCarga } from '../components/EstadoDato'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DecisionRegistrada,
   DisparadorVigilado,
   MetricasVigilables,
-  VigilanciaResponse,
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
-import { useDato } from '../lib/useDato'
+import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
 
@@ -371,33 +370,48 @@ function Decision({ d }: { d: DecisionRegistrada }) {
 }
 
 export function VigilanciaPage() {
-  const [vig, setVig] = useState<VigilanciaResponse | null>(null)
+  // Los puntos de invalidación seguían con `useState` y `setError`: sin
+  // «Cargando», el fallo salía suelto y sin «Reintentar», compartía `error` con
+  // el registro de decisiones (que lo borraba al empezar) y, si fallaba la
+  // recarga tras quitar un punto, el punto quitado seguía pintado como actual
+  // (revisión del 2.1).
+  const vigilancia = useDato(() => api.vigilancia(), 'vigilancia')
+  const vig = vigilancia.datos
   // Decisiones, posiciones sin tesis, tesis enlazables y catálogo de métricas
   // hacían `() => setX(null)` / `[]`: un fallo los borraba sin decir nada. El
   // peor, el aviso de posiciones sin tesis, que desaparecía justo cuando no se
-  // había podido comprobar (ítem 2.1). `version` los vuelve a pedir tras
-  // registrar algo.
-  const [version, setVersion] = useState(0)
-  const dec = useDato(() => api.decisiones(), `decisiones-${version}`)
-  const sin = useDato(() => api.sinTesis(), `sin-tesis-${version}`)
-  const tesis = useDato(() => api.theses().then((d) => d.theses), `tesis-${version}`)
+  // había podido comprobar (ítem 2.1).
+  const dec = useDato(() => api.decisiones(), 'decisiones')
+  const sin = useDato(() => api.sinTesis(), 'sin-tesis')
+  const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
   const metricas = useDato(() => api.metricasVigilables(), 'metricas')
   const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
   const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
   const [error, setError] = useState<string | null>(null)
+  // «quitar» un punto hacía `await` sin capturar: un rechazo no decía nada y el
+  // punto seguía ahí (revisión del 2.1).
+  const [fallo, setFallo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const cargarVigilancia = useCallback(() => {
-    api.vigilancia().then(setVig, (e) => setError(e.message))
-  }, [])
-  const cargar = useCallback(() => {
-    cargarVigilancia()
-    setVersion((v) => v + 1)
-  }, [cargarVigilancia])
+  // Tras registrar, añadir o quitar algo: todo se refresca sin vaciarse. Con
+  // una clave por versión pasaban por «Cargando», desaparecían «Decisiones
+  // pasadas» y el aviso, y el selector de tesis se quedaba sin opciones.
+  const cargar = () => {
+    vigilancia.refrescar()
+    dec.refrescar()
+    sin.refrescar()
+    tesis.refrescar()
+  }
 
-  useEffect(() => {
-    cargarVigilancia()
-  }, [cargarVigilancia])
+  const quitar = async (id: number) => {
+    setFallo(null)
+    try {
+      await api.deleteTrigger(id)
+      cargar()
+    } catch (e) {
+      setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
+    }
+  }
 
   const registrar = async () => {
     setBusy(true)
@@ -444,7 +458,6 @@ export function VigilanciaPage() {
           {sin.datos.nota}
         </p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {añadiendoA !== null && metricas.estado === 'error' && (
         <ErrorDeCarga que="el catálogo de métricas vigilables" error={metricas.error} reintentar={metricas.reintentar} />
@@ -461,24 +474,28 @@ export function VigilanciaPage() {
         />
       )}
 
-      {vig?.tesis.map((t) => (
-        <TarjetaTesis
-          key={t.thesis_id}
-          t={t}
-          onAñadir={setAñadiendoA}
-          onBorrar={async (id) => {
-            await api.deleteTrigger(id)
-            cargar()
-          }}
-        />
-      ))}
-
-      {vig && vig.tesis.length === 0 && (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          Todavía no hay ninguna tesis escrita. Se crean al añadir una posición o
-          algo a la watchlist, o desde la pestaña Tesis.
+      {fallo && (
+        <p role="alert" className="text-sm text-red-600">
+          {fallo}
         </p>
       )}
+
+      <BloqueDatos carga={vigilancia} que="la vigilancia de tesis">
+        {(v) =>
+          v.tesis.length === 0 ? (
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+              Todavía no hay ninguna tesis escrita. Se crean al añadir una posición o
+              algo a la watchlist, o desde la pestaña Tesis.
+            </p>
+          ) : (
+            <>
+              {v.tesis.map((t) => (
+                <TarjetaTesis key={t.thesis_id} t={t} onAñadir={setAñadiendoA} onBorrar={quitar} />
+              ))}
+            </>
+          )
+        }
+      </BloqueDatos>
 
       {/* --- Registro de decisiones --- */}
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -538,6 +555,7 @@ export function VigilanciaPage() {
         >
           {busy ? 'Guardando…' : 'Registrar'}
         </button>
+        {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
       </section>
 
       {dec.estado === 'error' && (

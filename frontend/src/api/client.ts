@@ -124,17 +124,21 @@ async function fetchJson<T>(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
   } finally {
     clearTimeout(timer)
   }
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      detail = textoDeError(body.detail) ?? detail
-    } catch {
-      // cuerpo no-JSON: nos quedamos con el mensaje genérico
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
+}
+
+/** El motivo de una respuesta de error: el `detail` del backend o, si el
+ *  cuerpo no es JSON, el código HTTP. Antes, tres copias de lo mismo. */
+async function motivoDe(resp: Response): Promise<string> {
+  const generico = `Error HTTP ${resp.status}`
+  try {
+    const body = await resp.json()
+    return textoDeError(body.detail) ?? generico
+    // eslint-disable-next-line no-restricted-syntax -- un cuerpo que no es JSON no es otro fallo: el fallo es el código HTTP, y se lanza igual.
+  } catch {
+    return generico
+  }
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -143,31 +147,13 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
   const resp = await fetch(path, { method: 'DELETE' })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }
 

@@ -49,7 +49,9 @@ function Evento({ id, alCambiar }: { id: number; alCambiar: () => void }) {
     p.then(
       () => {
         setMsg(null)
-        carga.reintentar()
+        // `refrescar`, no `reintentar`: la lectura sigue a la vista hasta que
+        // llega la nueva (antes desaparecía y la página saltaba).
+        carga.refrescar()
         alCambiar()
       },
       (e: unknown) => setMsg(mensajeDeError(e)),
@@ -168,8 +170,8 @@ function Expectativas({ symbol }: { symbol: string }) {
   }, [primero])
 
   const recargar = () => {
-    eventos.reintentar()
-    cal.reintentar()
+    eventos.refrescar()
+    cal.refrescar()
   }
 
   const preparar = () =>

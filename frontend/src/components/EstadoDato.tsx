@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { Sourced } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtFecha, ZONA_MERCADO } from '../lib/formato'
-import type { CargaConReintento } from '../lib/useDato'
+import { Ausencia, type CargaConReintento } from '../lib/useDato'
 
 // Una sola forma de enseñar el estado de un dato (ítem 2.1). Dos piezas:
 //
@@ -104,23 +104,27 @@ export function ErrorDeCarga({ que, error, reintentar }: { que: string; error: s
   )
 }
 
-/** Cargando, vacío o error, y si no, el contenido.
+/** Cargando, vacío, ausente o error, y si no, el contenido.
  *
  *  `que` nombra el bloque en las frases («los índices» → «Cargando los
  *  índices…», «No se pudieron cargar los índices: …»). `vacio` decide si lo que
- *  llegó está vacío; `mensajeVacio` lo dice con las palabras de esa pantalla. */
+ *  llegó está vacío; `mensajeVacio` lo dice con las palabras de esa pantalla.
+ *  `ausente` dice, con el motivo de la fuente, lo que esta no tiene (una carga
+ *  envuelta en `ausenteSi404`): sin «Reintentar», que no lo arreglaría. */
 export function BloqueDatos<T>({
   carga,
   que,
   vacio,
   mensajeVacio,
+  ausente,
   children,
 }: {
   carga: CargaConReintento<T>
   que: string
-  vacio?: (datos: T) => boolean
+  vacio?: (datos: Exclude<T, Ausencia>) => boolean
   mensajeVacio?: ReactNode
-  children: (datos: T) => ReactNode
+  ausente?: (motivo: string) => ReactNode
+  children: (datos: Exclude<T, Ausencia>) => ReactNode
 }) {
   if (carga.estado === 'cargando') {
     return (
@@ -132,8 +136,12 @@ export function BloqueDatos<T>({
   if (carga.estado === 'error') {
     return <ErrorDeCarga que={que} error={carga.error} reintentar={carga.reintentar} />
   }
-  if (vacio?.(carga.datos)) {
+  if (carga.datos instanceof Ausencia) {
+    return <p className="text-sm text-slate-400">{ausente ? ausente(carga.datos.motivo) : `Sin datos: ${carga.datos.motivo}`}</p>
+  }
+  const datos = carga.datos as Exclude<T, Ausencia>
+  if (vacio?.(datos)) {
     return <p className="text-sm text-slate-400">{mensajeVacio ?? 'Sin datos que enseñar.'}</p>
   }
-  return <>{children(carga.datos)}</>
+  return <>{children(datos)}</>
 }

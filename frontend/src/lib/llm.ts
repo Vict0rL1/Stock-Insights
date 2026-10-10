@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { LlmStatus } from '../api/types'
 import { mensajeDeError } from './useDato'
@@ -6,13 +6,24 @@ import { mensajeDeError } from './useDato'
 // El estado de la capa de IA no cambia sin reiniciar el backend: se pide una
 // sola vez y se comparte entre todos los componentes que lo consultan.
 let pending: Promise<LlmStatus> | null = null
+// Quien ya está montado se entera del estado que consiga otro. La barra
+// lateral lo pide una vez al abrir la app; si esa vez fallaba y luego Noticias
+// lo conseguía, la barra seguía diciendo «IA sin comprobar» junto a unos
+// botones de IA que sí se ofrecían (revisión del 2.1).
+const oyentes = new Set<(s: LlmStatus) => void>()
 
 function load(): Promise<LlmStatus> {
   if (pending === null) {
-    pending = api.llmStatus().catch((err) => {
-      pending = null // un fallo puntual no debe fijar el estado para siempre
-      throw err
-    })
+    pending = api.llmStatus().then(
+      (s) => {
+        oyentes.forEach((o) => o(s))
+        return s
+      },
+      (err: unknown) => {
+        pending = null // un fallo puntual no debe fijar el estado para siempre
+        throw err
+      },
+    )
   }
   return pending
 }
@@ -26,22 +37,28 @@ function load(): Promise<LlmStatus> {
  * error. Pero un fallo de la consulta no es «IA apagada»: antes se tragaba y la
  * barra lateral no decía nada; ahora se distingue (ítem 2.1).
  */
-export function useLlmEstado(): { status: LlmStatus | null; error: string | null } {
+export function useLlmEstado(): { status: LlmStatus | null; error: string | null; reintentar: () => void } {
   const [status, setStatus] = useState<LlmStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [intento, setIntento] = useState(0)
 
   useEffect(() => {
     let alive = true
-    load().then(
-      (s) => alive && setStatus(s),
-      (e: unknown) => alive && setError(mensajeDeError(e)),
-    )
+    const oyente = (s: LlmStatus) => {
+      if (!alive) return
+      setStatus(s)
+      setError(null)
+    }
+    oyentes.add(oyente)
+    load().then(oyente, (e: unknown) => alive && setError(mensajeDeError(e)))
     return () => {
       alive = false
+      oyentes.delete(oyente)
     }
-  }, [])
+  }, [intento])
 
-  return { status, error }
+  const reintentar = useCallback(() => setIntento((n) => n + 1), [])
+  return { status, error, reintentar }
 }
 
 /** El estado de la IA, o `null` si aún no se sabe o no se pudo saber. */

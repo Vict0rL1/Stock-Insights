@@ -2,7 +2,7 @@ import { api } from '../../api/client'
 import type { Health, RiskResponse } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
-import { useDato, type CargaConReintento } from '../../lib/useDato'
+import { Ausencia, ausenteSi404, useDato, type CargaConReintento } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { DeudaParcial } from './DeudaParcial'
 
@@ -13,21 +13,23 @@ const ZONE_STYLES: Record<string, string> = {
 }
 
 export function HealthSection({ symbol }: { symbol: string }) {
-  const salud = useDato(() => api.health(symbol), symbol)
+  // Un 404 es que la fuente no lo tiene: ausencia con su motivo, no un fallo
+  // con «Reintentar» (revisión del 2.1).
+  const salud = useDato(() => ausenteSi404(api.health(symbol)), symbol)
   // El riesgo de mercado hacía `() => setRisk(null)`: si fallaba, beta,
   // volatilidad y drawdown salían «—», como si la fuente no los reportara
   // (ítem 2.1). Ahora su fallo se dice en su sitio.
-  const riesgo = useDato(() => api.risk(symbol), symbol)
+  const riesgo = useDato(() => ausenteSi404(api.risk(symbol)), symbol)
 
   return (
-    <BloqueDatos carga={salud} que="la salud financiera">
+    <BloqueDatos carga={salud} que="la salud financiera" ausente={(m) => `Sin datos de salud financiera: ${m}`}>
       {(health) => <Salud health={health} riesgo={riesgo} />}
     </BloqueDatos>
   )
 }
 
-function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<RiskResponse> }) {
-  const risk = riesgo.estado === 'listo' ? riesgo.datos : null
+function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<RiskResponse | Ausencia> }) {
+  const risk = riesgo.estado === 'listo' && !(riesgo.datos instanceof Ausencia) ? riesgo.datos : null
   const z = health.altman_z
   const f = health.piotroski_f
 
@@ -141,7 +143,11 @@ function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<R
         {!risk && (
           <div className="mt-3">
             {/* Solo los estados de carga y error: con datos, las cifras van arriba. */}
-            <BloqueDatos carga={riesgo} que="las métricas de riesgo (beta, volatilidad y drawdown)">
+            <BloqueDatos
+              carga={riesgo}
+              que="las métricas de riesgo (beta, volatilidad y drawdown)"
+              ausente={(m) => `Sin métricas de riesgo: ${m}`}
+            >
               {() => null}
             </BloqueDatos>
           </div>

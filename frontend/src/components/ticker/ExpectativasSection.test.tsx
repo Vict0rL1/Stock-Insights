@@ -6,7 +6,7 @@
  * - Un evento que no cargaba guardaba el fallo en un mensaje que solo se pintaba
  *   con el evento cargado: «Cargando evento…» para siempre.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import empresaCompleta from '../../test/fixtures/empresa_completa.json'
 import { ExpectativasSection } from './ExpectativasSection'
@@ -45,5 +45,28 @@ describe('resultados frente a expectativas', () => {
     render(<ExpectativasSection symbol="ACME" />)
     expect(await screen.findByText('No se pudo cargar el evento: el servidor no respondió')).toBeInTheDocument()
     expect(screen.queryByText(/Cargando/)).toBeNull()
+  })
+
+  it('tras «Capturar expectativas» la lectura sigue a la vista mientras recarga', async () => {
+    // Revisión del 2.1: la recarga pasaba por «cargando» y la lectura, la
+    // lista y la calibración desaparecían; la página saltaba.
+    let recargando = false
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(`${init?.method ?? 'GET'} ${url}`)
+      if (init?.method === 'POST') {
+        recargando = true
+        return Promise.resolve(new Response(JSON.stringify({ registradas: [], sin_fuente: [] }), { status: 200 }))
+      }
+      if (recargando) return new Promise<Response>(() => {})
+      const r = ACME[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 }))
+    }))
+    render(<ExpectativasSection symbol="ACME" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capturar expectativas' }))
+    await waitFor(() => expect(pedidas.filter((p) => p === 'GET /api/expectativas/eventos/1')).toHaveLength(2))
+    expect(screen.getByRole('button', { name: 'Capturar expectativas' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Cargando/)).toBeNull()
   })
 })

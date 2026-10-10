@@ -457,13 +457,14 @@ function Crisis({ c }: { c: CrisisEstresada }) {
 
 export function CarteraPage() {
   // La primera carga no descarga: veinte años por posición no se piden sin que
-  // nadie los haya pedido. El botón lo hace explícito; cada pulsación es una
-  // clave nueva y vuelve a pedir, ya descargando.
+  // nadie los haya pedido. El botón lo hace explícito y vuelve a pedir, ya
+  // descargando, sin quitar el análisis anterior mientras dura la descarga
+  // (con una clave por pulsación desaparecía durante minutos; revisión del 2.1).
   const [descargas, setDescargas] = useState(0)
   // El fallo salía como un motivo suelto, sin decir qué no había cargado y sin
   // forma de reintentar (ítem 2.1).
-  const riesgo = useDato(() => api.riesgoDeCartera(descargas > 0), descargas)
-  const cargando = riesgo.estado === 'cargando'
+  const riesgo = useDato(() => api.riesgoDeCartera(descargas > 0), 'riesgo')
+  const cargando = riesgo.estado === 'cargando' || riesgo.refrescando
 
   return (
     <div className="space-y-4">
@@ -477,7 +478,10 @@ export function CarteraPage() {
         </div>
         <button
           type="button"
-          onClick={() => setDescargas((n) => n + 1)}
+          onClick={() => {
+            setDescargas((n) => n + 1)
+            riesgo.refrescar()
+          }}
           disabled={cargando}
           className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
         >

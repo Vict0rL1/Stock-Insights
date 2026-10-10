@@ -474,7 +474,7 @@ export function EarningsPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) cargar(s)
+            if (s) void cargar(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -498,7 +498,7 @@ export function EarningsPage() {
           actual={symbol}
           elegir={(s) => {
             setEntrada(s)
-            cargar(s)
+            void cargar(s)
           }}
         />
       </section>

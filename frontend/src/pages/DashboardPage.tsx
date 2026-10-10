@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import { BloqueDatos } from '../components/EstadoDato'
+import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
 import { fmtFecha, fmtNum, fmtPct } from '../lib/formato'
 import { useDato } from '../lib/useDato'
+import type { SectorEntry } from '../api/types'
 
 function ChangeChip({ pct }: { pct: number | null | undefined }) {
   if (pct === null || pct === undefined) return <span className="text-slate-400">—</span>
@@ -11,6 +12,26 @@ function ChangeChip({ pct }: { pct: number | null | undefined }) {
     <span className={`font-medium tabular-nums ${up ? 'text-emerald-600' : 'text-red-600'}`}>
       {fmtPct(pct, 2, { signo: true, enPuntos: true })}
     </span>
+  )
+}
+
+/** Qué sectores van con la última copia guardada o sin dato. Una variación
+ *  rescatada de la caché salía como la de hoy, y un sector sin cotización era
+ *  un «—» sin explicación (revisión del 2.1). Una fila por sector no cabe: se
+ *  dice junto a la lista. */
+function AvisoSectores({ lista }: { lista: SectorEntry[] }) {
+  const viejos = lista.filter((s) => s.quote && s.quote.estado !== undefined && s.quote.estado !== 'valido')
+  const sinDato = lista.filter((s) => !s.quote)
+  if (viejos.length === 0 && sinDato.length === 0) return null
+  return (
+    <div className="mb-2 space-y-1 text-[11px] text-amber-800">
+      {viejos.map((s) => (
+        <div key={s.symbol} className="flex flex-wrap items-center gap-1">
+          {s.label}: <EstadoDato data={s.quote!} />
+        </div>
+      ))}
+      {sinDato.length > 0 && <p>Sin dato (ninguna fuente respondió): {sinDato.map((s) => s.label).join(', ')}.</p>}
+    </div>
   )
 }
 
@@ -39,6 +60,14 @@ export function DashboardPage() {
                   {ix.quote ? fmtNum(ix.quote.price) : '—'}
                 </div>
                 <ChangeChip pct={ix.quote?.change_pct} />
+                {/* Un precio rescatado de la caché parecía de ahora, y uno que
+                    ninguna fuente dio era un «—» sin explicación (revisión del 2.1). */}
+                {ix.quote && ix.quote.estado !== undefined && ix.quote.estado !== 'valido' && (
+                  <div className="mt-1">
+                    <EstadoDato data={ix.quote} />
+                  </div>
+                )}
+                {!ix.quote && <div className="mt-1 text-[10px] text-slate-400">sin dato: ninguna fuente respondió</div>}
               </div>
             ))}
           </section>
@@ -52,31 +81,34 @@ export function DashboardPage() {
           </h2>
           <BloqueDatos carga={sectores} que="los sectores" vacio={(d) => d.length === 0} mensajeVacio="Ninguna fuente devolvió sectores.">
             {(lista) => (
-              <ul className="space-y-1">
-                {lista.map((s) => {
-                  const pct = s.change_pct
-                  const width = pct === null ? 0 : Math.min(Math.abs(pct) * 25, 100)
-                  return (
-                    <li key={s.symbol} className="flex items-center gap-2 text-sm">
-                      <Link
-                        to={`/ticker/${s.symbol}`}
-                        className="w-44 shrink-0 truncate text-slate-600 hover:underline"
-                      >
-                        {s.label}
-                      </Link>
-                      <div className="h-2 flex-1 overflow-hidden rounded bg-slate-100">
-                        <div
-                          className={`h-full ${pct !== null && pct >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`}
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
-                      <span className="w-16 text-right">
-                        <ChangeChip pct={pct} />
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
+              <>
+                <AvisoSectores lista={lista} />
+                <ul className="space-y-1">
+                  {lista.map((s) => {
+                    const pct = s.change_pct
+                    const width = pct === null ? 0 : Math.min(Math.abs(pct) * 25, 100)
+                    return (
+                      <li key={s.symbol} className="flex items-center gap-2 text-sm">
+                        <Link
+                          to={`/ticker/${s.symbol}`}
+                          className="w-44 shrink-0 truncate text-slate-600 hover:underline"
+                        >
+                          {s.label}
+                        </Link>
+                        <div className="h-2 flex-1 overflow-hidden rounded bg-slate-100">
+                          <div
+                            className={`h-full ${pct !== null && pct >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`}
+                            style={{ width: `${width}%` }}
+                          />
+                        </div>
+                        <span className="w-16 text-right">
+                          <ChangeChip pct={pct} />
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </>
             )}
           </BloqueDatos>
         </section>

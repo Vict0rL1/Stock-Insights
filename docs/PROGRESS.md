@@ -41,7 +41,7 @@ repositorio.
 
 ## Fase 2 — Claridad y uso diario (P2)
 
-- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: en curso (falta la revisión independiente y las capturas 1440/390) · commit: este · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Guarda: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error; 73 tests nuevos de render.
+- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: en curso (revisión independiente hecha y arreglada; falta revisar esos arreglos y repetir las capturas 1440/390) · commit: `d05312c` y el de la revisión (abajo) · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Tras la revisión: cada carga va atada a su clave (ni un render con los datos de otra), `refrescar()` recarga tras una acción sin vaciar la pantalla, y `ausenteSi404` + `BloqueDatos ausente` dicen un 404 («la fuente no lo tiene») como ausencia, sin «Reintentar». Guardas: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error, un `catch {}` sin parámetro y una promesa flotante; 73 tests de render en `d05312c` y 37 más en la revisión (todos fallan con el código anterior salvo las guardas rotuladas).
 - [ ] **2.2** V14 · `AvisoAgrupado` — estado: pendiente · commit: — · nota: —
 - [ ] **2.3** Tipografía (mínimo 12 px, `<TituloPagina>`, `<TituloTarjeta>`) — estado: pendiente · commit: — · nota: —
 - [ ] **2.4** V15 · `<BarraExposicion>` — estado: pendiente · commit: — · nota: —
@@ -213,8 +213,8 @@ Lo que encontraron y adónde va:
 | M16 | Altman Z cuenta como negativo en la lectura conjunta del informe también en bancos; el aviso solo está en Salud. ROIC con el 21 % supuesto entra en Multifactor y en disparadores sin aviso | para Victor |
 | M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | hecho con M1 (`d86f3b8`) |
 
-**Revisión independiente de M1–M3** (confirmada por un segundo agente). Arreglado en el commit
-«fix(M1, M2): revisión independiente…», con un test por punto que falla sin el arreglo:
+**Revisión independiente de M1–M3** (confirmada por un segundo agente). Arreglado en `05f6032`,
+con un test por punto que falla sin el arreglo:
 
 - M1: el análisis vigila el punto de noticias con la lista completa y su resumen (la misma que
   Vigilancia), no con los 10 titulares recortados para la pantalla.
@@ -234,6 +234,38 @@ Lo que encontraron y adónde va:
 puntuó. Invalidar la caché al anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y
 recalcular el tamaño al servirla contradice lo congelado. ¿Recalcular y congelar de nuevo al servir,
 o basta con «Actualizar»?
+
+**Revisión independiente del 2.1** (`d05312c`, 3 bloques revisados y cada hallazgo verificado por
+otro agente; 16 confirmados o matizados). Arreglados en el commit «fix(2.1): revisión independiente…»:
+
+- Ficha: un símbolo que no existe en ninguna fuente (los tres 404) vuelve a decir «No se encontró el
+  símbolo» y no abre pestañas: «Qué cambió» congelaba una instantánea inmutable de él. Las pestañas
+  esperan a saber que existe, y la pestaña elegida es del símbolo (un render con la anterior abierta
+  ya pedía el análisis del nuevo).
+- Un 404 en Fundamentales, pares, Salud, riesgo, Valoración, Filings y Opciones es ausencia con el
+  motivo de la fuente («SHOP.TO no está registrado en la SEC»), no «No se pudo cargar…» con un
+  «Reintentar» inútil. El Informe completo no: su 404 llega también si EDGAR cae.
+- Recargar tras una acción (Portafolio, alertas, watchlist, efectivo, Expectativas, Tesis,
+  Vigilancia) y las descargas de Cartera y Contribución ya no vacían la pantalla ni vuelven a pedir
+  el recorrido; el botón dice «Descargando…».
+- Tesis: una lista que no carga ya no sale «Sin tesis guardadas» (el error iba dentro del formulario
+  cerrado); el registro se pedía dos veces al montar. Vigilancia: su carga principal pasa por
+  `useDato`. Borrar tesis, «+ Escenario» y «quitar» un punto ya no fallan en silencio.
+- Noticias: un feed general tardío ya no pisa el del símbolo filtrado; «sin ANTHROPIC_API_KEY» ya no
+  se afirma cuando solo falló la consulta del estado de la IA. La barra lateral vuelve a pedir ese
+  estado cada 30 s, se entera del que consigue otra pantalla y dice «últimas cifras» a la vista.
+- Dato viejo que parecía fresco: watchlist, índices y sectores de Mercado, y cada ETF del comparador
+  (antes solo la insignia del primero).
+- Hoy: la respuesta de un mercado que ya no es el elegido se descarta (su aviso tapaba la lista
+  buena y su «Reintentar» cargaba el otro mercado).
+- Tests: el de `useDato` que no podía fallar (ahora lo caza quitar el descarte de respuestas
+  tardías), el «+0,0 %» de Cartera que no existía, seis guardas rotuladas como tales, y tests para
+  las acciones rechazadas de Portafolio.
+
+Queda para la fase 4.5: `@typescript-eslint/no-misused-promises` marca 29 manejadores `async` en
+13 ficheros (la mayoría capturan dentro); activarla es revisarlos uno a uno. Tampoco se ve una
+referencia a función que se trague el error (`.catch(ignorar)`): sin tipos no se distingue de
+`.catch(setError)`.
 
 **Notas de la migración del 2.1** (fuera de su alcance): `routers/options.py` aplana la cadena y tira
 `estado`/`antiguedad_segundos` (una cadena vieja sale como normal); `CalidadSection` y `OptionsSection`
@@ -257,9 +289,8 @@ un replay pedido para un símbolo puede llegar tras cambiar de símbolo.
 
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
-Fase 1 cerrada. Orden acordado con Victor el 9-oct: M1, M2 y M3 (revisión del 9-oct, arriba) y
-después la Fase 2 de `docs/FIX_PLAN.md`, empezando por 2.1 (estados de dato), que ya tiene anotados:
-la ficha sin cotización, los `?? 0`, los fallos que se pintan como vacío y las posiciones cerradas sin
-moneda. Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
+Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`). El 2.1 está hecho y su revisión independiente
+arreglada; para cerrarlo faltan una segunda revisión de esos arreglos y repetir las capturas 1440/390.
+Después, 2.2 (`AvisoAgrupado`). Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
 `thesis_watch` y en el tipo de cambio, las bandas de FX cerca de la paridad, M10, M11 y M16, y una
 regla de permisos para crear y empujar las etiquetas.

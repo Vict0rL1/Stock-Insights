@@ -50,13 +50,13 @@ describe('EstadoDato', () => {
 })
 
 describe('BloqueDatos', () => {
-  const carga = <T,>(c: object) => ({ reintentar: () => undefined, datos: null, error: null, ...c }) as never as T
+  const carga = <T,>(c: object) => ({ reintentar: () => undefined, refrescar: () => undefined, refrescando: false, datos: null, error: null, ...c }) as never as T
 
   it('un fallo se dice con su motivo y se puede reintentar; nunca como «no hay datos»', () => {
     let reintentos = 0
     render(
       <BloqueDatos
-        carga={{ estado: 'error', datos: null, error: 'Timeout tras 15 s', reintentar: () => (reintentos += 1) }}
+        carga={{ estado: 'error', datos: null, error: 'Timeout tras 15 s', reintentar: () => (reintentos += 1), refrescar: () => undefined, refrescando: false }}
         que="los índices"
         vacio={(d: string[]) => d.length === 0}
         mensajeVacio="No hay índices."
@@ -110,16 +110,25 @@ describe('useDato', () => {
   })
 
   it('al cambiar de clave vuelve a «cargando» y descarta la respuesta vieja', async () => {
-    const pendientes: Record<string, (v: string) => void> = {}
-    const { result, rerender } = renderHook(({ clave }) => useDato(() => new Promise<string>((r) => (pendientes[clave] = r)), clave), {
-      initialProps: { clave: 'AAPL' },
-    })
+    // Revisión del 2.1: la versión anterior resolvía AAPL en un `act`
+    // síncrono y comprobaba en la misma microtarea, así que pasaba también
+    // sin el descarte. Ahora AAPL llega a «listo» antes de cambiar de clave
+    // (para ver que vuelve a «cargando»), y su segunda respuesta, la vieja,
+    // llega DESPUÉS de la de MSFT.
+    const pendientes: Record<string, ((v: string) => void)[]> = {}
+    const { result, rerender } = renderHook(
+      ({ clave }) => useDato(() => new Promise<string>((r) => (pendientes[clave] ??= []).push(r)), clave),
+      { initialProps: { clave: 'AAPL' } },
+    )
+    await act(async () => pendientes.AAPL[0]('datos de AAPL'))
+    expect(result.current.datos).toBe('datos de AAPL')
+    act(() => result.current.reintentar())
     rerender({ clave: 'MSFT' })
     expect(result.current.estado).toBe('cargando')
-    act(() => pendientes.AAPL('datos de AAPL'))
-    expect(result.current.estado).toBe('cargando')
-    act(() => pendientes.MSFT('datos de MSFT'))
-    await waitFor(() => expect(result.current.datos).toBe('datos de MSFT'))
+    await act(async () => pendientes.MSFT[0]('datos de MSFT'))
+    expect(result.current.datos).toBe('datos de MSFT')
+    await act(async () => pendientes.AAPL[1]('datos viejos de AAPL'))
+    expect(result.current.datos).toBe('datos de MSFT')
   })
 })
 

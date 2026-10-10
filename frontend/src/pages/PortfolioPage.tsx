@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CompanyLogo } from '../components/CompanyLogo'
-import { BloqueDatos } from '../components/EstadoDato'
+import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
 import { CurvaDeCartera, Sparkline } from '../components/Sparkline'
 import { api } from '../api/client'
 import type {
@@ -387,7 +387,10 @@ function PortfolioTab() {
   // Un fallo al cargar salía como un motivo suelto junto al formulario, sin
   // decir qué no había cargado (ítem 2.1). `error` queda para las acciones.
   const cartera = useDato(() => api.portfolio(), 'cartera')
-  const load = cartera.reintentar
+  // Tras una acción se refresca sin vaciar la tabla: con `reintentar` pasaba
+  // por «Cargando la cartera…», la página saltaba y el recorrido se desmontaba
+  // y se volvía a pedir (revisión del 2.1).
+  const load = cartera.refrescar
   const [form, setForm] = useState({ symbol: '', quantity: '', cost: '' })
   const [error, setError] = useState<string | null>(null)
 
@@ -715,7 +718,7 @@ function WatchlistTab() {
   // Con la carga fallida, la lista se quedaba en su `[]` inicial y decía
   // «Watchlist vacía.» (ítem 2.1). `error` queda para las acciones.
   const watchlist = useDato(() => api.watchlist().then((d) => d.items), 'watchlist')
-  const load = watchlist.reintentar
+  const load = watchlist.refrescar
   const [symbol, setSymbol] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -793,6 +796,14 @@ function WatchlistTab() {
                       >
                         {fmtPct(item.quote.change_pct, 2, { signo: true, enPuntos: true })}
                       </span>
+                      {/* Un precio rescatado de la caché (o sin estado fiable) se
+                          dice: salía igual que uno en vivo (revisión del 2.1),
+                          como ya hace la tabla de posiciones. */}
+                      {item.quote.estado !== undefined && item.quote.estado !== 'valido' && (
+                        <span className="ml-2">
+                          <EstadoDato data={item.quote} />
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <span className="text-sm text-slate-400">sin precio</span>
@@ -897,7 +908,7 @@ function AlertsTab() {
   // pintaba «Sin alertas configuradas.» y quien tenía un stop vigilado creía
   // que no había ninguno (ítem 2.1). Ahora el fallo se dice, con su motivo.
   const alertas = useDato(() => api.alerts(), 'alertas')
-  const load = alertas.reintentar
+  const load = alertas.refrescar
   const [form, setForm] = useState<{ symbol: string; op: 'lt' | 'gt'; price: string }>({
     symbol: '',
     op: 'lt',

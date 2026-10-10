@@ -175,8 +175,15 @@ export function EtfsPage() {
                 ))}
               </tbody>
             </table>
-            <div className="mt-2 flex justify-end">
-              {data.etfs[0] && <EstadoDato data={data.etfs[0]} />}
+            {/* Cada ETF se pide por separado y puede llegar viejo por su
+                cuenta: una sola insignia, la del primero, daba por fresco un
+                segundo rescatado de la caché (revisión del 2.1). */}
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              {data.etfs.map((etf) => (
+                <span key={etf.symbol} className="flex items-center gap-1 text-xs text-slate-500">
+                  {etf.symbol}: <EstadoDato data={etf} />
+                </span>
+              ))}
             </div>
           </section>
 

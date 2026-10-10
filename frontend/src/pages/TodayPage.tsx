@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DecisionExplicada } from '../components/DecisionExplicada'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
@@ -843,11 +843,17 @@ function SignalRow({
 export function TodayPage() {
   const [market, setMarket] = useState('us_sp500')
   const [data, setData] = useState<TodayResponse | null>(null)
-  // La lista no va por `useDato`: «Actualizar» y «Seguir completando»
-  // recalculan sin vaciar lo que ya se ve, y `useDato` vuelve a «cargando» en
-  // cada petición. Su fallo sí se dice igual que en el resto, con un
-  // «Reintentar» que repite la misma pasada (ítem 2.1).
+  // La lista no va por `useDato`: encadena pasadas sola («Seguir
+  // completando») y cada una sustituye a la anterior sin vaciar lo que ya se
+  // ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
+  // repite la misma pasada (ítem 2.1).
   const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
+  // El mercado que se está mirando. Una respuesta, buena o mala, de otro
+  // mercado llega tarde y se descarta: si la primera pasada del S&P 500 fallaba
+  // después de cambiar a otro mercado, su aviso quedaba encima de la lista
+  // buena y su «Reintentar» cargaba el S&P 500 bajo el botón del otro mercado
+  // (revisión del 2.1).
+  const vigente = useRef(market)
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<View>('ideas')
   const [autoRondas, setAutoRondas] = useState(0)
@@ -866,6 +872,7 @@ export function TodayPage() {
     setError(null)
     api.today(which, refresh).then(
       (d) => {
+        if (which !== vigente.current) return
         setData(d)
         if (!d.complete && autoPasada < MAX_PASADAS_AUTO) {
           setAutoRondas(autoPasada + 1)
@@ -876,6 +883,7 @@ export function TodayPage() {
         setBusy(false)
       },
       (e: unknown) => {
+        if (which !== vigente.current) return
         setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
         setAutoRondas(0)
         setBusy(false)
@@ -888,6 +896,7 @@ export function TodayPage() {
   const mercados = useDato(() => api.markets().then((d) => d.markets), 'mercados')
 
   useEffect(() => {
+    vigente.current = market
     // Al cambiar de mercado los filtros previos ya no aplican.
     setData(null)
     setSector(null)

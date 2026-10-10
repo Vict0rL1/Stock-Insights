@@ -38,6 +38,8 @@ describe('efectivo anotado (ítem 2.1)', () => {
     expect(document.body.textContent).not.toMatch(/ninguno/)
   })
 
+  // Guarda de no regresión (pasa también con el código anterior): el arreglo
+  // del fallo no puede convertir un «ninguno» de verdad en un error.
   it('si se leyó y no hay ninguno, sí lo dice', async () => {
     servir({ ...base, '/api/portfolio/efectivo': { status: 200, json: { saldos: [], nota: null } } })
     render(<CosteOportunidadPanel />)
@@ -46,6 +48,7 @@ describe('efectivo anotado (ítem 2.1)', () => {
     ).toBeInTheDocument()
   })
 
+  // Guarda de no regresión (pasa también con el código anterior).
   it('el anotado se enseña con su moneda', async () => {
     servir(base)
     render(<CosteOportunidadPanel />)
@@ -62,16 +65,26 @@ describe('contribución al riesgo (ítem 2.1)', () => {
     ).toBeInTheDocument()
   })
 
-  it('el botón vuelve a pedirla, ya descargando', async () => {
-    const fetchFalso = servir({
-      ...base,
-      '/api/portfolio/contribucion?descargar=true': base['/api/portfolio/contribucion?descargar=false'],
+  it('el botón vuelve a pedirla, ya descargando, sin quitar la tabla mientras tanto', async () => {
+    // Revisión del 2.1: con una clave nueva por pulsación, el panel entero
+    // decía «Cargando…» durante una descarga que puede durar minutos.
+    let soltar: (r: Response) => void = () => {}
+    const fetchFalso = vi.fn((e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      if (url === '/api/portfolio/contribucion?descargar=true') return new Promise<Response>((r) => (soltar = r))
+      const r = base[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 }))
     })
+    vi.stubGlobal('fetch', fetchFalso)
     render(<ContribucionAlRiesgoPanel />)
     fireEvent.click(await screen.findByRole('button', { name: 'Descargar histórico y recalcular' }))
     await waitFor(() =>
       expect(fetchFalso.mock.calls.map(([u]) => String(u))).toContain('/api/portfolio/contribucion?descargar=true'),
     )
+    expect(screen.getByRole('button', { name: 'Descargando…' })).toBeDisabled()
+    expect(screen.getByText(/Volatilidad anual medida/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Cargando/)).toBeNull()
+    soltar(new Response(JSON.stringify(base['/api/portfolio/contribucion?descargar=false'].json), { status: 200 }))
     expect(await screen.findByRole('button', { name: 'Descargar histórico y recalcular' })).toBeInTheDocument()
   })
 })

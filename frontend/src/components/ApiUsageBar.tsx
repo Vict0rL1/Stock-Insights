@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { ProviderUsage } from '../api/types'
 import { useLlmEstado } from '../lib/llm'
@@ -16,9 +16,16 @@ export function ApiUsageBar() {
   const [usage, setUsage] = useState<ProviderUsage[]>([])
   // El contador nunca rompe la UI, pero un fallo tampoco se calla: antes, si la
   // primera consulta fallaba, la barra desaparecía sin decir nada (ítem 2.1).
-  // Si ya había cifras, se quedan las últimas y el fallo va en el título.
+  // Si ya había cifras, se quedan las últimas y se dice que lo son.
   const [errorUso, setErrorUso] = useState<string | null>(null)
-  const { status: llm, error: errorIa } = useLlmEstado()
+  const { status: llm, error: errorIa, reintentar: reintentarIa } = useLlmEstado()
+  // La barra vive en el Layout y se monta una vez: si el estado de la IA no se
+  // pudo consultar al abrir la app, se vuelve a pedir con el uso, cada 30 s,
+  // hasta que se sepa (revisión del 2.1).
+  const iaSabida = useRef(false)
+  useEffect(() => {
+    iaSabida.current = llm !== null
+  }, [llm])
 
   useEffect(() => {
     let alive = true
@@ -33,12 +40,15 @@ export function ApiUsageBar() {
       )
     }
     load()
-    const timer = setInterval(load, 30_000)
+    const timer = setInterval(() => {
+      load()
+      if (!iaSabida.current) reintentarIa()
+    }, 30_000)
     return () => {
       alive = false
       clearInterval(timer)
     }
-  }, [])
+  }, [reintentarIa])
 
   if (usage.length === 0 && !errorUso) return null
   return (
@@ -50,6 +60,13 @@ export function ApiUsageBar() {
       {usage.length === 0 && errorUso && (
         <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={errorUso}>
           uso desconocido: no se pudo consultar
+        </span>
+      )}
+      {/* Unas cifras que no se pudieron actualizar se dicen a la vista: solo
+          en el `title` parecían las de ahora (revisión del 2.1). */}
+      {usage.length > 0 && errorUso && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={errorUso}>
+          últimas cifras: no se pudo actualizar
         </span>
       )}
       {usage.map((u) => (
@@ -88,7 +105,7 @@ export function ApiUsageBar() {
         </span>
       )}
       {!llm && errorIa && (
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={`No se pudo comprobar la capa de IA: ${errorIa}. Mientras tanto no se ofrecen interpretaciones.`}>
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={`No se pudo comprobar la capa de IA: ${errorIa}. Mientras tanto no se ofrecen interpretaciones; se vuelve a comprobar cada 30 s.`}>
           IA sin comprobar
         </span>
       )}

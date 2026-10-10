@@ -2,7 +2,7 @@ import { api } from '../../api/client'
 import type { Financials, PeersResponse } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtNum, fmtPct } from '../../lib/formato'
-import { useDato } from '../../lib/useDato'
+import { Ausencia, ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
 
@@ -32,15 +32,17 @@ function fmtCell(value: number | null | undefined, kind: 'big' | 'ratio' | 'pct'
 }
 
 export function FinancialsSection({ symbol }: { symbol: string }) {
-  const financieros = useDato(() => api.financials(symbol), symbol)
+  // Sin registro en la SEC (SHOP.TO) no hay estados de EDGAR: eso es una
+  // ausencia, no un fallo que «Reintentar» vaya a arreglar (revisión del 2.1).
+  const financieros = useDato(() => ausenteSi404(api.financials(symbol)), symbol)
   // Los pares hacían `() => setPeers(null)`: si fallaban, la sección de
   // comparables desaparecía sin decir nada (ítem 2.1). Ahora tiene su propia
   // carga y no depende de los estados financieros, ni al revés.
-  const pares = useDato(() => api.peers(symbol), symbol)
+  const pares = useDato(() => ausenteSi404(api.peers(symbol)), symbol)
 
   return (
     <div className="space-y-4">
-      <BloqueDatos carga={financieros} que="los estados financieros de EDGAR">
+      <BloqueDatos carga={financieros} que="los estados financieros de EDGAR" ausente={(m) => `Sin estados financieros: ${m}`}>
         {(data) => <EstadosFinancieros data={data} symbol={symbol} />}
       </BloqueDatos>
 
@@ -50,11 +52,12 @@ export function FinancialsSection({ symbol }: { symbol: string }) {
             Comparativa con pares{' '}
             <span className="font-normal text-slate-400">(percentil de {symbol} en la muestra)</span>
           </h2>
-          {pares.estado === 'listo' && <EstadoDato data={pares.datos} />}
+          {pares.estado === 'listo' && !(pares.datos instanceof Ausencia) && <EstadoDato data={pares.datos} />}
         </div>
         <BloqueDatos
           carga={pares}
           que="la comparativa con pares"
+          ausente={(m) => `Sin pares con los que comparar: ${m}`}
           // Con una sola fila (la propia empresa) no hay con quién comparar.
           vacio={(p) => p.peers.length <= 1}
           mensajeVacio={`Ninguna fuente devolvió pares con fundamentales para comparar ${symbol}.`}

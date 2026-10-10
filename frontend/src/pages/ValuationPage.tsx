@@ -480,7 +480,7 @@ export function ValuationPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) correr(s)
+            if (s) void correr(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -503,7 +503,7 @@ export function ValuationPage() {
           actual={symbol}
           elegir={(s) => {
             setEntrada(s)
-            correr(s)
+            void correr(s)
           }}
         />
       </section>

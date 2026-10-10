@@ -204,4 +204,55 @@ describe('ficha de una empresa', () => {
     expect(cambio.className).not.toMatch(/emerald|red/)
     expect(cambio.className).toMatch(/slate/)
   })
+
+  it('un símbolo que ninguna fuente conoce dice «No se encontró» y no abre pestañas', async () => {
+    // Revisión del 2.1: con las 11 pestañas abiertas, «Qué cambió» congelaba
+    // una instantánea inmutable de «AAPLL» que ya no se podía borrar.
+    servir({
+      '/api/stocks/AAPLL/quote': falla(404, 'sin cotización'),
+      '/api/stocks/AAPLL/profile': falla(404, 'sin perfil'),
+      '/api/stocks/AAPLL/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/AAPLL/history?range=1Y': falla(404, 'sin histórico'),
+    })
+    abrir('AAPLL')
+    expect(await screen.findByText('No se encontró el símbolo «AAPLL» en las fuentes configuradas.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Qué cambió' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+  })
+
+  it('las pestañas no se abren hasta saber que el símbolo existe', async () => {
+    servir({
+      '/api/stocks/ACME/quote': 'pendiente',
+      '/api/stocks/ACME/profile': 'pendiente',
+      '/api/stocks/ACME/fundamentals': 'pendiente',
+      '/api/stocks/ACME/history?range=1Y': 'pendiente',
+    })
+    abrir('ACME')
+    expect(await screen.findByText('Cargando la cotización…')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Qué cambió' })).toBeNull()
+  })
+
+  it('cambiar de símbolo con «Qué cambió» abierto no pide el análisis del nuevo antes de saber si existe', async () => {
+    const rutas: Record<string, Respuesta> = {
+      '/api/stocks/ACME/quote': ok(cotizacion('ACME', -1.2)),
+      '/api/stocks/ACME/profile': ok(perfil('ACME', 'Acme Corp')),
+      '/api/stocks/ACME/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/ACME/history?range=1Y': ok(historico('ACME')),
+      '/api/empresa/ACME/analisis': 'pendiente',
+      '/api/stocks/AAPLL/quote': falla(404, 'sin cotización'),
+      '/api/stocks/AAPLL/profile': falla(404, 'sin perfil'),
+      '/api/stocks/AAPLL/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/AAPLL/history?range=1Y': falla(404, 'sin histórico'),
+    }
+    servir(rutas)
+    abrir('ACME')
+    fireEvent.click(await screen.findByRole('button', { name: 'Qué cambió' }))
+    fireEvent.change(screen.getByPlaceholderText(/Ticker/), { target: { value: 'aapll' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
+    expect(await screen.findByText(/No se encontró el símbolo «AAPLL»/)).toBeInTheDocument()
+    const pedidas = vi.mocked(fetch).mock.calls.map(([e]) => String(e))
+    // La de ACME sí se pidió: la pestaña estaba abierta y el filtro mira bien.
+    expect(pedidas.some((u) => u.startsWith('/api/empresa/ACME/analisis'))).toBe(true)
+    expect(pedidas.filter((u) => u.includes('/api/empresa/AAPLL'))).toEqual([])
+  })
 })

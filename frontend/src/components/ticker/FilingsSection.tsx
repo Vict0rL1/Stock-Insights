@@ -1,7 +1,7 @@
 import { api } from '../../api/client'
 import type { FilingsResponse } from '../../api/types'
 import { fmtFecha } from '../../lib/formato'
-import { useDato } from '../../lib/useDato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 
 function FilingList({ title, items }: { title: string; items: FilingsResponse['filings'] }) {
@@ -33,10 +33,12 @@ function FilingList({ title, items }: { title: string; items: FilingsResponse['f
 
 export function FilingsSection({ symbol }: { symbol: string }) {
   // Un fallo salía «Sin filings: …», que se lee como «no hay» (ítem 2.1): ahora
-  // es un fallo, con las palabras de todas las pantallas y «Reintentar».
-  const carga = useDato(() => api.filings(symbol), symbol)
+  // es un fallo, con las palabras de todas las pantallas y «Reintentar». Un 404
+  // sí es «no hay» (empresa sin registro en la SEC), y así se dice (revisión
+  // del 2.1).
+  const carga = useDato(() => ausenteSi404(api.filings(symbol)), symbol)
   return (
-    <BloqueDatos carga={carga} que="los filings de EDGAR">
+    <BloqueDatos carga={carga} que="los filings de EDGAR" ausente={(m) => `Sin filings: ${m}`}>
       {(data) => <Filings data={data} />}
     </BloqueDatos>
   )

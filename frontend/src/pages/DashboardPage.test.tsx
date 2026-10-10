@@ -49,3 +49,36 @@ describe('calendario de resultados del panel de mercado', () => {
     expect(await screen.findByText('Ninguna empresa anuncia resultados en los próximos 14 días.')).toBeInTheDocument()
   })
 })
+
+describe('índices y sectores con dato viejo o sin dato (revisión del 2.1)', () => {
+  const cotizacion = (symbol: string, estado: 'valido' | 'viejo') => ({
+    symbol, price: 100, change: 1, change_pct: 1, prev_close: 99, day_high: null, day_low: null, day_open: null,
+    currency: 'USD', freshness: 'delayed', source: 'yfinance', as_of: '2026-09-12T14:35:00+00:00', cached: true,
+    fetched_at: '2026-09-12T14:35:00+00:00', estado, antiguedad_segundos: estado === 'viejo' ? 1200 : null,
+  })
+
+  it('un precio rescatado de la caché se dice, y uno que falta dice por qué', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const json =
+        url === '/api/market/overview'
+          ? { indices: [
+              { symbol: 'SPY', label: 'S&P 500', quote: cotizacion('SPY', 'viejo') },
+              { symbol: 'QQQ', label: 'Nasdaq 100', quote: null },
+            ] }
+          : url === '/api/market/sectors'
+            ? { sectors: [
+                { symbol: 'XLK', label: 'Tecnología', change_pct: 1, quote: cotizacion('XLK', 'viejo') },
+                { symbol: 'XLE', label: 'Energía', change_pct: null, quote: null },
+              ], note: '' }
+            : null
+      return json ? new Response(JSON.stringify(json), { status: 200 }) : new Response(JSON.stringify({ detail: 'sin datos' }), { status: 503 })
+    }))
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+    const sp = (await screen.findByText('S&P 500')).parentElement!
+    expect(sp.textContent).toContain('DATO VIEJO · yfinance · hace 20 min')
+    expect(screen.getByText('Nasdaq 100').parentElement!.textContent).toContain('sin dato: ninguna fuente respondió')
+    expect((await screen.findByText(/^Tecnología:/)).textContent).toContain('DATO VIEJO')
+    expect(screen.getByText('Sin dato (ninguna fuente respondió): Energía.')).toBeInTheDocument()
+  })
+})

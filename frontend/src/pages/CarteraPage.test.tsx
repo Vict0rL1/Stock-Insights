@@ -5,7 +5,9 @@
  *   un motivo suelto en rojo.
  * - Sin el recuento de posiciones, `?? 0` pintaba «Posiciones 0» y unas
  *   apuestas en verde que no se habían comparado con nada.
- * - Una crisis sin retorno, `?? 0`, salía «+0,0 %» en verde: en 2008.
+ * - Una crisis sin retorno, `?? 0`, salía «0,0 %» en verde: en 2008. (Sin
+ *   signo: `fmtPct(0, { signo: true })` no lo pone; un test que buscaba
+ *   «+0,0» no podía fallar nunca. Revisión del 2.1.)
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -58,7 +60,7 @@ describe('pantalla de Cartera (ítem 2.1)', () => {
     expect(apuestas.className).not.toMatch(/emerald|red/)
   })
 
-  it('una crisis sin retorno sale «—» en neutro, no «+0,0 %» en verde', async () => {
+  it('una crisis sin retorno sale «—» en neutro, no «0,0 %» en verde', async () => {
     servir({
       status: 200,
       json: {
@@ -79,17 +81,26 @@ describe('pantalla de Cartera (ítem 2.1)', () => {
     const retorno = (await screen.findByText('Esta mezcla')).nextElementSibling!
     expect(retorno.textContent).toBe('—')
     expect(retorno.className).not.toMatch(/emerald|red/)
-    expect(document.body.textContent).not.toContain('+0,0')
   })
 
-  it('el botón vuelve a pedir el análisis, ya descargando', async () => {
+  it('el botón vuelve a pedir el análisis, ya descargando, sin quitar el anterior mientras tanto', async () => {
+    // Revisión del 2.1: con una clave por pulsación el análisis desaparecía
+    // durante una descarga que puede durar minutos.
     const fetchFalso = servir({ status: 200, json: { disponible: false, nota: 'Sin posiciones abiertas.' } })
+    fetchFalso.mockImplementation((e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      if (url === '/api/portfolio/riesgo?descargar=true') return new Promise<Response>(() => {})
+      const r = url === RIESGO ? { status: 200, json: { disponible: false, nota: 'Sin posiciones abiertas.' } } : base[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 }))
+    })
     pintar()
     expect(await screen.findByText('Sin posiciones abiertas.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Descargar histórico completo' }))
     await waitFor(() =>
       expect(fetchFalso.mock.calls.map(([u]) => String(u))).toContain('/api/portfolio/riesgo?descargar=true'),
     )
-    expect(await screen.findByText('Sin posiciones abiertas.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Descargando…' })).toBeDisabled()
+    expect(screen.getByText('Sin posiciones abiertas.')).toBeInTheDocument()
+    expect(screen.queryByText('Cargando el análisis de la cartera…')).toBeNull()
   })
 })

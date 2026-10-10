@@ -10,7 +10,7 @@
  * - Cerradas: el P&L realizado salía sin código de moneda con dos divisas.
  * - Precio: «viejo · N min» a mano, y el «desconocido» del backend no se decía.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import empresaCompleta from '../test/fixtures/empresa_completa.json'
@@ -63,6 +63,8 @@ describe('alertas (ítem 2.1)', () => {
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
 
+  // Guarda de no regresión (pasa también con el código anterior): el arreglo
+  // no puede convertir un «no hay ninguna» de verdad en un error.
   it('si cargan y no hay ninguna, sí lo dicen', async () => {
     servir({
       ...base,
@@ -109,6 +111,34 @@ describe('watchlist (ítem 2.1)', () => {
     const item = (await screen.findByText('KO')).closest('li')!
     const variacion = within(item).getByText('—')
     expect(variacion.className).not.toMatch(/emerald|red/)
+  })
+})
+
+describe('watchlist: precio viejo (revisión del 2.1)', () => {
+  it('un precio rescatado de la caché se dice, con su antigüedad', async () => {
+    servir({
+      ...base,
+      '/api/watchlist': {
+        status: 200,
+        json: {
+          name: 'principal',
+          items: [
+            {
+              id: 1, symbol: 'KO', name: 'KO Corp', sector: null, notes: null,
+              added_at: '2026-09-01T14:00:00+00:00', spark: null,
+              quote: {
+                symbol: 'KO', price: 60, change_pct: 1, source: 'yfinance', as_of: '2026-09-11T20:00:00+00:00',
+                cached: true, fetched_at: '2026-09-11T20:00:00+00:00', estado: 'viejo', antiguedad_segundos: 86400,
+              },
+            },
+          ],
+        },
+      },
+    })
+    pintar()
+    pestaña('Watchlist')
+    const item = (await screen.findByText('KO')).closest('li')!
+    expect(item.textContent).toContain('DATO VIEJO · yfinance · hace 24 h')
   })
 })
 
@@ -202,5 +232,96 @@ describe('estado del precio de cada fila (ítem 2.1)', () => {
     expect(await screen.findByText('Invertido')).toBeInTheDocument()
     expect(fila('KO')!.textContent).toContain('viejo · hace 11 min')
     expect(fila('PEP')!.textContent).toContain('precio desconocido')
+  })
+})
+
+/** Como `servir`, pero distingue el método y deja colgadas las rutas marcadas:
+ *  sirve para ver la pantalla A MITAD de una recarga. */
+function servirConMetodo(rutas: Record<string, { status: number; json: unknown } | 'pendiente'>) {
+  const fetchFalso = vi.fn(async (e: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+    const r = rutas[`${init?.method ?? 'GET'} ${url}`] ?? rutas[url]
+    if (r === 'pendiente') return new Promise<Response>(() => {})
+    return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+  })
+  vi.stubGlobal('fetch', fetchFalso)
+  return fetchFalso
+}
+
+const ALERTA = {
+  id: 7, symbol: 'KO', kind: 'precio', condition: { op: 'lt', price: 50 }, active: true,
+  current_price: 58, triggered: false, estado: 'ok', motivo: '', triggered_at: null,
+}
+const WATCHLIST = {
+  name: 'principal',
+  items: [{ id: 4, symbol: 'PEP', name: 'PEP Corp', sector: null, notes: null, added_at: '2026-09-01T14:00:00+00:00', spark: null, quote: null }],
+}
+
+describe('recargar tras una acción (revisión del 2.1)', () => {
+  it('al añadir una posición la tabla sigue a la vista y el recorrido no se vuelve a pedir', async () => {
+    // Con `reintentar` como recarga, la cartera pasaba por «Cargando la
+    // cartera…», la página se encogía y el recorrido se desmontaba y se pedía
+    // otra vez.
+    const rutas: Record<string, { status: number; json: unknown } | 'pendiente'> = {
+      ...base,
+      'POST /api/portfolio/positions': { status: 200, json: { id: 5, symbol: 'PEP' } },
+    }
+    const fetchFalso = servirConMetodo(rutas)
+    pintar()
+    expect(await screen.findByText('Invertido')).toBeInTheDocument()
+    rutas['/api/portfolio'] = 'pendiente'
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
+    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: '3' } })
+    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '150' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    await waitFor(() => expect(fetchFalso.mock.calls.filter(([u]) => u === '/api/portfolio')).toHaveLength(2))
+    expect(screen.getByText('Invertido')).toBeInTheDocument()
+    expect(screen.queryByText('Cargando la cartera…')).toBeNull()
+    expect(fetchFalso.mock.calls.filter(([u]) => String(u).startsWith('/api/portfolio/historial'))).toHaveLength(1)
+  })
+})
+
+describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('un cierre rechazado dice su motivo', async () => {
+    servirConMetodo({
+      ...base,
+      'POST /api/portfolio/positions/1/close': { status: 409, json: { detail: 'la posición ya está cerrada' } },
+    })
+    vi.spyOn(window, 'prompt').mockReturnValue('60')
+    pintar()
+    await screen.findByText('Invertido')
+    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Cerrar' }))
+    expect(await screen.findByText('la posición ya está cerrada')).toBeInTheDocument()
+  })
+
+  it('quitar de la watchlist rechazado dice su motivo', async () => {
+    servirConMetodo({
+      ...base,
+      '/api/watchlist': { status: 200, json: WATCHLIST },
+      'DELETE /api/watchlist/4': { status: 409, json: { detail: 'la base de datos está bloqueada' } },
+    })
+    pintar()
+    pestaña('Watchlist')
+    fireEvent.click(await screen.findByRole('button', { name: 'Quitar' }))
+    expect(await screen.findByText('la base de datos está bloqueada')).toBeInTheDocument()
+  })
+
+  it('crear o borrar una alerta rechazado dice su motivo', async () => {
+    servirConMetodo({
+      ...base,
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [ALERTA], vigilancia: { activa: true, nunca: false, nota: '' } } },
+      'POST /api/portfolio/alerts': { status: 422, json: { detail: 'el precio tiene que ser positivo' } },
+      'DELETE /api/portfolio/alerts/7': { status: 409, json: { detail: 'no se pudo borrar la alerta' } },
+    })
+    pintar()
+    pestaña('Alertas')
+    fireEvent.click(await screen.findByRole('button', { name: 'Borrar' }))
+    expect(await screen.findByText('no se pudo borrar la alerta')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
+    expect(await screen.findByText('el precio tiene que ser positivo')).toBeInTheDocument()
   })
 })

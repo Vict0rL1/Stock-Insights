@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, ApiError } from '../api/client'
+import { api } from '../api/client'
 import type { HistoryRange } from '../api/types'
 import { FundamentalsGrid } from '../components/FundamentalsGrid'
 import { CompanyLogo } from '../components/CompanyLogo'
@@ -17,7 +17,10 @@ import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { CalidadSection } from '../components/ticker/CalidadSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
 import { fmtCompacto, fmtPct, fmtNum } from '../lib/formato'
-import { useDato } from '../lib/useDato'
+// Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
+// fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
+// otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1).
+import { nullSi404, useDato } from '../lib/useDato'
 
 const RANGES: HistoryRange[] = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', '10Y']
 
@@ -57,23 +60,19 @@ function lastNonNull(values: (number | null)[]): number | null {
   return null
 }
 
-/** Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
- *  fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
- *  otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1). */
-function nullSi404<T>(peticion: Promise<T>): Promise<T | null> {
-  return peticion.catch((e: unknown) => {
-    if (e instanceof ApiError && e.status === 404) return null
-    throw e
-  })
-}
-
 export function TickerPage() {
   const { symbol: routeSymbol } = useParams()
   const navigate = useNavigate()
   const symbol = (routeSymbol ?? '').toUpperCase()
 
   const [input, setInput] = useState(symbol)
-  const [tab, setTab] = useState<TabName>('resumen')
+  // La pestaña es de un símbolo: al cambiar de símbolo vuelve a «Resumen» en el
+  // mismo render. Con un `useEffect` quedaba un render con la pestaña anterior
+  // abierta para el símbolo nuevo, y «Qué cambió» llegaba a pedir (y congelar)
+  // el análisis de un símbolo que luego resultaba no existir (revisión del 2.1).
+  const [eleccion, setEleccion] = useState<{ symbol: string; tab: TabName }>({ symbol, tab: 'resumen' })
+  const tab: TabName = eleccion.symbol === symbol ? eleccion.tab : 'resumen'
+  const setTab = (t: TabName) => setEleccion({ symbol, tab: t })
   const [range, setRange] = useState<HistoryRange>('1Y')
 
   // Cada pieza de la ficha con su propio estado (ítem 2.1). Antes la cotización
@@ -91,14 +90,20 @@ export function TickerPage() {
   // disponible…»; ahora solo lo dice un 404, y el resto es un fallo.
   const historico = useDato(() => nullSi404(api.history(symbol, range)), symbol ? `${symbol}|${range}` : null)
 
-  useEffect(() => {
-    setTab('resumen')
-  }, [symbol])
+  // Un símbolo que ninguna fuente conoce (los tres 404: «AAPLL», un error de
+  // tecleo) no es una empresa sin datos: no existe. Sin esto la ficha abría las
+  // 11 pestañas y «Qué cambió» congelaba una instantánea inmutable de un símbolo
+  // inexistente, que los triggers de la 0004 ya no dejan borrar (revisión del
+  // 2.1). Las pestañas esperan además a saberlo: pulsar una antes llevaba al
+  // mismo sitio. Un fallo (502) no es «no existe»: ahí sí se abren.
+  const piezas = [cotizacion, perfil, fundamentales]
+  const noEncontrado = piezas.every((c) => c.estado === 'listo' && c.datos === null)
+  const hayEmpresa = piezas.some((c) => c.estado === 'error' || (c.estado === 'listo' && c.datos !== null))
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const cleaned = input.trim().toUpperCase()
-    if (cleaned) navigate(`/ticker/${cleaned}`)
+    if (cleaned) void navigate(`/ticker/${cleaned}`)
   }
 
   const quote = cotizacion.estado === 'listo' ? cotizacion.datos : null
@@ -131,7 +136,13 @@ export function TickerPage() {
         </button>
       </form>
 
-      {symbol && (
+      {symbol && noEncontrado && (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          No se encontró el símbolo «{symbol}» en las fuentes configuradas.
+        </p>
+      )}
+
+      {symbol && !noEncontrado && (
         <>
           <header className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -196,32 +207,38 @@ export function TickerPage() {
             </div>
           </header>
 
-          <nav className="flex flex-wrap gap-1 border-b border-slate-200">
-            {TABS.map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-                  tab === id
-                    ? 'border-slate-900 font-medium text-slate-900'
-                    : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          {hayEmpresa && (
+            <nav className="flex flex-wrap gap-1 border-b border-slate-200">
+              {TABS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setTab(id)}
+                  className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+                    tab === id
+                      ? 'border-slate-900 font-medium text-slate-900'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
 
-          {tab === 'informe' && <DeepDiveSection symbol={symbol} />}
-          {tab === 'fundamentales' && <FinancialsSection symbol={symbol} />}
-          {tab === 'valoracion' && <ValuationSection symbol={symbol} />}
-          {tab === 'opciones' && <OptionsSection symbol={symbol} />}
-          {tab === 'salud' && <HealthSection symbol={symbol} />}
-          {tab === 'filings' && <FilingsSection symbol={symbol} />}
-          {tab === 'cambios' && <QueCambioSection symbol={symbol} />}
-          {tab === 'expectativas' && <ExpectativasSection symbol={symbol} />}
-          {tab === 'calidad' && <CalidadSection symbol={symbol} />}
-          {tab === 'historial' && <HistorialSection symbol={symbol} />}
+          {hayEmpresa && (
+            <>
+              {tab === 'informe' && <DeepDiveSection symbol={symbol} />}
+              {tab === 'fundamentales' && <FinancialsSection symbol={symbol} />}
+              {tab === 'valoracion' && <ValuationSection symbol={symbol} />}
+              {tab === 'opciones' && <OptionsSection symbol={symbol} />}
+              {tab === 'salud' && <HealthSection symbol={symbol} />}
+              {tab === 'filings' && <FilingsSection symbol={symbol} />}
+              {tab === 'cambios' && <QueCambioSection symbol={symbol} />}
+              {tab === 'expectativas' && <ExpectativasSection symbol={symbol} />}
+              {tab === 'calidad' && <CalidadSection symbol={symbol} />}
+              {tab === 'historial' && <HistorialSection symbol={symbol} />}
+            </>
+          )}
 
           <section
             className={`rounded-xl border border-slate-200 bg-white p-4 ${tab === 'resumen' ? '' : 'hidden'}`}
