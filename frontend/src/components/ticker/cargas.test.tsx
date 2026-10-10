@@ -112,3 +112,23 @@ describe('calidad de beneficios desconocida', () => {
     expect(screen.getByText('sin estados financieros')).toBeInTheDocument()
   })
 })
+
+describe('Qué cambió: lo que no se pudo comprobar se dice como tal (revisión de M1)', () => {
+  it('un punto que deja de medirse lleva su motivo, y el estado de la tesis sale con etiqueta', async () => {
+    const rutas: Rutas = structuredClone(ACME)
+    const r = rutas['/api/empresa/ACME/analisis'].json as {
+      cambios: { tesis: { nuevos_riesgos: unknown[] }; categorias: Record<string, unknown[]> }
+    }
+    r.cambios.tesis.nuevos_riesgos = [
+      { punto: 'Si hay un recall', motivo: 'ya no se puede medir (Las noticias no se pudieron descargar): deja de vigilar' },
+    ]
+    r.cambios.categorias.tesis = [
+      { clave: 'tesis_estado', etiqueta: 'Estado de la tesis', antes: 'intacta', ahora: 'sin_comprobar', tipo: 'material' },
+    ]
+    servir(rutas)
+    pintar(<QueCambioSection symbol="ACME" />)
+    expect(await screen.findByText(/Nuevos riesgos: Si hay un recall \(ya no se puede medir \(Las noticias no se pudieron descargar\)/)).toBeInTheDocument()
+    expect(screen.getByText(/intacta → sin comprobar/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/sin_comprobar/)
+  })
+})

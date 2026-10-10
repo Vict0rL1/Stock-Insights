@@ -322,3 +322,17 @@ def test_el_veredicto_no_afirma_una_ventaja_que_no_se_pudo_medir():
     texto = _rule_verdict(resultado, {"n_operaciones": 0})
     assert "Supera" not in texto and "ventaja real" not in texto
     assert "no se puede decir" in texto
+
+
+def test_sin_operaciones_de_un_lado_no_hay_media_de_ese_lado():
+    """Con cinco perdedoras, «Media ganadora» salía +0,00 % en verde: la media de
+    unas ganadoras que no existían (revisión de M2). Ausente ≠ cero."""
+    from app.analysis.rule_backtest import _resumen
+
+    perdedoras = [
+        {"ganadora": False, "neto_pct": -3.0 - i, "entrada_fecha": f"2024-0{i + 1}-01", "motivo": "stop"}
+        for i in range(5)
+    ]
+    r = _resumen(perdedoras, [0.5] * 5, {}, 0.1, True, 0.35)
+    assert r["media_ganadora_pct"] is None
+    assert r["media_perdedora_pct"] == -5.0

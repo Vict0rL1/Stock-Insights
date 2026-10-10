@@ -386,13 +386,49 @@ def _efectivo_para_hoy(session: Session, service: MarketDataService) -> dict:
         return {"usd": None, "estado": "desconocido", "motivo": "no se pudo leer el efectivo anotado"}
 
 
-def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> dict | None:
-    """Último backtest de reglas VÁLIDO. Convierte «razonable» en «probada».
+def _frase_validacion(reglas: dict | None) -> str:
+    """Lo que el pie de Hoy dice de las reglas, con el mismo veredicto que cada
+    fila (`decision._confianza`). Antes decía siempre «aún no están validadas…
+    ejecuta el backtest» aunque las filas dijeran «calibrada» o «refutada»
+    (revisión de M2)."""
+    from app.analysis.decision import _confianza
+
+    conf = _confianza(reglas)
+    if conf == "calibrada":
+        return ("En el backtest de reglas superaron a comprar a ciegas; haber "
+                "funcionado antes no garantiza que funcionen ahora.")
+    if conf == "refutada":
+        return ("El backtest de reglas dice que perdían dinero o ganaban menos que "
+                "comprar a ciegas: lo que ves es lo que dictan las reglas, no una "
+                "recomendación.")
+    if reglas and not reglas.get("fiable"):
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el último backtest tiene muy pocas operaciones para "
+                "concluir nada.")
+    if reglas:
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el backtest no tiene con qué compararlas (comprar a ciegas).")
+    return ("Las reglas son razonables pero aún no están validadas contra "
+            "histórico — ejecuta el backtest en Señales para saber si han funcionado.")
+
+
+def _stored_rule_backtest(
+    session: Session, hasta: datetime | None = None, clase: str = "accion"
+) -> dict | None:
+    """Último backtest de reglas VÁLIDO de esa clase de activo. Convierte
+    «razonable» en «probada» (o en «refutada»).
 
     Solo cuentan los que declaran su partición desarrollo/holdout. Los guardados
     antes del RC1 se calcularon sobre todas las fechas —holdout incluido— sin
     registrarlo, así que no pueden seguir validando decisiones: hasta que se
     ejecute un backtest nuevo, las reglas vuelven a figurar como no validadas.
+
+    Dos cosas más (revisión de M2): solo vale uno de la misma clase —un backtest
+    de cripto, solo momentum y stops de cripto, decidía si las reglas de
+    acciones estaban «calibradas»—, y entre ellos manda el último FIABLE: uno
+    corto lanzado después desde la interfaz (8 operaciones, «no sirve para
+    concluir nada») tapaba una refutación con 120 y quitaba el aviso rojo. Sin
+    ninguno fiable, el último (que deja las reglas sin calibrar).
     """
     import json
 
@@ -401,6 +437,7 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
         .where(LlmOutput.kind == "rule_backtest")
         .order_by(LlmOutput.created_at.desc())
     )
+    ultimo_no_fiable = None
     for record in session.execute(consulta).scalars():
         # Un análisis a una fecha pasada no puede apoyarse en un backtest
         # ejecutado después: su «calibrada» o «refutada» aún no se sabía.
@@ -410,9 +447,14 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
             contenido = json.loads(record.content_md)
         except json.JSONDecodeError:
             continue
-        if isinstance(contenido, dict) and contenido.get("particion"):
+        if not isinstance(contenido, dict) or not contenido.get("particion"):
+            continue
+        if contenido.get("clase", "accion") != clase:
+            continue
+        if contenido.get("fiable"):
             return contenido
-    return None
+        ultimo_no_fiable = ultimo_no_fiable or contenido
+    return ultimo_no_fiable
 
 
 def _proximos_resultados(service: MarketDataService, dias: int = 7) -> dict[str, str]:
@@ -1039,7 +1081,7 @@ def _today(
 
     # Si hay un backtest de reglas guardado, cada decisión puede decir si su
     # sistema está probado, refutado o solo es razonable.
-    reglas = _stored_rule_backtest(session)
+    reglas = _stored_rule_backtest(session, clase=market_data.get("asset_class", "accion"))
     # Una sola llamada cacheada 12 h cubre el mercado entero.
     resultados = _proximos_resultados(service)
 
@@ -1171,10 +1213,8 @@ def _today(
             "Cada acción sale de reglas mecánicas escritas, no de una "
             "predicción: 'Comprar' significa que la empresa puntúa mejor que "
             "sus comparables de sector y que el precio acompaña, no que vaya a "
-            "subir. Las reglas son razonables pero aún no están validadas "
-            "contra histórico — ejecuta el backtest en Señales para saber si "
-            "han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu "
-            "cartera por operación; ajústalo a tu situación."
+            "subir. " + _frase_validacion(reglas) + " El tamaño sugerido asume "
+            "arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación."
         ),
     }
 

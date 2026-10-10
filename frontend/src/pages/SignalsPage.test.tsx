@@ -37,11 +37,11 @@ const REGLAS = {
   veredicto: 'Muestra corta para concluir.',
 }
 
-function servir(universos: { status: number; json: unknown }) {
+function servir(universos: { status: number; json: unknown }, reglas: object = REGLAS) {
   vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
     const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
     if (url === '/api/signals/universes') return new Response(JSON.stringify(universos.json), { status: universos.status })
-    if (url === '/api/signals/rule-backtest') return new Response(JSON.stringify(REGLAS), { status: 200 })
+    if (url === '/api/signals/rule-backtest') return new Response(JSON.stringify(reglas), { status: 200 })
     return new Response(JSON.stringify({ detail: 'sin datos en el test' }), { status: 503 })
   }))
 }
@@ -73,5 +73,32 @@ describe('Señales', () => {
     expect(celda.textContent).not.toMatch(/0 seguidas/)
     expect(celda.textContent).toContain('—')
     expect(celda.textContent).toContain('sin dato')
+  })
+
+  it('un backtest sin muestra fiable no se pinta como rentable', async () => {
+    // Revisión de M2: con 12 operaciones el veredicto dice que no sirve para
+    // concluir nada, y la caja salía en verde y las cifras en positivo.
+    servir({ status: 200, json: { universes: [], note: '' } })
+    render(<MemoryRouter><SignalsPage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Universo propio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Validar reglas (comprar/vender)' }))
+    const veredicto = await screen.findByText('Muestra corta para concluir.')
+    expect(veredicto.className).not.toMatch(/emerald/)
+    expect(veredicto.className).toContain('bg-slate-100')
+    const esperanza = screen.getByText('Esperanza / operación').nextElementSibling!
+    expect(esperanza.className).not.toMatch(/emerald|red/)
+  })
+
+  it('sin operaciones de un lado, su media es «—» sin color y no «+0,00 %»', async () => {
+    servir({ status: 200, json: { universes: [], note: '' } },
+      { ...REGLAS, fiable: true, media_ganadora_pct: null, media_perdedora_pct: -4 })
+    render(<MemoryRouter><SignalsPage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Universo propio' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Validar reglas (comprar/vender)' }))
+    const ganadora = (await screen.findByText('Media ganadora')).nextElementSibling!
+    expect(ganadora.textContent).toBe('—')
+    expect(ganadora.className).not.toMatch(/emerald/)
+    const perdedora = screen.getByText('Media perdedora').nextElementSibling!
+    expect(perdedora.className).toContain('text-red-600')
   })
 })

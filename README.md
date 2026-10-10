@@ -497,7 +497,8 @@ Toda propuesta de compra viene con su salida ya definida. Se calculan así:
   cartera**. Stop lejano → posición pequeña. Así una idea equivocada cuesta lo
   mismo que cualquier otra, y el tamaño lo fija el riesgo en vez de la
   convicción. Es un **porcentaje de la cartera, no un número de acciones**: la
-  app no sabe cuánto dinero tienes y no va a fingir que sí.
+  app solo sabe el dinero que tienes si anotas el efectivo en Cartera (más abajo,
+  «Tamaño de posición»), y no va a fingir que sí.
 
 Cada fila desplegada muestra además **cuándo actuar**: la lista de
 disparadores que ejecutan o cancelan la idea (comprar en este rango, salir
@@ -918,7 +919,8 @@ aportes ni ventas**, que es el único comparable con un índice.
 ### Tres decisiones más que deciden si la curva miente
 
 1. **Es el valor de las posiciones ABIERTAS, no el de tu cuenta.** La app no
-   lleva saldo en efectivo, así que un cierre hace bajar la línea — y eso es una
+   lleva la cuenta del efectivo (el que anotas es una foto, no un saldo que se
+   mueva con cada venta), así que un cierre hace bajar la línea — y eso es una
    retirada, no una pérdida. Se dice en cada respuesta y se marca cada fecha.
 2. **El cambio es el de CADA DÍA, no el de hoy.** Convertir el histórico al tipo
    actual convertiría un movimiento de divisa en uno de la acción. Hay un test

@@ -131,6 +131,66 @@ def test_con_las_noticias_caidas_la_tesis_no_se_congela_intacta(session_factory,
     assert congelada["disparadores"][0]["medible"] is False
 
 
+def _tesis_con_recall(s):
+    inst = Instrument(symbol="AAPL", name="Apple")
+    s.add(inst)
+    s.commit()
+    hace = datetime.now(timezone.utc) - timedelta(days=30)
+    tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                   created_at=hace, updated_at=hace)
+    s.add(tesis)
+    s.commit()
+    s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+    s.commit()
+
+
+def _titular(texto, horas, resumen=""):
+    return {"headline": texto, "summary": resumen, "url": f"u{horas}",
+            "published_at": (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()}
+
+
+@pytest.mark.parametrize("noticias", [
+    # Doce titulares en la ventana y «recall» en el más antiguo: la pantalla
+    # enseña diez, pero la tesis tiene que mirarlos todos.
+    [_titular(f"Noticia neutra {i}", 2 + i) for i in range(11)] + [_titular("Big recall announced", 200)],
+    # La palabra solo en el resumen: la lista de la pantalla no lleva resumen.
+    [_titular("Apple anuncia cambios", 3, resumen="The company issued a recall of chargers")],
+], ids=["mas_de_diez", "solo_en_el_resumen"])
+def test_la_tesis_del_analisis_mira_las_mismas_noticias_que_vigilancia(session_factory, noticias):
+    """El análisis le pasaba a la tesis la lista recortada para la pantalla (diez,
+    sin resumen) y congelaba «intacta» mientras Vigilancia la daba por cruzada
+    (revisión de M1). El corte de la ventana usa el reloj real, así que aquí
+    el análisis es de ahora."""
+    ahora = datetime.now(timezone.utc) - timedelta(minutes=5)
+    sv = ServicioFalso(ahora).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base(), noticias=noticias)
+    with session_factory() as s:
+        _tesis_con_recall(s)
+        r = analizar_y_congelar("AAPL", sv, s, ahora=ahora, con_pares=False)
+    assert len(r["analisis"]["noticias"]["items"]) <= 10
+    assert r["analisis"]["tesis"]["estado"] == "puntos_cruzados"
+
+
+def test_unas_noticias_viejas_de_la_cache_no_dan_la_tesis_por_intacta(session_factory):
+    """Con todas las fuentes caídas se sirve la última copia, de hasta horas: no
+    cubre la ventana entera, así que «ningún titular» no se puede afirmar."""
+    ahora = datetime.now(timezone.utc) - timedelta(minutes=5)
+    sv = ServicioFalso(ahora).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base(),
+                                      noticias=[_titular("Resultados en línea", 5)])
+    original = sv.get
+
+    def viejas(tipo, **kw):
+        r = original(tipo, **kw)
+        return {**r, "estado": "viejo", "antiguedad_segundos": 3 * 3600} if tipo == "news" else r
+
+    sv.get = viejas
+    with session_factory() as s:
+        _tesis_con_recall(s)
+        r = analizar_y_congelar("AAPL", sv, s, ahora=ahora, con_pares=False)
+    assert r["analisis"]["noticias"]["estado"] == "viejo"
+    assert r["analisis"]["tesis"]["estado"] == "sin_comprobar"
+    assert "copia guardada hace 3 h" in r["analisis"]["tesis"]["disparadores"][0]["detalle"]
+
+
 def test_no_entra_una_noticia_publicada_despues_del_analisis(session_factory, servicio):
     servicio.noticias["AAPL"] = [
         {"headline": "Antes", "published_at": (AHORA - timedelta(hours=3)).isoformat(), "url": "u1"},

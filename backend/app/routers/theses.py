@@ -22,6 +22,7 @@ from app.analysis.thesis_watch import (
     METRICAS,
     OPERADORES,
     coherencia,
+    copia_vieja,
     instantanea,
     vigilar,
 )
@@ -335,9 +336,14 @@ def _datos_para_vigilar(
         pass
     if con_noticias:
         try:
-            datos["noticias"] = (
-                service.get("news", symbol=symbol, days=DIAS_NOTICIAS).get("items") or []
-            )
+            payload = service.get("news", symbol=symbol, days=DIAS_NOTICIAS)
+            datos["noticias"] = payload.get("items") or []
+            # Una copia vieja de la caché no cubre la ventana: se dice, para que
+            # «ningún titular» no cuente como comprobado (revisión de M1).
+            if payload.get("estado") == "viejo":
+                datos["noticias_incompletas"] = copia_vieja(
+                    payload.get("antiguedad_segundos"), datetime.now(timezone.utc)
+                )
         except (DataNotFoundError, AllProvidersFailedError):
             pass
     return datos

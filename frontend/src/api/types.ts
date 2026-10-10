@@ -1066,8 +1066,9 @@ export interface RuleBacktestResponse {
   tasa_acierto?: number
   tasa_acierto_ic?: [number, number]
   esperanza_pct?: number
-  media_ganadora_pct?: number
-  media_perdedora_pct?: number
+  /** `null` si no hubo operaciones de ese lado: ausente, no un 0. */
+  media_ganadora_pct?: number | null
+  media_perdedora_pct?: number | null
   factor_beneficio?: number | null
   peor_operacion_pct?: number
   mejor_operacion_pct?: number

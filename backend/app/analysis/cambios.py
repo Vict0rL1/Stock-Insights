@@ -221,6 +221,9 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
     escribiste—; uno que deja de saltar vuelve a confirmarse; uno que se acerca
     a su umbral más de un punto se ha deteriorado aunque no lo cruce; y uno que
     deja de poder medirse se ha vuelto un riesgo nuevo, porque ya no vigila nada.
+    Ese motivo lleva el porqué: sin él, una caída de las noticias se leía como
+    «Nuevos riesgos: Si hay un recall», como si el recall hubiera aparecido
+    (revisión de M1).
     """
     previos = {d.get("id"): d for d in antes.get("disparadores") or []}
     salida = {"confirmados": [], "deteriorados": [], "invalidaciones": [], "nuevos_riesgos": [],
@@ -237,7 +240,12 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
         elif p.get("salta") and not d.get("salta") and d.get("medible"):
             salida["confirmados"].append({"punto": texto, "detalle": "vuelve a cumplirse: " + str(d.get("detalle"))})
         elif p.get("medible") and not d.get("medible"):
-            salida["nuevos_riesgos"].append({"punto": texto, "motivo": "ya no se puede medir: deja de vigilar"})
+            porque = d.get("detalle") or d.get("motivo")
+            salida["nuevos_riesgos"].append({
+                "punto": texto,
+                "motivo": f"ya no se puede medir ({porque}): deja de vigilar" if porque
+                else "ya no se puede medir: deja de vigilar",
+            })
         elif not d.get("salta") and d.get("medible") and p.get("medible"):
             va, vb, u = datos.numero(p.get("valor")), datos.numero(d.get("valor")), datos.numero(d.get("umbral"))
             if va is not None and vb is not None and u is not None:

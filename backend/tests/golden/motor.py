@@ -102,6 +102,22 @@ def golden_decide() -> list[dict]:
         casos.append(_caso(f"s{i}|{np}|resultados", _decide(s, p, None, resultados_en="2026-09-16")))
         for clase in ("cripto", "etf"):
             casos.append(_caso(f"s{i}|{np}|{clase}", _decide(s, p, None, clase=clase)))
+    # La confianza según el backtest de reglas. Sin estos casos el golden nunca
+    # pasaba por «calibrada» ni «refutada», y un cambio en `_confianza` no lo
+    # habría movido (revisión de M2).
+    reglas = {
+        "calibrada": {"fiable": True, "esperanza_pct": 1.2, "ventaja_pct": 0.4},
+        "refutada": {"fiable": True, "esperanza_pct": -0.5, "ventaja_pct": -1.0},
+        "gana_menos_que_a_ciegas": {"fiable": True, "esperanza_pct": 0.8, "ventaja_pct": -0.3},
+        "sin_referencia": {"fiable": True, "esperanza_pct": 1.0, "ventaja_pct": None},
+        "no_fiable": {"fiable": False, "esperanza_pct": 3.0, "ventaja_pct": 2.0},
+    }
+    for nombre, r in reglas.items():
+        casos.append(_caso(f"reglas|{nombre}", _decide(0.6, PRECIOS["sobre_media"], None, reglas=r)))
+    from app.analysis.decision import decide
+
+    casos.append(_caso("reglas|solo_probabilidad_del_modelo",
+                       decide({"score": 0.6, "probability": 0.61}, dict(PRECIOS["sobre_media"]), None)))
     return casos
 
 

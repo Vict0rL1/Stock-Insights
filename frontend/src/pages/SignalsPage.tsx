@@ -508,11 +508,13 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
 
   // Tres desenlaces, como `_confianza` en el backend: una cifra que falta no es
   // ni ganar ni perder. Antes `?? 0` pintaba en rojo, «no rentable», un
-  // backtest sin referencia de comprar a ciegas.
-  const { esperanza_pct: esperanza, ventaja_pct: ventaja } = result
-  const refutada = (esperanza != null && esperanza <= 0) || (ventaja != null && ventaja <= 0)
-  const rentable = !refutada && esperanza != null && ventaja != null
-  const tono = (v: number | null | undefined) => (v == null ? 'neutral' : v > 0 ? 'good' : 'bad')
+  // backtest sin referencia de comprar a ciegas. Y sin muestra fiable no hay
+  // conclusión: 12 operaciones con esperanza positiva salían en verde bajo un
+  // veredicto que decía «no sirve para concluir nada» (revisión de M2).
+  const { esperanza_pct: esperanza, ventaja_pct: ventaja, fiable } = result
+  const refutada = fiable && ((esperanza != null && esperanza <= 0) || (ventaja != null && ventaja <= 0))
+  const rentable = fiable && !refutada && esperanza != null && ventaja != null
+  const tono = (v: number | null | undefined) => (!fiable || v == null ? 'neutral' : v > 0 ? 'good' : 'bad')
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -572,12 +574,18 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
               : undefined
           }
         />
+        {/* Sin operaciones de un lado no hay media de ese lado: llega `null` y
+            se pinta «—» sin color, no un «+0,00 %» verde (revisión de M2). */}
         <Stat
           label="Media ganadora"
           value={pct(result.media_ganadora_pct)}
-          tone="good"
+          tone={result.media_ganadora_pct == null ? 'neutral' : 'good'}
         />
-        <Stat label="Media perdedora" value={pct(result.media_perdedora_pct)} tone="bad" />
+        <Stat
+          label="Media perdedora"
+          value={pct(result.media_perdedora_pct)}
+          tone={result.media_perdedora_pct == null ? 'neutral' : 'bad'}
+        />
         {/* Sin el dato, «—»: `?? 0` pintaba «0 seguidas», la mejor racha
             posible, para un backtest que no la midió (ítem 2.1). */}
         <Stat

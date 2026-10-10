@@ -112,6 +112,8 @@ def test_cada_enum_del_backend_tiene_etiqueta():
         "eventos de noticias que clasifica la IA": set(EVENT_WEIGHTS),
         "sectores de un ETF": SECTORES_ETF_YFINANCE,
         "acciones que anota la persona en su diario": set(ACCIONES_REGISTRADAS),
+        # «intacta → sin_comprobar» salía en crudo en «Qué cambió» (revisión de M1).
+        "estados de la tesis": set(co.ATRACTIVO_TESIS) | set(co.PRIORIDAD_TESIS),
     }
     sin = {nombre: sorted(c for c in codigos if not _etiquetado(c)) for nombre, codigos in enums.items()}
     assert not {k: v for k, v in sin.items() if v}, sin

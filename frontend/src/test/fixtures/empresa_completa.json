@@ -3350,7 +3350,7 @@
   },
   "/api/portfolio/historial?descargar=false": {
    "json": {
-    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: la app no lleva saldo en efectivo.",
+    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: el efectivo que anotas no entra en la curva, ni el de cada venta tampoco.",
     "base": "USD",
     "cierres": [],
     "desde": "2026-02-24",

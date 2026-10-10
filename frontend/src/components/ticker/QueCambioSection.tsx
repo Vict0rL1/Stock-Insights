@@ -23,7 +23,9 @@ const FACTOR: Record<string, string> = {
 
 function fmtValor(v: number | string | null | undefined, unidad?: string): string {
   if (v === null || v === undefined) return 'desconocido'
-  if (typeof v === 'string') return v
+  // Un valor de texto es un código (el estado de la tesis: «intacta →
+  // sin_comprobar» salía en crudo; revisión de M1).
+  if (typeof v === 'string') return etiqueta(v)
   if (unidad === 'fracción') return fmtPct(v, 1)
   if (unidad === 'USD') return fmtCompacto(v)
   return fmtNum(v, 2)
@@ -264,7 +266,15 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
                 ).map(([t, l, tono]) =>
                   l.length ? (
                     <p key={t} className={tono}>
-                      {t}: {l.map((x) => `${x.punto}${'detalle' in x && x.detalle ? ` (${x.detalle})` : ''}`).join('; ')}
+                      {t}:{' '}
+                      {/* Con su motivo: «Nuevos riesgos: Si hay un recall» a secas parecía que
+                          el recall había aparecido, cuando solo fallaron las noticias (revisión de M1). */}
+                      {l
+                        .map((x) => {
+                          const extra = 'detalle' in x && x.detalle ? x.detalle : 'motivo' in x && x.motivo ? x.motivo : null
+                          return `${x.punto}${extra ? ` (${extra})` : ''}`
+                        })
+                        .join('; ')}
                     </p>
                   ) : null,
                 )}

@@ -48,9 +48,11 @@ def _periodos():
 
 
 class FakeService:
-    def __init__(self, titular="Resultados en línea con lo esperado", noticias_caidas=False):
+    def __init__(self, titular="Resultados en línea con lo esperado", noticias_caidas=False,
+                 noticias_viejas=False):
         self.titular = titular
         self.noticias_caidas = noticias_caidas
+        self.noticias_viejas = noticias_viejas
         self.llamadas: dict[str, int] = {}
 
     def get(self, data_type, **kwargs):
@@ -65,6 +67,8 @@ class FakeService:
         if data_type == "financials":
             return {**common, "symbol": kwargs["symbol"], "periods": _periodos()}
         if data_type == "news":
+            if self.noticias_viejas:
+                common = {**common, "estado": "viejo", "antiguedad_segundos": 3 * 3600}
             return {
                 **common,
                 "items": [
@@ -244,6 +248,18 @@ def test_con_las_noticias_caidas_el_punto_queda_sin_comprobar(client):
     ctx = r.json()["contexto"]
     assert ctx["disparadores_saltando"] == []
     assert [d["descripcion"] for d in ctx["disparadores_sin_comprobar"]] == ["Si hay un recall"]
+
+
+def test_con_noticias_viejas_de_la_cache_el_punto_no_se_da_por_comprobado(client):
+    """Una copia de hace horas no cubre los últimos 14 días: «ningún titular» no
+    se puede afirmar (revisión de M1)."""
+    c, _ = client(noticias_viejas=True)
+    tid = _crear_tesis(c)
+    c.post(f"/api/theses/{tid}/triggers", json={
+        "kind": "noticia", "descripcion": "Si hay un recall", "config": {"palabras": ["recall"]},
+    })
+    d = c.get("/api/theses/vigilancia").json()["tesis"][0]["vigilancia"]["disparadores"][0]
+    assert d["medible"] is False and "copia guardada hace 3 h" in d["motivo"]
 
 
 def test_las_noticias_solo_se_piden_si_alguna_tesis_las_vigila(client):

@@ -284,3 +284,13 @@ def test_la_coherencia_señala_comprar_con_puntos_de_invalidacion_saltando():
 
 def test_sin_decisiones_no_se_inventa_un_diagnostico():
     assert coherencia([])["decisiones"] == 0
+
+
+def test_noticias_incompletas_no_prueban_que_ningun_titular_lo_diga():
+    """Una copia vieja de la caché no cubre la ventana: «ninguno de los N
+    titulares» no se puede afirmar. Una coincidencia, en cambio, salta igual:
+    ante la duda, avisar (revisión de M1)."""
+    nada = evaluar_noticia({"palabras": ["recall"]}, [_noticia("Resultados en línea")], incompletas="copia guardada hace 3 h")
+    assert nada["medible"] is False and "copia guardada hace 3 h" in nada["motivo"]
+    hay = evaluar_noticia({"palabras": ["recall"]}, [_noticia("Big recall announced")], incompletas="copia guardada hace 3 h")
+    assert hay["medible"] is True and hay["salta"] is True

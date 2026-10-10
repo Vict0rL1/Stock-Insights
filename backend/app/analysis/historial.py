@@ -8,10 +8,12 @@ cifra y no la misma experiencia, y la segunda es la que hace vender abajo.
 ## Tres decisiones que deciden si esta curva miente
 
 **1. Esto es el valor de las posiciones ABIERTAS, no el de tu cuenta.** La app
-no lleva saldo en efectivo: cuando cierras una posición, el dinero sale del
-modelo. Así que un cierre hace BAJAR la curva, y eso no es una pérdida — es una
-retirada. Sin decirlo, cada venta se leería como un desplome. Se dice en cada
-respuesta y se marca cada fecha en que se cerró algo.
+no lleva la cuenta del efectivo: el que anotas es una foto que escribes tú, no
+un saldo que se mueva con cada venta, así que cuando cierras una posición el
+dinero sale del modelo. Un cierre hace BAJAR la curva, y eso no es una pérdida —
+es una retirada. Sin decirlo, cada venta se leería como un desplome. Se dice en
+cada respuesta y se marca cada fecha en que se cerró algo. (Antes el aviso decía
+«no lleva saldo en efectivo», falso desde que se puede anotar; revisión de M3.)
 
 **2. El cambio es el de CADA DÍA, no el de hoy.** Convertir todo el histórico
 al tipo actual daría «qué valdría hoy lo que tenías entonces», que no es lo que
@@ -305,8 +307,8 @@ def _resumen(puntos: list[dict]) -> dict:
 
 def _aviso(base: str, cierres: list[date], excluidas: list[dict], hay_divisas: bool) -> str:
     partes = [
-        f"Es el valor de las posiciones ABIERTAS en {base}, no el de tu cuenta: la "
-        "app no lleva saldo en efectivo."
+        f"Es el valor de las posiciones ABIERTAS en {base}, no el de tu cuenta: el "
+        "efectivo que anotas no entra en la curva, ni el de cada venta tampoco."
     ]
     if cierres:
         partes.append(

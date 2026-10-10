@@ -369,12 +369,13 @@ def seccion_valoracion(fund: dict, precio: float | None) -> dict:
 
 def seccion_tesis(
     session: Session, instrument: Instrument | None, fund: dict, noticias: list[dict] | None,
-    ahora: datetime,
+    ahora: datetime, noticias_incompletas: str | None = None,
 ) -> dict:
     """La tesis vigente, congelada por contenido: si luego se edita, esto no cambia.
 
     `noticias=None` cuando no se pudieron descargar: el punto de noticias queda
-    sin comprobar en vez de pasar con cero titulares.
+    sin comprobar en vez de pasar con cero titulares. `noticias_incompletas`
+    dice por qué la lista no cubre la ventana (una copia vieja de la caché).
     """
     if instrument is None:
         return {"estado": "sin_tesis"}
@@ -405,6 +406,7 @@ def seccion_tesis(
             "ratios": derive_ratio_series(periodos) if periodos else [],
             "crecimiento": growth_summary(periodos) if periodos else {},
             "noticias": noticias,
+            "noticias_incompletas": noticias_incompletas,
         },
     )
     if not vigilancia["total"]:
@@ -439,14 +441,34 @@ def seccion_tesis(
     }
 
 
-def seccion_noticias(service, symbol: str, ahora: datetime) -> dict:
-    """Titulares ya publicados en el momento del análisis. Solo hechos de la API."""
+def seccion_noticias(service, symbol: str, ahora: datetime) -> tuple[dict, dict | None]:
+    """Titulares ya publicados en el momento del análisis. Solo hechos de la API.
+
+    Devuelve (sección para enseñar, lo que necesita la tesis). La sección lleva
+    los MAX_NOTICIAS más recientes y sin resumen; la tesis, todos los de la
+    ventana con su resumen. Antes la tesis recibía la lista de la pantalla: con
+    más de diez titulares en 14 días miraba solo los diez últimos, sin resumen,
+    y congelaba «intacta» mientras Vigilancia lo daba por cruzado (revisión de
+    M1). Va aparte, y no dentro de la sección, porque la instantánea solo quita
+    las claves internas del primer nivel del análisis.
+
+    Una copia vieja de la caché (todas las fuentes fallaron) se marca VIEJO:
+    antes contaba como una comprobación completa de los últimos 14 días.
+    """
     payload, fallo = _traer(service, "news", symbol=symbol, days=DIAS_NOTICIAS)
     items = (payload or {}).get("items") or []
     separadas = pit.filtrar(items, lambda n: n.get("published_at"), ahora)
     disponibles = sorted(separadas["disponibles"], key=lambda n: str(n.get("published_at")), reverse=True)
-    return {
-        "estado": VALIDO if payload is not None else DESCONOCIDO,
+    vieja = payload is not None and payload.get("estado") == VIEJO
+    if payload is None:
+        para_tesis = None
+    else:
+        para_tesis = {
+            "items": disponibles,
+            "incompletas": thesis_watch.copia_vieja(payload.get("antiguedad_segundos"), ahora) if vieja else None,
+        }
+    seccion = {
+        "estado": DESCONOCIDO if payload is None else VIEJO if vieja else VALIDO,
         "fuente": (payload or {}).get("source"),
         "obtenido_en": (payload or {}).get("as_of"),
         "motivo": fallo,
@@ -460,6 +482,9 @@ def seccion_noticias(service, symbol: str, ahora: datetime) -> dict:
         "excluidas_futuras": len(separadas["futuros"]),
         "excluidas_sin_fecha": len(separadas["sin_fecha"]),
     }
+    if vieja:
+        seccion["antiguedad_segundos"] = payload.get("antiguedad_segundos")
+    return seccion, para_tesis
 
 
 def _senal_cacheada(service, symbol: str) -> dict | None:
@@ -647,9 +672,11 @@ def analizar(
     financials, fallo_f = _traer(service, "financials", symbol=symbol)
     fund = seccion_fundamentales(financials, fallo_f, ahora)
     valoracion = seccion_valoracion(fund, mercado["precio"]["valor"])
-    noticias = seccion_noticias(service, symbol, ahora)
+    noticias, noticias_tesis = seccion_noticias(service, symbol, ahora)
     tesis = seccion_tesis(
-        session, instrument, fund, noticias["items"] if noticias["estado"] == VALIDO else None, ahora
+        session, instrument, fund,
+        noticias_tesis["items"] if noticias_tesis else None, ahora,
+        noticias_incompletas=noticias_tesis["incompletas"] if noticias_tesis else None,
     )
     senal = seccion_senal(service, symbol, con_pares, ahora)
     posicion = _posicion(session, instrument, ahora)
@@ -662,7 +689,7 @@ def analizar(
         posicion,
         favorable_min=FAVORABLE_MIN,
         desfavorable_max=UNFAVORABLE_MAX,
-        reglas=_stored_rule_backtest(session, hasta=ahora),
+        reglas=_stored_rule_backtest(session, hasta=ahora, clase=clase),
         clase=clase,
         resultados_en=resultados_en,
     )

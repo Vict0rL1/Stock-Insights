@@ -213,24 +213,27 @@ Lo que encontraron y adónde va:
 | M16 | Altman Z cuenta como negativo en la lectura conjunta del informe también en bancos; el aviso solo está en Salud. ROIC con el 21 % supuesto entra en Multifactor y en disparadores sin aviso | para Victor |
 | M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | hecho con M1 (`d86f3b8`) |
 
-**Pendiente de la revisión independiente de M1–M3** (confirmado por un segundo agente; sin arreglar aún):
+**Revisión independiente de M1–M3** (confirmada por un segundo agente). Arreglado en el commit
+«fix(M1, M2): revisión independiente…», con un test por punto que falla sin el arreglo:
 
-- M1: el análisis vigila el punto de noticias sobre la lista ya recortada para la pantalla (10
-  titulares, sin resumen) y puede congelar «intacta» mientras Vigilancia, con hasta 60 y su resumen,
-  lo da por cruzado. Pasar la lista completa (no anidada en `noticias`: la limpieza de la instantánea
-  solo quita claves `_` del primer nivel) y, para el test, el `ahora` del análisis a `evaluar_noticia`.
-- M1: unas noticias viejas rescatadas de la caché (hasta 7,5 h) cuentan como comprobadas; la sección
-  de noticias no lee el `estado: viejo`.
-- M1: «Qué cambió» presenta una caída de noticias como «Nuevos riesgos: Si hay un recall», sin el
-  motivo; y el estado de la tesis sale como código en crudo (`sin_comprobar`, `sin_puntos` sin etiqueta).
-- M2: un backtest de reglas de cripto decide si las de acciones están calibradas (no se filtra por
-  clase); uno corto y no fiable posterior tapa una refutación fiable; el disclaimer de Hoy dice
-  siempre «aún no están validadas»; el panel de Señales pinta en verde o rojo un backtest no fiable;
-  «Media ganadora/perdedora» sale 0,00 cuando no hay operaciones de ese lado.
-- M3: Hoy se cachea 6 h con la cartera y el efectivo de cuando se puntuó. Invalidar la caché al
-  anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y recalcular el tamaño al
-  servirla contradice lo congelado. **Para Victor**: ¿recalcular y congelar de nuevo al servir, o basta
-  con «Actualizar»?
+- M1: el análisis vigila el punto de noticias con la lista completa y su resumen (la misma que
+  Vigilancia), no con los 10 titulares recortados para la pantalla.
+- M1: unas noticias viejas rescatadas de la caché ya no cuentan como comprobadas: sin coincidencia,
+  el punto queda «sin comprobar» con «copia guardada hace X»; con coincidencia, salta igual.
+- M1: «Qué cambió» dice por qué un punto deja de medirse («ya no se puede medir (las noticias no se
+  pudieron descargar)…») y `sin_comprobar` / `sin_puntos` tienen etiqueta.
+- M2: el backtest que califica las reglas es el último fiable de la misma clase de activo; el pie de
+  Hoy dice lo mismo que las filas (calibrada, refutada o sin validar y por qué); el panel de Señales
+  no pinta en verde ni en rojo un backtest no fiable; una media sin operaciones de ese lado es «—».
+  El golden de `decide` gana 6 casos (`reglas|…`: calibrada, refutada, gana menos que a ciegas, sin
+  referencia, no fiable y solo probabilidad del modelo); solo se añaden, ninguno existente cambia.
+- M3: los textos que decían «la app no lleva saldo en efectivo» (curva de la cartera y README)
+  ahora dicen que el efectivo anotado no entra en la curva.
+
+**Sigue abierto, para Victor** (M3): Hoy se cachea 6 h con la cartera y el efectivo de cuando se
+puntuó. Invalidar la caché al anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y
+recalcular el tamaño al servirla contradice lo congelado. ¿Recalcular y congelar de nuevo al servir,
+o basta con «Actualizar»?
 
 **Notas de la migración del 2.1** (fuera de su alcance): `routers/options.py` aplana la cadena y tira
 `estado`/`antiguedad_segundos` (una cadena vieja sale como normal); `CalidadSection` y `OptionsSection`

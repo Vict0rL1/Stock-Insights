@@ -355,9 +355,12 @@ def _resumen(
     ganadoras = [o for o in operaciones if o["ganadora"]]
     perdedoras = [o for o in operaciones if not o["ganadora"]]
     netos = [o["neto_pct"] for o in operaciones]
-    media_gana = sum(o["neto_pct"] for o in ganadoras) / len(ganadoras) if ganadoras else 0.0
+    # Sin operaciones de un lado no hay media de ese lado: un 0,0 se pintaba
+    # «+0,00 %» en verde como media de unas ganadoras que no existían
+    # (revisión de M2). Ausente ≠ cero.
+    media_gana = sum(o["neto_pct"] for o in ganadoras) / len(ganadoras) if ganadoras else None
     media_pierde = (
-        sum(o["neto_pct"] for o in perdedoras) / len(perdedoras) if perdedoras else 0.0
+        sum(o["neto_pct"] for o in perdedoras) / len(perdedoras) if perdedoras else None
     )
     tasa = len(ganadoras) / n
     bajo, alto = wilson_interval(len(ganadoras), n)
@@ -378,8 +381,8 @@ def _resumen(
         "tasa_acierto": round(tasa, 4),
         "tasa_acierto_ic": [round(bajo, 4), round(alto, 4)],
         "esperanza_pct": round(esperanza, 3),
-        "media_ganadora_pct": round(media_gana, 2),
-        "media_perdedora_pct": round(media_pierde, 2),
+        "media_ganadora_pct": round(media_gana, 2) if media_gana is not None else None,
+        "media_perdedora_pct": round(media_pierde, 2) if media_pierde is not None else None,
         "factor_beneficio": (
             round(ganancia_bruta / perdida_bruta, 2) if perdida_bruta else None
         ),

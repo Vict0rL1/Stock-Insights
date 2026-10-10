@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_num, plural
+from app.formato import fmt_antiguedad, fmt_num, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -64,6 +64,14 @@ DIAS_NOTICIAS = 14
 # Un titular tiene que traer la palabra entera, no como parte de otra: buscar
 # «cae» dentro de «cadena» convertiría el vigilante en un generador de ruido.
 _NO_PALABRA = r"(?:^|[^0-9a-záéíóúüñ])"
+
+
+def copia_vieja(antiguedad_segundos, ahora: datetime) -> str:
+    """«copia guardada hace 3 h»: por qué una lista de noticias no cubre la
+    ventana entera (todas las fuentes fallaron y se sirve la última copia)."""
+    if antiguedad_segundos is None:
+        return "copia guardada de antigüedad desconocida"
+    return f"copia guardada {fmt_antiguedad(ahora - timedelta(seconds=antiguedad_segundos), ahora)}"
 
 
 def _normalizar(texto: str) -> str:
@@ -131,7 +139,9 @@ def evaluar_crecimiento(config: dict, crecimiento: dict) -> dict:
     return _comprobar_umbral(crecimiento.get(clave), config, etiqueta)
 
 
-def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS) -> dict:
+def evaluar_noticia(
+    config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS, incompletas: str | None = None
+) -> dict:
     """Palabras clave en titulares. Búsqueda de palabras, no comprensión.
 
     Se declara en cada resultado, porque la diferencia con los otros dos tipos es
@@ -143,6 +153,10 @@ def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_
     vacía. Antes las dos llegaban como `[]`: con la fuente caída el punto contaba
     como comprobado («Ninguno de los 0 titulares…») y la tesis salía intacta
     justo cuando no se había podido mirar.
+
+    `incompletas` (p. ej. «copia guardada hace 3 h») dice que la lista no cubre
+    la ventana entera. Una coincidencia salta igual —ante la duda, avisar—, pero
+    «ningún titular» no se puede afirmar: faltan los más recientes.
     """
     palabras = [p for p in (config.get("palabras") or []) if p.strip()]
     if not palabras:
@@ -189,6 +203,16 @@ def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_
                 }
             )
 
+    if incompletas and not coincidencias:
+        return {
+            "salta": False,
+            "medible": False,
+            "titulares_revisados": revisados,
+            "motivo": (
+                f"Las noticias son una {incompletas}: faltan los titulares más recientes, "
+                "así que no se puede decir que ninguno contenga esas palabras."
+            ),
+        }
     return {
         "salta": bool(coincidencias),
         "medible": True,
@@ -222,7 +246,7 @@ def evaluar(disparador: dict, datos: dict) -> dict:
         r = evaluar_crecimiento(config, datos.get("crecimiento") or {})
     elif kind == "noticia":
         # Sin `or []`: una clave ausente o None es un fallo de descarga, no cero titulares.
-        r = evaluar_noticia(config, datos.get("noticias"))
+        r = evaluar_noticia(config, datos.get("noticias"), incompletas=datos.get("noticias_incompletas"))
     else:
         r = {"salta": False, "medible": False, "motivo": f"Tipo desconocido: {kind}"}
     return {**disparador, **r}

@@ -201,3 +201,13 @@ def test_una_decision_al_borde_de_su_umbral_es_menos_estable(session_factory, se
         a = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)["analisis"]
     est = next(f for f in a["confianza"]["factores"] if f["id"] == "estabilidad")
     assert est["estado"] == "debil" and "puntuación" in est["detalle"]
+
+
+def test_un_punto_que_deja_de_medirse_dice_por_que():
+    """«Nuevos riesgos: Si hay un recall» a secas parecía que el recall había
+    aparecido, cuando solo habían fallado las noticias (revisión de M1)."""
+    antes = {"disparadores": [{"id": 1, "descripcion": "Si hay un recall", "salta": False, "medible": True}]}
+    ahora = {"disparadores": [{"id": 1, "descripcion": "Si hay un recall", "salta": False, "medible": False,
+                               "detalle": "Las noticias no se pudieron descargar"}]}
+    motivo = cambios.comparar_tesis(antes, ahora)["nuevos_riesgos"][0]["motivo"]
+    assert motivo.startswith("ya no se puede medir") and "no se pudieron descargar" in motivo
