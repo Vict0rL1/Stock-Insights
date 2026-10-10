@@ -322,7 +322,9 @@ def _datos_para_vigilar(
     solo se piden si alguna tesis tiene un disparador de ese tipo: pedirlas
     siempre gastaría cuota de Finnhub para nada en la mayoría de los casos.
     """
-    datos: dict = {"ratios": [], "crecimiento": {}, "noticias": []}
+    # `noticias` empieza en None: si la descarga falla, el disparador de noticias
+    # queda sin comprobar. Con `[]` el fallo se leía como «ningún titular».
+    datos: dict = {"ratios": [], "crecimiento": {}, "noticias": None}
     try:
         financials = service.get("financials", symbol=symbol)
         periodos = financials.get("periods") or []

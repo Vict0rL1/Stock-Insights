@@ -368,9 +368,14 @@ def seccion_valoracion(fund: dict, precio: float | None) -> dict:
 
 
 def seccion_tesis(
-    session: Session, instrument: Instrument | None, fund: dict, noticias: list[dict], ahora: datetime
+    session: Session, instrument: Instrument | None, fund: dict, noticias: list[dict] | None,
+    ahora: datetime,
 ) -> dict:
-    """La tesis vigente, congelada por contenido: si luego se edita, esto no cambia."""
+    """La tesis vigente, congelada por contenido: si luego se edita, esto no cambia.
+
+    `noticias=None` cuando no se pudieron descargar: el punto de noticias queda
+    sin comprobar en vez de pasar con cero titulares.
+    """
     if instrument is None:
         return {"estado": "sin_tesis"}
     candidatas = session.execute(
@@ -643,7 +648,9 @@ def analizar(
     fund = seccion_fundamentales(financials, fallo_f, ahora)
     valoracion = seccion_valoracion(fund, mercado["precio"]["valor"])
     noticias = seccion_noticias(service, symbol, ahora)
-    tesis = seccion_tesis(session, instrument, fund, noticias["items"], ahora)
+    tesis = seccion_tesis(
+        session, instrument, fund, noticias["items"] if noticias["estado"] == VALIDO else None, ahora
+    )
     senal = seccion_senal(service, symbol, con_pares, ahora)
     posicion = _posicion(session, instrument, ahora)
     resultados_en = _resultados_proximos(service, symbol, ahora)

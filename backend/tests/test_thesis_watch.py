@@ -164,6 +164,28 @@ def test_un_disparador_de_noticias_sin_palabras_no_es_medible():
     assert r["medible"] is False
 
 
+def test_sin_noticias_por_un_fallo_el_disparador_queda_sin_comprobar():
+    """Si la descarga falla no se revisó ningún titular: eso no es «ninguno
+    contiene esas palabras». Antes salía medible con 0 titulares y la tesis se
+    daba por intacta justo cuando no se había podido mirar."""
+    r = evaluar_noticia({"palabras": ["recall"]}, None)
+    assert r["medible"] is False and r["salta"] is False
+    assert "no se pudieron descargar" in r["motivo"]
+
+
+def test_una_descarga_buena_sin_titulares_si_es_una_comprobacion():
+    """Una lista vacía que llegó bien es un dato: no hubo titulares en la ventana."""
+    r = evaluar_noticia({"palabras": ["recall"]}, [])
+    assert r["medible"] is True and r["salta"] is False
+
+
+def test_sin_la_clave_de_noticias_la_vigilancia_no_las_da_por_buenas():
+    """Quien llame a `vigilar` sin traer las noticias no puede obtener un PASS."""
+    r = vigilar([disp("noticia", {"palabras": ["recall"]})], {"ratios": RATIOS})
+    assert r["sin_medir"] == 1 and r["saltan"] == 0
+    assert "no se pudo comprobar" in r["nota"]
+
+
 # --- El conjunto --------------------------------------------------------------
 
 
@@ -224,6 +246,17 @@ def test_la_instantanea_congela_lo_que_la_app_enseñaba():
     assert len(snap["disparadores_saltando"]) == 1
     assert "Si el margen baja del 18 %" in snap["disparadores_saltando"][0]["descripcion"]
     assert snap["capturado_en"]
+
+
+def test_la_instantanea_congela_tambien_lo_que_no_se_pudo_comprobar():
+    """Sin esto, una decisión tomada con las noticias caídas quedaba en el
+    registro como «0 puntos saltando», sin rastro de que no se había mirado."""
+    v = vigilar([disp("noticia", {"palabras": ["recall"]}, descripcion="Si hay un recall")],
+                {"noticias": None})
+    snap = instantanea(140.0, v, None)
+    assert snap["disparadores_saltando"] == []
+    assert snap["disparadores_sin_comprobar"][0]["descripcion"] == "Si hay un recall"
+    assert "no se pudieron descargar" in snap["disparadores_sin_comprobar"][0]["motivo"]
 
 
 def test_la_coherencia_señala_las_decisiones_sin_tesis():

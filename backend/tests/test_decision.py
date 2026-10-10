@@ -154,8 +154,31 @@ def test_sin_puntuacion_no_se_decide():
 def test_la_confianza_distingue_reglas_validadas_de_solo_razonables():
     sin = decide(señal(0.8), precio())
     assert sin["confidence"] == "sin_calibrar"
-    con = decide(señal(0.8, probability=0.61), precio())
+    con = decide(señal(0.8), precio(), reglas={"fiable": True, "esperanza_pct": 1.2, "ventaja_pct": 0.4})
     assert con["confidence"] == "calibrada"
+
+
+def test_una_probabilidad_del_modelo_de_factores_no_valida_las_reglas():
+    """Antes bastaba una probabilidad calibrada del modelo de factores para que
+    Hoy dijera «Reglas validadas contra el histórico del backtest» sin que
+    existiera ningún backtest de reglas. Son dos preguntas distintas: el modelo
+    puede ordenar bien y las reglas perder igualmente (README, «La advertencia
+    que no se quita»)."""
+    assert decide(señal(0.8, probability=0.61), precio())["confidence"] == "sin_calibrar"
+    no_fiable = {"fiable": False, "esperanza_pct": 2.0, "ventaja_pct": 1.0}
+    assert decide(señal(0.8, probability=0.61), precio(), reglas=no_fiable)["confidence"] == "sin_calibrar"
+
+
+def test_sin_saber_si_ganan_a_comprar_a_ciegas_no_se_declaran_calibradas():
+    """«Calibrada» exige superar a comprar a ciegas. Una ventaja o una esperanza
+    desconocidas no se pueden dar por buenas: no se pudo comprobar."""
+    sin_ventaja = {"fiable": True, "esperanza_pct": 1.5, "ventaja_pct": None}
+    assert decide(señal(0.8), precio(), reglas=sin_ventaja)["confidence"] == "sin_calibrar"
+    sin_esperanza = {"fiable": True, "esperanza_pct": None, "ventaja_pct": 0.8}
+    assert decide(señal(0.8), precio(), reglas=sin_esperanza)["confidence"] == "sin_calibrar"
+    # Pero una ventaja negativa conocida refuta aunque falte la esperanza.
+    refutada = {"fiable": True, "esperanza_pct": None, "ventaja_pct": -0.5}
+    assert decide(señal(0.8), precio(), reglas=refutada)["confidence"] == "refutada"
 
 
 def test_avisa_de_una_caida_fuerte_desde_maximos():

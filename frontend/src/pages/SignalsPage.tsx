@@ -494,7 +494,13 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
     )
   }
 
-  const rentable = (result.esperanza_pct ?? 0) > 0 && (result.ventaja_pct ?? 0) > 0
+  // Tres desenlaces, como `_confianza` en el backend: una cifra que falta no es
+  // ni ganar ni perder. Antes `?? 0` pintaba en rojo, «no rentable», un
+  // backtest sin referencia de comprar a ciegas.
+  const { esperanza_pct: esperanza, ventaja_pct: ventaja } = result
+  const refutada = (esperanza != null && esperanza <= 0) || (ventaja != null && ventaja <= 0)
+  const rentable = !refutada && esperanza != null && ventaja != null
+  const tono = (v: number | null | undefined) => (v == null ? 'neutral' : v > 0 ? 'good' : 'bad')
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -511,7 +517,11 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           no una nota al pie de la tabla. */}
       <p
         className={`mt-3 rounded-lg px-3 py-2 text-sm leading-relaxed ${
-          rentable ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'
+          rentable
+            ? 'bg-emerald-50 text-emerald-900'
+            : refutada
+              ? 'bg-red-50 text-red-800'
+              : 'bg-slate-100 text-slate-700'
         }`}
       >
         {result.veredicto}
@@ -522,7 +532,7 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           label="Esperanza / operación"
           value={pct(result.esperanza_pct)}
           hint="neta de costes"
-          tone={(result.esperanza_pct ?? 0) > 0 ? 'good' : 'bad'}
+          tone={tono(esperanza)}
         />
         <Stat
           label="Comprar a ciegas"
@@ -533,7 +543,7 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           label="Ventaja"
           value={pct(result.ventaja_pct)}
           hint="lo que aportan las reglas"
-          tone={(result.ventaja_pct ?? 0) > 0 ? 'good' : 'bad'}
+          tone={tono(ventaja)}
         />
         <Stat
           label="Operaciones"

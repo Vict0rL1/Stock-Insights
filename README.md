@@ -605,13 +605,14 @@ Cada decisión lleva un campo `confidence` con tres valores que importan:
 |---|---|
 | **calibrada** | El backtest de reglas tiene ≥ 30 operaciones, esperanza positiva y supera a comprar a ciegas. |
 | **refutada** | Se probaron y **perdieron dinero**, o ganaron menos que no hacer nada. |
-| **sin calibrar** | No se ha ejecutado el backtest, o no hay muestra suficiente. |
+| **sin calibrar** | No se ha ejecutado el backtest, no hay muestra suficiente, o falta la esperanza o la comparación con comprar a ciegas (lo que no se pudo medir no cuenta a favor). |
 
 `refutada` es el estado que ninguna herramienta enseña y el único que de verdad
 ahorra dinero, así que no va en gris: la fila desplegada lo pinta en rojo y dice
 que la operación mostrada es lo que dictan las reglas, no una recomendación.
 Pesa más que una probabilidad del modelo de factores, porque son cosas distintas
-—el modelo puede ordenar bien y las reglas perder igualmente.
+—el modelo puede ordenar bien y las reglas perder igualmente—; por lo mismo, una
+probabilidad calibrada del modelo tampoco basta para llamar «calibradas» a las reglas.
 
 Las reglas son defendibles —dimensionar el stop por volatilidad, no comprar
 contra la tendencia, arriesgar lo mismo en cada idea—, pero *razonable* y
@@ -693,9 +694,11 @@ tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los
 pesos que salen del dimensionador son **lo que se añade**, no el peso final.
 
 Dos supuestos que van escritos en la respuesta y en pantalla: el peso de lo que
-tienes se mide sobre el valor de tus posiciones abiertas —la app no registra tu
-efectivo—, así que si guardas liquidez fuera tu concentración real es menor y
-los topes aprietan antes de lo debido; y las posiciones que un barrido no cubre
+tienes se mide sobre tu capital total —posiciones más el efectivo anotado en
+Cartera (migración 0008), con la misma conversión que el coste de oportunidad—,
+y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
+valor de las posiciones abiertas: tu concentración real es entonces menor y los
+topes aprietan antes de lo debido, y la nota lo dice; y las posiciones que un barrido no cubre
 (otro mercado, sin precio) quedan fuera de los topes, lo cual se avisa en vez de
 dejar que un tope calculado sobre media cartera pase por completo.
 
@@ -792,7 +795,9 @@ opina sobre qué hacer: solo se acuerda de mirar.
 
 Y **«no se pudo medir» nunca se cuenta como «está bien»**. Van en contadores
 separados: confundirlos convertiría un fallo de datos en tranquilidad, justo
-cuando falta información.
+cuando falta información. Eso incluye las noticias: si no se pudieron descargar,
+el punto de noticias queda sin comprobar (no «ninguno de los 0 titulares…»), y la
+instantánea de una decisión guarda también qué puntos no se pudieron comprobar.
 
 ### El registro de decisiones: lo que sabías, no lo que recuerdas
 

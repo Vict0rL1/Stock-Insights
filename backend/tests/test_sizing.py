@@ -182,10 +182,15 @@ def test_el_objetivo_de_volatilidad_se_mide_sobre_la_cartera_combinada():
     assert r["vol_estimada_pct"] <= 12.05, r["vol_estimada_pct"]
 
 
-def test_la_nota_declara_que_la_app_no_conoce_tu_efectivo():
-    r = dimensionar([cand("A", 5.0)], cartera=[pos("B", 10.0, "Salud")])
-    assert "no registra tu efectivo" in r["nota"]
-    assert "lo que se AÑADE" in r["nota"]
+def test_la_nota_declara_sobre_que_se_miden_los_pesos():
+    """Antes decía siempre «la app no registra tu efectivo», también después de
+    la migración 0008. Ahora dice la base que de verdad se usó."""
+    sin = dimensionar([cand("A", 5.0)], cartera=[pos("B", 10.0, "Salud")])
+    assert "no hay efectivo anotado" in sin["nota"]
+    assert "concentración real es menor" in sin["nota"]
+    assert "lo que se AÑADE" in sin["nota"]
+    con = dimensionar([cand("A", 5.0)], cartera=[pos("B", 10.0, "Salud")], base_cartera="capital")
+    assert "capital total" in con["nota"] and "no hay efectivo anotado" not in con["nota"]
 
 
 # --- Volatility targeting ----------------------------------------------------

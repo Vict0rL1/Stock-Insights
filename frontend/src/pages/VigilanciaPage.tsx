@@ -307,6 +307,7 @@ function FormularioDisparador({
 
 function Decision({ d }: { d: DecisionRegistrada }) {
   const ctx = d.contexto
+  const sinComprobar = ctx?.disparadores_sin_comprobar ?? []
   return (
     <li className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -346,11 +347,17 @@ function Decision({ d }: { d: DecisionRegistrada }) {
       </p>
 
       {/* Lo que la app enseñaba al decidir, no lo que recuerdas que sabías. */}
-      {ctx && (ctx.disparadores_saltando.length > 0 || !d.thesis_id) && (
+      {ctx && (ctx.disparadores_saltando.length > 0 || sinComprobar.length > 0 || !d.thesis_id) && (
         <div className="mt-2 space-y-1">
           {ctx.disparadores_saltando.map((x, i) => (
             <p key={i} className="text-[11px] leading-relaxed text-amber-800">
               Al decidir ya estaba cruzado: «{x.descripcion}»
+            </p>
+          ))}
+          {/* No comprobado no es «no cruzado»: se dice aparte. */}
+          {sinComprobar.map((x, i) => (
+            <p key={`s${i}`} className="text-[11px] leading-relaxed text-slate-500">
+              Al decidir no se pudo comprobar: «{x.descripcion}»
             </p>
           ))}
           {!d.thesis_id && (

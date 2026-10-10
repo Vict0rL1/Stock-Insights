@@ -205,6 +205,20 @@ def volatilidad_cartera(
 
 # --- El dimensionador ---------------------------------------------------------
 
+# Sobre qué se miden los pesos de lo que ya tienes, dicho en la nota del tamaño.
+BASE_CARTERA = {
+    "capital": (
+        "el peso de lo que ya tienes se mide sobre tu capital total: posiciones "
+        "abiertas más el efectivo anotado."
+    ),
+    "invertido": (
+        "el peso de lo que ya tienes se mide sobre el valor de tus posiciones "
+        "abiertas, porque no hay efectivo anotado que sumar (o no se pudo pasar a "
+        "dólares): si guardas liquidez, tu concentración real es menor y los topes "
+        "aprietan antes de lo debido. Puedes anotarlo en Cartera."
+    ),
+}
+
 
 def dimensionar(
     candidatas: list[dict],
@@ -215,8 +229,14 @@ def dimensionar(
     max_posicion_pct: float = MAX_POR_POSICION_PCT,
     max_sector_pct: float = MAX_POR_SECTOR_PCT,
     max_cluster_pct: float = MAX_POR_CLUSTER_PCT,
+    base_cartera: str = "invertido",
 ) -> dict:
     """Convierte ideas en pesos de cartera, aplicando todos los límites.
+
+    `base_cartera` dice sobre qué se midieron los pesos de `cartera`: «capital»
+    (posiciones más el efectivo anotado) o «invertido» (solo posiciones, sin
+    efectivo conocido). Solo cambia la nota, que antes afirmaba siempre que la
+    app no registra el efectivo, también después de la migración 0008.
 
     `candidatas`: [{symbol, sector, peso_bruto_pct, vol_anual_pct}]. El peso
     bruto es el que sale del riesgo por operación — el que `decision.py` calcula
@@ -520,10 +540,7 @@ def dimensionar(
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y el peso de lo que ya tienes se mide sobre el valor de tus "
-            "posiciones abiertas, porque la app no registra tu efectivo: si "
-            "guardas liquidez fuera, tu concentración real es menor y los topes "
-            "aprietan antes de lo debido."
+            "dato—, y " + BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
         ),
     }
 

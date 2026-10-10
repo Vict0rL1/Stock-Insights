@@ -19,6 +19,7 @@ import pytest
 from app import analisis_empresa
 from app import snapshots as sn
 from app.db.models import DecisionSnapshot, Instrument, Position, Thesis, ThesisTrigger
+from app.providers.router import AllProvidersFailedError
 from app.routers.empresa import analizar_y_congelar
 from tests.fakes_empresa import AHORA, ServicioFalso, financieros_base
 
@@ -98,6 +99,36 @@ def test_cambiar_la_tesis_actual_no_modifica_la_instantanea(session_factory, ser
     assert despues == congelada
     assert congelada["titulo"] == "Servicios" and congelada["estado"] == "intacta"
     assert len(congelada["disparadores"]) == 1
+
+
+def test_con_las_noticias_caidas_la_tesis_no_se_congela_intacta(session_factory, servicio):
+    """`seccion_noticias` ya marcaba DESCONOCIDO, pero a la tesis le llegaba la
+    lista vacía: el punto de noticias contaba como comprobado con 0 titulares y
+    la instantánea guardaba «intacta», que en el coste de oportunidad suma."""
+    original = servicio.get
+
+    def sin_noticias(tipo, **kw):
+        if tipo == "news":
+            raise AllProvidersFailedError("news", {"finnhub": "timeout"})
+        return original(tipo, **kw)
+
+    servicio.get = sin_noticias
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall",
+                            config={"palabras": ["recall"]}))
+        s.commit()
+        snap, r = _congelar(s, servicio)
+        congelada = sn.reproducir(snap)["secciones"]["tesis"]
+    assert r["analisis"]["noticias"]["estado"] == "desconocido"
+    assert congelada["estado"] == "sin_comprobar"
+    assert congelada["disparadores"][0]["medible"] is False
 
 
 def test_no_entra_una_noticia_publicada_despues_del_analisis(session_factory, servicio):

@@ -125,7 +125,8 @@ hallazgo (S1–S14) en `docs/PROGRESS.md`. Lo más importante:
   `cd backend && .venv/bin/python scripts/validar_con_datos_reales.py --grabar`, revisar y hacer
   commit de `tests/fixtures/reales/*.json.gz`.
 - **Etiquetas de git.** El proxy de este entorno no deja empujar etiquetas; están en local y
-  su commit está en `docs/PROGRESS.md`.
+  su commit está en `docs/PROGRESS.md` (desde la mudanza del 9-oct, con los identificadores nuevos;
+  la sección «Etiquetas» de PROGRESS dice cómo recrearlas).
 - **Notificación de escritorio** de las alertas (sin sesión gráfica; pendiente desde el RC1).
 - **`./start.sh validar` con datos reales** (1.13): probado de punta a punta en modo `--solo-cache`
   contra una base temporal; con claves lo tiene que correr Victor.

@@ -155,3 +155,57 @@ def test_sin_posiciones_abiertas_la_lista_corta_no_cambia_de_forma():
     assert r["sizing"]["ya_invertido_pct"] == 0.0
     assert "aviso_cartera" not in r["sizing"]
     assert all(i["peso_final_pct"] is not None for i in r["ideas"])
+
+
+# --- El efectivo anotado (0008) también cuenta en Hoy ------------------------
+
+
+def test_con_efectivo_anotado_los_pesos_de_hoy_son_sobre_el_capital():
+    """Hoy medía los pesos solo sobre lo invertido y decía que «la app no
+    registra tu efectivo», cuando desde la 0008 sí lo registra y el coste de
+    oportunidad ya lo usaba: la misma idea salía con dos tamaños."""
+    señales = [señal("A", 1.0, "Tech", last=50.0), señal("B", 1.0, "Salud", last=100.0)]
+    posiciones = {"A": {"quantity": 60}, "B": {"quantity": 10}}
+    cartera, _ = _cartera_actual(señales, posiciones, efectivo_usd=1000.0)
+    # A 3.000, B 1.000 y 1.000 de efectivo: 60 % / 20 % del capital.
+    assert {p["symbol"]: p["peso_pct"] for p in cartera} == {"A": 60.0, "B": 20.0}
+
+
+def test_la_nota_del_tamano_dice_sobre_que_se_miden_los_pesos():
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, "Tech") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Tech", last=100.0))
+
+    sin_efectivo = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}})
+    con_efectivo = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}}, efectivo_usd=1000.0)
+
+    assert "no registra tu efectivo" not in sin_efectivo["sizing"]["nota"]
+    assert "no hay efectivo anotado" in sin_efectivo["sizing"]["nota"]
+    assert sin_efectivo["sizing"]["ya_invertido_pct"] == 100.0
+    # VIEJA vale 1.000 sobre un capital de 2.000: ocupa la mitad, no todo.
+    assert con_efectivo["sizing"]["ya_invertido_pct"] == 50.0
+    assert "capital total" in con_efectivo["sizing"]["nota"]
+    assert con_efectivo["sizing"]["invertido_pct"] >= sin_efectivo["sizing"]["invertido_pct"]
+
+
+def test_hoy_lee_el_efectivo_anotado_y_no_supone_un_tipo_de_cambio(session_factory):
+    """La lista de Hoy usa la misma conversión que el coste de oportunidad: una
+    moneda sin tipo deja el efectivo desconocido (y Hoy mide sobre lo
+    invertido), nunca 1:1."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.db.models import CashBalance
+    from app.routers.signals import _efectivo_para_hoy
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    sv = ServicioFalso(AHORA)
+    ayer = datetime.now(timezone.utc) - timedelta(days=1)
+    abiertas = {"A": {"quantity": 1}}
+    with session_factory() as s:
+        assert _efectivo_para_hoy(s, sv, abiertas) is None  # sin anotar: desconocido
+        s.add(CashBalance(moneda="USD", importe=2500.0, as_of=ayer))
+        s.commit()
+        assert _efectivo_para_hoy(s, sv, {}) is None  # sin cartera no cambia ningún peso
+        assert _efectivo_para_hoy(s, sv, abiertas) == 2500.0
+        s.add(CashBalance(moneda="CAD", importe=1000.0, as_of=ayer))
+        s.commit()
+        assert _efectivo_para_hoy(s, sv, abiertas) is None  # FRED sin serie de CAD

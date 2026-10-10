@@ -155,9 +155,14 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
 
 
 def _lista_corta_dimensionada(
-    ranked: list[dict], posiciones: dict[str, dict] | None = None
+    ranked: list[dict], posiciones: dict[str, dict] | None = None,
+    efectivo_usd: float | None = None,
 ) -> dict:
     """La lista corta, con el tamaño decidido sobre el conjunto.
+
+    `efectivo_usd`: el efectivo anotado, ya en dólares, o None si no se conoce.
+    Con él, los pesos de lo que ya tienes son sobre el capital total, como en el
+    coste de oportunidad; sin él, sobre lo invertido, y la nota lo dice.
 
     El peso que trae cada decisión es BRUTO: lo que su stop permitiría mirando
     esa empresa sola. Aquí se aplica lo que solo se puede saber viendo la
@@ -183,13 +188,14 @@ def _lista_corta_dimensionada(
         for s in corta["ideas"]
     ]
     candidatas = [c for c in candidatas if c["peso_bruto_pct"]]
-    cartera, aviso_cartera = _cartera_actual(ranked, posiciones or {})
+    cartera, aviso_cartera = _cartera_actual(ranked, posiciones or {}, efectivo_usd)
     interesan = {c["symbol"] for c in candidatas} | {p["symbol"] for p in cartera}
 
     corta["sizing"] = dimensionar(
         candidatas,
         retornos=_retornos_desde_spark(ranked, interesan),
         cartera=cartera,
+        base_cartera="capital" if efectivo_usd is not None else "invertido",
     )
     if aviso_cartera:
         corta["sizing"]["aviso_cartera"] = aviso_cartera
@@ -264,15 +270,17 @@ def _retornos_desde_spark(
 
 
 def _cartera_actual(
-    ranked: list[dict], posiciones: dict[str, dict]
+    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None
 ) -> tuple[list[dict], str | None]:
     """Las posiciones abiertas, con peso y sector, para que los topes las cuenten.
 
-    El peso se mide sobre el valor de mercado de las posiciones abiertas, que es
-    la misma convención que ya usa el presupuesto de riesgo. La app no registra
-    efectivo: asume que lo anotado es la cartera entera. El error va hacia el
-    lado prudente (sobreestima la concentración, los topes aprietan antes), pero
-    se dice, aquí y en la nota que viaja al frontend.
+    Con efectivo anotado (`efectivo_usd`, en dólares), el peso es sobre el
+    capital total: posiciones valoradas más efectivo, la misma convención que el
+    coste de oportunidad. Sin él, sobre el valor de las posiciones abiertas: el
+    error va hacia el lado prudente (sobreestima la concentración, los topes
+    aprietan antes), y la nota del tamaño lo dice. Antes se decía «la app no
+    registra efectivo» incluso después de la migración 0008, y Hoy y el coste de
+    oportunidad daban dos tamaños a la misma idea.
 
     Las posiciones que este barrido no puede valorar —de otro mercado, o sin
     precio— quedan fuera y se avisa: un tope calculado sobre media cartera es
@@ -301,6 +309,7 @@ def _cartera_actual(
         )
 
     total = sum(p["valor"] for p in valoradas)
+    capital = total + efectivo_usd if total and efectivo_usd is not None else total
     aviso = None
     if sin_valorar:
         muestra = ", ".join(sorted(sin_valorar)[:5])
@@ -318,11 +327,27 @@ def _cartera_actual(
         {
             "symbol": p["symbol"],
             "sector": p["sector"],
-            "peso_pct": round(p["valor"] / total * 100, 2),
+            "peso_pct": round(p["valor"] / capital * 100, 2),
             "vol_anual_pct": p["vol_anual_pct"],
         }
         for p in valoradas
     ], aviso
+
+
+def _efectivo_para_hoy(
+    session: Session, service: MarketDataService, posiciones: dict[str, dict]
+) -> float | None:
+    """El efectivo anotado en dólares, o None si no se conoce.
+
+    Solo hace falta con posiciones abiertas: sin cartera, el efectivo no cambia
+    ningún peso. Una moneda sin tipo de cambio deja el total desconocido (no se
+    supone 1:1) y Hoy mide entonces sobre lo invertido, diciéndolo.
+    """
+    if not posiciones:
+        return None
+    from app.oportunidad import efectivo_con_cambio
+
+    return efectivo_con_cambio(session, service, datetime.now(timezone.utc))["usd"]
 
 
 def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> dict | None:
@@ -1070,7 +1095,7 @@ def _today(
         # 98 candidatas no son 98 oportunidades. La lista corta ordena por
         # convicción y recorta a unas pocas: es la diferencia entre un filtro
         # y una recomendación.
-        "shortlist": _lista_corta_dimensionada(ranked, posiciones),
+        "shortlist": _lista_corta_dimensionada(ranked, posiciones, _efectivo_para_hoy(session, service, posiciones)),
         "counts": {
             "favorables": n_favorables,
             "neutrales": len(ranked) - n_favorables - n_desfavorables,
@@ -1390,6 +1415,13 @@ def _rule_verdict(resultado: dict, sin_filtro: dict) -> str:
         partes.append(
             f"Pero comprar el universo entero a ciegas daba {fmt_pct(resultado['referencia_pct'], 2, signo=True, en_puntos=True)}: "
             "las reglas ganan menos que no hacer nada. El trabajo extra no se paga."
+        )
+    elif ventaja is None:
+        # Sin referencia el texto caía en «Supera en — puntos… una ventaja real»:
+        # un desconocido contado como victoria.
+        partes.append(
+            "No hay referencia de comprar a ciegas con la que compararlas, así que "
+            "no se puede decir que ganen a no hacer nada: siguen sin validar."
         )
     else:
         partes.append(
