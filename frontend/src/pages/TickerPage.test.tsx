@@ -205,6 +205,22 @@ describe('ficha de una empresa', () => {
     expect(cambio.className).toMatch(/slate/)
   })
 
+  it('sin cotización, perfil ni fundamentales, pero con estados en EDGAR, la ficha y sus pestañas siguen ahí', async () => {
+    // La captura `empresa_sin_datos`: VACIA solo existe en EDGAR. Contar solo
+    // los tres primeros 404 la daba por inexistente (segunda revisión del 2.1).
+    servir({
+      '/api/stocks/VACIA/quote': falla(404, 'sin cotización'),
+      '/api/stocks/VACIA/profile': falla(404, 'sin perfil'),
+      '/api/stocks/VACIA/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/VACIA/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/VACIA/financials': ok(financieros('VACIA')),
+    })
+    abrir('VACIA')
+    expect(await screen.findByRole('button', { name: 'Fundamentales' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/No se encontró el símbolo/)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('sin perfil en las fuentes configuradas')
+  })
+
   it('un símbolo que ninguna fuente conoce dice «No se encontró» y no abre pestañas', async () => {
     // Revisión del 2.1: con las 11 pestañas abiertas, «Qué cambió» congelaba
     // una instantánea inmutable de «AAPLL» que ya no se podía borrar.
@@ -213,6 +229,7 @@ describe('ficha de una empresa', () => {
       '/api/stocks/AAPLL/profile': falla(404, 'sin perfil'),
       '/api/stocks/AAPLL/fundamentals': falla(404, 'sin fundamentales'),
       '/api/stocks/AAPLL/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/AAPLL/financials': falla(404, 'AAPLL no está registrado en la SEC'),
     })
     abrir('AAPLL')
     expect(await screen.findByText('No se encontró el símbolo «AAPLL» en las fuentes configuradas.')).toBeInTheDocument()
@@ -243,6 +260,7 @@ describe('ficha de una empresa', () => {
       '/api/stocks/AAPLL/profile': falla(404, 'sin perfil'),
       '/api/stocks/AAPLL/fundamentals': falla(404, 'sin fundamentales'),
       '/api/stocks/AAPLL/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/AAPLL/financials': falla(404, 'AAPLL no está registrado en la SEC'),
     }
     servir(rutas)
     abrir('ACME')

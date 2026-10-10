@@ -90,15 +90,22 @@ export function TickerPage() {
   // disponible…»; ahora solo lo dice un 404, y el resto es un fallo.
   const historico = useDato(() => nullSi404(api.history(symbol, range)), symbol ? `${symbol}|${range}` : null)
 
-  // Un símbolo que ninguna fuente conoce (los tres 404: «AAPLL», un error de
-  // tecleo) no es una empresa sin datos: no existe. Sin esto la ficha abría las
-  // 11 pestañas y «Qué cambió» congelaba una instantánea inmutable de un símbolo
-  // inexistente, que los triggers de la 0004 ya no dejan borrar (revisión del
-  // 2.1). Las pestañas esperan además a saberlo: pulsar una antes llevaba al
-  // mismo sitio. Un fallo (502) no es «no existe»: ahí sí se abren.
+  // Un símbolo que ninguna fuente conoce («AAPLL», un error de tecleo) no es
+  // una empresa sin datos: no existe. Sin esto la ficha abría las 11 pestañas y
+  // «Qué cambió» congelaba una instantánea inmutable de un símbolo inexistente,
+  // que los triggers de la 0004 ya no dejan borrar (revisión del 2.1). Pero sin
+  // cotización, perfil ni fundamentales EDGAR puede tener sus estados (VACIA en
+  // la captura `empresa_sin_datos`): solo entonces se le pregunta, y solo si
+  // tampoco los tiene es «no encontrado». Las pestañas esperan a saberlo:
+  // pulsar una antes llevaba al mismo sitio. Un fallo (502) no es «no existe»:
+  // ahí sí se abren.
   const piezas = [cotizacion, perfil, fundamentales]
-  const noEncontrado = piezas.every((c) => c.estado === 'listo' && c.datos === null)
-  const hayEmpresa = piezas.some((c) => c.estado === 'error' || (c.estado === 'listo' && c.datos !== null))
+  const tresAusentes = piezas.every((c) => c.estado === 'listo' && c.datos === null)
+  const edgar = useDato(() => nullSi404(api.financials(symbol)), tresAusentes ? symbol : null)
+  const noEncontrado = tresAusentes && edgar.estado === 'listo' && edgar.datos === null
+  const hayEmpresa =
+    piezas.some((c) => c.estado === 'error' || (c.estado === 'listo' && c.datos !== null)) ||
+    (tresAusentes && (edgar.estado === 'error' || (edgar.estado === 'listo' && edgar.datos !== null)))
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()

@@ -101,9 +101,12 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
         _pedir(c, rutas, "/api/portfolio/contribucion?descargar=false")
         _pedir(c, rutas, "/api/portfolio/efectivo")
         # La cabecera de la ficha, el informe, la valoración y la cartera: lo que
-        # pinta el test de fugas además de las secciones de arriba.
+        # pinta el test de fugas además de las secciones de arriba. La cabecera
+        # pide los estados de EDGAR cuando faltan cotización, perfil y
+        # fundamentales (VACIA), para no dar por inexistente a quien sí los tiene.
         for url in (f"/api/stocks/{symbol}/quote", f"/api/stocks/{symbol}/profile",
                     f"/api/stocks/{symbol}/fundamentals", f"/api/stocks/{symbol}/history?range=1Y",
+                    f"/api/stocks/{symbol}/financials",
                     "/api/meta/llm", f"/api/deep-dive/{symbol}?history_years=10",
                     f"/api/stocks/{symbol}/valuation/defaults", "/api/portfolio",
                     "/api/portfolio/historial?descargar=false"):

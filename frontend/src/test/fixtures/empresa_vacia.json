@@ -2747,6 +2747,75 @@
    },
    "status": 200
   },
+  "/api/stocks/VACIA/financials": {
+   "json": {
+    "as_of": "2026-09-12T14:35:00+00:00",
+    "growth": {
+     "eps_cagr": null,
+     "fcf_cagr": null,
+     "revenue_cagr": null,
+     "years": 0
+    },
+    "periods": [
+     {
+      "end_date": "2024-12-31",
+      "filed_at": "2025-02-12",
+      "fiscal_year": "2024",
+      "fuentes": {}
+     },
+     {
+      "end_date": "2025-12-31",
+      "filed_at": "2026-02-10",
+      "fiscal_year": "2025",
+      "fuentes": {}
+     }
+    ],
+    "quarters": [],
+    "ratios": [
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2024-12-31",
+      "eps_diluted": null,
+      "fcf": null,
+      "fcf_margin": null,
+      "fiscal_year": "2024",
+      "gross_margin": null,
+      "interest_coverage": null,
+      "net_income": null,
+      "net_margin": null,
+      "operating_margin": null,
+      "revenue": null,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     },
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2025-12-31",
+      "eps_diluted": null,
+      "fcf": null,
+      "fcf_margin": null,
+      "fiscal_year": "2025",
+      "gross_margin": null,
+      "interest_coverage": null,
+      "net_income": null,
+      "net_margin": null,
+      "operating_margin": null,
+      "revenue": null,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     }
+    ],
+    "source": "edgar",
+    "symbol": "VACIA"
+   },
+   "status": 200
+  },
   "/api/stocks/VACIA/fundamentals": {
    "json": {
     "detail": "sin fundamentales"

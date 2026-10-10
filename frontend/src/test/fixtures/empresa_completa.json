@@ -7224,6 +7224,861 @@
    },
    "status": 200
   },
+  "/api/stocks/ACME/financials": {
+   "json": {
+    "as_of": "2026-09-12T14:35:00+00:00",
+    "growth": {
+     "eps_cagr": 0.09999999999999987,
+     "fcf_cagr": 0.11111111111111116,
+     "revenue_cagr": 0.10000000000000009,
+     "years": 1
+    },
+    "periods": [
+     {
+      "capex": 40.0,
+      "cash": 100.0,
+      "cfo": 220.0,
+      "end_date": "2024-12-31",
+      "eps_diluted": 1.5,
+      "filed_at": "2025-02-12",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "cash": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcash",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "cfo": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "eps_diluted": {
+        "accn": "A-2024",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "gross_profit": {
+        "accn": "A-2024",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "long_term_debt": {
+        "accn": "A-2024",
+        "etiqueta": "Taglong_term_debt",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "net_income": {
+        "accn": "A-2024",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "operating_income": {
+        "accn": "A-2024",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "revenue": {
+        "accn": "A-2024",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "shares_outstanding": {
+        "accn": "A-2024",
+        "etiqueta": "Tagshares_outstanding",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "short_term_debt": {
+        "accn": "A-2024",
+        "etiqueta": "Tagshort_term_debt",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       }
+      },
+      "gross_profit": 400.0,
+      "long_term_debt": 300.0,
+      "net_income": 150.0,
+      "operating_income": 200.0,
+      "revenue": 1000.0,
+      "shares_outstanding": 100.0,
+      "short_term_debt": 0.0
+     },
+     {
+      "capex": 50.0,
+      "cash": 120.0,
+      "cfo": 250.0,
+      "end_date": "2025-12-31",
+      "eps_diluted": 1.65,
+      "filed_at": "2026-02-10",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "cash": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcash",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "cfo": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "eps_diluted": {
+        "accn": "A-2025",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "gross_profit": {
+        "accn": "A-2025",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "long_term_debt": {
+        "accn": "A-2025",
+        "etiqueta": "Taglong_term_debt",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "net_income": {
+        "accn": "A-2025",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "operating_income": {
+        "accn": "A-2025",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "revenue": {
+        "accn": "A-2025",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "shares_outstanding": {
+        "accn": "A-2025",
+        "etiqueta": "Tagshares_outstanding",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "short_term_debt": {
+        "accn": "A-2025",
+        "etiqueta": "Tagshort_term_debt",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       }
+      },
+      "gross_profit": 440.0,
+      "long_term_debt": 300.0,
+      "net_income": 165.0,
+      "operating_income": 231.0,
+      "revenue": 1100.0,
+      "shares_outstanding": 100.0,
+      "short_term_debt": 0.0
+     }
+    ],
+    "quarters": [
+     {
+      "capex": 11.34,
+      "cfo": 55.44,
+      "end_date": "2024-03-31",
+      "eps_diluted": 0.42,
+      "filed_at": "2024-04-28",
+      "fiscal_period": "Q1",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       }
+      },
+      "gross_profit": 100.80000000000001,
+      "net_income": 37.8,
+      "operating_income": 52.919999999999995,
+      "periodo": "2024-Q1",
+      "revenue": 252.0
+     },
+     {
+      "capex": 11.43,
+      "cfo": 55.88,
+      "end_date": "2024-06-30",
+      "eps_diluted": 0.42333333333333334,
+      "filed_at": "2024-07-28",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       }
+      },
+      "gross_profit": 101.60000000000001,
+      "net_income": 38.1,
+      "operating_income": 53.339999999999996,
+      "periodo": "2024-Q2",
+      "revenue": 254.0
+     },
+     {
+      "capex": 11.52,
+      "cfo": 56.32,
+      "end_date": "2024-09-30",
+      "eps_diluted": 0.4266666666666667,
+      "filed_at": "2024-10-28",
+      "fiscal_period": "Q3",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       }
+      },
+      "gross_profit": 102.4,
+      "net_income": 38.4,
+      "operating_income": 53.76,
+      "periodo": "2024-Q3",
+      "revenue": 256.0
+     },
+     {
+      "capex": 11.61,
+      "cfo": 56.76,
+      "end_date": "2024-12-31",
+      "eps_diluted": 0.43,
+      "filed_at": "2025-02-10",
+      "fiscal_period": "Q4",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "cfo": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "net_income": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "operating_income": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "revenue": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       }
+      },
+      "gross_profit": 103.2,
+      "net_income": 38.699999999999996,
+      "operating_income": 54.18,
+      "periodo": "2024-Q4",
+      "revenue": 258.0
+     },
+     {
+      "capex": 12.465,
+      "cfo": 60.94,
+      "end_date": "2025-03-31",
+      "eps_diluted": 0.46166666666666667,
+      "filed_at": "2025-04-28",
+      "fiscal_period": "Q1",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       }
+      },
+      "gross_profit": 110.80000000000001,
+      "net_income": 41.55,
+      "operating_income": 58.169999999999995,
+      "periodo": "2025-Q1",
+      "revenue": 277.0
+     },
+     {
+      "capex": 12.555,
+      "cfo": 61.38,
+      "end_date": "2025-06-30",
+      "eps_diluted": 0.465,
+      "filed_at": "2025-07-28",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       }
+      },
+      "gross_profit": 111.60000000000001,
+      "net_income": 41.85,
+      "operating_income": 58.589999999999996,
+      "periodo": "2025-Q2",
+      "revenue": 279.0
+     },
+     {
+      "capex": 12.645,
+      "cfo": 61.82,
+      "end_date": "2025-09-30",
+      "eps_diluted": 0.4683333333333333,
+      "filed_at": "2025-10-28",
+      "fiscal_period": "Q3",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       }
+      },
+      "gross_profit": 112.4,
+      "net_income": 42.15,
+      "operating_income": 59.01,
+      "periodo": "2025-Q3",
+      "revenue": 281.0
+     },
+     {
+      "capex": 12.735,
+      "cfo": 62.26,
+      "end_date": "2025-12-31",
+      "eps_diluted": 0.4716666666666667,
+      "filed_at": "2026-02-10",
+      "fiscal_period": "Q4",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "cfo": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "net_income": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "operating_income": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "revenue": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       }
+      },
+      "gross_profit": 113.2,
+      "net_income": 42.449999999999996,
+      "operating_income": 59.43,
+      "periodo": "2025-Q4",
+      "revenue": 283.0
+     },
+     {
+      "capex": 15.0,
+      "cfo": 40.0,
+      "end_date": "2026-06-30",
+      "eps_diluted": 0.051,
+      "filed_at": "2026-07-30",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2026",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "cfo": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "eps_diluted": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "gross_profit": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "net_income": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "operating_income": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "revenue": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       }
+      },
+      "gross_profit": 124.0,
+      "net_income": 31.0,
+      "operating_income": 37.199999999999996,
+      "periodo": "2026-Q2",
+      "revenue": 310.0
+     }
+    ],
+    "ratios": [
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2024-12-31",
+      "eps_diluted": 1.5,
+      "fcf": 180.0,
+      "fcf_margin": 0.18,
+      "fiscal_year": "2024",
+      "gross_margin": 0.4,
+      "interest_coverage": null,
+      "net_income": 150.0,
+      "net_margin": 0.15,
+      "operating_margin": 0.2,
+      "revenue": 1000.0,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     },
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2025-12-31",
+      "eps_diluted": 1.65,
+      "fcf": 200.0,
+      "fcf_margin": 0.18181818181818182,
+      "fiscal_year": "2025",
+      "gross_margin": 0.4,
+      "interest_coverage": null,
+      "net_income": 165.0,
+      "net_margin": 0.15,
+      "operating_margin": 0.21,
+      "revenue": 1100.0,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     }
+    ],
+    "source": "edgar",
+    "symbol": "ACME"
+   },
+   "status": 200
+  },
   "/api/stocks/ACME/fundamentals": {
    "json": {
     "detail": "sin fundamentales"
