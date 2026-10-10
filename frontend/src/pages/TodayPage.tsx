@@ -3,18 +3,19 @@ import { DecisionExplicada } from '../components/DecisionExplicada'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DailySignal,
   Conviction,
   Decision,
   DecisionAction,
-  MarketInfo,
   Sizing,
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
 import { coord } from '../lib/svg'
+import { mensajeDeError, useDato } from '../lib/useDato'
 
 type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
 
@@ -266,8 +267,10 @@ function SummaryStrip({
   acciones: { comprar: number; vigilar: number; cartera: number; vender: number }
   onPick: (v: View) => void
 }) {
-  const ideas = data.shortlist?.ideas.length ?? 0
-  const cobertura = data.requested ? (data.scored / data.requested) * 100 : 0
+  // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
+  // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
+  const ideas = data.shortlist ? data.shortlist.ideas.length : null
+  const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
     label: string
     valor: string
@@ -277,9 +280,9 @@ function SummaryStrip({
   }[] = [
     {
       label: 'Ideas de compra',
-      valor: String(ideas),
-      tono: 'text-emerald-700',
-      sub: `de ${acciones.comprar} que califican`,
+      valor: ideas === null ? '—' : String(ideas),
+      tono: ideas === null ? 'text-slate-500' : 'text-emerald-700',
+      sub: ideas === null ? 'sin lista corta' : `de ${acciones.comprar} que califican`,
       vista: 'ideas',
     },
     {
@@ -379,9 +382,14 @@ function IdeaCard({
             <div className="text-base tabular-nums text-slate-900">
               {fmtNum(price.last, 2)}
             </div>
+            {/* Sin variación, neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
             <div
               className={`text-xs tabular-nums ${
-                (price.change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
+                price.change_pct === null || price.change_pct === undefined
+                  ? 'text-slate-400'
+                  : price.change_pct >= 0
+                    ? 'text-emerald-600'
+                    : 'text-red-600'
               }`}
             >
               {fmtPct(price.change_pct, 2, { signo: true, enPuntos: true })}
@@ -417,7 +425,21 @@ function IdeaCard({
               Cuánto de tu cartera
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtPct(signal.peso_final_pct ?? niveles.peso_bruto_pct, 1, { enPuntos: true })}
+              {/* Sin peso final, el bruto no se enseña como si lo fuera: es lo que
+                  permitiría el stop mirando la empresa sola, antes de los topes
+                  de la cartera (ítem 2.1). */}
+              {signal.peso_final_pct !== null && signal.peso_final_pct !== undefined ? (
+                fmtPct(signal.peso_final_pct, 1, { enPuntos: true })
+              ) : (
+                <span className="text-slate-500">
+                  —
+                  {niveles.peso_bruto_pct !== null && (
+                    <span className="block text-[10px]">
+                      sin tamaño final; bruto {fmtPct(niveles.peso_bruto_pct, 1, { enPuntos: true })}
+                    </span>
+                  )}
+                </span>
+              )}
               {signal.peso_final_pct !== null &&
                 signal.peso_final_pct !== undefined &&
                 niveles.peso_bruto_pct !== null &&
@@ -707,9 +729,11 @@ function SignalRow({
               </span>
               <span
                 className={`block text-xs tabular-nums ${
-                  (signal.price.change_pct ?? 0) >= 0
-                    ? 'text-emerald-600'
-                    : 'text-red-500'
+                  signal.price.change_pct === null || signal.price.change_pct === undefined
+                    ? 'text-slate-400'
+                    : signal.price.change_pct >= 0
+                      ? 'text-emerald-600'
+                      : 'text-red-500'
                 }`}
               >
                 {fmtPct(signal.price.change_pct, 2, { signo: true, enPuntos: true })}
@@ -817,10 +841,13 @@ function SignalRow({
 }
 
 export function TodayPage() {
-  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [market, setMarket] = useState('us_sp500')
   const [data, setData] = useState<TodayResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // La lista no va por `useDato`: «Actualizar» y «Seguir completando»
+  // recalculan sin vaciar lo que ya se ve, y `useDato` vuelve a «cargando» en
+  // cada petición. Su fallo sí se dice igual que en el resto, con un
+  // «Reintentar» que repite la misma pasada (ítem 2.1).
+  const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<View>('ideas')
   const [autoRondas, setAutoRondas] = useState(0)
@@ -848,17 +875,17 @@ export function TodayPage() {
         setAutoRondas(0)
         setBusy(false)
       },
-      (e) => {
-        setError(e instanceof Error ? e.message : 'Error')
+      (e: unknown) => {
+        setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
         setAutoRondas(0)
         setBusy(false)
       },
     )
   }
 
-  useEffect(() => {
-    api.markets().then((d) => setMarkets(d.markets), () => undefined)
-  }, [])
+  // Un fallo al pedir los mercados se dice: `() => undefined` lo callaba y el
+  // selector desaparecía sin más (ítem 2.1).
+  const mercados = useDato(() => api.markets().then((d) => d.markets), 'mercados')
 
   useEffect(() => {
     // Al cambiar de mercado los filtros previos ya no aplican.
@@ -922,7 +949,9 @@ export function TodayPage() {
           <p className="mt-0.5 max-w-3xl text-sm leading-snug text-slate-500">
             {data
               ? [
-                  `${data.shortlist?.ideas.length ?? 0} ${plural(data.shortlist?.ideas.length ?? 0, 'idea', 'ideas')} de compra`,
+                  data.shortlist
+                    ? `${data.shortlist.ideas.length} ${plural(data.shortlist.ideas.length, 'idea', 'ideas')} de compra`
+                    : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
                   acciones.cartera > 0 ? `${acciones.cartera} en cartera` : null,
                   `${data.scored} ${plural(data.scored, 'empresa puntuada', 'empresas puntuadas')}`,
@@ -974,24 +1003,29 @@ export function TodayPage() {
         <SummaryStrip data={data} acciones={acciones} onPick={setView} />
       )}
 
-      {markets.length > 1 && (
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
-          {markets.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => setMarket(m.key)}
-              title={`${m.companies} empresas · ${m.sectors} sectores`}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                market === m.key
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Con un solo mercado no hay nada que elegir y no se pinta. */}
+      <BloqueDatos carga={mercados} que="los mercados">
+        {(lista) =>
+          lista.length > 1 && (
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+              {lista.map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setMarket(m.key)}
+                  title={`${m.companies} empresas · ${m.sectors} sectores`}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    market === m.key
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )
+        }
+      </BloqueDatos>
 
       {busy && !data && (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -1003,11 +1037,7 @@ export function TodayPage() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {error}
-        </div>
-      )}
+      {error && <ErrorDeCarga que="la lista de hoy" error={error.mensaje} reintentar={error.reintentar} />}
 
       {data && !data.signals && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1023,7 +1053,7 @@ export function TodayPage() {
               <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
                 {(
                   [
-                    ['ideas', `Mejores ideas (${data.shortlist?.ideas.length ?? 0})`],
+                    ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],
                     ['comprar', `Todas las que califican (${acciones.comprar})`],
                     ['vigilar', `Vigilar (${acciones.vigilar})`],
                     ['cartera', `Mi cartera (${acciones.cartera})`],
@@ -1110,7 +1140,15 @@ export function TodayPage() {
             </div>
           )}
 
-          {view === 'ideas' && data.shortlist ? (
+          {/* Sin lista corta, la vista de ideas lo dice: antes caía a la tabla
+              de todas las puntuadas bajo «Mejores ideas (0)» (ítem 2.1). */}
+          {view === 'ideas' && !data.shortlist ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Esta respuesta no trae la lista corta de ideas, así que no se puede
+              decir cuántas hay: no es lo mismo que ninguna. Pulsa «Actualizar»
+              para recalcularla, o mira «Todas las que califican».
+            </div>
+          ) : view === 'ideas' && data.shortlist ? (
             <div className="space-y-4">
               <p className="text-xs leading-relaxed text-slate-500">
                 {data.shortlist.nota}

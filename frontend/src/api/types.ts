@@ -6,8 +6,9 @@ export interface Sourced {
   as_of: string
   cached: boolean
   fetched_at: string | null
-  /** `viejo` = todas las fuentes fallaron y se sirve la última copia. */
-  estado?: 'valido' | 'viejo'
+  /** Los cuatro estados de `app/datos.py`. `viejo` = todas las fuentes fallaron
+   *  y se sirve la última copia; `desconocido` y `error` los pinta `EstadoDato`. */
+  estado?: 'valido' | 'viejo' | 'desconocido' | 'error'
   /** Por qué es viejo, si lo es. */
   aviso?: string | null
   antiguedad_segundos?: number | null
@@ -424,8 +425,15 @@ export interface ClosedPosition {
   symbol: string
   quantity: number
   cost_basis: number
+  /** En la moneda de la posición (`currency`), no en la base. */
   realized_pnl: number | null
+  opened_at: string
   closed_at: string
+  /** La API la manda desde el RC1; el tipo no la tenía y el P&L realizado salía sin
+   *  código con dos divisas (ítem 2.1). `null` = desconocida, no se supone dólar. */
+  currency: string | null
+  /** El realizado convertido a la base, si se pudo convertir. */
+  realized_pnl_base?: number | null
 }
 
 export interface Allocation {

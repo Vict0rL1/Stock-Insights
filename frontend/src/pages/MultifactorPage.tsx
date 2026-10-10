@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   Familia,
   FilaMultifactor,
-  MarketInfo,
   MultifactorResult,
   PercentilHistorico,
 } from '../api/types'
+import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtNum, fmtPct } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 const FAMILIAS: Familia[] = [
   'value',
@@ -86,8 +87,16 @@ function BarraPercentil({ dato }: { dato: PercentilHistorico }) {
   if (!dato.disponible || dato.percentil === null || dato.percentil === undefined) {
     return <span className="text-[11px] text-slate-400">{dato.motivo}</span>
   }
-  const fav = dato.percentil_favorable ?? 0.5
-  const color = fav >= 0.8 ? 'bg-emerald-500' : fav <= 0.2 ? 'bg-red-500' : 'bg-slate-400'
+  // Sin lectura favorable, neutro y dicho así; no un 0,5 supuesto (ítem 2.1).
+  const fav = dato.percentil_favorable
+  const color =
+    fav === null || fav === undefined
+      ? 'bg-slate-400'
+      : fav >= 0.8
+        ? 'bg-emerald-500'
+        : fav <= 0.2
+          ? 'bg-red-500'
+          : 'bg-slate-400'
   return (
     <div className="flex items-center gap-2">
       <div className="relative h-1.5 w-24 rounded-full bg-slate-200">
@@ -108,7 +117,7 @@ function BarraPercentil({ dato }: { dato: PercentilHistorico }) {
  *  Es la razón de ser de esta pantalla. Un ROE del 18 % puntúa bien contra el
  *  sector; que venga del 30 % y lleve tres años cayendo no lo ve ningún z-score
  *  transversal, porque compara hacia los lados y no hacia atrás. */
-function HistoriaPropia({ fila }: { fila: FilaMultifactor }) {
+function HistoriaPropia({ fila }: { fila: Pick<FilaMultifactor, 'historia'> }) {
   const h = fila.historia
   if (!h || h.medidas === 0) {
     return (
@@ -184,8 +193,16 @@ function HistoriaPropia({ fila }: { fila: FilaMultifactor }) {
   )
 }
 
+/** Una fila tal como se pinta, reordenada con los pesos de la pantalla. Sin
+ *  ninguna familia con dato y con peso no tiene nota ni puesto: como `combinar`
+ *  en el backend, que la deja sin puntuar. Antes puntuaba 0 y se ordenaba en
+ *  mitad de la tabla como si fuera neutral (ítem 2.1). */
+type FilaPintada = Omit<FilaMultifactor, 'score' | 'puesto'> & {
+  score: number | null
+  puesto: number | null
+}
+
 export function MultifactorPage() {
-  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [market, setMarket] = useState('us_sp500')
   const [pesos, setPesos] = useState<Record<Familia, number>>({
     value: 0.25,
@@ -200,21 +217,22 @@ export function MultifactorPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    api.multifactorMeta().then(
-      (m) => {
+  // Si los mercados no llegan se dice, con «Reintentar»: antes el fallo hacía
+  // `setMarkets([])` y el selector se quedaba vacío sin explicación (ítem 2.1).
+  const mercados = useDato(
+    () =>
+      api.multifactorMeta().then((m) => {
         // Se valida la forma en vez de confiar en ella: los pesos gobiernan
         // todo lo que pinta esta pantalla, y un `setPesos(undefined)` la deja
         // en blanco entera. Si el servidor no manda algo utilizable, se sigue
         // con los de partida, que ya están puestos.
-        setMarkets(Array.isArray(m?.markets) ? m.markets : [])
         if (m?.pesos_por_defecto && FAMILIAS.every((f) => f in m.pesos_por_defecto)) {
           setPesos(m.pesos_por_defecto)
         }
-      },
-      () => setMarkets([]),
-    )
-  }, [])
+        return Array.isArray(m?.markets) ? m.markets : []
+      }),
+    'meta',
+  )
 
   const correr = async () => {
     setBusy(true)
@@ -234,28 +252,32 @@ export function MultifactorPage() {
   // Reordenar con pesos nuevos es aritmética sobre datos que ya están aquí, así
   // que los controles responden al instante en vez de pedir el mercado entero
   // a cada movimiento del ratón.
-  const ranking = useMemo(() => {
+  const ranking = useMemo((): FilaPintada[] => {
     if (!data) return []
     const total = Object.values(pesos).reduce((a, b) => a + b, 0)
     if (total <= 0) return data.ranking
-    return data.ranking
-      .map((fila) => {
-        let suma = 0
-        let disponible = 0
-        for (const f of FAMILIAS) {
-          const z = fila.familias[f]
-          if (z === null || !pesos[f]) continue
-          suma += pesos[f] * z
-          disponible += pesos[f]
-        }
-        return {
-          ...fila,
-          score: disponible > 0 ? suma / disponible : 0,
-          cobertura: disponible / total,
-        }
-      })
+    const filas = data.ranking.map((fila) => {
+      let suma = 0
+      let disponible = 0
+      for (const f of FAMILIAS) {
+        const z = fila.familias[f]
+        if (z === null || !pesos[f]) continue
+        suma += pesos[f] * z
+        disponible += pesos[f]
+      }
+      return {
+        ...fila,
+        score: disponible > 0 ? suma / disponible : null,
+        cobertura: disponible / total,
+      }
+    })
+    // Las que se quedan sin nota van al final y sin puesto.
+    const puntuadas = filas
+      .filter((f): f is typeof f & { score: number } => f.score !== null)
       .sort((a, b) => b.score - a.score)
       .map((fila, i) => ({ ...fila, puesto: i + 1 }))
+    const sinNota = filas.filter((f) => f.score === null).map((fila) => ({ ...fila, puesto: null }))
+    return [...puntuadas, ...sinNota]
   }, [data, pesos])
 
   const desincronizado = useMemo(() => {
@@ -336,17 +358,27 @@ export function MultifactorPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-          <select
-            value={market}
-            onChange={(e) => setMarket(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+          <BloqueDatos
+            carga={mercados}
+            que="los mercados"
+            vacio={(d) => d.length === 0}
+            mensajeVacio="El servidor no devolvió ningún mercado."
           >
-            {markets.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+            {(lista) => (
+              <select
+                value={market}
+                onChange={(e) => setMarket(e.target.value)}
+                aria-label="Mercado"
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                {lista.map((m) => (
+                  <option key={m.key} value={m.key}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </BloqueDatos>
           <button
             onClick={correr}
             disabled={busy}
@@ -447,7 +479,7 @@ function FilaTabla({
   abierta,
   onToggle,
 }: {
-  fila: FilaMultifactor
+  fila: FilaPintada
   abierta: boolean
   onToggle: () => void
 }) {
@@ -460,7 +492,7 @@ function FilaTabla({
         onClick={onToggle}
         className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
       >
-        <td className="px-3 py-2 tabular-nums text-slate-400">{fila.puesto}</td>
+        <td className="px-3 py-2 tabular-nums text-slate-400">{fila.puesto ?? '—'}</td>
         <td className="px-3 py-2">
           <Link
             to={`/ticker/${fila.symbol}`}
@@ -476,6 +508,14 @@ function FilaTabla({
               title="Métricas en la peor parte de su propio rango histórico"
             >
               {deteriorando} en mínimos propios
+            </span>
+          )}
+          {fila.score === null && (
+            <span
+              className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600"
+              title="Ninguna de las familias con dato de esta empresa tiene peso ahora mismo: no se puede puntuar, y un 0 la haría pasar por neutral."
+            >
+              sin nota con estos pesos
             </span>
           )}
         </td>

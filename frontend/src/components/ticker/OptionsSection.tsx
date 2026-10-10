@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { api, ApiError } from '../../api/client'
+import { api } from '../../api/client'
 import type {
   ActividadOpciones,
   EstructuraTemporal,
@@ -8,7 +7,9 @@ import type {
   SeñalesDeOpciones,
   SkewSignal,
 } from '../../api/types'
-import { fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
+import { useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 
 const pct = (v: number | null | undefined, d = 1) => fmtPct(v, d)
 
@@ -43,7 +44,9 @@ function NoDisponible({ nota }: { nota?: string }) {
 
 function Prima({ p }: { p: PrimaDeRiesgo }) {
   if (!p.disponible) return <NoDisponible nota={p.nota} />
-  const prima = p.prima ?? 0
+  // Sin prima, «—» y en neutro: `p.prima ?? 0` pintaba «0,0 %» en azul, una
+  // prima medida de cero que nadie midió (ítem 2.1).
+  const prima = p.prima ?? null
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
@@ -68,11 +71,10 @@ function Prima({ p }: { p: PrimaDeRiesgo }) {
           <div className="text-[10px] uppercase tracking-wide text-slate-400">Prima</div>
           <div
             className={`text-2xl font-semibold tabular-nums ${
-              prima > 0 ? 'text-amber-800' : 'text-sky-700'
+              prima === null ? 'text-slate-500' : prima > 0 ? 'text-amber-800' : 'text-sky-700'
             }`}
           >
-            {prima > 0 ? '+' : ''}
-            {pct(prima)}
+            {fmtPct(prima, 1, { signo: true })}
           </div>
         </div>
         {p.percentil !== null && p.percentil !== undefined && (
@@ -117,13 +119,9 @@ function Skew({ s }: { s: SkewSignal }) {
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-slate-400">Skew</div>
-          <div
-            className={`text-2xl font-semibold tabular-nums ${
-              (s.skew ?? 0) < 0 ? 'text-amber-800' : 'text-slate-800'
-            }`}
-          >
-            {(s.skew ?? 0) > 0 ? '+' : ''}
-            {pct(s.skew)}
+          {/* El color por signo, solo con el dato delante; sin él, neutro (ítem 2.1). */}
+          <div className={`text-2xl font-semibold tabular-nums ${s.skew != null && s.skew < 0 ? 'text-amber-800' : 'text-slate-800'}`}>
+            {fmtPct(s.skew, 1, { signo: true })}
           </div>
         </div>
       </div>
@@ -314,7 +312,7 @@ function Actividad({ a }: { a: ActividadOpciones }) {
             </div>
             <div
               className={`text-xl font-semibold tabular-nums ${
-                Math.abs(a.variacion_oi.cambio_pct ?? 0) >= 5
+                a.variacion_oi.cambio_pct != null && Math.abs(a.variacion_oi.cambio_pct) >= 5
                   ? 'text-amber-800'
                   : 'text-slate-800'
               }`}
@@ -365,36 +363,17 @@ function Actividad({ a }: { a: ActividadOpciones }) {
 }
 
 export function OptionsSection({ symbol }: { symbol: string }) {
-  const [datos, setDatos] = useState<SeñalesDeOpciones | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(true)
+  // Cargando y fallo con las mismas palabras y el mismo «Reintentar» que el
+  // resto de la app (ítem 2.1); antes el fallo era un mensaje suelto.
+  const carga = useDato(() => api.opciones(symbol), symbol)
+  return (
+    <BloqueDatos carga={carga} que="la cadena de opciones">
+      {(datos) => <Opciones datos={datos} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setCargando(true)
-    setError(null)
-    setDatos(null)
-    api
-      .opciones(symbol)
-      .then(setDatos, (e: ApiError) => setError(e.message))
-      .finally(() => setCargando(false))
-  }, [symbol])
-
-  if (cargando) {
-    return (
-      <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-        Leyendo la cadena de opciones…
-      </p>
-    )
-  }
-  if (error) {
-    return (
-      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        {error}
-      </p>
-    )
-  }
-  if (!datos) return null
-
+function Opciones({ datos }: { datos: SeñalesDeOpciones }) {
   if (!datos.disponible) {
     return (
       <div className="space-y-3">
@@ -466,7 +445,9 @@ export function OptionsSection({ symbol }: { symbol: string }) {
         <Nota>
           {datos.vencimientos_leidos?.length} de {datos.vencimientos_totales} vencimientos
           leídos{datos.fuente ? ` · fuente: ${datos.fuente}` : ''}
-          {datos.cacheado ? ' (de caché)' : ''}
+          {/* La copia de caché dice de cuándo es (`as_of` es la hora de la descarga):
+              «(de caché)» a secas hacía pasar por fresca una cadena de hace una hora. */}
+          {datos.cacheado ? ` (de caché, ${fmtAntiguedad(datos.as_of)})` : ''}
         </Nota>
         {datos.fallo_calendario && (
           <Nota>Calendario de resultados no disponible: {datos.fallo_calendario}</Nota>

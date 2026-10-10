@@ -71,6 +71,15 @@ export default tseslint.config(
           selector: 'TemplateElement[value.raw=/^\\s+%/], JSXText[value=/^\\s+%/], Literal[value=/^\\s+%/]',
           message: 'Un porcentaje se escribe con fmtPct (con enPuntos si ya viene en %): lleva espacio duro antes de «%».',
         },
+        // Un manejador de error que ni mira el error lo convierte en otra cosa:
+        // `() => setIndices([])` pintaba un fallo como «no hay datos», y las
+        // alertas de Portafolio que no cargaban salían «Sin alertas configuradas»
+        // (ítem 2.1, una docena de sitios).
+        {
+          selector:
+            "CallExpression[callee.property.name='then'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]:nth-child(2), CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]",
+          message: 'Un fallo de carga no se traga: usa useDato + BloqueDatos (components/EstadoDato.tsx) o enseña el error.',
+        },
       ],
     },
   },

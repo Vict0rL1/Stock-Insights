@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DecisionRegistrada,
-  DecisionesResponse,
   DisparadorVigilado,
   MetricasVigilables,
-  SinTesisResponse,
-  ThesisRecord,
   VigilanciaResponse,
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
 
@@ -373,26 +372,32 @@ function Decision({ d }: { d: DecisionRegistrada }) {
 
 export function VigilanciaPage() {
   const [vig, setVig] = useState<VigilanciaResponse | null>(null)
-  const [dec, setDec] = useState<DecisionesResponse | null>(null)
-  const [sin, setSin] = useState<SinTesisResponse | null>(null)
-  const [tesis, setTesis] = useState<ThesisRecord[]>([])
-  const [metricas, setMetricas] = useState<MetricasVigilables | null>(null)
+  // Decisiones, posiciones sin tesis, tesis enlazables y catálogo de métricas
+  // hacían `() => setX(null)` / `[]`: un fallo los borraba sin decir nada. El
+  // peor, el aviso de posiciones sin tesis, que desaparecía justo cuando no se
+  // había podido comprobar (ítem 2.1). `version` los vuelve a pedir tras
+  // registrar algo.
+  const [version, setVersion] = useState(0)
+  const dec = useDato(() => api.decisiones(), `decisiones-${version}`)
+  const sin = useDato(() => api.sinTesis(), `sin-tesis-${version}`)
+  const tesis = useDato(() => api.theses().then((d) => d.theses), `tesis-${version}`)
+  const metricas = useDato(() => api.metricasVigilables(), 'metricas')
   const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
   const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const cargar = useCallback(() => {
+  const cargarVigilancia = useCallback(() => {
     api.vigilancia().then(setVig, (e) => setError(e.message))
-    api.decisiones().then(setDec, () => setDec(null))
-    api.sinTesis().then(setSin, () => setSin(null))
-    api.theses().then((d) => setTesis(d.theses), () => setTesis([]))
   }, [])
+  const cargar = useCallback(() => {
+    cargarVigilancia()
+    setVersion((v) => v + 1)
+  }, [cargarVigilancia])
 
   useEffect(() => {
-    cargar()
-    api.metricasVigilables().then(setMetricas, () => setMetricas(null))
-  }, [cargar])
+    cargarVigilancia()
+  }, [cargarVigilancia])
 
   const registrar = async () => {
     setBusy(true)
@@ -431,17 +436,23 @@ export function VigilanciaPage() {
           {vig.aviso_sin_disparadores}
         </p>
       )}
-      {sin && (sin.posiciones_sin_tesis.length > 0 || sin.watchlist_sin_tesis.length > 0) && (
+      {sin.estado === 'error' && (
+        <ErrorDeCarga que="el recuento de posiciones sin tesis" error={sin.error} reintentar={sin.reintentar} />
+      )}
+      {sin.estado === 'listo' && (sin.datos.posiciones_sin_tesis.length > 0 || sin.datos.watchlist_sin_tesis.length > 0) && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-          {sin.nota}
+          {sin.datos.nota}
         </p>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {añadiendoA !== null && metricas.estado === 'error' && (
+        <ErrorDeCarga que="el catálogo de métricas vigilables" error={metricas.error} reintentar={metricas.reintentar} />
+      )}
       {añadiendoA !== null && (
         <FormularioDisparador
           thesisId={añadiendoA}
-          metricas={metricas}
+          metricas={metricas.datos}
           onHecho={() => {
             setAñadiendoA(null)
             cargar()
@@ -501,13 +512,18 @@ export function VigilanciaPage() {
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">Sin tesis enlazada</option>
-            {tesis.map((t) => (
+            {(tesis.datos ?? []).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.symbol} — {t.title}
               </option>
             ))}
           </select>
         </div>
+        {tesis.estado === 'error' && (
+          <div className="mt-2">
+            <ErrorDeCarga que="las tesis que se pueden enlazar" error={tesis.error} reintentar={tesis.reintentar} />
+          </div>
+        )}
         <textarea
           value={form.razonamiento}
           onChange={(e) => setForm({ ...form, razonamiento: e.target.value })}
@@ -524,14 +540,17 @@ export function VigilanciaPage() {
         </button>
       </section>
 
-      {dec && dec.decisiones.length > 0 && (
+      {dec.estado === 'error' && (
+        <ErrorDeCarga que="las decisiones pasadas" error={dec.error} reintentar={dec.reintentar} />
+      )}
+      {dec.estado === 'listo' && dec.datos.decisiones.length > 0 && (
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-800">
             Decisiones pasadas, con el razonamiento de entonces
           </h2>
-          {dec.coherencia.avisos && dec.coherencia.avisos.length > 0 && (
+          {dec.datos.coherencia.avisos && dec.datos.coherencia.avisos.length > 0 && (
             <ul className="mt-2 space-y-1">
-              {dec.coherencia.avisos.map((a) => (
+              {dec.datos.coherencia.avisos.map((a) => (
                 <li key={a} className="text-xs leading-relaxed text-amber-800">
                   {a}
                 </li>
@@ -539,11 +558,11 @@ export function VigilanciaPage() {
             </ul>
           )}
           <ul className="mt-3 space-y-2">
-            {dec.decisiones.map((d) => (
+            {dec.datos.decisiones.map((d) => (
               <Decision key={d.id} d={d} />
             ))}
           </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{dec.nota}</p>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{dec.datos.nota}</p>
         </section>
       )}
     </div>

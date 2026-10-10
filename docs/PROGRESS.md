@@ -41,7 +41,7 @@ repositorio.
 
 ## Fase 2 — Claridad y uso diario (P2)
 
-- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: pendiente · commit: — · nota: —
+- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: en curso (falta la revisión independiente y las capturas 1440/390) · commit: este · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Guarda: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error; 73 tests nuevos de render.
 - [ ] **2.2** V14 · `AvisoAgrupado` — estado: pendiente · commit: — · nota: —
 - [ ] **2.3** Tipografía (mínimo 12 px, `<TituloPagina>`, `<TituloTarjeta>`) — estado: pendiente · commit: — · nota: —
 - [ ] **2.4** V15 · `<BarraExposicion>` — estado: pendiente · commit: — · nota: —
@@ -156,23 +156,26 @@ git push origin 'refs/tags/fase-*:refs/tags/fase-*'   # cuando se pueda; despué
 - **Sin cotización, la ficha entera desaparece** (destapado al dejar de inventar datos en la demo).
   `TickerPage` trata la cotización como imprescindible: si falta, enseña «No se encontró el símbolo» y
   ninguna pestaña, aunque EDGAR tenga estados financieros, análisis, calidad e historial. Ausente ≠ «no
-  existe». Para el ítem 2.1 (estados de dato); hasta entonces la captura `empresa_sin_datos` fotografía eso.
+  existe». **Resuelto en 2.1**: cabecera, «Precio no disponible…» y todas las pestañas.
 - **`?? 0` en el frontend** (`grep -rn "?? 0" frontend/src`): la mayoría solo eligen un color por el
   signo, pero alguno puede pintar un 0 donde falta el dato. En 1.7 se arreglaron los que pintaban una
   cifra (tasa de acierto, minutos de un precio viejo, alertas nuevas). La revisión del 9-oct contó 26
   líneas y no son solo de color y orden: «Posiciones 0» y «+0,0 %» en Cartera, la prima de opciones,
   «0 seguidas» en Señales y «0 ideas» en Hoy pintan una cifra si falta el campo; y `?? 0.05` en
-  `ValuationSection` rellena un 5 % de crecimiento sin decirlo. Para 2.1 (estados de dato).
+  `ValuationSection` rellena un 5 % de crecimiento sin decirlo. **Resuelto en 2.1** (y «Cuánto de tu
+  cartera» en Hoy, que enseñaba el peso bruto como final si faltaba este); quedan los `?.length ?? 0`
+  de condición u orden, inocuos.
 - **Un fallo se pinta como «vacío»**: índices y sectores del panel de mercado hacen `() => setX([])` al
   fallar (curva y macro ya se arreglaron en S11; el calendario en 1.10). El mismo patrón, también como
   `() => setX(null)`, está en unas 15 cargas más; la peor, las alertas de Portafolio («Sin alertas
   configuradas» si la carga falla, un control de riesgo que se calla), y después el efectivo de Cartera,
   `sinTesis` de Vigilancia, Screener, Resultados, Valoración, Señales, Multifactor y las secciones de la
-  ficha. Para 2.1 (estados de dato).
+  ficha. **Resuelto en 2.1**, con guarda de ESLint.
 - **Las posiciones cerradas salen sin moneda**: con dos divisas, su P&L realizado sale sin código. La
   API ya manda `currency` y `opened_at` en cada cerrada (`routers/portfolio.py`); lo que falta es el
   tipo `ClosedPosition` del frontend y pasar la moneda a `<Pnl>` (también en «Realizado (cerradas)»).
-  No cambia el contrato. Para 2.1.
+  No cambia el contrato. **Resuelto en 2.1.** Queda en el backend: `mezcla_de_divisas` solo mira las
+  abiertas (el frontend lo compensa); que `/api/portfolio` cuente también las cerradas.
 - **El texto de la IA sale con el Markdown en crudo** («\*\*Lectura…\*\*»): `content_md` se pinta con
   `whitespace-pre-wrap`, sin interpretar. Visto en las capturas `con_ia` del ítem 1.3. Para 2.x (o
   pedir texto plano al modelo).
@@ -192,9 +195,9 @@ Lo que encontraron y adónde va:
 
 | # | Hallazgo | Destino |
 |---|---|---|
-| M1 | Si falla la descarga de noticias, el disparador de noticias de la tesis cuenta 0 titulares como comprobados y la tesis sale «intacta» (UNKNOWN convertido en PASS) | arreglar ya (visto bueno de Victor) |
-| M2 | «Calibrada» sale con solo la probabilidad del modelo de factores, o con ventaja desconocida: Hoy dice «Reglas validadas contra el histórico» sin backtest de reglas | arreglar ya (visto bueno de Victor) |
-| M3 | Hoy dimensiona sobre lo invertido aunque haya efectivo anotado (0008) y dice «la app no registra tu efectivo»; el coste de oportunidad sí lo usa | arreglar ya (visto bueno de Victor) |
+| M1 | Si falla la descarga de noticias, el disparador de noticias de la tesis cuenta 0 titulares como comprobados y la tesis sale «intacta» (UNKNOWN convertido en PASS) | hecho: `d86f3b8` (golden `tesis`, caso `vacios`, aprobado). Quedan hallazgos de su revisión, abajo |
+| M2 | «Calibrada» sale con solo la probabilidad del modelo de factores, o con ventaja desconocida: Hoy dice «Reglas validadas contra el histórico» sin backtest de reglas | hecho: `c61a65d` (golden igual). Quedan hallazgos de su revisión, abajo |
+| M3 | Hoy dimensiona sobre lo invertido aunque haya efectivo anotado (0008) y dice «la app no registra tu efectivo»; el coste de oportunidad sí lo usa | hecho: `88c391a` y, tras su revisión, `0a54bfd` (golden `hoy`: dos claves nuevas, ninguna cifra cambia) |
 | M4 | La matriz de sensibilidad de la ficha pinta el valor total de la empresa como «valor/acción» si faltan las acciones (`valuation.py`, `value_per_share or equity_value`, hermano de P0-9) | 3.3 o antes |
 | M5 | Hay tres DCF, no dos: el «precargado» del informe (`deep_dive._dcf_defaults`) aplica un 3 % supuesto sin decirlo y no lee la deuda parcial; la ficha supone un 5 % en el frontend y sube a 0 % un crecimiento negativo medido; con crecimiento negativo, bajista y alcista se invierten | 3.3 (incluir el tercero) |
 | M6 | Opciones: volumen e interés abierto ausentes cuentan como 0 (`or 0`), sin marcar parcial | 2.1 o suelto |
@@ -208,7 +211,32 @@ Lo que encontraron y adónde va:
 | M14 | `frontend/tsconfig.node.tsbuildinfo` está versionado aunque `.gitignore` lo ignora; `tsc -b` lo reescribe (hoy idéntico) | `git rm --cached` cuando se toque |
 | M15 | Informe de validación (`coherencia.py`): «1 periodos», fechas ISO y listas de Python en crudo; los trinquetes no lo ven | suelto |
 | M16 | Altman Z cuenta como negativo en la lectura conjunta del informe también en bancos; el aviso solo está en Salud. ROIC con el 21 % supuesto entra en Multifactor y en disparadores sin aviso | para Victor |
-| M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | con M1 |
+| M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | hecho con M1 (`d86f3b8`) |
+
+**Pendiente de la revisión independiente de M1–M3** (confirmado por un segundo agente; sin arreglar aún):
+
+- M1: el análisis vigila el punto de noticias sobre la lista ya recortada para la pantalla (10
+  titulares, sin resumen) y puede congelar «intacta» mientras Vigilancia, con hasta 60 y su resumen,
+  lo da por cruzado. Pasar la lista completa (no anidada en `noticias`: la limpieza de la instantánea
+  solo quita claves `_` del primer nivel) y, para el test, el `ahora` del análisis a `evaluar_noticia`.
+- M1: unas noticias viejas rescatadas de la caché (hasta 7,5 h) cuentan como comprobadas; la sección
+  de noticias no lee el `estado: viejo`.
+- M1: «Qué cambió» presenta una caída de noticias como «Nuevos riesgos: Si hay un recall», sin el
+  motivo; y el estado de la tesis sale como código en crudo (`sin_comprobar`, `sin_puntos` sin etiqueta).
+- M2: un backtest de reglas de cripto decide si las de acciones están calibradas (no se filtra por
+  clase); uno corto y no fiable posterior tapa una refutación fiable; el disclaimer de Hoy dice
+  siempre «aún no están validadas»; el panel de Señales pinta en verde o rojo un backtest no fiable;
+  «Media ganadora/perdedora» sale 0,00 cuando no hay operaciones de ese lado.
+- M3: Hoy se cachea 6 h con la cartera y el efectivo de cuando se puntuó. Invalidar la caché al
+  anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y recalcular el tamaño al
+  servirla contradice lo congelado. **Para Victor**: ¿recalcular y congelar de nuevo al servir, o basta
+  con «Actualizar»?
+
+**Notas de la migración del 2.1** (fuera de su alcance): `routers/options.py` aplana la cadena y tira
+`estado`/`antiguedad_segundos` (una cadena vieja sale como normal); `CalidadSection` y `OptionsSection`
+pintan códigos en mayúsculas sin `etiqueta()` (`BUENO`, `CONTANGO`…); Multifactor no enseña
+`sin_puntuar`; el `DailyPrice` del frontend no declara `estado` (Hoy no dice «dato viejo» en la fila);
+un replay pedido para un símbolo puede llegar tras cambiar de símbolo.
 
 ## Informe del repaso de seguridad (0.9)
 

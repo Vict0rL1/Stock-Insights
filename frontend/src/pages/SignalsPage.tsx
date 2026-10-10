@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Histograma } from '../components/Sparkline'
 import { api } from '../api/client'
@@ -9,11 +9,12 @@ import type {
   ScanResponse,
   SignalExplanation,
   SignalResponse,
-  UniverseInfo,
 } from '../api/types'
+import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
+import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
 
 const LABEL_STYLES: Record<string, string> = {
@@ -286,16 +287,15 @@ function UncalibratedBanner() {
 
 /** Modo automático: la app trae las candidatas y las ordena. */
 function ScanMode() {
-  const [universes, setUniverses] = useState<UniverseInfo[]>([])
+  // Un fallo al pedir los universos se dice, con «Reintentar». Antes hacía
+  // `setUniverses([])` y la lista se quedaba solo con «Mi watchlist», como si
+  // el servidor no tuviera ninguno (ítem 2.1).
+  const universos = useDato(() => api.universes().then((d) => d.universes), 'universos')
   const [selected, setSelected] = useState('megacaps')
   const [topN, setTopN] = useState(10)
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.universes().then((d) => setUniverses(d.universes), () => setUniverses([]))
-  }, [])
 
   const scan = async () => {
     setBusy(true)
@@ -310,39 +310,51 @@ function ScanMode() {
     }
   }
 
-  const active = universes.find((u) => u.key === selected)
+  const active = universos.datos?.find((u) => u.key === selected)
+
+  // La watchlist no depende de esa carga: se puede elegir aunque falle.
+  const botonWatchlist = (
+    <button
+      onClick={() => setSelected('watchlist')}
+      className={`rounded-lg border p-3 text-left ${
+        selected === 'watchlist'
+          ? 'border-slate-900 bg-slate-50'
+          : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <div className="text-sm font-medium text-slate-800">Mi watchlist</div>
+      <div className="text-xs text-slate-400">las que ya sigues</div>
+    </button>
+  )
 
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Elige un universo</h2>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {universes.map((u) => (
-            <button
-              key={u.key}
-              onClick={() => setSelected(u.key)}
-              className={`rounded-lg border p-3 text-left ${
-                selected === u.key
-                  ? 'border-slate-900 bg-slate-50'
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <div className="text-sm font-medium text-slate-800">{u.name}</div>
-              <div className="text-xs text-slate-400">{u.size} empresas</div>
-            </button>
-          ))}
-          <button
-            onClick={() => setSelected('watchlist')}
-            className={`rounded-lg border p-3 text-left ${
-              selected === 'watchlist'
-                ? 'border-slate-900 bg-slate-50'
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            <div className="text-sm font-medium text-slate-800">Mi watchlist</div>
-            <div className="text-xs text-slate-400">las que ya sigues</div>
-          </button>
-        </div>
+        <BloqueDatos carga={universos} que="los universos">
+          {(lista) => (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {lista.map((u) => (
+                <button
+                  key={u.key}
+                  onClick={() => setSelected(u.key)}
+                  className={`rounded-lg border p-3 text-left ${
+                    selected === u.key
+                      ? 'border-slate-900 bg-slate-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-slate-800">{u.name}</div>
+                  <div className="text-xs text-slate-400">{u.size} empresas</div>
+                </button>
+              ))}
+              {botonWatchlist}
+            </div>
+          )}
+        </BloqueDatos>
+        {universos.estado !== 'listo' && (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{botonWatchlist}</div>
+        )}
 
         {active && (
           <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
@@ -566,10 +578,16 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           tone="good"
         />
         <Stat label="Media perdedora" value={pct(result.media_perdedora_pct)} tone="bad" />
+        {/* Sin el dato, «—»: `?? 0` pintaba «0 seguidas», la mejor racha
+            posible, para un backtest que no la midió (ítem 2.1). */}
         <Stat
           label="Peor racha"
-          value={`${result.racha_perdedora ?? 0} seguidas`}
-          hint="¿aguantarías eso?"
+          value={
+            result.racha_perdedora === null || result.racha_perdedora === undefined
+              ? '—'
+              : `${result.racha_perdedora} ${plural(result.racha_perdedora, 'seguida', 'seguidas')}`
+          }
+          hint={result.racha_perdedora === null || result.racha_perdedora === undefined ? 'sin dato' : '¿aguantarías eso?'}
         />
       </div>
 

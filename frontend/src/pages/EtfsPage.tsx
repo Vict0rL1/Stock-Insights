@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { EtfComparison, EtfRecommendation } from '../api/types'
-import { SourceBadge } from '../components/SourceBadge'
+import { EstadoDato } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtPct } from '../lib/formato'
 
@@ -176,7 +176,7 @@ export function EtfsPage() {
               </tbody>
             </table>
             <div className="mt-2 flex justify-end">
-              {data.etfs[0] && <SourceBadge data={data.etfs[0]} />}
+              {data.etfs[0] && <EstadoDato data={data.etfs[0]} />}
             </div>
           </section>
 

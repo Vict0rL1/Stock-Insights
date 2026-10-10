@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { CalidadBeneficios, EvidenciaCalidad, Linaje } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 
 const ESTADO: Record<string, string> = {
   bueno: 'bg-emerald-100 text-emerald-800',
@@ -64,25 +65,25 @@ function Fila({ e }: { e: EvidenciaCalidad }) {
 }
 
 export function CalidadSection({ symbol }: { symbol: string }) {
-  const [datos, setDatos] = useState<CalidadBeneficios | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Cargando, fallo con su motivo y «Reintentar»: lo mismo que el resto de la
+  // app (ítem 2.1). Antes el fallo salía como un mensaje suelto, sin decir qué
+  // era lo que no había cargado.
+  const carga = useDato(() => api.calidad(symbol), symbol)
+  return (
+    <BloqueDatos carga={carga} que="la calidad de beneficios">
+      {(datos) => <Calidad datos={datos} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setDatos(null)
-    setError(null)
-    api.calidad(symbol).then(setDatos, (e: Error) => setError(e.message))
-  }, [symbol])
-
-  if (error) return <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</p>
-  if (!datos) return <p className="text-sm text-slate-400">Cargando calidad de beneficios…</p>
-
+function Calidad({ datos }: { datos: CalidadBeneficios }) {
   const columnas = ['cfo_sobre_beneficio', 'fcf_sobre_beneficio', 'sbc_sobre_ingresos', 'dias_de_cobro', 'brecha_cobros', 'brecha_inventario']
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">
-            Calidad de beneficios ({datos.ejercicio}): {GLOBAL[datos.global] ?? datos.global}
+            Calidad de beneficios{datos.ejercicio ? ` (${datos.ejercicio})` : ''}: {GLOBAL[datos.global] ?? datos.global}
           </h2>
           {datos.puntuacion && (
             <span className="text-[11px] text-slate-400">
@@ -90,6 +91,9 @@ export function CalidadSection({ symbol }: { symbol: string }) {
             </span>
           )}
         </div>
+        {/* Un DESCONOCIDA dice por qué (sin estados financieros…): antes el motivo
+            llegaba y no se pintaba, y salía «Calidad de beneficios (): DESCONOCIDA». */}
+        {datos.motivo && <p className="mt-1 text-[11px] text-amber-800">{datos.motivo}</p>}
         <p className="mt-1 text-[11px] text-slate-500">{datos.regla_global}</p>
         <div className="mt-2">
           {datos.evidencias.map((e) => (

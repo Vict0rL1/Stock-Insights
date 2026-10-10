@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
-import type { Fundamentals, History, HistoryRange, Profile, Quote } from '../api/types'
+import type { HistoryRange } from '../api/types'
 import { FundamentalsGrid } from '../components/FundamentalsGrid'
 import { CompanyLogo } from '../components/CompanyLogo'
 import { PriceChart } from '../components/PriceChart'
-import { SourceBadge } from '../components/SourceBadge'
+import { BloqueDatos, EstadoDato, ErrorDeCarga } from '../components/EstadoDato'
 import { DeepDiveSection } from '../components/ticker/DeepDiveSection'
 import { FilingsSection } from '../components/ticker/FilingsSection'
 import { FinancialsSection } from '../components/ticker/FinancialsSection'
@@ -17,6 +17,7 @@ import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { CalidadSection } from '../components/ticker/CalidadSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
 import { fmtCompacto, fmtPct, fmtNum } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 const RANGES: HistoryRange[] = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', '10Y']
 
@@ -49,17 +50,21 @@ const TABS: { id: TabName; label: string }[] = [
   { id: 'historial', label: 'Decisiones y replay' },
 ]
 
-interface TickerData {
-  quote: Quote
-  profile: Profile | null
-  fundamentals: Fundamentals | null
-}
-
 function lastNonNull(values: (number | null)[]): number | null {
   for (let i = values.length - 1; i >= 0; i--) {
     if (values[i] !== null) return values[i]
   }
   return null
+}
+
+/** Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
+ *  fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
+ *  otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1). */
+function nullSi404<T>(peticion: Promise<T>): Promise<T | null> {
+  return peticion.catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  })
 }
 
 export function TickerPage() {
@@ -70,53 +75,25 @@ export function TickerPage() {
   const [input, setInput] = useState(symbol)
   const [tab, setTab] = useState<TabName>('resumen')
   const [range, setRange] = useState<HistoryRange>('1Y')
-  const [data, setData] = useState<TickerData | null>(null)
-  const [history, setHistory] = useState<History | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async (sym: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      // La cotización es imprescindible; perfil y fundamentales pueden faltar
-      // en la fuente sin que eso rompa la vista.
-      const [quote, profile, fundamentals] = await Promise.all([
-        api.quote(sym),
-        api.profile(sym).catch(() => null),
-        api.fundamentals(sym).catch(() => null),
-      ])
-      setData({ quote, profile, fundamentals })
-    } catch (e) {
-      setData(null)
-      setError(
-        e instanceof ApiError && e.status === 404
-          ? `No se encontró el símbolo «${sym}» en las fuentes configuradas.`
-          : e instanceof Error
-            ? e.message
-            : 'Error desconocido',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Cada pieza de la ficha con su propio estado (ítem 2.1). Antes la cotización
+  // era imprescindible (`Promise.all`): si fallaba, la ficha entera era «No se
+  // encontró el símbolo» y no había pestañas, aunque EDGAR tuviera estados
+  // financieros, análisis e historial (captura `empresa_sin_datos`). Ausente no
+  // es «no existe». Perfil y fundamentales hacían `.catch(() => null)` y su
+  // fallo no se veía nunca.
+  const clave = symbol || null
+  const cotizacion = useDato(() => nullSi404(api.quote(symbol)), clave)
+  const perfil = useDato(() => nullSi404(api.profile(symbol)), clave)
+  const fundamentales = useDato(() => nullSi404(api.fundamentals(symbol)), clave)
+  // Clave símbolo + rango: al cambiar de símbolo ya no queda el gráfico del
+  // anterior bajo la cabecera del nuevo. Un fallo salía como «Sin histórico
+  // disponible…»; ahora solo lo dice un 404, y el resto es un fallo.
+  const historico = useDato(() => nullSi404(api.history(symbol, range)), symbol ? `${symbol}|${range}` : null)
 
   useEffect(() => {
-    if (symbol) void load(symbol)
     setTab('resumen')
-  }, [symbol, load])
-
-  useEffect(() => {
-    if (!symbol) return
-    let alive = true
-    api.history(symbol, range).then(
-      (h) => alive && setHistory(h),
-      () => alive && setHistory(null),
-    )
-    return () => {
-      alive = false
-    }
-  }, [symbol, range])
+  }, [symbol])
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -124,9 +101,18 @@ export function TickerPage() {
     if (cleaned) navigate(`/ticker/${cleaned}`)
   }
 
-  const quote = data?.quote
-  const up = (quote?.change ?? 0) >= 0
+  const quote = cotizacion.estado === 'listo' ? cotizacion.datos : null
+  const profile = perfil.estado === 'listo' ? perfil.datos : null
+  const history = historico.estado === 'listo' ? historico.datos : null
   const rsi = history ? lastNonNull(history.indicators.rsi14) : null
+  // Un cambio desconocido no es verde: `(change ?? 0) >= 0` lo pintaba como subida.
+  const colorCambio =
+    quote?.change === null || quote?.change === undefined
+      ? 'text-slate-500'
+      : quote.change >= 0
+        ? 'text-emerald-600'
+        : 'text-red-600'
+  const cap = profile?.market_cap ?? null
 
   return (
     <div className="space-y-4">
@@ -145,54 +131,66 @@ export function TickerPage() {
         </button>
       </form>
 
-      {loading && <p className="text-sm text-slate-500">Cargando {symbol}…</p>}
-      {error && (
-        <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
-      {quote && !loading && (
+      {symbol && (
         <>
           <header className="rounded-xl border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div className="flex items-start gap-3">
-                <CompanyLogo symbol={quote.symbol} size="lg" className="mt-1" />
-                <div>
+                <CompanyLogo symbol={symbol} size="lg" className="mt-1" />
+                <div className="space-y-1">
                 <h1 className="text-xl font-semibold text-slate-900">
-                  {data?.profile?.name ?? quote.symbol}
+                  {/* El nombre sale del perfil o, si no lo hay, del símbolo. */}
+                  {profile?.name ?? symbol}
                   <span className="ml-2 text-sm font-normal text-slate-400">
-                    {quote.symbol}
-                    {data?.profile?.exchange ? ` · ${data.profile.exchange}` : ''}
-                    {data?.profile?.sector ? ` · ${data.profile.sector}` : ''}
+                    {symbol}
+                    {profile?.exchange ? ` · ${profile.exchange}` : ''}
+                    {profile?.sector ? ` · ${profile.sector}` : ''}
+                    {perfil.estado === 'listo' && profile === null ? ' · sin perfil en las fuentes configuradas' : ''}
                   </span>
                 </h1>
-                <div className="mt-1 flex items-baseline gap-3">
-                  <span className="text-3xl font-semibold tabular-nums text-slate-900">
-                    {fmtNum(quote.price)}
-                    <span className="ml-1 text-base font-normal text-slate-400">
-                      {quote.currency ?? data?.profile?.currency ?? ''}
-                    </span>
-                  </span>
-                  <span
-                    className={`text-lg font-medium tabular-nums ${
-                      up ? 'text-emerald-600' : 'text-red-600'
-                    }`}
+                {/* Un perfil viejo, desconocido o con error se dice; uno válido no
+                    añade ruido a la cabecera. */}
+                {profile && profile.estado !== undefined && profile.estado !== 'valido' && <EstadoDato data={profile} />}
+                {perfil.estado === 'error' && (
+                  <ErrorDeCarga que="el perfil" error={perfil.error} reintentar={perfil.reintentar} />
+                )}
+                <div className="flex items-baseline gap-3">
+                  <BloqueDatos
+                    carga={cotizacion}
+                    que="la cotización"
+                    vacio={(q) => q === null}
+                    mensajeVacio={`Precio no disponible: ninguna fuente configurada tiene cotización de ${symbol}.`}
                   >
-                    {quote.change !== null && quote.change > 0 ? '+' : ''}
-                    {fmtNum(quote.change)} ({fmtPct(quote.change_pct, 2, { signo: true, enPuntos: true })})
-                  </span>
+                    {(q) =>
+                      q && (
+                        <>
+                          <span className="text-3xl font-semibold tabular-nums text-slate-900">
+                            {fmtNum(q.price)}
+                            <span className="ml-1 text-base font-normal text-slate-400">
+                              {q.currency ?? profile?.currency ?? ''}
+                            </span>
+                          </span>
+                          <span className={`text-lg font-medium tabular-nums ${colorCambio}`}>
+                            {q.change !== null && q.change > 0 ? '+' : ''}
+                            {fmtNum(q.change)} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
+                          </span>
+                        </>
+                      )
+                    }
+                  </BloqueDatos>
                 </div>
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1 text-right">
-                <SourceBadge data={quote} freshness={quote.freshness} />
+                {quote && <EstadoDato data={quote} freshness={quote.freshness} />}
                 <div className="text-xs text-slate-400">
-                  Ant.: {fmtNum(quote.prev_close)} · Rango día:{' '}
-                  {fmtNum(quote.day_low)}–{fmtNum(quote.day_high)}
-                  {data?.profile?.market_cap
-                    ? ` · Cap.: ${fmtCompacto(data.profile.market_cap)}`
-                    : ''}
+                  {quote && (
+                    <>
+                      Ant.: {fmtNum(quote.prev_close)} · Rango día:{' '}
+                      {fmtNum(quote.day_low)}–{fmtNum(quote.day_high)}
+                    </>
+                  )}
+                  {cap !== null ? `${quote ? ' · ' : ''}Cap.: ${fmtCompacto(cap)}` : ''}
                 </div>
               </div>
             </div>
@@ -253,25 +251,28 @@ export function TickerPage() {
                     RSI 14: <span className="font-medium tabular-nums">{fmtNum(rsi, 1)}</span>
                   </span>
                 )}
-                {history && <SourceBadge data={history} />}
+                {history && <EstadoDato data={history} />}
               </div>
             </div>
-            {history ? (
-              <PriceChart history={history} />
-            ) : (
-              <p className="py-16 text-center text-sm text-slate-400">
-                Sin histórico disponible para {symbol} en las fuentes configuradas.
-              </p>
-            )}
+            <BloqueDatos
+              carga={historico}
+              que="el histórico"
+              vacio={(h) => h === null}
+              mensajeVacio={
+                <span className="block py-16 text-center">
+                  Sin histórico disponible para {symbol} en las fuentes configuradas.
+                </span>
+              }
+            >
+              {(h) => h && <PriceChart history={h} />}
+            </BloqueDatos>
           </section>
 
-          {tab === 'resumen' && data?.fundamentals && (
-            <FundamentalsGrid data={data.fundamentals} />
-          )}
+          {tab === 'resumen' && <FundamentalsGrid carga={fundamentales} symbol={symbol} />}
         </>
       )}
 
-      {!symbol && !loading && (
+      {!symbol && (
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-400">
           <p className="text-sm">
             Escribe un ticker para ver precio, gráfico y fundamentales básicos.

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 
 function OutcomeChip({ scenario }: { scenario: ScenarioRecord }) {
@@ -123,15 +125,18 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
 
 export function ThesesPage() {
   const [theses, setTheses] = useState<ThesisRecord[]>([])
-  const [record, setRecord] = useState<TrackRecord | null>(null)
+  // El registro de aciertos hacía `() => setRecord(null)`: si fallaba, el panel
+  // desaparecía y no se sabía si era un fallo o que aún no había nada (ítem 2.1).
+  const registro = useDato(() => api.trackRecord(), 'registro')
+  const recargarRegistro = registro.reintentar
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ symbol: '', title: '', body: '', invalidation: '' })
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     api.theses().then((d) => setTheses(d.theses), (e) => setError(e.message))
-    api.trackRecord().then(setRecord, () => setRecord(null))
-  }, [])
+    recargarRegistro()
+  }, [recargarRegistro])
   useEffect(load, [load])
 
   const create = async (e: React.FormEvent) => {
@@ -218,7 +223,9 @@ export function ThesesPage() {
         </form>
       )}
 
-      {record && <TrackRecordPanel record={record} />}
+      <BloqueDatos carga={registro} que="el registro de aciertos">
+        {(r) => <TrackRecordPanel record={r} />}
+      </BloqueDatos>
 
       {theses.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">

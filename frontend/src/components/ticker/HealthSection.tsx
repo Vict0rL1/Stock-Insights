@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { Health, RiskResponse } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
-import { SourceBadge } from '../SourceBadge'
+import { useDato, type CargaConReintento } from '../../lib/useDato'
+import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { DeudaParcial } from './DeudaParcial'
 
 const ZONE_STYLES: Record<string, string> = {
@@ -13,26 +13,21 @@ const ZONE_STYLES: Record<string, string> = {
 }
 
 export function HealthSection({ symbol }: { symbol: string }) {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [risk, setRisk] = useState<RiskResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const salud = useDato(() => api.health(symbol), symbol)
+  // El riesgo de mercado hacía `() => setRisk(null)`: si fallaba, beta,
+  // volatilidad y drawdown salían «—», como si la fuente no los reportara
+  // (ítem 2.1). Ahora su fallo se dice en su sitio.
+  const riesgo = useDato(() => api.risk(symbol), symbol)
 
-  useEffect(() => {
-    setHealth(null)
-    setRisk(null)
-    setError(null)
-    api.health(symbol).then(setHealth, (e) => setError(e.message))
-    api.risk(symbol).then(setRisk, () => setRisk(null))
-  }, [symbol])
+  return (
+    <BloqueDatos carga={salud} que="la salud financiera">
+      {(health) => <Salud health={health} riesgo={riesgo} />}
+    </BloqueDatos>
+  )
+}
 
-  if (error)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        Sin datos de salud financiera: {error}
-      </p>
-    )
-  if (!health) return <p className="text-sm text-slate-400">Cargando salud financiera…</p>
-
+function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<RiskResponse> }) {
+  const risk = riesgo.estado === 'listo' ? riesgo.datos : null
   const z = health.altman_z
   const f = health.piotroski_f
 
@@ -44,7 +39,7 @@ export function HealthSection({ symbol }: { symbol: string }) {
             <h2 className="text-sm font-semibold text-slate-700">
               Altman Z-score <span className="font-normal text-slate-400">({health.fiscal_year})</span>
             </h2>
-            <SourceBadge data={health} />
+            <EstadoDato data={health} />
           </div>
           <div className="flex items-baseline gap-3">
             <span className="text-3xl font-semibold tabular-nums text-slate-900">
@@ -117,30 +112,54 @@ export function HealthSection({ symbol }: { symbol: string }) {
             <dt className="text-xs text-slate-400">FCF (último ejercicio)</dt>
             <dd className="text-lg font-semibold tabular-nums">{fmtCompacto(health.fcf)}</dd>
           </div>
-          <div>
-            <dt className="text-xs text-slate-400">Beta vs. SPY (1A)</dt>
-            <dd className="text-lg font-semibold tabular-nums">
-              {risk?.beta_vs_spy != null ? fmtNum(risk.beta_vs_spy) : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-400">Volatilidad anualizada</dt>
-            <dd className="text-lg font-semibold tabular-nums">
-              {risk?.annualized_volatility != null ? fmtPct(risk.annualized_volatility) : '—'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-slate-400">Máx. drawdown (1A)</dt>
-            <dd className="text-lg font-semibold tabular-nums text-red-600">
-              {risk?.max_drawdown ? fmtPct(risk.max_drawdown.max_drawdown) : '—'}
-            </dd>
-          </div>
+          {/* Con el riesgo cargado, «—» es que la fuente no lo da; mientras carga
+              o si falla, las tres cifras no se pintan y se dice abajo. */}
+          {risk && (
+            <>
+              <div>
+                <dt className="text-xs text-slate-400">Beta vs. SPY (1A)</dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {risk.beta_vs_spy != null ? fmtNum(risk.beta_vs_spy) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-400">Volatilidad anualizada</dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {risk.annualized_volatility != null ? fmtPct(risk.annualized_volatility) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-slate-400">Máx. drawdown (1A)</dt>
+                {/* Sin dato, sin rojo: un guion rojo parece una caída. */}
+                <dd className={`text-lg font-semibold tabular-nums ${risk.max_drawdown ? 'text-red-600' : ''}`}>
+                  {risk.max_drawdown ? fmtPct(risk.max_drawdown.max_drawdown) : '—'}
+                </dd>
+              </div>
+            </>
+          )}
         </dl>
-        {risk?.max_drawdown && (
-          <p className="mt-2 text-xs text-slate-400">
-            Drawdown: pico {fmtFecha(risk.max_drawdown.peak)} → valle {fmtFecha(risk.max_drawdown.trough)}. Ventana:{' '}
-            {risk.window}.
-          </p>
+        {!risk && (
+          <div className="mt-3">
+            {/* Solo los estados de carga y error: con datos, las cifras van arriba. */}
+            <BloqueDatos carga={riesgo} que="las métricas de riesgo (beta, volatilidad y drawdown)">
+              {() => null}
+            </BloqueDatos>
+          </div>
+        )}
+        {risk && (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+            <p>
+              {risk.max_drawdown && (
+                <>
+                  Drawdown: pico {fmtFecha(risk.max_drawdown.peak)} → valle {fmtFecha(risk.max_drawdown.trough)}.{' '}
+                </>
+              )}
+              Ventana: {risk.window}.
+            </p>
+            {/* Beta, volatilidad y drawdown salen del histórico de precios, no de
+                EDGAR: llevan su propia fuente y fecha. */}
+            <EstadoDato data={risk} />
+          </div>
         )}
       </section>
     </div>

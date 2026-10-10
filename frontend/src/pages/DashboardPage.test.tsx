@@ -35,6 +35,14 @@ describe('calendario de resultados del panel de mercado', () => {
     expect(document.body.textContent).not.toMatch(/FRED_API_KEY/)
   })
 
+  it('índices y sectores que fallan lo dicen, no se pintan como «no hay datos» (ítem 2.1)', async () => {
+    servir({ status: 200, json: { events: [] } })
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+    expect(await screen.findByText('No se pudieron cargar los índices: sin datos en el test')).toBeInTheDocument()
+    expect(await screen.findByText('No se pudieron cargar los sectores: sin datos en el test')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Reintentar' }).length).toBeGreaterThanOrEqual(4)
+  })
+
   it('una lista vacía dice que no hay resultados anunciados', async () => {
     servir({ status: 200, json: { events: [] } })
     render(<MemoryRouter><DashboardPage /></MemoryRouter>)

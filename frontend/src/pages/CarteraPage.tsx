@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ContribucionAlRiesgoPanel, CosteOportunidadPanel } from '../components/cartera/RiesgoYOportunidad'
 import { api } from '../api/client'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { BloqueDatos } from '../components/EstadoDato'
 import { CurvaDeCrisis } from '../components/Sparkline'
 import type {
   CaracteristicasDeCartera,
@@ -10,10 +11,10 @@ import type {
   ExposicionAgregada,
   LookThroughEtf,
   MatrizCorrelacion,
-  RiesgoDeCartera,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 /** Color de una celda de correlación.
  *
@@ -128,10 +129,12 @@ function Concentracion({ c }: { c: ConcentracionReal }) {
   if (!c.disponible || c.apuestas_efectivas === undefined) {
     return <p className="text-sm text-slate-500">{c.nota}</p>
   }
-  const posiciones = c.posiciones ?? 0
+  // Sin el recuento, ni «0» ni veredicto: `?? 0` pintaba «Posiciones 0» y, con
+  // eso, unas apuestas en verde que nadie había comparado con nada (ítem 2.1).
+  const posiciones = c.posiciones
   // Menos de la mitad de apuestas que de posiciones: la diversificación es
   // aparente. El color lo dice antes de que nadie lea el número.
-  const alarma = c.apuestas_efectivas < posiciones * 0.5
+  const alarma = posiciones == null ? null : c.apuestas_efectivas < posiciones * 0.5
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
@@ -140,7 +143,7 @@ function Concentracion({ c }: { c: ConcentracionReal }) {
             Posiciones
           </div>
           <div className="text-2xl font-semibold tabular-nums text-slate-800">
-            {posiciones}
+            {posiciones == null ? '—' : posiciones}
           </div>
         </div>
         <div className="text-2xl text-slate-300">→</div>
@@ -150,7 +153,7 @@ function Concentracion({ c }: { c: ConcentracionReal }) {
           </div>
           <div
             className={`text-2xl font-semibold tabular-nums ${
-              alarma ? 'text-red-700' : 'text-emerald-700'
+              alarma === null ? 'text-slate-800' : alarma ? 'text-red-700' : 'text-emerald-700'
             }`}
           >
             {fmtNum(c.apuestas_efectivas, 1)}
@@ -381,7 +384,8 @@ function Crisis({ c }: { c: CrisisEstresada }) {
   // debajo de la mitad se apaga: un número parcial con tipografía de titular
   // se lee como completo.
   const fiable = c.titular_fiable
-  const retorno = c.retorno_pct ?? 0
+  // Sin retorno, «—» en neutro: `?? 0` pintaba «+0,0 %» en verde en plena crisis (ítem 2.1).
+  const retorno = c.retorno_pct
   return (
     <div
       className={`rounded-lg border p-3 ${
@@ -410,7 +414,7 @@ function Crisis({ c }: { c: CrisisEstresada }) {
           <div
             className={`font-semibold tabular-nums ${
               fiable ? 'text-2xl' : 'text-lg opacity-60'
-            } ${retorno < 0 ? 'text-red-700' : 'text-emerald-700'}`}
+            } ${retorno == null ? 'text-slate-500' : retorno < 0 ? 'text-red-700' : 'text-emerald-700'}`}
           >
             {fmtPct(retorno, 1, { enPuntos: true, signo: true })}
           </div>
@@ -452,33 +456,14 @@ function Crisis({ c }: { c: CrisisEstresada }) {
 }
 
 export function CarteraPage() {
-  const [datos, setDatos] = useState<RiesgoDeCartera | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(false)
-
-  const cargar = useCallback((descargar: boolean) => {
-    setCargando(true)
-    setError(null)
-    api
-      .riesgoDeCartera(descargar)
-      .then(setDatos, (e: Error) => setError(e.message))
-      .finally(() => setCargando(false))
-  }, [])
-
   // La primera carga no descarga: veinte años por posición no se piden sin que
-  // nadie los haya pedido. El botón lo hace explícito.
-  useEffect(() => {
-    cargar(false)
-  }, [cargar])
-
-  const faltanHistoricos = Object.keys(datos?.sin_historico ?? {}).length
-  // Lo que no entra en los pesos. `sin_precio` viajaba en la respuesta desde el
-  // principio y no se pintaba: una posición sin cotización desaparecía del
-  // análisis sin que la pantalla lo dijera.
-  const fuera = [
-    ...(datos?.sin_precio ?? []).map((s) => `${s} (sin precio)`),
-    ...(datos?.sin_convertir ?? []).map((s) => `${s.symbol} (${s.moneda ?? 'moneda desconocida'})`),
-  ]
+  // nadie los haya pedido. El botón lo hace explícito; cada pulsación es una
+  // clave nueva y vuelve a pedir, ya descargando.
+  const [descargas, setDescargas] = useState(0)
+  // El fallo salía como un motivo suelto, sin decir qué no había cargado y sin
+  // forma de reintentar (ítem 2.1).
+  const riesgo = useDato(() => api.riesgoDeCartera(descargas > 0), descargas)
+  const cargando = riesgo.estado === 'cargando'
 
   return (
     <div className="space-y-4">
@@ -492,7 +477,7 @@ export function CarteraPage() {
         </div>
         <button
           type="button"
-          onClick={() => cargar(true)}
+          onClick={() => setDescargas((n) => n + 1)}
           disabled={cargando}
           className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
         >
@@ -505,106 +490,113 @@ export function CarteraPage() {
       <ContribucionAlRiesgoPanel />
       <CosteOportunidadPanel />
 
-      {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          {error}
-        </p>
-      )}
-
-      {datos && !datos.disponible && (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          {datos.nota}
-        </p>
-      )}
-
-      {datos?.disponible && (
-        <>
-          {fuera.length > 0 && (
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-              <p className="text-sm text-amber-900">
-                {fuera.length} {plural(fuera.length, 'posición queda', 'posiciones quedan')} FUERA de todos los pesos de esta
-                página: {fuera.join(', ')}. La concentración, la exposición y el estrés
-                se calculan sin ellas — tu cartera real es más grande de lo que se ve
-                aquí.
+      <BloqueDatos carga={riesgo} que="el análisis de la cartera">
+        {(datos) => {
+          if (!datos.disponible) {
+            return (
+              <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                {datos.nota}
               </p>
-            </div>
-          )}
+            )
+          }
+          const faltanHistoricos = Object.keys(datos.sin_historico ?? {}).length
+          // Lo que no entra en los pesos. `sin_precio` viajaba en la respuesta desde el
+          // principio y no se pintaba: una posición sin cotización desaparecía del
+          // análisis sin que la pantalla lo dijera.
+          const fuera = [
+            ...(datos.sin_precio ?? []).map((s) => `${s} (sin precio)`),
+            ...(datos.sin_convertir ?? []).map((s) => `${s.symbol} (${s.moneda ?? 'moneda desconocida'})`),
+          ]
+          return (
+            <>
+              {fuera.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                  <p className="text-sm text-amber-900">
+                    {fuera.length} {plural(fuera.length, 'posición queda', 'posiciones quedan')} FUERA de todos los pesos de esta
+                    página: {fuera.join(', ')}. La concentración, la exposición y el estrés
+                    se calculan sin ellas — tu cartera real es más grande de lo que se ve
+                    aquí.
+                  </p>
+                </div>
+              )}
 
-          {faltanHistoricos > 0 && (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-              <p className="text-sm text-sky-900">
-                {faltanHistoricos} {plural(faltanHistoricos, 'posición', 'posiciones')} sin histórico largo:{' '}
-                {Object.keys(datos.sin_historico ?? {}).join(', ')}. El estrés de las
-                crisis las cuenta como no cubiertas — pulsa «Descargar histórico
-                completo» para incluirlas.
-              </p>
-            </div>
-          )}
+              {faltanHistoricos > 0 && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                  <p className="text-sm text-sky-900">
+                    {faltanHistoricos} {plural(faltanHistoricos, 'posición', 'posiciones')} sin histórico largo:{' '}
+                    {Object.keys(datos.sin_historico ?? {}).join(', ')}. El estrés de las
+                    crisis las cuenta como no cubiertas — pulsa «Descargar histórico
+                    completo» para incluirlas.
+                  </p>
+                </div>
+              )}
 
-          {datos.concentracion && (
-            <Seccion
-              titulo="Concentración real"
-              subtitulo="Diez posiciones que se mueven juntas son una apuesta repartida en diez recibos."
-            >
-              <Concentracion c={datos.concentracion} />
-            </Seccion>
-          )}
+              {datos.concentracion && (
+                <Seccion
+                  titulo="Concentración real"
+                  subtitulo="Diez posiciones que se mueven juntas son una apuesta repartida en diez recibos."
+                >
+                  <Concentracion c={datos.concentracion} />
+                </Seccion>
+              )}
 
-          {datos.correlacion && (
-            <Seccion
-              titulo="Correlación entre posiciones"
-              subtitulo="Si suben y bajan a la vez, tener ocho no es tener ocho."
-            >
-              <Correlacion c={datos.correlacion} />
-            </Seccion>
-          )}
+              {datos.correlacion && (
+                <Seccion
+                  titulo="Correlación entre posiciones"
+                  subtitulo="Si suben y bajan a la vez, tener ocho no es tener ocho."
+                >
+                  <Correlacion c={datos.correlacion} />
+                </Seccion>
+              )}
 
-          {datos.exposicion && (
-            <Seccion
-              titulo="Exposición agregada"
-              subtitulo="Dónde está el dinero cuando se suman todas las posiciones."
-            >
-              <div className="grid gap-6 md:grid-cols-2">
-                <Exposicion e={datos.exposicion.sector} titulo="Por sector" />
-                <Exposicion e={datos.exposicion.geografia} titulo="Por geografía" />
-              </div>
-              <Aviso>{datos.nota_geografia}</Aviso>
-            </Seccion>
-          )}
+              {datos.exposicion && (
+                <Seccion
+                  titulo="Exposición agregada"
+                  subtitulo="Dónde está el dinero cuando se suman todas las posiciones."
+                >
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <Exposicion e={datos.exposicion.sector} titulo="Por sector" />
+                    <Exposicion e={datos.exposicion.geografia} titulo="Por geografía" />
+                  </div>
+                  <Aviso>{datos.nota_geografia}</Aviso>
+                </Seccion>
+              )}
 
-          {datos.look_through && (
-            <Seccion
-              titulo="Lo que llevas dentro de los ETFs"
-              subtitulo="Tu exposición a una empresa es la directa más la que va dentro del fondo."
-            >
-              <LookThrough lt={datos.look_through} />
-            </Seccion>
-          )}
+              {datos.look_through && (
+                <Seccion
+                  titulo="Lo que llevas dentro de los ETFs"
+                  subtitulo="Tu exposición a una empresa es la directa más la que va dentro del fondo."
+                >
+                  <LookThrough lt={datos.look_through} />
+                </Seccion>
+              )}
 
-          {datos.caracteristicas && (
-            <Seccion
-              titulo="Características de factor"
-              subtitulo="Hacia qué se inclina la cartera. Descriptivo, no estimado por regresión."
-            >
-              <Caracteristicas c={datos.caracteristicas} />
-            </Seccion>
-          )}
+              {datos.caracteristicas && (
+                <Seccion
+                  titulo="Características de factor"
+                  subtitulo="Hacia qué se inclina la cartera. Descriptivo, no estimado por regresión."
+                >
+                  <Caracteristicas c={datos.caracteristicas} />
+                </Seccion>
+              )}
 
-          {datos.estres && (
-            <Seccion
-              titulo="Esta mezcla en 2008, 2020 y 2022"
-              subtitulo="Crisis reales, fechas públicas, pesos de hoy."
-            >
-              <div className="grid gap-3 md:grid-cols-3">
-                {datos.estres.crisis.map((c) => (
-                  <Crisis key={c.clave} c={c} />
-                ))}
-              </div>
-              <Aviso>{datos.estres.aviso_general}</Aviso>
-            </Seccion>
-          )}
-        </>
-      )}
+              {datos.estres && (
+                <Seccion
+                  titulo="Esta mezcla en 2008, 2020 y 2022"
+                  subtitulo="Crisis reales, fechas públicas, pesos de hoy."
+                >
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {datos.estres.crisis.map((c) => (
+                      <Crisis key={c.clave} c={c} />
+                    ))}
+                  </div>
+                  <Aviso>{datos.estres.aviso_general}</Aviso>
+                </Seccion>
+              )}
+            </>
+          )
+        }}
+      </BloqueDatos>
     </div>
   )
 }

@@ -107,10 +107,10 @@ const ESCENARIOS: Record<string, Pantalla[]> = {
   normal: TODAS,
   cartera_vacia: TODAS.filter((p) => ['01_hoy', '13_cartera', '14_portafolio'].includes(p.nombre)),
   sin_candidatas: TODAS.filter((p) => p.nombre === '01_hoy'),
-  // Sin cotización, la ficha entera se sustituye por «No se encontró el símbolo»
-  // y sus pestañas no existen, aunque EDGAR sí tenga datos (hallazgo de la
-  // revisión de la Fase 0, para el ítem 2.1). Mientras tanto se fotografía eso.
-  // Antes no se veía porque la demo inventaba una cotización para VACIA.
+  // Sin cotización: desde el ítem 2.1 la ficha enseña la cabecera (nombre del
+  // perfil o símbolo), «Precio no disponible…» y todas sus pestañas; antes se
+  // sustituía entera por «No se encontró el símbolo» aunque EDGAR tuviera datos.
+  // La demo ya no inventa una cotización para VACIA.
   empresa_sin_datos: [{ nombre: '03_ficha_sin_cotizacion', ruta: '/ticker/VACIA' }],
   con_ia: [
     { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: 'Informe completo', accion: pulsar(/Redactar informe \(IA\)/) },

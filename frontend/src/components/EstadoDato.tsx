@@ -1,0 +1,139 @@
+import type { ReactNode } from 'react'
+import type { Sourced } from '../api/types'
+import { etiqueta } from '../lib/etiquetas'
+import { fmtAntiguedad, fmtFecha, ZONA_MERCADO } from '../lib/formato'
+import type { CargaConReintento } from '../lib/useDato'
+
+// Una sola forma de enseñar el estado de un dato (ítem 2.1). Dos piezas:
+//
+// - `EstadoDato`: la insignia de un bloque que llegó. Toda cifra muestra su
+//   fuente y su fecha, y los cuatro estados del backend (`app/datos.py`) se ven
+//   distintos: válido, viejo (con su antigüedad), desconocido y error.
+// - `BloqueDatos`: lo que se pinta mientras llega o si no llega. Cargando, vacío
+//   y error con «Reintentar», con el mismo texto en todas las pantallas. Un
+//   fallo nunca se pinta como «no hay datos».
+//
+// Antes era `SourceBadge` (solo válido y viejo); crece aquí en vez de vivir al
+// lado de otro componente parecido.
+
+export function EstadoDato({
+  data,
+  freshness,
+}: {
+  data: Sourced
+  freshness?: string
+}) {
+  // Dato viejo: todas las fuentes fallaron y se sirve la última copia. Se
+  // pinta distinto de una caché normal, y sin la etiqueta de frescura del
+  // proveedor — antes una cotización rescatada de hace 20 minutos salía
+  // rotulada «en vivo», porque ese era el `freshness` con que se descargó.
+  if (data.estado === 'viejo') {
+    // Sin antigüedad, se dice: `?? 0` pintaba «DATO VIEJO · hace 0 min» (revisión F1).
+    const s = data.antiguedad_segundos
+    const edad = s === null || s === undefined ? 'antigüedad desconocida' : fmtAntiguedad(new Date(Date.now() - s * 1000))
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+        title={data.aviso ?? 'Todas las fuentes fallaron: se muestra la última copia guardada.'}
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        DATO VIEJO · {data.source} · {edad}
+      </span>
+    )
+  }
+  if (data.estado === 'desconocido' || data.estado === 'error') {
+    const texto = data.estado === 'error' ? 'ERROR EN EL DATO' : 'DATO DESCONOCIDO'
+    return (
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+          data.estado === 'error' ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'
+        }`}
+        title={data.aviso ?? undefined}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${data.estado === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
+        {texto} · {data.source}
+      </span>
+    )
+  }
+
+  const parts: string[] = [data.source]
+  if (freshness) parts.push(etiqueta(freshness))
+  if (data.cached) parts.push(`caché · ${fmtAntiguedad(data.fetched_at)}`)
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500"
+      // La hora de un dato de mercado va en la del mercado y rotulada (ítem 1.7: «ET»);
+      // nadie la pasaba y salía en hora local sin rótulo (revisión de la Fase 1).
+      title={`Fuente: ${data.source} · dato del ${fmtFecha(data.as_of, { hora: true, zona: ZONA_MERCADO })}${
+        data.cached ? ` · descargado ${fmtFecha(data.fetched_at, { hora: true })}` : ''
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          data.cached ? 'bg-amber-400' : freshness === 'live' ? 'bg-emerald-500' : 'bg-sky-400'
+        }`}
+      />
+      {parts.join(' · ')}
+    </span>
+  )
+}
+
+/** «No se pudo cargar la curva» / «No se pudieron cargar los índices»: el verbo
+ *  concuerda con el artículo con que empieza `que` (ítem 1.9, concordancia). */
+export function fraseDeFallo(que: string): string {
+  return /^(los|las|unos|unas)\s/i.test(que) ? `No se pudieron cargar ${que}` : `No se pudo cargar ${que}`
+}
+
+/** El fallo de una carga, con su motivo y una forma de volver a intentarlo. */
+export function ErrorDeCarga({ que, error, reintentar }: { que: string; error: string; reintentar?: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      <span>
+        {fraseDeFallo(que)}: {error}
+      </span>
+      {reintentar && (
+        <button
+          type="button"
+          onClick={reintentar}
+          className="rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+        >
+          Reintentar
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Cargando, vacío o error, y si no, el contenido.
+ *
+ *  `que` nombra el bloque en las frases («los índices» → «Cargando los
+ *  índices…», «No se pudieron cargar los índices: …»). `vacio` decide si lo que
+ *  llegó está vacío; `mensajeVacio` lo dice con las palabras de esa pantalla. */
+export function BloqueDatos<T>({
+  carga,
+  que,
+  vacio,
+  mensajeVacio,
+  children,
+}: {
+  carga: CargaConReintento<T>
+  que: string
+  vacio?: (datos: T) => boolean
+  mensajeVacio?: ReactNode
+  children: (datos: T) => ReactNode
+}) {
+  if (carga.estado === 'cargando') {
+    return (
+      <p role="status" className="text-sm text-slate-400">
+        Cargando {que}…
+      </p>
+    )
+  }
+  if (carga.estado === 'error') {
+    return <ErrorDeCarga que={que} error={carga.error} reintentar={carga.reintentar} />
+  }
+  if (vacio?.(carga.datos)) {
+    return <p className="text-sm text-slate-400">{mensajeVacio ?? 'Sin datos que enseñar.'}</p>
+  }
+  return <>{children(carga.datos)}</>
+}

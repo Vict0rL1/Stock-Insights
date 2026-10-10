@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { FilingsResponse } from '../../api/types'
 import { fmtFecha } from '../../lib/formato'
-import { SourceBadge } from '../SourceBadge'
+import { useDato } from '../../lib/useDato'
+import { BloqueDatos, EstadoDato } from '../EstadoDato'
 
 function FilingList({ title, items }: { title: string; items: FilingsResponse['filings'] }) {
   return (
@@ -32,27 +32,21 @@ function FilingList({ title, items }: { title: string; items: FilingsResponse['f
 }
 
 export function FilingsSection({ symbol }: { symbol: string }) {
-  const [data, setData] = useState<FilingsResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Un fallo salía «Sin filings: …», que se lee como «no hay» (ítem 2.1): ahora
+  // es un fallo, con las palabras de todas las pantallas y «Reintentar».
+  const carga = useDato(() => api.filings(symbol), symbol)
+  return (
+    <BloqueDatos carga={carga} que="los filings de EDGAR">
+      {(data) => <Filings data={data} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setData(null)
-    setError(null)
-    api.filings(symbol).then(setData, (e) => setError(e.message))
-  }, [symbol])
-
-  if (error)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        Sin filings: {error}
-      </p>
-    )
-  if (!data) return <p className="text-sm text-slate-400">Cargando filings de EDGAR…</p>
-
+function Filings({ data }: { data: FilingsResponse }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <SourceBadge data={data} />
+        <EstadoDato data={data} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <FilingList title="Filings de la empresa (10-K, 10-Q, 8-K…)" items={data.filings} />

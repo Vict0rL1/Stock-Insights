@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { CalibracionExpectativas, EventoCatalizador, LecturaEvento } from '../../api/types'
+import type { CalibracionExpectativas, LecturaEvento } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { mensajeDeError, useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 
 // De dónde sale cada fuente. El nombre es su etiqueta (uno solo en toda la app);
 // esto solo añade la procedencia, que en la guidance es además la marca de IA.
@@ -36,24 +38,41 @@ function cifra(v: number | null | undefined, unidad: string | null): string {
 }
 
 function Evento({ id, alCambiar }: { id: number; alCambiar: () => void }) {
-  const [l, setL] = useState<LecturaEvento | null>(null)
+  // Si la lectura no llegaba, el fallo se guardaba en un mensaje que solo se
+  // pintaba con la lectura cargada: «Cargando evento…» para siempre (ítem 2.1).
+  const carga = useDato(() => api.evento(id), id)
   const [msg, setMsg] = useState<string | null>(null)
-  const cargar = useCallback(() => {
-    api.evento(id).then(setL, (e: Error) => setMsg(e.message))
-  }, [id])
-  useEffect(cargar, [cargar])
-  if (!l) return <p className="text-xs text-slate-400">Cargando evento…</p>
 
+  // Capturar y registrar son acciones del usuario: su fallo va en `msg`, junto
+  // a los botones, y no tapa la lectura.
   const accion = (p: Promise<unknown>) =>
     p.then(
       () => {
         setMsg(null)
-        cargar()
+        carga.reintentar()
         alCambiar()
       },
-      (e: Error) => setMsg(e.message),
+      (e: unknown) => setMsg(mensajeDeError(e)),
     )
 
+  return (
+    <BloqueDatos carga={carga} que="el evento">
+      {(l) => <LecturaDeEvento l={l} msg={msg} accion={accion} id={id} />}
+    </BloqueDatos>
+  )
+}
+
+function LecturaDeEvento({
+  l,
+  msg,
+  accion,
+  id,
+}: {
+  l: LecturaEvento
+  msg: string | null
+  accion: (p: Promise<unknown>) => void
+  id: number
+}) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -128,33 +147,39 @@ function Evento({ id, alCambiar }: { id: number; alCambiar: () => void }) {
 }
 
 export function ExpectativasSection({ symbol }: { symbol: string }) {
-  const [eventos, setEventos] = useState<EventoCatalizador[] | null>(null)
-  const [cal, setCal] = useState<CalibracionExpectativas | null>(null)
+  // Montado por símbolo: el evento abierto y el mensaje de otra empresa no se
+  // arrastran a esta (antes se reseteaban a mano en el efecto de carga).
+  return <Expectativas key={symbol} symbol={symbol} />
+}
+
+function Expectativas({ symbol }: { symbol: string }) {
+  const eventos = useDato(() => api.eventos(symbol).then((r) => r.eventos), symbol)
+  // La calibración hacía `() => setCal(null)`: un fallo y «aún no hay pares»
+  // se pintaban igual, con la sección desaparecida (ítem 2.1).
+  const cal = useDato(() => api.calibracion(symbol), symbol)
   const [abierto, setAbierto] = useState<number | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
 
-  const cargar = useCallback(() => {
-    api.eventos(symbol).then((r) => {
-      setEventos(r.eventos)
-      setAbierto((a) => a ?? r.eventos[0]?.id ?? null)
-    }, (e: Error) => setMsg(e.message))
-    api.calibracion(symbol).then(setCal, () => setCal(null))
-  }, [symbol])
+  // Sin elección del usuario se abre el primer evento, como antes; una recarga
+  // de la lista (tras capturar o registrar) no cierra el que está abierto.
+  const primero = eventos.estado === 'listo' ? (eventos.datos[0]?.id ?? null) : null
   useEffect(() => {
-    setEventos(null)
-    setAbierto(null)
-    setMsg(null)
-    cargar()
-  }, [cargar])
+    if (primero !== null) setAbierto((a) => a ?? primero)
+  }, [primero])
+
+  const recargar = () => {
+    eventos.reintentar()
+    cal.reintentar()
+  }
 
   const preparar = () =>
     api.prepararResultados(symbol).then(
       (r) => {
         setMsg(`Evento ${r.evento.periodo ?? ''} creado; ${r.captura.registradas.length} ${plural(r.captura.registradas.length, 'expectativa capturada', 'expectativas capturadas')}.${r.captura.sin_fuente.length ? ' Sin fuente: ' + r.captura.sin_fuente.join(' · ') : ''}`)
         setAbierto(r.evento.id)
-        cargar()
+        recargar()
       },
-      (e: Error) => setMsg(e.message),
+      (e: unknown) => setMsg(mensajeDeError(e)),
     )
 
   return (
@@ -171,39 +196,66 @@ export function ExpectativasSection({ symbol }: { symbol: string }) {
           mezcla nunca con el modelo interno.
         </p>
         {msg && <p className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-700">{msg}</p>}
-        {eventos && eventos.length === 0 && <p className="mt-2 text-xs text-slate-500">Todavía no hay eventos registrados para {symbol}.</p>}
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(eventos ?? []).map((e) => (
-            <button key={e.id} type="button" onClick={() => setAbierto(e.id)}
-              className={`rounded-md border px-2 py-1 text-xs ${abierto === e.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 text-slate-700'}`}>
-              {etiqueta(e.tipo, { mayuscula: true })} {e.periodo ?? ''} · {e.fecha_prevista ? fmtFecha(e.fecha_prevista) : 'sin fecha'} · {e.expectativas} exp / {e.reales} reales
-            </button>
-          ))}
+        <div className="mt-3">
+          <BloqueDatos
+            carga={eventos}
+            que="los eventos"
+            vacio={(d) => d.length === 0}
+            mensajeVacio={`Todavía no hay eventos registrados para ${symbol}.`}
+          >
+            {(lista) => (
+              <div className="flex flex-wrap gap-2">
+                {lista.map((e) => (
+                  <button key={e.id} type="button" onClick={() => setAbierto(e.id)}
+                    className={`rounded-md border px-2 py-1 text-xs ${abierto === e.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 text-slate-700'}`}>
+                    {etiqueta(e.tipo, { mayuscula: true })} {e.periodo ?? ''} · {e.fecha_prevista ? fmtFecha(e.fecha_prevista) : 'sin fecha'} · {e.expectativas} exp / {e.reales} reales
+                  </button>
+                ))}
+              </div>
+            )}
+          </BloqueDatos>
         </div>
-        {abierto != null && <div className="mt-4"><Evento id={abierto} alCambiar={cargar} /></div>}
+        {/* Fuera del bloque de la lista: recargarla no desmonta el evento abierto. */}
+        {abierto != null && <div className="mt-4"><Evento key={abierto} id={abierto} alCambiar={recargar} /></div>}
       </section>
 
-      {cal && cal.pares > 0 && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-semibold text-slate-800">Calibración histórica ({cal.pares} pares)</h2>
-          <table className="w-full text-xs tabular-nums">
-            <thead className="text-[10px] text-slate-400"><tr><th className="text-left">Fuente</th><th className="text-right">n</th><th className="text-right">Error medio</th><th className="text-right">Sesgo</th><th className="text-right">Cerca</th><th className="text-right">Mejor prevista</th></tr></thead>
-            <tbody>
-              {Object.entries(cal.por_fuente).map(([f, c]) => (
-                <tr key={f} className="border-t border-slate-100">
-                  <td className="text-left text-slate-700">{fuente(f)}{!c.total.suficiente && <span className="ml-1 text-amber-800">(muestra insuficiente)</span>}</td>
-                  <td className="text-right">{c.total.n}</td>
-                  <td className="text-right">{fmtPct(c.total.error_medio_abs ?? null, 1)}</td>
-                  <td className="text-right">{fmtPct(c.total.sesgo ?? null, 1)}</td>
-                  <td className="text-right">{fmtPct(c.total.cerca_pct ?? null, 0)}</td>
-                  <td className="text-right">{etiqueta(c.mejor_prevista)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-1 text-[10px] text-slate-400">{cal.nota} Sesgo positivo = lo real salió por encima de lo esperado.</p>
-        </section>
-      )}
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-semibold text-slate-800">
+          Calibración histórica
+          {cal.estado === 'listo' && cal.datos.pares > 0 && ` (${cal.datos.pares} ${plural(cal.datos.pares, 'par', 'pares')})`}
+        </h2>
+        <BloqueDatos
+          carga={cal}
+          que="la calibración histórica"
+          vacio={(c) => c.pares === 0}
+          mensajeVacio="Todavía no hay pares de expectativa y resultado con los que medir lo bien que prevé cada fuente."
+        >
+          {(c) => <Calibracion cal={c} />}
+        </BloqueDatos>
+      </section>
     </div>
+  )
+}
+
+function Calibracion({ cal }: { cal: CalibracionExpectativas }) {
+  return (
+    <>
+      <table className="w-full text-xs tabular-nums">
+        <thead className="text-[10px] text-slate-400"><tr><th className="text-left">Fuente</th><th className="text-right">n</th><th className="text-right">Error medio</th><th className="text-right">Sesgo</th><th className="text-right">Cerca</th><th className="text-right">Mejor prevista</th></tr></thead>
+        <tbody>
+          {Object.entries(cal.por_fuente).map(([f, c]) => (
+            <tr key={f} className="border-t border-slate-100">
+              <td className="text-left text-slate-700">{fuente(f)}{!c.total.suficiente && <span className="ml-1 text-amber-800">(muestra insuficiente)</span>}</td>
+              <td className="text-right">{c.total.n}</td>
+              <td className="text-right">{fmtPct(c.total.error_medio_abs ?? null, 1)}</td>
+              <td className="text-right">{fmtPct(c.total.sesgo ?? null, 1)}</td>
+              <td className="text-right">{fmtPct(c.total.cerca_pct ?? null, 0)}</td>
+              <td className="text-right">{etiqueta(c.mejor_prevista)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-1 text-[10px] text-slate-400">{cal.nota} Sesgo positivo = lo real salió por encima de lo esperado.</p>
+    </>
   )
 }

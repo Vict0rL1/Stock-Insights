@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { FilterSpec, ScreenerPreset, ScreenResult } from '../api/types'
+import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtNum, fmtPct } from '../lib/formato'
+import { useDato } from '../lib/useDato'
 
 const PCT_METRICS = new Set([
   'roe', 'gross_margin', 'operating_margin', 'net_margin',
@@ -23,23 +25,20 @@ function describeFilter(metric: string, spec: FilterSpec) {
 }
 
 export function ScreenerPage() {
-  const [presets, setPresets] = useState<ScreenerPreset[]>([])
-  const [active, setActive] = useState<ScreenerPreset | null>(null)
+  // Si los presets no llegan se dice, con «Reintentar»: antes el fallo hacía
+  // `setPresets([])` y la pantalla se quedaba en «Cargando presets…» para
+  // siempre (ítem 2.1).
+  const presets = useDato(
+    () => api.screenerPresets().then((d) => [...d.builtin, ...d.saved]),
+    'presets',
+  )
+  const [elegido, setElegido] = useState<ScreenerPreset | null>(null)
+  // Sin elección todavía, el primero de la lista, como antes al llegar.
+  const active = elegido ?? presets.datos?.[0] ?? null
   const [universe, setUniverse] = useState('AAPL, MSFT, JNJ, KO, XOM, JPM, PG, VZ')
   const [result, setResult] = useState<ScreenResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.screenerPresets().then(
-      (d) => {
-        const all = [...d.builtin, ...d.saved]
-        setPresets(all)
-        setActive(all[0] ?? null)
-      },
-      () => setPresets([]),
-    )
-  }, [])
 
   const run = async () => {
     if (!active) return
@@ -67,22 +66,30 @@ export function ScreenerPage() {
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Preset</h2>
-        <div className="flex flex-wrap gap-2">
-          {presets.map((preset) => (
-            <button
-              key={preset.name}
-              onClick={() => setActive(preset)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${
-                active?.name === preset.name
-                  ? 'bg-slate-900 font-medium text-white'
-                  : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {preset.name}
-            </button>
-          ))}
-          {presets.length === 0 && <p className="text-sm text-slate-400">Cargando presets…</p>}
-        </div>
+        <BloqueDatos
+          carga={presets}
+          que="los presets"
+          vacio={(d) => d.length === 0}
+          mensajeVacio="No hay presets: ni de serie ni guardados."
+        >
+          {(lista) => (
+            <div className="flex flex-wrap gap-2">
+              {lista.map((preset) => (
+                <button
+                  key={preset.name}
+                  onClick={() => setElegido(preset)}
+                  className={`rounded-lg px-3 py-1.5 text-sm ${
+                    active?.name === preset.name
+                      ? 'bg-slate-900 font-medium text-white'
+                      : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </BloqueDatos>
 
         {active && (
           <div className="mt-3 rounded-lg bg-slate-50 p-3">

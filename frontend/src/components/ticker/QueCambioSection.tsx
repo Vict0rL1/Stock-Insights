@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
+import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 
 const NIVEL: Record<string, string> = {
@@ -138,28 +140,31 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
 }
 
 export function QueCambioSection({ symbol }: { symbol: string }) {
-  const [datos, setDatos] = useState<AnalisisEmpresaResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const carga = useDato(() => api.analisisEmpresa(symbol), symbol)
+  // Al cambiar de símbolo el bloque vuelve a «cargando» y `QueCambio` se monta
+  // de nuevo: el resumen por IA del anterior no puede quedarse colgado aquí.
+  return (
+    <BloqueDatos carga={carga} que={`el análisis de ${symbol}`}>
+      {(datos) => <QueCambio symbol={symbol} datos={datos} />}
+    </BloqueDatos>
+  )
+}
+
+function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaResponse }) {
   const [resumenIa, setResumenIa] = useState<{ content_md: string; model: string; aviso: string } | null>(null)
   const [pidiendoIa, setPidiendoIa] = useState(false)
-
-  useEffect(() => {
-    setDatos(null)
-    setError(null)
-    setResumenIa(null)
-    api.analisisEmpresa(symbol).then(setDatos, (e: Error) => setError(e.message))
-  }, [symbol])
-
-  if (error) return <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>
-  if (!datos) return <p className="text-sm text-slate-400">Analizando {symbol} y comparando con el último análisis…</p>
+  // El fallo del resumen es del resumen: antes sustituía la sección entera, y
+  // un 503 de la IA borraba de la pantalla el análisis ya calculado (ítem 2.1).
+  const [errorIa, setErrorIa] = useState<string | null>(null)
 
   const { analisis: a, cambios } = datos
   const d = a.decision
   const pedirResumen = () => {
     setPidiendoIa(true)
+    setErrorIa(null)
     api
       .resumenCambiosIa(symbol, cambios)
-      .then(setResumenIa, (e: Error) => setError(e.message))
+      .then(setResumenIa, (e: unknown) => setErrorIa(mensajeDeError(e)))
       .finally(() => setPidiendoIa(false))
   }
 
@@ -282,6 +287,7 @@ export function QueCambioSection({ symbol }: { symbol: string }) {
               <BotonIA onClick={pedirResumen} disabled={pidiendoIa}>
                 {pidiendoIa ? 'Resumiendo…' : 'Resumir este diff con IA (opcional, gasta API)'}
               </BotonIA>
+              {errorIa && <p className="mt-2 text-xs text-red-700">No se pudo resumir con IA: {errorIa}</p>}
               {resumenIa && (
                 <BloqueIA className="mt-2" modelo={resumenIa.model} aviso={resumenIa.aviso}>
                   {resumenIa.content_md}

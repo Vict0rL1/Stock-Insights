@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '../api/client'
+import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   Comparables,
   DcfInverso,
@@ -7,7 +8,6 @@ import type {
   Sensibilidad,
   SupuestosEscenario,
   Valoracion,
-  WatchlistItem,
 } from '../api/types'
 import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
@@ -437,18 +437,10 @@ function ComparablesPanel({ c }: { c: Comparables }) {
 export function ValuationPage() {
   const [entrada, setEntrada] = useState('')
   const [symbol, setSymbol] = useState('')
-  const [seguidas, setSeguidas] = useState<string[]>([])
   const [data, setData] = useState<Valoracion | null>(null)
   const [supuestos, setSupuestos] = useState<Record<string, SupuestosEscenario>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.watchlist().then(
-      (w) => setSeguidas(w.items.map((i: WatchlistItem) => i.symbol)),
-      () => setSeguidas([]),
-    )
-  }, [])
 
   const correr = useCallback(
     async (s: string, escenarios?: Record<string, SupuestosEscenario>) => {
@@ -507,27 +499,13 @@ export function ValuationPage() {
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </form>
-        {seguidas.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate-400">De tu watchlist:</span>
-            {seguidas.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setEntrada(s)
-                  correr(s)
-                }}
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  symbol === s
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <AtajosWatchlist
+          actual={symbol}
+          elegir={(s) => {
+            setEntrada(s)
+            correr(s)
+          }}
+        />
       </section>
 
       {data && (

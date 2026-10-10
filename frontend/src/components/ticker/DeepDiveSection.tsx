@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type {
   DeepDiveNarrative,
   DeepDiveReport,
+  LlmStatus,
   MultipleStats,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
+import { mensajeDeError, useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
 import { Ventana } from '../Ventana'
@@ -119,38 +122,35 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
 }
 
 export function DeepDiveSection({ symbol }: { symbol: string }) {
-  const [report, setReport] = useState<DeepDiveReport | null>(null)
-  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const carga = useDato(() => api.deepDive(symbol), symbol)
   const llm = useLlmStatus()
+  // Al cambiar de símbolo el bloque vuelve a «cargando» e `Informe` se monta de
+  // nuevo: la narrativa del anterior no se queda bajo el informe del nuevo.
+  return (
+    <BloqueDatos carga={carga} que="el informe">
+      {(report) => <Informe symbol={symbol} report={report} llm={llm} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setReport(null)
-    setNarrative(null)
-    setError(null)
-    api.deepDive(symbol).then(setReport, (e) => setError(e.message))
-  }, [symbol])
+function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveReport; llm: LlmStatus | null }) {
+  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
+  // El fallo de la narrativa es de la narrativa: antes sustituía la sección
+  // entera y el informe calculado desaparecía por un 503 de la IA (ítem 2.1).
+  const [errorNarrativa, setErrorNarrativa] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   const writeNarrative = async () => {
-    if (!report) return
     setBusy(true)
+    setErrorNarrativa(null)
     try {
       setNarrative(await api.deepDiveNarrative(symbol, report))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error')
+      setErrorNarrativa(mensajeDeError(e))
     } finally {
       setBusy(false)
     }
   }
-
-  if (error)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        {error}
-      </p>
-    )
-  if (!report) return <p className="text-sm text-slate-400">Elaborando el informe…</p>
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
 
@@ -402,6 +402,9 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
             <BotonIA onClick={writeNarrative} disabled={busy} className="mt-2 px-3 text-sm">
               {busy ? 'Redactando…' : 'Redactar informe (IA)'}
             </BotonIA>
+            {errorNarrativa && (
+              <p className="mt-2 text-sm text-red-700">No se pudo redactar el informe: {errorNarrativa}</p>
+            )}
           </>
         ) : (
           <BloqueIA modelo={narrative.model} aviso={narrative.disclaimer}>

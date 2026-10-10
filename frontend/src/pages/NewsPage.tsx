@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { Interpretation, NewsFeed, NewsItem } from '../api/types'
-import { SourceBadge } from '../components/SourceBadge'
+import { EstadoDato } from '../components/EstadoDato'
 import { fmtFecha } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
 import { primerSimbolo } from '../lib/simbolos'
@@ -135,7 +135,7 @@ export function NewsPage() {
       {feed && (
         <>
           <div className="flex justify-end">
-            <SourceBadge data={feed} />
+            <EstadoDato data={feed} />
           </div>
           {feed.items.length === 0 && (
             <p className="text-sm text-slate-400">Sin noticias en el periodo.</p>
