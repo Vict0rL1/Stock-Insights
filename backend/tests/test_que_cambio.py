@@ -211,3 +211,31 @@ def test_un_punto_que_deja_de_medirse_dice_por_que():
                                "detalle": "Las noticias no se pudieron descargar"}]}
     motivo = cambios.comparar_tesis(antes, ahora)["nuevos_riesgos"][0]["motivo"]
     assert motivo.startswith("ya no se puede medir") and "no se pudieron descargar" in motivo
+
+
+# --- Un símbolo que ninguna fuente conoce no deja instantánea --------------------
+
+
+def test_un_simbolo_sin_un_solo_dato_no_deja_instantanea_inmutable(session_factory):
+    """Segunda revisión del 2.1: abrir «Qué cambió» de «AAPLL» (o evaluarlo como
+    idea en Cartera) congelaba una instantánea de un símbolo inexistente, que los
+    triggers de la 0004 ya no dejan borrar."""
+    vacio = ServicioFalso(AHORA)
+    with session_factory() as s:
+        r = analizar_y_congelar("AAPLL", vacio, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 0
+    assert r["instantanea"] is None
+    assert "AAPLL" in r["sin_congelar"] and "quizá no existe" in r["sin_congelar"]
+    # El análisis se devuelve igual: lo que no se hace es guardarlo.
+    assert r["analisis"]["decision"]["action"] == "sin_datos"
+
+
+def test_con_solo_los_estados_de_edgar_si_se_congela(session_factory):
+    """VACIA: sin cotización, perfil ni fundamentales, pero EDGAR la conoce."""
+    sv = ServicioFalso(AHORA)
+    sv.financials["VACIA"] = {"symbol": "VACIA", "source": "edgar", "as_of": AHORA.isoformat(),
+                              "periods": financieros_base(), "quarters": []}
+    with session_factory() as s:
+        r = analizar_y_congelar("VACIA", sv, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 1
+    assert r["instantanea"] is not None and r["sin_congelar"] is None

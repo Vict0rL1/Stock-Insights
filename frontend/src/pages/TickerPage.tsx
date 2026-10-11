@@ -70,7 +70,11 @@ export function TickerPage() {
   // mismo render. Con un `useEffect` quedaba un render con la pestaña anterior
   // abierta para el símbolo nuevo, y «Qué cambió» llegaba a pedir (y congelar)
   // el análisis de un símbolo que luego resultaba no existir (revisión del 2.1).
+  // Y la elección se olvida al cambiar: guardarla por símbolo reabría «Qué
+  // cambió» al volver de B a A, y lo volvía a pedir sin que nadie lo abriera
+  // (segunda revisión del 2.1).
   const [eleccion, setEleccion] = useState<{ symbol: string; tab: TabName }>({ symbol, tab: 'resumen' })
+  if (eleccion.symbol !== symbol) setEleccion({ symbol, tab: 'resumen' })
   const tab: TabName = eleccion.symbol === symbol ? eleccion.tab : 'resumen'
   const setTab = (t: TabName) => setEleccion({ symbol, tab: t })
   const [range, setRange] = useState<HistoryRange>('1Y')
@@ -103,6 +107,13 @@ export function TickerPage() {
   const tresAusentes = piezas.every((c) => c.estado === 'listo' && c.datos === null)
   const edgar = useDato(() => nullSi404(api.financials(symbol)), tresAusentes ? symbol : null)
   const noEncontrado = tresAusentes && edgar.estado === 'listo' && edgar.datos === null
+  // Un valor que ya no está en ninguna fuente (deslistado, sin SEC) puede tener
+  // decisiones congeladas: son datos del usuario, y el historial es la única
+  // entrada a sus replays (segunda revisión del 2.1).
+  const guardadas = useDato(
+    () => api.historialEmpresa(symbol).then((r) => r.decisiones.length),
+    noEncontrado ? symbol : null,
+  )
   const hayEmpresa =
     piezas.some((c) => c.estado === 'error' || (c.estado === 'listo' && c.datos !== null)) ||
     (tresAusentes && (edgar.estado === 'error' || (edgar.estado === 'listo' && edgar.datos !== null)))
@@ -144,9 +155,12 @@ export function TickerPage() {
       </form>
 
       {symbol && noEncontrado && (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          No se encontró el símbolo «{symbol}» en las fuentes configuradas.
-        </p>
+        <>
+          <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            No se encontró el símbolo «{symbol}» en las fuentes configuradas.
+          </p>
+          {guardadas.estado === 'listo' && guardadas.datos > 0 && <HistorialSection symbol={symbol} />}
+        </>
       )}
 
       {symbol && !noEncontrado && (

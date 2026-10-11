@@ -271,6 +271,53 @@ describe('ficha de una empresa', () => {
     const pedidas = vi.mocked(fetch).mock.calls.map(([e]) => String(e))
     // La de ACME sí se pidió: la pestaña estaba abierta y el filtro mira bien.
     expect(pedidas.some((u) => u.startsWith('/api/empresa/ACME/analisis'))).toBe(true)
-    expect(pedidas.filter((u) => u.includes('/api/empresa/AAPLL'))).toEqual([])
+    // El análisis es lo que congela; el historial (solo lectura) sí se mira.
+    expect(pedidas.filter((u) => u.startsWith('/api/empresa/AAPLL/analisis'))).toEqual([])
+  })
+
+  it('volver a un símbolo no reabre la pestaña que tenía: «Qué cambió» no se vuelve a pedir solo', async () => {
+    // Segunda revisión del 2.1: A («Qué cambió») → B → A reabría «Qué cambió» y
+    // volvía a pedir (y a poder congelar) el análisis sin que nadie lo abriera.
+    const rutas: Record<string, Respuesta> = {
+      '/api/empresa/ACME/analisis': 'pendiente',
+    }
+    for (const s of ['ACME', 'OTRA']) {
+      rutas[`/api/stocks/${s}/quote`] = ok(cotizacion(s, 0.5))
+      rutas[`/api/stocks/${s}/profile`] = ok(perfil(s, `${s} Corp`))
+      rutas[`/api/stocks/${s}/fundamentals`] = falla(404, 'sin fundamentales')
+      rutas[`/api/stocks/${s}/history?range=1Y`] = ok(historico(s))
+    }
+    servir(rutas)
+    abrir('ACME')
+    fireEvent.click(await screen.findByRole('button', { name: 'Qué cambió' }))
+    const analisis = () => vi.mocked(fetch).mock.calls.filter(([e]) => String(e).startsWith('/api/empresa/ACME/analisis')).length
+    expect(analisis()).toBe(1)
+    for (const s of ['otra', 'acme']) {
+      fireEvent.change(screen.getByPlaceholderText(/Ticker/), { target: { value: s } })
+      fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
+      expect(await screen.findByRole('heading', { level: 1, name: new RegExp(`${s.toUpperCase()} Corp`) })).toBeInTheDocument()
+    }
+    expect(await screen.findByText('Gráfico de ACME')).toBeVisible()
+    expect(analisis()).toBe(1)
+  })
+
+  it('un símbolo que ya no está en ninguna fuente enseña sus decisiones guardadas', async () => {
+    // Un valor deslistado con decisiones congeladas: el historial es la única
+    // entrada a sus replays (segunda revisión del 2.1).
+    servir({
+      '/api/stocks/VIEJA/quote': falla(404, 'sin cotización'),
+      '/api/stocks/VIEJA/profile': falla(404, 'sin perfil'),
+      '/api/stocks/VIEJA/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/VIEJA/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/VIEJA/financials': falla(404, 'edgar: VIEJA no está registrado en la SEC'),
+      '/api/empresa/VIEJA/historial': ok({
+        symbol: 'VIEJA', reglas_version_actual: 'v1',
+        decisiones: [{ id: 4, fecha: '2026-03-02', creado_en: '2026-03-02T15:00:00+00:00', origen: 'hoy:us_sp500',
+                       accion: 'comprar', precio: 20, score: 0.5 }],
+      }),
+    })
+    abrir('VIEJA')
+    expect(await screen.findByText('No se encontró el símbolo «VIEJA» en las fuentes configuradas.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Replay' })).toBeInTheDocument()
   })
 })

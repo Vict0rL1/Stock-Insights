@@ -101,7 +101,7 @@ export function ApiUsageBar() {
               : 'bg-slate-100 text-slate-400 line-through'
           }`}
         >
-          IA {llm.configured ? 'activa' : 'off'}
+          IA {llm.configured ? 'activa' : 'apagada'}
         </span>
       )}
       {!llm && errorIa && (

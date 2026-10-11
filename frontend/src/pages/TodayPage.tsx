@@ -848,12 +848,20 @@ export function TodayPage() {
   // ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
   // repite la misma pasada (ítem 2.1).
   const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
-  // El mercado que se está mirando. Una respuesta, buena o mala, de otro
-  // mercado llega tarde y se descarta: si la primera pasada del S&P 500 fallaba
-  // después de cambiar a otro mercado, su aviso quedaba encima de la lista
-  // buena y su «Reintentar» cargaba el S&P 500 bajo el botón del otro mercado
-  // (revisión del 2.1).
-  const vigente = useRef(market)
+  // Cada carga que se inicia (cambio de mercado, «Actualizar», «Reintentar»)
+  // es una cadena con su número, y sus pasadas automáticas lo heredan. Una
+  // respuesta, buena o mala, de una cadena que ya no es la vigente se
+  // descarta: el aviso de una pasada vieja del S&P 500 quedaba encima de la
+  // lista buena, y su «Reintentar» cargaba el S&P 500 bajo el botón de otro
+  // mercado (revisión del 2.1). Descartar por mercado no bastaba: con
+  // S&P 500 → Canadá → S&P 500 la pasada vieja era «del mercado vigente»
+  // (segunda revisión del 2.1).
+  const cadena = useRef(0)
+  // Las peticiones en vuelo, por mercado y tipo de pasada: una cadena nueva que
+  // pide lo mismo se engancha a la que ya va. Al abrir Hoy con `npm run dev`
+  // (StrictMode) el efecto corre dos veces, y eran dos cadenas de hasta cuatro
+  // pasadas cada una: el doble de cuota de APIs gratuitas para lo mismo.
+  const enVuelo = useRef(new Map<string, Promise<TodayResponse>>())
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<View>('ideas')
   const [autoRondas, setAutoRondas] = useState(0)
@@ -867,23 +875,38 @@ export function TodayPage() {
   // agotarla en silencio dejaría el resto del día sin datos.
   const MAX_PASADAS_AUTO = 4
 
-  const load = (which: string, refresh = false, autoPasada = 0) => {
+  const pedir = (which: string, refresh: boolean): Promise<TodayResponse> => {
+    const clave = `${which}|${refresh}`
+    const previa = enVuelo.current.get(clave)
+    if (previa) return previa
+    const promesa = api.today(which, refresh)
+    enVuelo.current.set(clave, promesa)
+    // Solo saca la petición del mapa: su fallo lo atiende `load`.
+    const soltar = () => {
+      if (enVuelo.current.get(clave) === promesa) enVuelo.current.delete(clave)
+    }
+    void promesa.then(soltar, soltar)
+    return promesa
+  }
+
+  const load = (which: string, refresh = false, autoPasada = 0, deCadena?: number) => {
+    const mia = deCadena ?? ++cadena.current
     setBusy(true)
     setError(null)
-    api.today(which, refresh).then(
+    pedir(which, refresh).then(
       (d) => {
-        if (which !== vigente.current) return
+        if (mia !== cadena.current) return
         setData(d)
         if (!d.complete && autoPasada < MAX_PASADAS_AUTO) {
           setAutoRondas(autoPasada + 1)
-          load(which, true, autoPasada + 1)
+          load(which, true, autoPasada + 1, mia)
           return
         }
         setAutoRondas(0)
         setBusy(false)
       },
       (e: unknown) => {
-        if (which !== vigente.current) return
+        if (mia !== cadena.current) return
         setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
         setAutoRondas(0)
         setBusy(false)
@@ -896,12 +919,16 @@ export function TodayPage() {
   const mercados = useDato(() => api.markets().then((d) => d.markets), 'mercados')
 
   useEffect(() => {
-    vigente.current = market
     // Al cambiar de mercado los filtros previos ya no aplican.
     setData(null)
     setSector(null)
     setExpanded(null)
     load(market)
+    // Al irse (otro mercado, otra pantalla, o el desmontaje de StrictMode) la
+    // cadena en marcha deja de ser la vigente.
+    return () => {
+      cadena.current += 1
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market])
 

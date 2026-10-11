@@ -139,3 +139,27 @@ def test_el_endpoint(session_factory):
         assert c.get("/api/empresa/ZZZ/calidad").status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_edgar_caido_es_un_502_no_un_404(session_factory):
+    """Segunda revisión del 2.1: `_traer` se tragaba el fallo y respondía 404,
+    «Sin estados financieros de la SEC», también con EDGAR caído."""
+    from fastapi.testclient import TestClient
+
+    from app.deps import get_service
+    from app.main import app
+    from app.providers.router import AllProvidersFailedError
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    class Caido(ServicioFalso):
+        def get(self, tipo, **kw):
+            if tipo == "financials":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+            return super().get(tipo, **kw)
+
+    app.dependency_overrides[get_service] = lambda: Caido(AHORA)
+    try:
+        r = TestClient(app).get("/api/empresa/AAPL/calidad")
+        assert r.status_code == 502 and "No se pudieron descargar" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()

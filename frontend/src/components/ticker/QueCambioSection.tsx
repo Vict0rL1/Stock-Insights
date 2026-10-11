@@ -186,6 +186,7 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
               : 'sin congelar'}
           </span>
         </div>
+        {datos.sin_congelar && <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{datos.sin_congelar}</p>}
         <ul className="mt-2 space-y-1 text-xs text-slate-600">
           {d.reasons.map((r, i) => (
             <li key={i}>· {r}</li>

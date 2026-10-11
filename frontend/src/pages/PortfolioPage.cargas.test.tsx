@@ -258,10 +258,11 @@ const WATCHLIST = {
 }
 
 describe('recargar tras una acción (revisión del 2.1)', () => {
-  it('al añadir una posición la tabla sigue a la vista y el recorrido no se vuelve a pedir', async () => {
+  it('al añadir una posición, la tabla y el recorrido siguen a la vista y los dos se vuelven a pedir', async () => {
     // Con `reintentar` como recarga, la cartera pasaba por «Cargando la
-    // cartera…», la página se encogía y el recorrido se desmontaba y se pedía
-    // otra vez.
+    // cartera…» y la página se encogía. Con `refrescar` a secas (c9eea22) el
+    // recorrido ya no se volvía a pedir y la curva se quedaba en la cartera de
+    // antes (segunda revisión del 2.1).
     const rutas: Record<string, { status: number; json: unknown } | 'pendiente'> = {
       ...base,
       'POST /api/portfolio/positions': { status: 200, json: { id: 5, symbol: 'PEP' } },
@@ -269,18 +270,70 @@ describe('recargar tras una acción (revisión del 2.1)', () => {
     const fetchFalso = servirConMetodo(rutas)
     pintar()
     expect(await screen.findByText('Invertido')).toBeInTheDocument()
+    expect(await screen.findByText('Recorrido de la cartera')).toBeInTheDocument()
     rutas['/api/portfolio'] = 'pendiente'
+    rutas['/api/portfolio/historial?descargar=false'] = 'pendiente'
     fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
     fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: '3' } })
     fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '150' } })
     fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
     await waitFor(() => expect(fetchFalso.mock.calls.filter(([u]) => u === '/api/portfolio')).toHaveLength(2))
+    await waitFor(() =>
+      expect(fetchFalso.mock.calls.filter(([u]) => String(u).startsWith('/api/portfolio/historial'))).toHaveLength(2),
+    )
     expect(screen.getByText('Invertido')).toBeInTheDocument()
-    expect(screen.queryByText('Cargando la cartera…')).toBeNull()
-    expect(fetchFalso.mock.calls.filter(([u]) => String(u).startsWith('/api/portfolio/historial'))).toHaveLength(1)
+    expect(screen.getByText('Recorrido de la cartera')).toBeInTheDocument()
+    expect(screen.queryByText(/^Cargando/)).toBeNull()
+    // Lo que se ve es lo de antes de la acción, y se dice.
+    expect(screen.getByText('Actualizando la cartera…')).toBeInTheDocument()
   })
 })
 
+describe('refrescar en watchlist y alertas (segunda revisión del 2.1)', () => {
+  // Volver a `reintentar` en estas dos no lo cazaba ningún test.
+  it('al añadir a la watchlist, la lista sigue a la vista mientras recarga', async () => {
+    const rutas: Record<string, { status: number; json: unknown } | 'pendiente'> = {
+      ...base,
+      '/api/watchlist': { status: 200, json: WATCHLIST },
+      'POST /api/watchlist': { status: 200, json: { id: 5, symbol: 'KO' } },
+    }
+    const fetchFalso = servirConMetodo(rutas)
+    pintar()
+    pestaña('Watchlist')
+    expect(await screen.findByText('PEP')).toBeInTheDocument()
+    rutas['/api/watchlist'] = 'pendiente'
+    fireEvent.change(screen.getByPlaceholderText('Añadir ticker'), { target: { value: 'ko' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
+    await waitFor(() => expect(fetchFalso.mock.calls.filter(([u, i]) => u === '/api/watchlist' && !i?.method)).toHaveLength(2))
+    expect(screen.getByText('PEP')).toBeInTheDocument()
+    expect(screen.getByText('Actualizando la watchlist…')).toBeInTheDocument()
+    expect(screen.queryByText(/^Cargando/)).toBeNull()
+  })
+
+  it('al crear una alerta, las que había siguen a la vista mientras recarga', async () => {
+    const rutas: Record<string, { status: number; json: unknown } | 'pendiente'> = {
+      ...base,
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [ALERTA], vigilancia: { activa: true, nunca: false, nota: '' } } },
+      'POST /api/portfolio/alerts': { status: 200, json: { id: 8 } },
+    }
+    const fetchFalso = servirConMetodo(rutas)
+    pintar()
+    pestaña('Alertas')
+    expect(await screen.findByText('baja de 50,00')).toBeInTheDocument()
+    rutas['/api/portfolio/alerts'] = 'pendiente'
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '45' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
+    await waitFor(() =>
+      expect(fetchFalso.mock.calls.filter(([u, i]) => u === '/api/portfolio/alerts' && !i?.method)).toHaveLength(2),
+    )
+    expect(screen.getByText('baja de 50,00')).toBeInTheDocument()
+    expect(screen.getByText('Actualizando las alertas…')).toBeInTheDocument()
+  })
+})
+
+// Guardas de no regresión (pasan también con el código anterior: los try/catch
+// de estos botones ya estaban en d05312c). Fijan que su motivo se vea.
 describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
   afterEach(() => vi.restoreAllMocks())
 

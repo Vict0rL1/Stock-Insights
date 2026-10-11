@@ -23,6 +23,8 @@ from app.db.models import DecisionSnapshot
 from app.db.models import LlmOutput
 from app.deps import get_llm, get_service
 from app.llm.base import LLMProvider, LLMUnavailableError
+from app.providers.base import DataNotFoundError
+from app.providers.router import AllProvidersFailedError
 from app.simbolos import SimboloRuta, validar_simbolo
 
 router = APIRouter(prefix="/api/empresa", tags=["empresa"])
@@ -40,7 +42,8 @@ def analizar_y_congelar(
     analisis = analisis_empresa.analizar(symbol, service, session, ahora=ahora, con_pares=con_pares,
                                          tipo_impositivo=tipo_impositivo)
     instantanea, nueva = (None, False)
-    if congelar:
+    sin_congelar = analisis_empresa.sin_ningun_dato(service, analisis["symbol"]) if congelar else None
+    if congelar and sin_congelar is None:
         instantanea, nueva = sn.congelar_analisis(session, analisis, ahora)
     anterior = (
         sn.anterior_comparable(session, instantanea) if instantanea is not None
@@ -61,6 +64,8 @@ def analizar_y_congelar(
              "creado_en": sn.iso_utc(instantanea.creado_en)}
             if instantanea is not None else None
         ),
+        # Por qué no se congeló aunque se pidiera; `None` si se congeló o no se pidió.
+        "sin_congelar": sin_congelar,
         "anterior": (
             {"id": anterior.id, "creado_en": sn.iso_utc(anterior.creado_en), "accion": anterior.accion}
             if anterior is not None else None
@@ -154,9 +159,19 @@ def calidad(symbol: SimboloRuta, service: MarketDataService = Depends(get_servic
     from app.analysis import calidad_beneficios
 
     symbol = validar_simbolo(symbol)
-    financials, fallo = analisis_empresa._traer(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502 (con `_traer` los dos
+    # eran 404 y un EDGAR caído se leía como «no está en la SEC»; segunda
+    # revisión del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Sin estados financieros de la SEC para {symbol}: {exc}") from exc
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
     if not financials or not financials.get("periods"):
-        raise HTTPException(status_code=404, detail=f"Sin estados financieros de la SEC para {symbol}: {fallo}")
+        raise HTTPException(status_code=404, detail=f"Sin estados financieros de la SEC para {symbol}: sin ejercicios anuales")
     return {"symbol": symbol,
             **calidad_beneficios.analizar(financials["periods"], financials.get("quarters"), financials.get("as_of"))}
 

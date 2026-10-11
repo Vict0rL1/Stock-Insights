@@ -1265,7 +1265,8 @@
      "id": 1,
      "nueva": true,
      "origen": "analisis:14:35:00"
-    }
+    },
+    "sin_congelar": null
    },
    "status": 200
   },

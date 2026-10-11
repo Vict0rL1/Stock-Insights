@@ -2,7 +2,7 @@ import { api } from '../../api/client'
 import type { CalidadBeneficios, EvidenciaCalidad, Linaje } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
-import { useDato } from '../../lib/useDato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 
 const ESTADO: Record<string, string> = {
@@ -67,10 +67,12 @@ function Fila({ e }: { e: EvidenciaCalidad }) {
 export function CalidadSection({ symbol }: { symbol: string }) {
   // Cargando, fallo con su motivo y «Reintentar»: lo mismo que el resto de la
   // app (ítem 2.1). Antes el fallo salía como un mensaje suelto, sin decir qué
-  // era lo que no había cargado.
-  const carga = useDato(() => api.calidad(symbol), symbol)
+  // era lo que no había cargado. Un 404 es que EDGAR no la tiene (desde que la
+  // ruta da 502 si EDGAR no respondió): ausencia, sin «Reintentar» (segunda
+  // revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.calidad(symbol)), symbol)
   return (
-    <BloqueDatos carga={carga} que="la calidad de beneficios">
+    <BloqueDatos carga={carga} que="la calidad de beneficios" ausente={(m) => m}>
       {(datos) => <Calidad datos={datos} />}
     </BloqueDatos>
   )

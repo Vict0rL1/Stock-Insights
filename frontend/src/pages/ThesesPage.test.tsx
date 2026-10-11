@@ -120,4 +120,65 @@ describe('Tesis (revisión del 2.1)', () => {
     expect(screen.getByText('Marca y dividendo')).toBeInTheDocument()
     expect(screen.queryByText(/^Cargando/)).toBeNull()
   })
+
+  it('el escenario se escribe como se ve («bajista») y «12,5» se guarda como 12,5', async () => {
+    // Segunda revisión del 2.1: el prompt pedía «bear / base / bull», escribir
+    // «bajista» salía sin decir nada, y `parseFloat('12,5')` guardaba 12.
+    const cuerpos: unknown[] = []
+    servir({
+      '/api/theses': { status: 200, json: { theses: [TESIS] } },
+      '/api/theses/track-record': { status: 200, json: REGISTRO },
+    })
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((e, init) => {
+      if (init?.method === 'POST') {
+        cuerpos.push(JSON.parse(String(init.body)))
+        return Promise.resolve(new Response(JSON.stringify({ id: 1, price_at_creation: 60, warning: null }), { status: 200 }))
+      }
+      return fetchBase(e, init)
+    })
+    vi.spyOn(window, 'prompt').mockReturnValueOnce('Bajista').mockReturnValueOnce('12,5')
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: '+ Escenario' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect(cuerpos[0]).toMatchObject({ kind: 'bear', value_mid: 12.5 })
+  })
+
+  it('un escenario o un valor que no se entienden se dicen, en vez de salir sin más', async () => {
+    servir({ '/api/theses': { status: 200, json: { theses: [TESIS] } }, '/api/theses/track-record': { status: 200, json: REGISTRO } })
+    vi.spyOn(window, 'prompt').mockReturnValueOnce('bear').mockReturnValueOnce('doce')
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: '+ Escenario' }))
+    expect(await screen.findByText('«doce» no es un número: escribe el valor por acción, p. ej. 12,5.')).toBeInTheDocument()
+    vi.spyOn(window, 'prompt').mockReturnValueOnce('optimista')
+    fireEvent.click(screen.getByRole('button', { name: '+ Escenario' }))
+    expect(await screen.findByText('«optimista» no es un escenario: escribe bajista, base, alcista.')).toBeInTheDocument()
+  })
+
+  it('borrar una tesis que ya no existía (404) no es un fallo: se recarga sin aviso', async () => {
+    const pedidas = servir({
+      '/api/theses': { status: 200, json: { theses: [TESIS] } },
+      '/api/theses/track-record': { status: 200, json: REGISTRO },
+      'DELETE /api/theses/3': { status: 404, json: { detail: 'Tesis no encontrada' } },
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Borrar' }))
+    await waitFor(() => expect(pedidas.filter((p) => p === 'GET /api/theses')).toHaveLength(2))
+    expect(screen.queryByText(/No se pudo borrar/)).toBeNull()
+  })
+
+  it('sin servidor, el fallo se dice en español y no como «Failed to fetch»', async () => {
+    servir({ '/api/theses': { status: 200, json: { theses: [TESIS] } }, '/api/theses/track-record': { status: 200, json: REGISTRO } })
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((e, init) =>
+      init?.method === 'DELETE' ? Promise.reject(new TypeError('Failed to fetch')) : fetchBase(e, init),
+    )
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Borrar' }))
+    expect(
+      await screen.findByText('No se pudo borrar la tesis: No se pudo conectar con la app: ¿está arrancado el servidor (./start.sh)?'),
+    ).toBeInTheDocument()
+  })
 })

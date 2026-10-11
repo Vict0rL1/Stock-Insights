@@ -9,6 +9,7 @@
  *   llegaba lo nuevo, y la página saltaba.
  */
 import { act, render, screen } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { useDato, type CargaConReintento } from './useDato'
 
@@ -76,5 +77,41 @@ describe('useDato', () => {
     await act(async () => pendientes.x[0].resolver('primera'))
     act(() => carga!.reintentar())
     expect(screen.getByText('cargando')).toBeInTheDocument()
+  })
+
+  it('refrescar desde un error vuelve a «cargando»: el fallo viejo no se queda con su «Reintentar»', async () => {
+    // Segunda revisión del 2.1: en Cartera, con el análisis en error, «Descargar
+    // histórico completo» dejaba el error y su «Reintentar» a la vista mientras
+    // ya se descargaba, y pulsarlo lanzaba una segunda descarga.
+    let llamadas = 0
+    let carga: CargaConReintento<string> | undefined
+    function Sonda() {
+      carga = useDato(() => {
+        llamadas += 1
+        return llamadas === 1 ? Promise.reject(new Error('tiempo agotado')) : new Promise<string>(() => {})
+      }, 'x')
+      return <p>{carga.estado}</p>
+    }
+    render(<Sonda />)
+    expect(await screen.findByText('error')).toBeInTheDocument()
+    act(() => carga!.refrescar())
+    expect(screen.getByText('cargando')).toBeInTheDocument()
+    expect(carga!.refrescando).toBe(false)
+  })
+
+  it('en StrictMode (`npm run dev`) se pide una sola vez al montar', async () => {
+    // El doble efecto de StrictMode mandaba cada carga dos veces al backend
+    // (segunda revisión del 2.1).
+    let llamadas = 0
+    function Sonda() {
+      const c = useDato(() => {
+        llamadas += 1
+        return Promise.resolve('hecho')
+      }, 'x')
+      return <p>{c.estado === 'listo' ? c.datos : c.estado}</p>
+    }
+    render(<StrictMode><Sonda /></StrictMode>)
+    expect(await screen.findByText('hecho')).toBeInTheDocument()
+    expect(llamadas).toBe(1)
   })
 })

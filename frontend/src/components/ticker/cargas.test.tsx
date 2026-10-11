@@ -76,23 +76,40 @@ describe('fallo de carga de cada sección de la ficha', () => {
 })
 
 describe('un 404 es que la fuente no lo tiene, no un fallo (revisión del 2.1)', () => {
-  /** Todo responde 404 con el motivo de la fuente, como `DataNotFoundError`. */
-  function noLoTiene() {
+  // Los `detail` son los que da el backend de verdad (segunda revisión del
+  // 2.1: el test se inventaba uno que ninguna ruta enviaba, y la pantalla
+  // enseñaba «'financials' no existe en ninguna fuente»).
+  const EDGAR = 'edgar: SHOP.TO no está registrado en la SEC (¿empresa no-EE. UU. o ETF?)'
+  const DETALLES: Record<string, string> = {
+    '/api/stocks/SHOP.TO/financials': EDGAR,
+    '/api/stocks/SHOP.TO/peers': 'finnhub: sin pares para SHOP.TO',
+    '/api/stocks/SHOP.TO/health': EDGAR,
+    '/api/stocks/SHOP.TO/valuation/defaults': EDGAR,
+    '/api/stocks/SHOP.TO/filings': EDGAR,
+    '/api/options/SHOP.TO':
+      'SHOP.TO no cotiza opciones, o no hay cadena disponible: yfinance: SHOP.TO no cotiza opciones. Muchas empresas pequeñas y casi todas las no estadounidenses no tienen mercado de opciones.',
+    '/api/empresa/SHOP.TO/calidad': `Sin estados financieros de la SEC para SHOP.TO: ${EDGAR}`,
+    '/api/deep-dive/SHOP.TO?history_years=10': `Sin estados financieros para SHOP.TO en SEC EDGAR (${EDGAR}). El informe necesita histórico auditado.`,
+  }
+  /** Cada ruta responde 404 con su `detail` real, como `DataNotFoundError`. */
+  function noLoTiene(estado = 404) {
     vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
       const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
       if (url === '/api/meta/llm') return new Response(JSON.stringify({ configured: true, model: 'm' }), { status: 200 })
-      return new Response(JSON.stringify({ detail: 'SHOP.TO no está registrado en la SEC' }), { status: 404 })
+      return new Response(JSON.stringify({ detail: DETALLES[url] ?? `sin fixture: ${url}` }), { status: estado })
     }))
   }
   const casos: [string, ReactElement, string[]][] = [
     ['Fundamentales', <FinancialsSection symbol="SHOP.TO" />, [
-      'Sin estados financieros: SHOP.TO no está registrado en la SEC',
-      'Sin pares con los que comparar: SHOP.TO no está registrado en la SEC',
+      `Sin estados financieros: ${EDGAR}`,
+      'Sin pares con los que comparar: finnhub: sin pares para SHOP.TO',
     ]],
-    ['Salud', <HealthSection symbol="SHOP.TO" />, ['Sin datos de salud financiera: SHOP.TO no está registrado en la SEC']],
-    ['Valoración', <ValuationSection symbol="SHOP.TO" />, ['No hay datos para prellenar el DCF: SHOP.TO no está registrado en la SEC']],
-    ['Filings', <FilingsSection symbol="SHOP.TO" />, ['Sin filings: SHOP.TO no está registrado en la SEC']],
-    ['Opciones', <OptionsSection symbol="SHOP.TO" />, ['SHOP.TO no está registrado en la SEC']],
+    ['Salud', <HealthSection symbol="SHOP.TO" />, [`Sin datos de salud financiera: ${EDGAR}`]],
+    ['Valoración', <ValuationSection symbol="SHOP.TO" />, [`No hay datos para prellenar el DCF: ${EDGAR}`]],
+    ['Filings', <FilingsSection symbol="SHOP.TO" />, [`Sin filings: ${EDGAR}`]],
+    ['Opciones', <OptionsSection symbol="SHOP.TO" />, [DETALLES['/api/options/SHOP.TO']]],
+    ['Calidad', <CalidadSection symbol="SHOP.TO" />, [DETALLES['/api/empresa/SHOP.TO/calidad']]],
+    ['Informe', <DeepDiveSection symbol="SHOP.TO" />, [DETALLES['/api/deep-dive/SHOP.TO?history_years=10']]],
   ]
   for (const [sitio, ui, frases] of casos) {
     it(`${sitio}: lo dice como ausencia, con el motivo de la fuente y sin «Reintentar»`, async () => {
@@ -100,14 +117,16 @@ describe('un 404 es que la fuente no lo tiene, no un fallo (revisión del 2.1)',
       pintar(ui)
       for (const frase of frases) expect(await screen.findByText(frase)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
-      expect(document.body.textContent).not.toMatch(/No se pud/)
+      expect(document.body.textContent).not.toMatch(/No se pud|no existe en ninguna fuente/)
     })
   }
 
-  it('Informe: su 404 también llega cuando EDGAR cae, así que sigue siendo un fallo con «Reintentar»', async () => {
-    noLoTiene()
+  // Guarda de no regresión (pasa también con el código anterior): tratar el
+  // 404 como ausencia no puede tragarse un 502.
+  it('un 502 (la fuente no respondió) sigue siendo un fallo con «Reintentar»', async () => {
+    noLoTiene(502)
     pintar(<DeepDiveSection symbol="SHOP.TO" />)
-    expect(await screen.findByText('No se pudo cargar el informe: SHOP.TO no está registrado en la SEC')).toBeInTheDocument()
+    expect(await screen.findByText(/^No se pudo cargar el informe:/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
 })

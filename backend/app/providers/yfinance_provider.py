@@ -289,10 +289,23 @@ class YFinanceProvider(DataProvider):
                     )
 
         if not contratos:
-            raise DataNotFoundError(f"yfinance: sin contratos utilizables para {symbol}")
+            # Hay vencimientos listados y ninguno trajo un contrato: eso es un
+            # fallo (un 429 a mitad, una respuesta vacía), no «no cotiza
+            # opciones». Antes era DataNotFoundError, y la ficha decía «AAPL no
+            # cotiza opciones» sin «Reintentar» (segunda revisión del 2.1). Lo
+            # que no cotiza opciones ya salió arriba: sin vencimientos.
+            raise ProviderError(
+                f"yfinance: {symbol} tiene {len(expiraciones)} vencimientos y no llegó ningún contrato "
+                f"({len(fallidos)} {'falló' if len(fallidos) == 1 else 'fallaron'})"
+            )
         if spot is None:
-            # El bloque `underlying` no siempre viene; la cotización sí.
-            spot = self.get_quote(symbol).get("price")
+            # El bloque `underlying` no siempre viene; la cotización sí. Si
+            # tampoco, el spot queda desconocido y la ruta responde 502: antes
+            # ese «sin cotización» subía como «no cotiza opciones».
+            try:
+                spot = self.get_quote(symbol).get("price")
+            except DataNotFoundError:
+                spot = None
 
         return {
             "symbol": symbol.upper(),

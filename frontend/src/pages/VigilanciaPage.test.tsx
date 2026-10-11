@@ -105,4 +105,25 @@ describe('Vigilancia (revisión del 2.1)', () => {
     expect(screen.getByText('Si el margen baja del 18 %')).toBeInTheDocument()
     expect(screen.queryByText(/^Cargando/)).toBeNull()
   })
+
+  it('un umbral vacío no se guarda como 0 %: se pide, y no se envía nada', async () => {
+    // Segunda revisión del 2.1: `Number('') / 100` enviaba `umbral: 0`, un
+    // punto «margen < 0 %» que nadie escribió.
+    const pedidas = servir({
+      ...BASE,
+      '/api/theses/vigilancia/metricas': {
+        status: 200,
+        json: { metricas: [{ clave: 'operating_margin', etiqueta: 'margen operativo', alto_mejor: true }], crecimientos: [], operadores: [{ clave: 'lt', etiqueta: 'por debajo de' }], nota: '' },
+      },
+    })
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: '+ punto de invalidación' }))
+    // Las pestañas del formulario dicen la palabra, no el código («metrica»).
+    expect(screen.getByRole('button', { name: 'Métrica' })).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Por qué esto invalidaría la tesis'), { target: { value: 'Si el margen se hunde' } })
+    fireEvent.change(screen.getByDisplayValue('18'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    expect(await screen.findByText('Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.')).toBeInTheDocument()
+    expect(pedidas.some((p) => p.startsWith('POST'))).toBe(false)
+  })
 })

@@ -56,6 +56,32 @@ describe('efectivo anotado (ítem 2.1)', () => {
   })
 })
 
+describe('anotar efectivo (segunda revisión del 2.1)', () => {
+  it('lo anotado antes sigue a la vista mientras recarga', async () => {
+    // Volver a `reintentar` aquí no lo cazaba ningún test.
+    let recargando = false
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(`${init?.method ?? 'GET'} ${url}`)
+      if (init?.method === 'POST') {
+        recargando = true
+        return Promise.resolve(new Response(JSON.stringify({ id: 9 }), { status: 200 }))
+      }
+      if (recargando && url === '/api/portfolio/efectivo') return new Promise<Response>(() => {})
+      const r = base[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 }))
+    }))
+    render(<CosteOportunidadPanel />)
+    expect(await screen.findByText(/Efectivo anotado: 1\.500,00 USD/)).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText('Efectivo disponible'), { target: { value: '2000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Anotar efectivo' }))
+    await waitFor(() => expect(pedidas.filter((p) => p === 'GET /api/portfolio/efectivo')).toHaveLength(2))
+    expect(screen.getByText(/Efectivo anotado: 1\.500,00 USD/)).toBeInTheDocument()
+    expect(screen.getByText('Actualizando el efectivo anotado…')).toBeInTheDocument()
+  })
+})
+
 describe('contribución al riesgo (ítem 2.1)', () => {
   it('si no carga, dice qué no cargó, con su motivo', async () => {
     servir({ ...base, '/api/portfolio/contribucion?descargar=false': falla('sin histórico en caché') })

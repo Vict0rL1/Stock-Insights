@@ -120,12 +120,31 @@ async function fetchJson<T>(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
           'plano: espera un poco y vuelve a intentarlo.',
       )
     }
-    throw err
+    throw sinConexion(err)
   } finally {
     clearTimeout(timer)
   }
   if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
+}
+
+/** Sin servidor que responda, `fetch` lanza un `TypeError` del navegador
+ *  («Failed to fetch»), y llegaba tal cual a frases como «No se pudo borrar la
+ *  tesis: Failed to fetch» (segunda revisión del 2.1). */
+function sinConexion(err: unknown): unknown {
+  if (err instanceof TypeError) {
+    return new ApiError(0, 'No se pudo conectar con la app: ¿está arrancado el servidor (./start.sh)?')
+  }
+  return err
+}
+
+/** `fetch` con el fallo de red dicho en español. */
+async function conectar(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch (err) {
+    throw sinConexion(err)
+  }
 }
 
 /** El motivo de una respuesta de error: el `detail` del backend o, si el
@@ -142,7 +161,7 @@ async function motivoDe(resp: Response): Promise<string> {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const resp = await fetch(path, {
+  const resp = await conectar(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -152,7 +171,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-  const resp = await fetch(path, { method: 'DELETE' })
+  const resp = await conectar(path, { method: 'DELETE' })
   if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }

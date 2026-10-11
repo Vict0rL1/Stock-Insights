@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DecisionRegistrada,
@@ -9,6 +9,7 @@ import type {
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
+import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
@@ -188,11 +189,18 @@ function FormularioDisparador({
 
   const enviar = async () => {
     setError(null)
+    // `Number('') / 100` daba 0: un umbral borrado se guardaba como «0 %», un
+    // punto que nadie escribió (segunda revisión del 2.1). Ausente no es cero.
+    const u = leerNumero(umbral)
+    if (kind !== 'noticia' && u === null) {
+      setError('Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.')
+      return
+    }
     try {
       const config =
         kind === 'noticia'
           ? { palabras: palabras.split(',').map((p) => p.trim()).filter(Boolean) }
-          : { metrica, op, umbral: Number(umbral) / 100 }
+          : { metrica, op, umbral: (u as number) / 100 }
       await api.addTrigger(thesisId, { kind, descripcion, config })
       onHecho()
     } catch (e) {
@@ -219,13 +227,13 @@ function FormularioDisparador({
               setKind(k)
               setMetrica(k === 'crecimiento' ? 'revenue_cagr' : 'operating_margin')
             }}
-            className={`rounded-lg px-3 py-1 text-xs capitalize ${
+            className={`rounded-lg px-3 py-1 text-xs ${
               kind === k
                 ? 'bg-sky-800 text-white'
                 : 'border border-sky-300 text-sky-800'
             }`}
           >
-            {k}
+            {etiqueta(k, { mayuscula: true })}
           </button>
         ))}
       </div>
@@ -409,7 +417,9 @@ export function VigilanciaPage() {
       await api.deleteTrigger(id)
       cargar()
     } catch (e) {
-      setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
+      // Un 404 es que ya no existía (otro clic, otra pestaña): no es un fallo.
+      if (e instanceof ApiError && e.status === 404) cargar()
+      else setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
     }
   }
 

@@ -9,7 +9,7 @@ import type {
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
-import { mensajeDeError, useDato } from '../../lib/useDato'
+import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
@@ -122,12 +122,14 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
 }
 
 export function DeepDiveSection({ symbol }: { symbol: string }) {
-  const carga = useDato(() => api.deepDive(symbol), symbol)
+  // Un 404 es que EDGAR no tiene sus estados (desde que la ruta da 502 si EDGAR
+  // no respondió): ausencia, sin «Reintentar» (segunda revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.deepDive(symbol)), symbol)
   const llm = useLlmStatus()
   // Al cambiar de símbolo el bloque vuelve a «cargando» e `Informe` se monta de
   // nuevo: la narrativa del anterior no se queda bajo el informe del nuevo.
   return (
-    <BloqueDatos carga={carga} que="el informe">
+    <BloqueDatos carga={carga} que="el informe" ausente={(m) => m}>
       {(report) => <Informe symbol={symbol} report={report} llm={llm} />}
     </BloqueDatos>
   )

@@ -30,7 +30,7 @@ function AvisoSectores({ lista }: { lista: SectorEntry[] }) {
           {s.label}: <EstadoDato data={s.quote!} />
         </div>
       ))}
-      {sinDato.length > 0 && <p>Sin dato (ninguna fuente respondió): {sinDato.map((s) => s.label).join(', ')}.</p>}
+      {sinDato.length > 0 && <p>Sin dato (ninguna fuente dio precio): {sinDato.map((s) => s.label).join(', ')}.</p>}
     </div>
   )
 }
@@ -67,7 +67,8 @@ export function DashboardPage() {
                     <EstadoDato data={ix.quote} />
                   </div>
                 )}
-                {!ix.quote && <div className="mt-1 text-[10px] text-slate-400">sin dato: ninguna fuente respondió</div>}
+                {/* Sin precio puede ser un fallo o que ninguna fuente lo tenga: no se afirma cuál. */}
+                {!ix.quote && <div className="mt-1 text-[10px] text-slate-400">sin dato: ninguna fuente dio precio</div>}
               </div>
             ))}
           </section>

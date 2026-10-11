@@ -140,8 +140,26 @@ export function BloqueDatos<T>({
     return <p className="text-sm text-slate-400">{ausente ? ausente(carga.datos.motivo) : `Sin datos: ${carga.datos.motivo}`}</p>
   }
   const datos = carga.datos as Exclude<T, Ausencia>
-  if (vacio?.(datos)) {
-    return <p className="text-sm text-slate-400">{mensajeVacio ?? 'Sin datos que enseñar.'}</p>
+  const contenido = vacio?.(datos) ? (
+    <p className="text-sm text-slate-400">{mensajeVacio ?? 'Sin datos que enseñar.'}</p>
+  ) : (
+    children(datos)
+  )
+  // Mientras un `refrescar()` trae lo nuevo, lo que se ve es lo anterior a la
+  // acción: se dice, y no se puede pulsar. Sin esto una tesis ya borrada seguía
+  // con su «Borrar» activo, y el segundo clic dejaba un «No se pudo borrar»
+  // falso (segunda revisión del 2.1).
+  if (carga.refrescando) {
+    return (
+      <div aria-busy="true">
+        <p role="status" className="mb-1 text-xs text-slate-400">
+          Actualizando {que}…
+        </p>
+        <div inert className="opacity-60">
+          {contenido}
+        </div>
+      </div>
+    )
   }
-  return <>{children(datos)}</>
+  return <>{contenido}</>
 }

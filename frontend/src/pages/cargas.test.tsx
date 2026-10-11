@@ -77,6 +77,6 @@ describe('Barra de las API', () => {
     render(<ApiUsageBar />)
     expect(await screen.findByText('uso desconocido: no se pudo consultar')).toBeInTheDocument()
     expect(await screen.findByText('IA sin comprobar')).toBeInTheDocument()
-    expect(screen.queryByText(/IA off/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/IA (off|apagada)/)).not.toBeInTheDocument()
   })
 })

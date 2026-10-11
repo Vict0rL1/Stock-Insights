@@ -745,6 +745,33 @@ def analizar(
     return analisis
 
 
+# Lo mínimo que alguna fuente tiene que conocer de una empresa para que su
+# análisis merezca una instantánea.
+PIEZAS_DE_EXISTENCIA = ("quote", "profile", "fundamentals", "financials")
+
+
+def sin_ningun_dato(service, symbol: str) -> str | None:
+    """Por qué no se debe congelar el análisis de `symbol`, o `None` si se puede.
+
+    Una instantánea es inmutable (triggers de la migración 0004): la de un
+    símbolo que ninguna fuente conoce —un error de tecleo, «AAPLL»— no se puede
+    borrar nunca. Antes bastaba abrir «Qué cambió» o evaluar una idea en Cartera
+    para dejarla en la base (segunda revisión del 2.1). Solo se frena si NINGUNA
+    de las cuatro piezas llegó, por ausencia o por fallo: un análisis sin un solo
+    dato no registra nada que la app supiera, y no hay forma de distinguir una
+    caída de «no existe» cuando una fuente falla. Para una empresa real la
+    primera pieza ya está en caché: no cuesta llamadas.
+    """
+    motivos = []
+    for tipo in PIEZAS_DE_EXISTENCIA:
+        payload, motivo = _traer(service, tipo, symbol=symbol)
+        if payload is not None:
+            return None
+        motivos.append(motivo or "sin dato")
+    return (f"Ninguna fuente dio cotización, perfil, fundamentales ni estados financieros de {symbol}: "
+            f"no se guarda una instantánea de algo que quizá no existe ({'; '.join(motivos)}).")
+
+
 def datos_desconocidos(a: dict) -> list[dict]:
     """Todo lo que el análisis NO sabe, con su motivo. Se congela tal cual."""
     faltan = []

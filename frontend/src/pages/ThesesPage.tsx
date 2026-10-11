@@ -1,11 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
+
+const ESCENARIOS = ['bear', 'base', 'bull'] as const
+
+/** Un 404 al borrar es que ya no existía (otro clic, otra pestaña): no es un
+ *  fallo que enseñar (segunda revisión del 2.1). */
+function yaNoExistia(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404
+}
 
 
 function OutcomeChip({ scenario }: { scenario: ScenarioRecord }) {
@@ -166,16 +175,30 @@ export function ThesesPage() {
   }
 
   const addScenario = async (thesisId: number) => {
-    const kind = window.prompt('Escenario (bear / base / bull):', 'base')
-    if (!kind || !['bear', 'base', 'bull'].includes(kind)) return
+    // El prompt pedía los códigos en inglés («bear / base / bull») y la
+    // pantalla los enseña como «bajista / base / alcista»: escribir lo que se
+    // ve salía sin decir nada. Y «12,5» se guardaba como 12 (segunda revisión
+    // del 2.1). Cancelar sigue sin decir nada; escribir mal, no.
+    const nombres = ESCENARIOS.map((k) => etiqueta(k))
+    const escrito = window.prompt(`Escenario (${nombres.join(' / ')}):`, etiqueta('base'))
+    if (escrito === null) return
+    const buscado = escrito.trim().toLowerCase()
+    const kind = ESCENARIOS.find((k) => k === buscado || etiqueta(k).toLowerCase() === buscado)
+    if (!kind) {
+      setFallo(`«${escrito}» no es un escenario: escribe ${nombres.join(', ')}.`)
+      return
+    }
     const raw = window.prompt('Valor intrínseco estimado por acción:')
-    if (!raw) return
-    const value = parseFloat(raw)
-    if (Number.isNaN(value)) return
+    if (raw === null) return
+    const value = leerNumero(raw)
+    if (value === null) {
+      setFallo(`«${raw}» no es un número: escribe el valor por acción, p. ej. 12,5.`)
+      return
+    }
     setFallo(null)
     try {
       const result = await api.addScenario(thesisId, {
-        kind: kind as 'bear' | 'base' | 'bull',
+        kind,
         assumptions: {},
         value_mid: value,
       })
@@ -193,7 +216,8 @@ export function ThesesPage() {
       await api.deleteThesis(thesis.id)
       load()
     } catch (err) {
-      setFallo(`No se pudo borrar la tesis: ${mensajeDeError(err)}`)
+      if (yaNoExistia(err)) load()
+      else setFallo(`No se pudo borrar la tesis: ${mensajeDeError(err)}`)
     }
   }
 

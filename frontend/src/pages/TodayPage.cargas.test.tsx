@@ -9,6 +9,7 @@
  * - Sin variación del día, el color es neutro: `?? 0` la pintaba en verde.
  */
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
@@ -121,6 +122,49 @@ describe('Hoy: cargas que fallan o faltan', () => {
     await act(async () => fallarSp500())
     expect(screen.queryByText(/No se pudo cargar la lista de hoy/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
+    expect(pedidas.filter((u) => u === HOY)).toHaveLength(1)
+  })
+
+  it('en StrictMode (`npm run dev`) la lista se pide una sola vez al abrir', async () => {
+    // Segunda revisión del 2.1: el efecto corría dos veces y lanzaba dos
+    // cadenas de pasadas, el doble de cuota para lo mismo.
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(url)
+      const r = RUTAS[url]
+      return new Response(JSON.stringify(r ? r.json : { detail: `sin fixture: ${url}` }), { status: r ? r.status : 404 })
+    }))
+    render(<StrictMode><MemoryRouter><TodayPage /></MemoryRouter></StrictMode>)
+    expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
+    // Una primera pasada y, como la lista viene incompleta, como mucho las
+    // cuatro automáticas de UNA cadena (con el efecto doble eran 2 y 8).
+    // Se espera a que la cadena termine («Actualizar» vuelve) antes de contar.
+    expect(await screen.findByRole('button', { name: 'Actualizar' }, { timeout: 3000 })).toBeEnabled()
+    expect(pedidas.filter((u) => u === HOY)).toHaveLength(1)
+    expect(pedidas.filter((u) => u === `${HOY}&refresh=true`)).toHaveLength(4)
+  })
+
+  it('S&P 500 → Canadá → S&P 500 reutiliza la petición que ya iba, y su respuesta es la que vale', async () => {
+    let soltarSp500: () => void = () => {}
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(url)
+      if (url === HOY) {
+        return new Promise<Response>((r) => {
+          soltarSp500 = () => r(new Response(JSON.stringify(RUTAS[HOY].json), { status: 200 }))
+        })
+      }
+      const r = url.startsWith('/api/signals/today?market=canada') ? RUTAS[HOY] : RUTAS[url]
+      return Promise.resolve(new Response(JSON.stringify(r ? r.json : { detail: `sin fixture: ${url}` }), { status: r ? r.status : 404 }))
+    }))
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Canadá — cotizadas en EE. UU.' }))
+    expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'EE. UU. — S&P 500' }))
+    await act(async () => soltarSp500())
+    expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
     expect(pedidas.filter((u) => u === HOY)).toHaveLength(1)
   })
 })

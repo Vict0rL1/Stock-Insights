@@ -110,19 +110,21 @@ describe('useDato', () => {
   })
 
   it('al cambiar de clave vuelve a «cargando» y descarta la respuesta vieja', async () => {
-    // Revisión del 2.1: la versión anterior resolvía AAPL en un `act`
-    // síncrono y comprobaba en la misma microtarea, así que pasaba también
-    // sin el descarte. Ahora AAPL llega a «listo» antes de cambiar de clave
-    // (para ver que vuelve a «cargando»), y su segunda respuesta, la vieja,
-    // llega DESPUÉS de la de MSFT.
+    // Revisión del 2.1: la primera versión resolvía AAPL en un `act` síncrono
+    // y comprobaba en la misma microtarea, así que pasaba también sin el
+    // descarte; la segunda llamaba a `reintentar()` antes del cambio de clave,
+    // y el «cargando» que comprobaba era el del reintento (segunda revisión).
+    // Ahora AAPL está en «listo» y con un `refrescar()` pendiente cuando cambia
+    // la clave: el «cargando» solo puede venir del cambio, y la respuesta de
+    // ese refresco llega DESPUÉS de la de MSFT.
     const pendientes: Record<string, ((v: string) => void)[]> = {}
     const { result, rerender } = renderHook(
       ({ clave }) => useDato(() => new Promise<string>((r) => (pendientes[clave] ??= []).push(r)), clave),
       { initialProps: { clave: 'AAPL' } },
     )
     await act(async () => pendientes.AAPL[0]('datos de AAPL'))
-    expect(result.current.datos).toBe('datos de AAPL')
-    act(() => result.current.reintentar())
+    act(() => result.current.refrescar())
+    expect(result.current.estado).toBe('listo')
     rerender({ clave: 'MSFT' })
     expect(result.current.estado).toBe('cargando')
     await act(async () => pendientes.MSFT[0]('datos de MSFT'))

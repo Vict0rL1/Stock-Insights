@@ -160,9 +160,10 @@ class DataRouter:
         - DataNotFoundError → se propaga: el dato no existe, no es un fallo.
         """
         reasons: dict[str, str] = {}
-        # Quién dijo «no lo tengo». Solo si lo dicen TODAS las fuentes que se
-        # pudieron consultar se puede afirmar que el dato no existe.
-        no_encontrado: list[str] = []
+        # Quién dijo «no lo tengo», y por qué. Solo si lo dicen TODAS las
+        # fuentes que se pudieron consultar se puede afirmar que el dato no
+        # existe, y entonces su motivo es lo que se le dice a una persona.
+        no_encontrado: dict[str, str] = {}
         # _order permite forzar fuentes para casos especiales (p. ej. índices
         # tipo ^VIX que solo cubre yfinance) sin tocar el orden global.
         order = kwargs.pop("_order", None) or self.source_order.get(data_type, [])
@@ -212,7 +213,7 @@ class DataRouter:
                     # preguntara a yfinance, que sí la cubre. Cuesta como mucho
                     # una llamada más por símbolo inexistente.
                     self.limiter.record(name, data_type, "ok")
-                    no_encontrado.append(name)
+                    no_encontrado[name] = str(exc)
                     last_error = f"no encontrado: {exc}"
                     break
                 except (NotSupportedError, ProviderError) as exc:
@@ -232,9 +233,11 @@ class DataRouter:
         # como AllProvidersFailedError, que además permite el rescate de caché.
         consultadas = [n for n in reasons if not reasons[n].startswith(("no configurado", "no soporta"))]
         if no_encontrado and set(no_encontrado) == set(consultadas):
-            raise DataNotFoundError(
-                f"'{data_type}' no existe en ninguna fuente ({', '.join(no_encontrado)})"
-            )
+            # El motivo de cada fuente («edgar: SHOP.TO no está registrado en
+            # la SEC…»), no «'financials' no existe en ninguna fuente»: ese era
+            # un código interno en crudo, y la pantalla lo enseñaba como la
+            # explicación de la ausencia (segunda revisión del 2.1).
+            raise DataNotFoundError(" · ".join(no_encontrado.values()))
         error = AllProvidersFailedError(data_type, reasons)
         log("proveedor").error("%s", error)
         raise error

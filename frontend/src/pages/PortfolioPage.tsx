@@ -15,7 +15,7 @@ import type {
   Vigilancia,
 } from '../api/types'
 import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
-import { useDato } from '../lib/useDato'
+import { useDato, type CargaConReintento } from '../lib/useDato'
 
 type Tab = 'portafolio' | 'watchlist' | 'alertas'
 
@@ -223,12 +223,13 @@ function DivisasPanel({ d }: { d: DivisasDeCartera }) {
 
 /** El recorrido del valor de la cartera, no solo el P&L de hoy.
  *
- *  Se carga aparte y solo cuando se abre la pestaña: necesita el histórico
- *  largo de cada posición, que puede costar una descarga. */
-function HistorialPanel() {
-  // El fallo salía como el motivo a secas, sin decir qué no había cargado, y
-  // mientras cargaba no se pintaba nada (ítem 2.1).
-  const historial = useDato(() => api.historialDeCartera(false), 'historial')
+ *  Su carga vive en `PortfolioTab` (solo cuando se abre la pestaña: necesita el
+ *  histórico largo de cada posición, que puede costar una descarga) para que
+ *  añadir o cerrar una posición lo vuelva a pedir. Mientras colgaba de aquí,
+ *  solo se volvía a pedir al desmontarse; con `refrescar` no se desmonta y la
+ *  curva se quedaba en la cartera de antes (segunda revisión del 2.1). El fallo
+ *  salía como el motivo a secas, sin decir qué no había cargado (ítem 2.1). */
+function HistorialPanel({ historial }: { historial: CargaConReintento<HistorialDeCartera> }) {
   return (
     <BloqueDatos carga={historial} que="el recorrido de la cartera">
       {(d) => <Recorrido d={d} />}
@@ -387,10 +388,14 @@ function PortfolioTab() {
   // Un fallo al cargar salía como un motivo suelto junto al formulario, sin
   // decir qué no había cargado (ítem 2.1). `error` queda para las acciones.
   const cartera = useDato(() => api.portfolio(), 'cartera')
-  // Tras una acción se refresca sin vaciar la tabla: con `reintentar` pasaba
-  // por «Cargando la cartera…», la página saltaba y el recorrido se desmontaba
-  // y se volvía a pedir (revisión del 2.1).
-  const load = cartera.refrescar
+  const historial = useDato(() => api.historialDeCartera(false), 'historial')
+  // Tras una acción se refrescan la tabla y el recorrido sin vaciarlos: con
+  // `reintentar` pasaba por «Cargando la cartera…» y la página saltaba
+  // (revisión del 2.1).
+  const load = () => {
+    cartera.refrescar()
+    historial.refrescar()
+  }
   const [form, setForm] = useState({ symbol: '', quantity: '', cost: '' })
   const [error, setError] = useState<string | null>(null)
 
@@ -551,7 +556,7 @@ function PortfolioTab() {
               )}
 
               {data.divisas && <DivisasPanel d={data.divisas} />}
-              <HistorialPanel />
+              <HistorialPanel historial={historial} />
               {data.risk_budget && <RiskBudgetPanel risk={data.risk_budget} />}
 
               {data.estres && <EstresPanel estres={data.estres} />}

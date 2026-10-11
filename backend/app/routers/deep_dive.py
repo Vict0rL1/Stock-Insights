@@ -113,12 +113,25 @@ def deep_dive(
     """
     symbol = validar_simbolo(symbol)
 
-    financials = _safe(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502. Antes `_safe` se
+    # tragaba los dos y un EDGAR caído se leía como «no registrada en la SEC»,
+    # así que la ficha no podía tratar el 404 como ausencia (segunda revisión
+    # del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError as exc:
+        financials, motivo = None, str(exc)
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
+    else:
+        motivo = "sin ejercicios anuales"
     if financials is None or not financials.get("periods"):
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Sin estados financieros para {symbol} en SEC EDGAR. El informe "
+                f"Sin estados financieros para {symbol} en SEC EDGAR ({motivo}). El informe "
                 "necesita histórico auditado; EDGAR solo cubre empresas "
                 "registradas en la SEC (no aplica a cotizadas extranjeras sin ADR)."
             ),

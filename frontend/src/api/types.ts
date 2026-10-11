@@ -2200,6 +2200,8 @@ export interface AnalisisEmpresaResponse {
   cambios: CambiosAnalisis
   analisis: AnalisisEmpresa
   instantanea: { id: number; nueva: boolean; origen: string; creado_en: string } | null
+  /** Por qué no se congeló aunque se pidiera (ninguna fuente conoce el símbolo). */
+  sin_congelar?: string | null
   anterior: { id: number; creado_en: string; accion: string } | null
 }
 
