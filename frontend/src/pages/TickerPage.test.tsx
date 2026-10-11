@@ -320,4 +320,25 @@ describe('ficha de una empresa', () => {
     expect(await screen.findByText('No se encontró el símbolo «VIEJA» en las fuentes configuradas.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Replay' })).toBeInTheDocument()
   })
+
+  it('si no se pueden consultar las decisiones guardadas de un símbolo no encontrado, se dice', async () => {
+    // Tercera pasada: con el historial en 500 la página solo decía «No se
+    // encontró el símbolo», como si no hubiera nada guardado.
+    const rutas: Record<string, Respuesta> = {
+      '/api/stocks/VIEJA/quote': falla(404, 'sin cotización'),
+      '/api/stocks/VIEJA/profile': falla(404, 'sin perfil'),
+      '/api/stocks/VIEJA/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/VIEJA/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/VIEJA/financials': falla(404, 'edgar: VIEJA no está registrado en la SEC'),
+      '/api/empresa/VIEJA/historial': falla(500, 'database is locked'),
+    }
+    servir(rutas)
+    abrir('VIEJA')
+    const fallo = await screen.findByText('No se pudieron cargar las decisiones guardadas: database is locked')
+    rutas['/api/empresa/VIEJA/historial'] = ok({ symbol: 'VIEJA', reglas_version_actual: 'v1', decisiones: [
+      { id: 4, fecha: '2026-03-02', creado_en: '2026-03-02T15:00:00+00:00', origen: 'hoy:us_sp500', accion: 'comprar', precio: 20, score: 0.5 },
+    ] })
+    fireEvent.click(within(fallo.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByRole('button', { name: 'Replay' })).toBeInTheDocument()
+  })
 })

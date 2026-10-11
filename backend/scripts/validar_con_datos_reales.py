@@ -97,6 +97,11 @@ def _ida_y_vuelta(service, simbolo: str, ahora: datetime, dias_pasado: int) -> l
             r = analizar_y_congelar(simbolo, service, s, ahora=ahora, con_pares=False)
         except Exception as exc:  # el análisis entero falló: es un resultado, no un cuelgue
             return [co._fila("replay", simbolo, co.FAIL, f"el análisis falló: {type(exc).__name__}: {exc}"[:300])]
+        if r["instantanea"] is None:
+            # Sin un solo dato no se congela (`analisis_empresa.sin_ningun_dato`):
+            # no hay nada que reproducir, y eso no es un PASS. Antes esto era un
+            # TypeError que tumbaba el informe entero (tercera pasada del 2.1).
+            return [co._fila("replay", simbolo, co.UNKNOWN, f"no se congeló: {r.get('sin_congelar')}"[:300])]
         snap = s.get(DecisionSnapshot, r["instantanea"]["id"])
         filas += co.ida_y_vuelta(simbolo, r["analisis"], sn.reproducir(snap))
         momento = ahora - timedelta(days=dias_pasado)

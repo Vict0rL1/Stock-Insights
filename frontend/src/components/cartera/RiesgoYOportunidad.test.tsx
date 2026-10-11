@@ -82,6 +82,27 @@ describe('anotar efectivo (segunda revisión del 2.1)', () => {
   })
 })
 
+describe('efectivo escrito a mano (tercera pasada de la revisión del 2.1)', () => {
+  it('«10.000» se anota como diez mil, no como diez', async () => {
+    const cuerpos: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      if (init?.method === 'POST') {
+        cuerpos.push(JSON.parse(String(init.body)))
+        return new Response(JSON.stringify({ id: 9 }), { status: 200 })
+      }
+      const r = base[url]
+      return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+    }))
+    render(<CosteOportunidadPanel />)
+    await screen.findByText(/Efectivo anotado/)
+    fireEvent.change(screen.getByPlaceholderText('Efectivo disponible'), { target: { value: '10.000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Anotar efectivo' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect(cuerpos[0]).toMatchObject({ importe: 10000 })
+  })
+})
+
 describe('contribución al riesgo (ítem 2.1)', () => {
   it('si no carga, dice qué no cargó, con su motivo', async () => {
     servir({ ...base, '/api/portfolio/contribucion?descargar=false': falla('sin histórico en caché') })

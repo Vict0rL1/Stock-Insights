@@ -12,7 +12,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.providers.base import ProviderError
+from app.providers.base import DataNotFoundError, ProviderError
 from app.providers.edgar import EdgarProvider
 from app.providers.fred import FredProvider
 from app.providers.twelvedata import TwelveDataProvider
@@ -48,3 +48,18 @@ def test_fred_con_una_observacion_rota_es_un_fallo_del_proveedor(monkeypatch):
     monkeypatch.setattr(httpx, "get", get)
     with pytest.raises(ProviderError, match="observación ilegible"):
         FredProvider(api_key="x").get_macro("DEXCAUS", "2026-01-01")
+
+
+def test_twelvedata_sin_el_simbolo_lo_dice_en_espanol(monkeypatch):
+    """Tercera pasada del 2.1: el 404 de la API lleva ahora el motivo de cada
+    fuente hasta la pantalla, y el de Twelve Data iba en inglés («**symbol** not
+    found: X. Please specify it…»)."""
+    def get(*a, **k):
+        return httpx.Response(200, json={"status": "error", "code": 404,
+                                         "message": "**symbol** not found: XXX. Please specify it correctly"},
+                              request=httpx.Request("GET", "https://api.twelvedata.com/quote"))
+
+    monkeypatch.setattr(httpx, "get", get)
+    with pytest.raises(DataNotFoundError) as e:
+        TwelveDataProvider(api_key="x")._get("/quote", {"symbol": "XXX"})
+    assert str(e.value) == "twelvedata: no tiene ese símbolo"

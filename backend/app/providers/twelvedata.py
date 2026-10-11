@@ -17,6 +17,7 @@ from app.providers.base import (
     RateLimitError,
     iso_utc,
 )
+from app.registro import log
 
 BASE_URL = "https://api.twelvedata.com"
 
@@ -54,7 +55,11 @@ class TwelveDataProvider(DataProvider):
             if code == 429:
                 raise RateLimitError(f"twelvedata: {message}")
             if code in (400, 404) and "not found" in message.lower():
-                raise DataNotFoundError(f"twelvedata: {message}")
+                # Su texto («**symbol** not found: X. Please specify it…») va en
+                # inglés y llega a la pantalla como motivo de la ausencia desde
+                # que el 404 lleva lo que dijo cada fuente (tercera pasada).
+                log("proveedor").info("twelvedata: %s", message)
+                raise DataNotFoundError("twelvedata: no tiene ese símbolo")
             raise ProviderError(f"twelvedata: {message or code}")
         return data
 

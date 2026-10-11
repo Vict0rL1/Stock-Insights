@@ -149,6 +149,15 @@ export function BloqueDatos<T>({
   // acción: se dice, y no se puede pulsar. Sin esto una tesis ya borrada seguía
   // con su «Borrar» activo, y el segundo clic dejaba un «No se pudo borrar»
   // falso (segunda revisión del 2.1).
+  //
+  // El envoltorio solo existe mientras se refresca, y por eso React remonta el
+  // contenido al empezar y al terminar (tercera pasada). Tenerlo siempre, sin
+  // caja (`display: contents`), lo evitaba pero rompía la maqueta de toda la
+  // app: los `space-y-*` separan a los hijos DIRECTOS, y el contenido dejaba de
+  // serlo (20 pantallas perdían sus márgenes). Se acepta el remontaje, que es
+  // breve, y se quita su coste concreto: `CompanyLogo` recuerda los logos que
+  // fallaron para no pedirlos otra vez. Lo que vaya aquí dentro no debe guardar
+  // estado propio que haya que conservar durante una acción.
   if (carga.refrescando) {
     return (
       <div aria-busy="true">

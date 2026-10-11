@@ -239,3 +239,28 @@ def test_con_solo_los_estados_de_edgar_si_se_congela(session_factory):
         r = analizar_y_congelar("VACIA", sv, s, ahora=AHORA, con_pares=False)
         assert s.query(DecisionSnapshot).count() == 1
     assert r["instantanea"] is not None and r["sin_congelar"] is None
+
+
+def test_en_una_caida_no_dice_que_quiza_no_existe_ni_vuelve_a_preguntar(session_factory):
+    """Tercera pasada: con las fuentes caídas, el motivo decía que AAPL «quizá no
+    existe» (un fallo contado como ausencia, con «'quote'» en crudo) y volvía a
+    pedir cotización, perfil y fundamentales con sus reintentos."""
+    from app.providers.router import AllProvidersFailedError
+
+    class Caido(ServicioFalso):
+        def get(self, tipo, **kw):
+            self.llamadas.append((tipo, kw))
+            if tipo in ("quote", "financials", "price_history"):
+                raise AllProvidersFailedError(tipo, {"finnhub": "HTTP 503"})
+            return super().get(tipo, **kw)
+
+    sv = Caido(AHORA)
+    with session_factory() as s:
+        r = analizar_y_congelar("AAPL", sv, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 0
+    assert "no se pudieron descargar" in r["sin_congelar"]
+    assert "quizá no existe" not in r["sin_congelar"] and "'quote'" not in r["sin_congelar"]
+    # Decide con lo que el análisis ya tiene: no vuelve a preguntar.
+    assert [t for t, _ in sv.llamadas].count("quote") == 1
+    assert not any(t == "profile" for t, _ in sv.llamadas)
+

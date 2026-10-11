@@ -80,8 +80,11 @@ export function nullSi404<T>(peticion: Promise<T>): Promise<T | null> {
  *    pedirlo dos veces (en Cartera, dos descargas de décadas a la vez).
  *  - En StrictMode (`npm run dev`, el modo en que se usa la app) React monta,
  *    desmonta y vuelve a montar: el efecto corre dos veces con la misma clave.
- *    La segunda reutiliza la petición en curso; antes cada carga llegaba dos
- *    veces al backend (segunda revisión del 2.1). */
+ *    La segunda reutiliza la petición EN CURSO; antes cada carga llegaba dos
+ *    veces al backend (segunda revisión del 2.1). Solo mientras está en vuelo:
+ *    guardada para siempre, /ticker/AAPL → /ticker → /ticker/AAPL volvía a
+ *    enseñar el precio de la primera visita como si fuera de ahora (tercera
+ *    pasada). */
 export function useDato<T>(cargar: () => Promise<T>, clave: Clave): CargaConReintento<T> {
   const [estado, setEstado] = useState<{ de: Clave | undefined; carga: Carga<T>; refrescando: boolean }>({
     de: undefined,
@@ -97,7 +100,10 @@ export function useDato<T>(cargar: () => Promise<T>, clave: Clave): CargaConRein
   const enCurso = useRef<{ clave: Clave; intento: number; promesa: Promise<T> } | null>(null)
 
   useEffect(() => {
-    if (clave === null) return
+    if (clave === null) {
+      enCurso.current = null
+      return
+    }
     let vigente = true
     if (conservar.current) {
       setEstado((e) =>
@@ -112,6 +118,12 @@ export function useDato<T>(cargar: () => Promise<T>, clave: Clave): CargaConRein
     const previa = enCurso.current
     const promesa = previa && previa.clave === clave && previa.intento === intento ? previa.promesa : ref.current()
     enCurso.current = { clave, intento, promesa }
+    // Al terminar deja de estar «en curso». El doble efecto de StrictMode es
+    // síncrono: la segunda pasada la encuentra todavía en vuelo.
+    const soltar = () => {
+      if (enCurso.current?.promesa === promesa) enCurso.current = null
+    }
+    void promesa.then(soltar, soltar)
     promesa.then(
       (datos) => vigente && setEstado({ de: clave, carga: { estado: 'listo', datos, error: null }, refrescando: false }),
       (e: unknown) =>

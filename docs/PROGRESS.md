@@ -41,7 +41,7 @@ repositorio.
 
 ## Fase 2 — Claridad y uso diario (P2)
 
-- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: en curso (dos revisiones independientes hechas y arregladas; falta una pasada corta sobre los últimos arreglos y repetir las capturas 1440/390) · commit: `d05312c` y los de las revisiones (abajo) · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Tras la revisión: cada carga va atada a su clave (ni un render con los datos de otra), `refrescar()` recarga tras una acción sin vaciar la pantalla, y `ausenteSi404` + `BloqueDatos ausente` dicen un 404 («la fuente no lo tiene») como ausencia, sin «Reintentar». Guardas: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error, un `catch {}` sin parámetro y una promesa flotante; 73 tests de render en `d05312c` y 37 más en la revisión (todos fallan con el código anterior salvo las guardas rotuladas).
+- [x] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: hecho (tres revisiones independientes, todas arregladas; capturas 1440/390 repetidas, 66 sin fallos) · commit: `d05312c`, `c9eea22`, `d238798`, `9b84525` y el de la tercera pasada (abajo) · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Tras la revisión: cada carga va atada a su clave (ni un render con los datos de otra), `refrescar()` recarga tras una acción sin vaciar la pantalla, y `ausenteSi404` + `BloqueDatos ausente` dicen un 404 («la fuente no lo tiene») como ausencia, sin «Reintentar». Guardas: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error, un `catch {}` sin parámetro y una promesa flotante; 73 tests de render en `d05312c` y 37 más en la revisión (todos fallan con el código anterior salvo las guardas rotuladas).
 - [ ] **2.2** V14 · `AvisoAgrupado` — estado: pendiente · commit: — · nota: —
 - [ ] **2.3** Tipografía (mínimo 12 px, `<TituloPagina>`, `<TituloTarjeta>`) — estado: pendiente · commit: — · nota: —
 - [ ] **2.4** V15 · `<BarraExposicion>` — estado: pendiente · commit: — · nota: —
@@ -263,8 +263,8 @@ otro agente; 16 confirmados o matizados). Arreglados en `c9eea22` y `d238798`:
   las acciones rechazadas de Portafolio.
 
 **Segunda revisión del 2.1** (`c9eea22`, 4 bloques y verificación de cada hallazgo; 13 confirmados o
-matizados). Arreglados en el commit «fix(2.1): segunda revisión…», con tests que fallan con el código
-anterior salvo las guardas rotuladas:
+matizados). Arreglados en `9b84525`, con tests que fallan con el código anterior salvo las guardas
+rotuladas:
 
 - VACIA (captura `empresa_sin_datos`) volvía a perder las pestañas: la ficha pregunta a EDGAR antes de
   decir «No se encontró» (`d238798`), y si un símbolo ya no está en ninguna fuente pero tiene decisiones
@@ -297,6 +297,33 @@ anterior salvo las guardas rotuladas:
   `useDato` (devolver la carga de otra clave, quitar el descarte, conservar un error, no reutilizar
   la petición): las cuatro las caza algún test.
 
+**Tercera pasada** (`9b84525`, 3 bloques y verificación; 12 confirmados o matizados, varios en los
+arreglos de la segunda). Arreglados en el commit «fix(2.1): tercera pasada…»:
+
+- `useDato` guardaba para siempre la promesa reutilizada en StrictMode: /ticker/AAPL → /ticker →
+  /ticker/AAPL enseñaba el precio de la primera visita como actual. Ahora solo reutiliza la que está
+  en vuelo. `BloqueDatos` remonta su contenido al empezar y al acabar un refresco; tener el envoltorio
+  siempre (`display: contents`) lo evitaba, pero quitaba los márgenes de `space-y-*` en 20 pantallas
+  (lo destapó repetir las capturas), así que se acepta el remontaje y se quita su coste concreto:
+  `CompanyLogo` recuerda los logos que fallaron y no los vuelve a pedir.
+- La consulta de las decisiones guardadas de un símbolo no encontrado, si falla, se dice con
+  «Reintentar».
+- Cifras escritas a mano: `leerNumero` leía «0.125» como 125 (un grupo de miles no empieza por 0) y no
+  aceptaba «.5»; Vigilancia ya no lo usa (su campo es numérico y el navegador lo normaliza: un umbral
+  de tres decimales se multiplicaba por mil). Y llega a lo que guarda datos del usuario, que seguía con
+  `parseFloat`: posición, stop, venta, alerta, efectivo y tipo impositivo («1.250,50» era 1,25 y
+  «10.000» de efectivo eran 10). Lo que no se entiende se dice y no se envía.
+- Backend: `sin_ningun_dato` decide con el análisis (sin volver a preguntar: en una caída eran ~20
+  llamadas con esperas) y distingue «ninguna fuente lo tiene» de «no respondieron»;
+  `./start.sh validar` contaba como TypeError un símbolo sin congelar (ahora UNKNOWN); una cadena de
+  opciones sin precio se cacheaba una hora (ahora el validador la rechaza y un fallo no se cachea);
+  el «not found» de Twelve Data llegaba en inglés a la pantalla.
+
+Pendiente (baja, no regresión): un 429 de yfinance en la cadena de opciones se reintenta como
+cualquier `ProviderError` (+2 peticiones); traducir los 429 de yfinance a `RateLimitError` sería una
+mejora general. Los campos del DCF de la ficha (`ValuationSection`) siguen con `parseFloat`: no se
+guardan, pero leerían «12,5» como 12.
+
 Queda para la fase 4.5: `@typescript-eslint/no-misused-promises` marca 29 manejadores `async` en
 13 ficheros (la mayoría capturan dentro); activarla es revisarlos uno a uno. Tampoco se ve una
 referencia a función que se trague el error (`.catch(ignorar)`): sin tipos no se distingue de
@@ -324,8 +351,7 @@ un replay pedido para un símbolo puede llegar tras cambiar de símbolo.
 
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
-Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`). El 2.1 está hecho y sus dos revisiones
-independientes arregladas; para cerrarlo faltan una pasada corta sobre los últimos arreglos y repetir
-las capturas 1440/390. Después, 2.2 (`AvisoAgrupado`). Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
+Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
+arregladas, capturas repetidas). Lo siguiente es 2.2 (`AvisoAgrupado`). Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
 `thesis_watch` y en el tipo de cambio, las bandas de FX cerca de la paridad, M10, M11 y M16, y una
 regla de permisos para crear y empujar las etiquetas.

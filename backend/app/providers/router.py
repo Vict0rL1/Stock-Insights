@@ -54,12 +54,18 @@ RETRY_ATTEMPTS = 2       # reintentos ante error transitorio, por proveedor
 RETRY_BASE_DELAY = 1.0   # segundos; crece exponencialmente (1s, 2s)
 
 
+# Cómo empieza el mensaje de AllProvidersFailedError. Quien solo tiene el texto
+# (`analisis_empresa._traer` guarda el motivo, no la excepción) lo usa para no
+# confundir «no respondieron» con «no lo tienen».
+TODAS_FALLARON = "Todas las fuentes fallaron"
+
+
 class AllProvidersFailedError(Exception):
     def __init__(self, data_type: str, reasons: dict[str, str]):
         self.data_type = data_type
         self.reasons = reasons
         detail = "; ".join(f"{name}: {why}" for name, why in reasons.items())
-        super().__init__(f"Todas las fuentes fallaron para '{data_type}' ({detail})")
+        super().__init__(f"{TODAS_FALLARON} para '{data_type}' ({detail})")
 
 
 def _normalize_windows(value) -> tuple[tuple[int, int], ...]:

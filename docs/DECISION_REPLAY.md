@@ -32,12 +32,15 @@ regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de
 expectativas. Si solo se movió el precio, no: diez aperturas de la misma empresa
 en una tarde no son diez decisiones. Al día siguiente siempre hay instantánea del día.
 
-**Cuándo NO se congela aunque se pida.** Si ninguna fuente da cotización, perfil,
-fundamentales ni estados financieros del símbolo —un error de tecleo, «AAPLL»—,
-el análisis se devuelve pero no se guarda: una instantánea es inmutable y la de
-algo que quizá no existe no se podría borrar nunca. La respuesta lo dice en
-`sin_congelar` (`None` si se congeló o no se pidió). Basta una pieza para que se
-congele (VACIA, solo con estados de EDGAR, se congela).
+**Cuándo NO se congela aunque se pida.** Si el análisis no tiene precio (ni
+cotización ni último cierre) ni estados financieros —un error de tecleo, «AAPLL»,
+o una caída de todas las fuentes—, se devuelve pero no se guarda: una instantánea
+es inmutable, y la de algo que quizá no existe no se podría borrar nunca. Se
+decide con lo que el análisis ya trae, sin volver a preguntar a las fuentes
+(`analisis_empresa.sin_ningun_dato`). La respuesta lo dice en `sin_congelar`
+(`None` si se congeló o no se pidió), distinguiendo «ninguna fuente lo tiene» de
+«no respondieron». Basta el precio o los estados para que se congele (VACIA, solo
+con estados de EDGAR, se congela). `./start.sh validar` lo cuenta como UNKNOWN.
 
 `evaluar_instantaneas.py` sigue midiendo solo **afirmaciones** (comprar, vender,
 reducir, evitar): un «mantener» se congela para poder reconstruirlo, pero no es

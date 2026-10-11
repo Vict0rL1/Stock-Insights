@@ -156,6 +156,16 @@ def test_el_script_con_datos_coherentes_no_falla_y_reproduce():
     assert co.FAIL not in estados.values()
 
 
+def test_un_simbolo_sin_un_solo_dato_es_unknown_y_no_tumba_el_informe():
+    """Tercera pasada del 2.1: sin instantánea (no se congela un símbolo sin un
+    solo dato) el script lanzaba TypeError y se perdía el informe entero."""
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    filas = _script().validar(servicio, ["AAPLL", "AAPL"], [], ahora=AHORA, con_fred=False)
+    replay = next(f for f in filas if f["simbolo"] == "AAPLL" and f["comprobacion"] == "replay")
+    assert replay["estado"] == co.UNKNOWN and "no se congeló" in replay["detalle"]
+    assert _estado(filas, "replay:decision") == co.PASS  # AAPL sigue validándose
+
+
 def test_una_cotizacion_del_futuro_no_llega_a_la_instantanea():
     """Un proveedor con el reloj adelantado: la cotización llega fechada mañana.
     El análisis la descarta antes de congelar, así que el replay no tiene nada

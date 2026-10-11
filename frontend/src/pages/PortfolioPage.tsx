@@ -15,7 +15,14 @@ import type {
   Vigilancia,
 } from '../api/types'
 import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { leerNumero } from '../lib/entrada'
 import { useDato, type CargaConReintento } from '../lib/useDato'
+
+// Las cifras que se escriben aquí se guardan: con `parseFloat`, «1.250,50»
+// (como la app escribe un importe) era 1,25 y «12,5» era 12, sin aviso. Una
+// posición, un stop o una venta guardados mil veces más pequeños (tercera
+// pasada de la revisión del 2.1). Lo que no se entiende se dice y no se envía.
+const EJEMPLO = 'escribe p. ej. 1.250,50 o 98,5'
 
 type Tab = 'portafolio' | 'watchlist' | 'alertas'
 
@@ -402,11 +409,21 @@ function PortfolioTab() {
   const addPosition = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const quantity = leerNumero(form.quantity)
+    const cost = leerNumero(form.cost)
+    if (quantity === null || cost === null) {
+      setError(
+        quantity === null
+          ? `«${form.quantity}» no es un número de acciones: ${EJEMPLO}.`
+          : `«${form.cost}» no es un coste por acción: ${EJEMPLO}.`,
+      )
+      return
+    }
     try {
       await api.addPosition({
         symbol: form.symbol.trim().toUpperCase(),
-        quantity: parseFloat(form.quantity),
-        cost_basis: parseFloat(form.cost),
+        quantity,
+        cost_basis: cost,
       })
       setForm({ symbol: '', quantity: '', cost: '' })
       load()
@@ -425,8 +442,11 @@ function PortfolioTab() {
       sugerido ? String(sugerido) : '',
     )
     if (!raw) return
-    const stop = parseFloat(raw)
-    if (Number.isNaN(stop)) return
+    const stop = leerNumero(raw)
+    if (stop === null) {
+      setError(`«${raw}» no es un precio de stop: ${EJEMPLO}.`)
+      return
+    }
     try {
       await api.fijarStop(id, stop)
       load()
@@ -438,8 +458,11 @@ function PortfolioTab() {
   const close = async (id: number) => {
     const raw = window.prompt('Precio de venta por acción:')
     if (!raw) return
-    const price = parseFloat(raw)
-    if (Number.isNaN(price)) return
+    const price = leerNumero(raw)
+    if (price === null) {
+      setError(`«${raw}» no es un precio de venta: ${EJEMPLO}.`)
+      return
+    }
     // Sin capturar, un cierre rechazado no decía nada (ítem 2.1).
     try {
       await api.closePosition(id, price)
@@ -925,11 +948,16 @@ function AlertsTab() {
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const price = leerNumero(form.price)
+    if (price === null) {
+      setError(`«${form.price}» no es un precio: ${EJEMPLO}.`)
+      return
+    }
     try {
       await api.addAlert({
         symbol: form.symbol.trim().toUpperCase(),
         op: form.op,
-        price: parseFloat(form.price),
+        price,
       })
       setForm({ symbol: '', op: 'lt', price: '' })
       load()

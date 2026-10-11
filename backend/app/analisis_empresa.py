@@ -52,7 +52,7 @@ from app.db.models import Instrument, Position, Thesis, ThesisTrigger
 from app.etiquetas import etiqueta
 from app.formato import fmt_pct
 from app.providers.base import DataNotFoundError
-from app.providers.router import AllProvidersFailedError
+from app.providers.router import TODAS_FALLARON, AllProvidersFailedError
 from app.registro import log
 
 # Versión de la FORMA del documento. Cambia si cambian sus claves; dos
@@ -745,31 +745,36 @@ def analizar(
     return analisis
 
 
-# Lo mínimo que alguna fuente tiene que conocer de una empresa para que su
-# análisis merezca una instantánea.
-PIEZAS_DE_EXISTENCIA = ("quote", "profile", "fundamentals", "financials")
-
-
-def sin_ningun_dato(service, symbol: str) -> str | None:
-    """Por qué no se debe congelar el análisis de `symbol`, o `None` si se puede.
+def sin_ningun_dato(analisis: dict) -> str | None:
+    """Por qué no se debe congelar este análisis, o `None` si se puede.
 
     Una instantánea es inmutable (triggers de la migración 0004): la de un
     símbolo que ninguna fuente conoce —un error de tecleo, «AAPLL»— no se puede
     borrar nunca. Antes bastaba abrir «Qué cambió» o evaluar una idea en Cartera
-    para dejarla en la base (segunda revisión del 2.1). Solo se frena si NINGUNA
-    de las cuatro piezas llegó, por ausencia o por fallo: un análisis sin un solo
-    dato no registra nada que la app supiera, y no hay forma de distinguir una
-    caída de «no existe» cuando una fuente falla. Para una empresa real la
-    primera pieza ya está en caché: no cuesta llamadas.
+    para dejarla en la base (segunda revisión del 2.1). Se decide con lo que el
+    análisis ya trae, sin volver a pedir nada: sin precio (ni cotización ni
+    último cierre) y sin estados financieros no registra nada que la app
+    supiera. Preguntar otra vez a las fuentes costaba, en una caída, una
+    veintena de llamadas con sus esperas (tercera pasada).
+
+    El motivo distingue «ninguna fuente lo tiene» de «no respondieron»: decir
+    «quizá no existe» de una empresa real durante una caída era un fallo
+    contado como ausencia.
     """
-    motivos = []
-    for tipo in PIEZAS_DE_EXISTENCIA:
-        payload, motivo = _traer(service, tipo, symbol=symbol)
-        if payload is not None:
-            return None
-        motivos.append(motivo or "sin dato")
-    return (f"Ninguna fuente dio cotización, perfil, fundamentales ni estados financieros de {symbol}: "
-            f"no se guarda una instantánea de algo que quizá no existe ({'; '.join(motivos)}).")
+    precio = analisis["mercado"]["precio"]
+    fund = analisis.get("_fund") or {}
+    if precio.get("valor") is not None or fund.get("_periodos"):
+        return None
+    symbol = analisis["symbol"]
+    motivos = {"la cotización": precio.get("motivo"), "los estados financieros": fund.get("motivo")}
+    cayeron = [nombre for nombre, m in motivos.items() if m and m.startswith(TODAS_FALLARON)]
+    if cayeron:
+        return (f"No se guarda una instantánea de {symbol}: no hay precio ni estados financieros, y "
+                f"{' ni '.join(cayeron)} no se pudieron descargar (las fuentes no respondieron). "
+                "Se guardará cuando respondan.")
+    detalle = "; ".join(f"{nombre}: {m}" for nombre, m in motivos.items() if m)
+    return (f"Ninguna fuente tiene precio ni estados financieros de {symbol} ({detalle}): "
+            "no se guarda una instantánea de algo que quizá no existe.")
 
 
 def datos_desconocidos(a: dict) -> list[dict]:

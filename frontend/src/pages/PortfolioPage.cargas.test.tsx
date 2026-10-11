@@ -378,3 +378,70 @@ describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
     expect(await screen.findByText('el precio tiene que ser positivo')).toBeInTheDocument()
   })
 })
+
+describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () => {
+  // Con `parseFloat`, «1.250,50» se guardaba como 1,25 y «1.000» como 1.
+  afterEach(() => vi.restoreAllMocks())
+
+  function conCuerpos(rutas: Record<string, { status: number; json: unknown } | 'pendiente'>) {
+    const cuerpos: { url: string; cuerpo: unknown }[] = []
+    servirConMetodo(rutas)
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((e, init) => {
+      if (init?.method === 'POST') cuerpos.push({ url: String(e), cuerpo: JSON.parse(String(init.body)) })
+      return fetchBase(e, init)
+    })
+    return cuerpos
+  }
+
+  it('una posición «1.000» acciones a «1.250,50» se guarda como 1000 a 1250,5', async () => {
+    const cuerpos = conCuerpos({ ...base, 'POST /api/portfolio/positions': { status: 200, json: { id: 5, symbol: 'PEP' } } })
+    pintar()
+    await screen.findByText('Invertido')
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
+    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: '1.000' } })
+    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '1.250,50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect(cuerpos[0].cuerpo).toMatchObject({ quantity: 1000, cost_basis: 1250.5 })
+  })
+
+  it('lo que no se entiende se dice y no se envía', async () => {
+    const cuerpos = conCuerpos(base)
+    pintar()
+    await screen.findByText('Invertido')
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
+    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: 'diez' } })
+    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '150' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    expect(await screen.findByText('«diez» no es un número de acciones: escribe p. ej. 1.250,50 o 98,5.')).toBeInTheDocument()
+    expect(cuerpos).toHaveLength(0)
+  })
+
+  it('una venta a «1.250,00» se registra a 1250', async () => {
+    const cuerpos = conCuerpos({ ...base, 'POST /api/portfolio/positions/1/close': { status: 200, json: { id: 1, realized_pnl: 1 } } })
+    vi.spyOn(window, 'prompt').mockReturnValue('1.250,00')
+    pintar()
+    await screen.findByText('Invertido')
+    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Cerrar' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect(cuerpos[0].cuerpo).toEqual({ exit_price: 1250 })
+  })
+
+  it('una alerta a «1.050» salta a 1050, no a 1,05', async () => {
+    const cuerpos = conCuerpos({
+      ...base,
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: { activa: true, nunca: false, nota: '' } } },
+      'POST /api/portfolio/alerts': { status: 200, json: { id: 8 } },
+    })
+    pintar()
+    pestaña('Alertas')
+    await screen.findByText('Sin alertas configuradas.')
+    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '1.050' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect(cuerpos[0].cuerpo).toMatchObject({ price: 1050 })
+  })
+})
+

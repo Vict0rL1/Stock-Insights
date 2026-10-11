@@ -42,7 +42,7 @@ def analizar_y_congelar(
     analisis = analisis_empresa.analizar(symbol, service, session, ahora=ahora, con_pares=con_pares,
                                          tipo_impositivo=tipo_impositivo)
     instantanea, nueva = (None, False)
-    sin_congelar = analisis_empresa.sin_ningun_dato(service, analisis["symbol"]) if congelar else None
+    sin_congelar = analisis_empresa.sin_ningun_dato(analisis) if congelar else None
     if congelar and sin_congelar is None:
         instantanea, nueva = sn.congelar_analisis(session, analisis, ahora)
     anterior = (

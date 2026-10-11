@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse } from '../../api/types'
 import { fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
+import { leerNumero } from '../../lib/entrada'
 import { useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from '../ticker/QueCambioSection'
@@ -138,9 +139,12 @@ export function CosteOportunidadPanel() {
 
   const anotar = (e: React.FormEvent) => {
     e.preventDefault()
-    const n = Number(importe.replace(',', '.'))
-    if (!Number.isFinite(n) || n < 0) {
-      setMsg('Importe inválido.')
+    // `Number('10.000'.replace(',', '.'))` daba 10: diez mil anotados como
+    // diez, y el efectivo entra en el tamaño (tercera pasada de la revisión
+    // del 2.1). Se lee con la convención de la app.
+    const n = leerNumero(importe)
+    if (n === null || n < 0) {
+      setMsg(`«${importe}» no es un importe: escribe p. ej. 10.000 o 1.500,50.`)
       return
     }
     api.anotarEfectivo({ moneda, importe: n }).then(() => { setImporte(''); setMsg(null); cargarEfectivo() }, (er: Error) => setMsg(er.message))
@@ -149,7 +153,12 @@ export function CosteOportunidadPanel() {
     e.preventDefault()
     const s = ticker.trim().toUpperCase()
     if (!s) return
-    const t = tipo.trim() ? Number(tipo.replace(',', '.')) / 100 : null
+    const leido = tipo.trim() ? leerNumero(tipo) : null
+    if (tipo.trim() && leido === null) {
+      setMsg(`«${tipo}» no es un tipo en %: escribe p. ej. 19 o 21,5.`)
+      return
+    }
+    const t = leido === null ? null : leido / 100
     setCargando(true)
     setRes(null)
     api.analisisEmpresa(s, t).then(setRes, (er: Error) => setMsg(er.message)).finally(() => setCargando(false))

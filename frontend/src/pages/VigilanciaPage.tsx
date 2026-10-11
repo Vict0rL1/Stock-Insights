@@ -9,7 +9,6 @@ import type {
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
-import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
@@ -191,8 +190,12 @@ function FormularioDisparador({
     setError(null)
     // `Number('') / 100` daba 0: un umbral borrado se guardaba como «0 %», un
     // punto que nadie escribió (segunda revisión del 2.1). Ausente no es cero.
-    const u = leerNumero(umbral)
-    if (kind !== 'noticia' && u === null) {
+    // El campo es `type="number"`: el navegador ya entrega el valor con punto
+    // decimal, así que no se reinterpreta con la convención de la app (con
+    // `leerNumero`, «0.125» llegaba como 125 %; tercera pasada). Lo que no es
+    // un número también llega vacío.
+    const u = umbral.trim() === '' ? null : Number(umbral)
+    if (kind !== 'noticia' && (u === null || !Number.isFinite(u))) {
       setError('Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.')
       return
     }

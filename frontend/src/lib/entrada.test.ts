@@ -14,6 +14,11 @@ describe('leerNumero', () => {
     expect(leerNumero(' 12.5 ')).toBe(12.5)
     expect(leerNumero('0.25')).toBe(0.25)
     expect(leerNumero('1234.5')).toBe(1234.5)
+    // Un grupo de miles no empieza por 0 (tercera pasada: «0.125» daba 125).
+    expect(leerNumero('0.125')).toBe(0.125)
+    expect(leerNumero('-0.500')).toBe(-0.5)
+    expect(leerNumero('.5')).toBe(0.5)
+    expect(leerNumero(',5')).toBe(0.5)
   })
 
   it('lo que no es un número sin ambigüedad es null, no un número truncado ni un cero', () => {

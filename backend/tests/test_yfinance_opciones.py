@@ -67,3 +67,31 @@ def test_sin_precio_de_la_accion_el_spot_queda_desconocido(monkeypatch):
     monkeypatch.setattr(p, "get_quote", sin_cotizacion)
     r = p.get_options_chain("AAPL")
     assert r["spot"] is None and len(r["contratos"]) == 2
+
+
+def test_una_cadena_sin_precio_es_un_fallo_que_no_se_guarda_en_cache(session_factory):
+    """Tercera pasada: devuelta con `spot: None`, la cadena se cacheaba una hora
+    y «Reintentar» leía la misma cadena rota. El validador la rechaza: el router
+    la trata como un fallo, y un fallo no se cachea."""
+    from app.providers.base import DataProvider
+    from app.providers.router import AllProvidersFailedError, DataRouter, RateLimiter
+
+    class SinPrecio(DataProvider):
+        name = "yfinance"
+        capabilities = frozenset({"options_chain"})
+
+        def __init__(self):
+            self.spot = None
+
+        def get_options_chain(self, symbol, max_expiraciones=6):
+            return {"symbol": symbol, "spot": self.spot, "contratos": [{"tipo": "call"}], "expiraciones": ["2026-10-17"],
+                    "vencimientos_fallidos": [], "expiraciones_totales": 1, "as_of": "2026-10-11T14:00:00+00:00"}
+
+    proveedor = SinPrecio()
+    router = DataRouter({"yfinance": proveedor}, RateLimiter(session_factory, {"yfinance": (100, 60)}),
+                        source_order={"options_chain": ["yfinance"]}, sleep=lambda s: None)
+    with pytest.raises(AllProvidersFailedError, match="sin precio de la acción"):
+        router.fetch("options_chain", symbol="AAPL")
+    proveedor.spot = 230.0
+    assert router.fetch("options_chain", symbol="AAPL")["spot"] == 230.0
+

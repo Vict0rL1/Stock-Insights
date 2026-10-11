@@ -114,4 +114,24 @@ describe('useDato', () => {
     expect(await screen.findByText('hecho')).toBeInTheDocument()
     expect(llamadas).toBe(1)
   })
+
+  it('volver a una clave después de una clave null pide otra vez: solo se reutiliza lo que está en vuelo', async () => {
+    // Tercera pasada: /ticker/AAPL → /ticker (clave null) → /ticker/AAPL
+    // reutilizaba la promesa ya resuelta y enseñaba el precio de la primera
+    // visita como si fuera de ahora.
+    let llamadas = 0
+    function Sonda({ clave }: { clave: string | null }) {
+      const c = useDato(() => {
+        llamadas += 1
+        return Promise.resolve(`dato ${llamadas}`)
+      }, clave)
+      return <p>{c.estado === 'listo' ? c.datos : c.estado}</p>
+    }
+    const { rerender } = render(<Sonda clave="AAPL" />)
+    expect(await screen.findByText('dato 1')).toBeInTheDocument()
+    rerender(<Sonda clave={null} />)
+    rerender(<Sonda clave="AAPL" />)
+    expect(await screen.findByText('dato 2')).toBeInTheDocument()
+    expect(llamadas).toBe(2)
+  })
 })

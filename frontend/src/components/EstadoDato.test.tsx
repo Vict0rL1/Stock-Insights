@@ -132,5 +132,5 @@ describe('useDato', () => {
     await act(async () => pendientes.AAPL[1]('datos viejos de AAPL'))
     expect(result.current.datos).toBe('datos de MSFT')
   })
-})
 
+})

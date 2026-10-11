@@ -159,7 +159,11 @@ export function TickerPage() {
           <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
             No se encontró el símbolo «{symbol}» en las fuentes configuradas.
           </p>
-          {guardadas.estado === 'listo' && guardadas.datos > 0 && <HistorialSection symbol={symbol} />}
+          {/* Si la consulta falla se dice, con «Reintentar»: callarlo era pintar
+              «no hay nada» justo con los datos del usuario (tercera pasada). */}
+          <BloqueDatos carga={guardadas} que="las decisiones guardadas">
+            {(n) => (n > 0 ? <HistorialSection symbol={symbol} /> : null)}
+          </BloqueDatos>
         </>
       )}
 

@@ -126,4 +126,30 @@ describe('Vigilancia (revisión del 2.1)', () => {
     expect(await screen.findByText('Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.')).toBeInTheDocument()
     expect(pedidas.some((p) => p.startsWith('POST'))).toBe(false)
   })
+
+  it('un umbral con decimales se envía tal cual: «0.125» es 0,125 %, no 125 %', async () => {
+    // Tercera pasada: leído con la convención de miles, el valor que el
+    // navegador ya normaliza («0.125») llegaba como 125.
+    const cuerpos: unknown[] = []
+    servir({
+      ...BASE,
+      '/api/theses/vigilancia/metricas': {
+        status: 200,
+        json: { metricas: [{ clave: 'operating_margin', etiqueta: 'margen operativo', alto_mejor: true }], crecimientos: [], operadores: [{ clave: 'lt', etiqueta: 'por debajo de' }], nota: '' },
+      },
+      'POST /api/theses/3/triggers': { status: 200, json: { id: 12 } },
+    })
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((e, init) => {
+      if (init?.method === 'POST') cuerpos.push(JSON.parse(String(init.body)))
+      return fetchBase(e, init)
+    })
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: '+ punto de invalidación' }))
+    fireEvent.change(screen.getByPlaceholderText('Por qué esto invalidaría la tesis'), { target: { value: 'Margen casi nulo' } })
+    fireEvent.change(screen.getByDisplayValue('18'), { target: { value: '0.125' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect((cuerpos[0] as { config: { umbral: number } }).config.umbral).toBeCloseTo(0.00125, 10)
+  })
 })

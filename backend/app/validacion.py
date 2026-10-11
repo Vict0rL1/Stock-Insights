@@ -211,8 +211,19 @@ def _sanear_periodos(periodos: list, clave_id: str) -> tuple[list[dict], int]:
     return limpios, descartadas
 
 
+def _cadena_opciones(p: dict) -> dict:
+    """Una cadena sin precio de la acción no sirve para nada relativo: es un
+    fallo, y como fallo no se cachea. Devuelta con `spot: None`, se guardaba una
+    hora y «Reintentar» leía la misma cadena rota aunque Yahoo ya diera precio
+    (tercera pasada de la revisión del 2.1)."""
+    if datos.numero(p.get("spot")) is None:
+        raise PayloadInvalido("la cadena de opciones llegó sin precio de la acción")
+    return p
+
+
 VALIDADORES = {
     "financials": _financieros,
+    "options_chain": _cadena_opciones,
     "quote": _quote,
     "price_history": _barras,
     "price_history_long": _barras,
