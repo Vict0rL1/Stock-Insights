@@ -25,3 +25,7 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# graphify (grafo de conocimiento del repo; se regenera con /graphify)
+graphify-out/
+.graphify_*.json
