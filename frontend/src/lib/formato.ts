@@ -110,7 +110,7 @@ export function fmtDinero(
  * fijos, el stop de 0,004 de una acción de céntimos salía «0,00» (auditoría del
  * 19 oct). El exponente sale de la representación más corta, como en Python.
  */
-function decimalesPrecio(valor: number): number {
+export function decimalesPrecio(valor: number): number {
   const a = Math.abs(valor)
   if (a >= 1 || a === 0) return 2
   const exponente = Number(a.toExponential().split('e')[1])

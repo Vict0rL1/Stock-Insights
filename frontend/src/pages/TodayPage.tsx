@@ -1043,13 +1043,16 @@ export function TodayPage() {
       <BloqueDatos carga={mercados} que="los mercados">
         {(lista) =>
           lista.length > 1 && (
-            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+            // Los selectores se desplazan dentro de su propio marco y sus
+            // etiquetas no se parten: a 390 px los botones se encogían y
+            // «Mejores ideas (5)» salía en tres líneas (ítem 2.12).
+            <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5">
               {lista.map((m) => (
                 <button
                   key={m.key}
                   onClick={() => setMarket(m.key)}
                   title={`${m.companies} empresas · ${m.sectors} sectores`}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                     market === m.key
                       ? 'bg-slate-900 text-white'
                       : 'text-slate-500 hover:text-slate-900'
@@ -1086,7 +1089,7 @@ export function TodayPage() {
         <>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+              <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5">
                 {(
                   [
                     ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],
@@ -1099,7 +1102,7 @@ export function TodayPage() {
                   <button
                     key={key}
                     onClick={() => setView(key)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       view === key
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-500 hover:text-slate-900'

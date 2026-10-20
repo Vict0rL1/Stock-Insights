@@ -52,7 +52,7 @@ repositorio.
 - [ ] **2.9** Modo resumen — estado: pendiente · commit: — · nota: —
 - [ ] **2.10** Editar tesis, varias watchlists, exportar CSV — estado: pendiente · commit: — · nota: —
 - [ ] **2.11** Vista global «qué cambió en mis posiciones» — estado: pendiente · commit: — · nota: —
-- [ ] **2.12** V2 · diseño móvil — estado: pendiente · commit: — · nota: —
+- [x] **2.12** V2 · diseño móvil — estado: hecho (adelantado por la auditoría del 19 oct, A7; detalle en su sección) · commit: el de A7 · nota: por debajo de 768 px la barra lateral es un cajón («Menú»); las capturas a 390 px fallan si una pantalla desborda en horizontal o parte un texto palabra a palabra, y ya no pulsan «a la fuerza».
 - [ ] **2.13** Accesibilidad (axe-core, foco, aria-label, color no único) — estado: pendiente · commit: — · nota: —
 - [ ] **2.14** Rendimiento medido de Hoy — estado: pendiente · commit: — · nota: —
 
@@ -348,7 +348,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 | A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | hecho (abajo) |
 | A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | hecho (abajo) |
 | A6 (P2) | El backend aceptaba cualquier cabecera `Host` | hecho (abajo) |
-| A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | pendiente |
+| A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | hecho (abajo) |
 
 **A1.** Se compara con el valor sin redondear (el stop guardado tal cual, el recalculado sin
 `round`) y solo se redondea lo que se sirve, con `datos.redondear_precio`: dos decimales desde 1 (el
@@ -413,6 +413,26 @@ que corren fuera de pytest, llaman con `base_url="http://localhost"`. Guardas: s
 (dominio, con puerto, IP de la red, sufijo engañoso, vacío, `::1` sin corchetes) son 400 sin
 llamar a ningún proveedor, cinco de esta máquina pasan y el valor por defecto no incluye
 `testserver` (los siete primeros fallan con el código anterior). Golden y fixtures idénticos.
+
+**A7 (ítem 2.12).** `Layout.tsx`: por debajo de `md` (768 px) una barra superior con el logo y
+«Menú», que abre la navegación como cajón; se cierra al navegar (también a la misma pantalla),
+con Escape (el foco vuelve a «Menú») y tocando fuera; desde `md`, la barra lateral de siempre.
+Relleno del contenido 16 px en móvil (24 desde `md`). El criterio del plan se convirtió en guarda
+de `npm run capturas`: a 390 px una pantalla falla si desborda en horizontal (dice qué elemento
+lo empuja; lo que está dentro de un contenedor con scroll propio no cuenta) o si un texto de tres
+o más palabras sale con una palabra por línea; y el clic de las acciones ya no es `force`. Con el
+cajón, lo que quedaba: la leyenda del gráfico (32 px fuera; ahora `flex-wrap`), los selectores
+de mercado y de vista de Hoy («Mejores ideas (5)» en tres líneas; ahora se desplazan en su marco
+sin partir las etiquetas) y la cabecera de la tabla de Calidad («Días de cobro»). Dos capturas
+nuevas, solo a 390: el menú abierto y la navegación desde él, con clics reales. Hermano,
+regresión de A1: el `priceFormatter` global del gráfico con `fmtPrecio` formateaba también RSI y
+MACD (valores bajo 1 con cuatro decimales), el eje se ensanchaba y el gráfico se desplazaba; ahora
+el global vuelve a `fmtNum(p, 2)` y solo las series de precio usan `fmtPrecio`, con el paso
+(`minMove`) que dan los decimales del precio (a 1440 la ficha vuelve a ser idéntica píxel a
+píxel). Capturas: 68 sin fallos; a 1440, 24 idénticas y el resto con diferencias de antialiasing
+salvo Calidad (relleno de columnas). Guardas: 5 tests del cajón en `Layout.test.tsx` (fallan con
+el código anterior) y las dos guardas de las capturas. Queda como estaba el aviso de Vite por el
+tamaño del paquete (~717 kB): es el 2.14 (rendimiento).
 
 ## Informe del repaso de seguridad (0.9)
 

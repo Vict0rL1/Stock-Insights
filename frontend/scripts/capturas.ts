@@ -44,7 +44,7 @@ const ANCHOS = [
   { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true },
 ]
 
-type Pantalla = { nombre: string; ruta: string; pestana?: string; accion?: (p: Page) => Promise<void> }
+type Pantalla = { nombre: string; ruta: string; pestana?: string; accion?: (p: Page) => Promise<void>; soloMovil?: boolean }
 
 const PESTANAS_FICHA: [string, string][] = [
   ['03_ficha_resumen', 'Resumen'],
@@ -70,13 +70,35 @@ const ficha = (symbol: string, cuales?: string[]): Pantalla[] =>
 const pulsar = (texto: RegExp) => async (p: Page) => {
   const boton = p.getByRole('button', { name: texto }).first()
   if (!(await boton.count())) throw new Error(`no aparece el botón ${texto}`)
-  // `force`: en 390 px la barra lateral tapa el contenido (V2) y el clic
-  // normal espera para siempre a que el botón quede libre.
-  await boton.click({ force: true, timeout: 10000 })
+  // Sin `force`: antes del 2.12 la barra lateral tapaba el contenido a 390 px
+  // y el clic normal esperaba para siempre a que el botón quedara libre. Si
+  // algo lo tapa, es un fallo de la pantalla, no del script.
+  await boton.click({ timeout: 10000 })
   await esperar(p)
 }
 
+// El menú de móvil (ítem 2.12), con clics de verdad: se abre, y desde él se
+// llega a otra pantalla y se cierra.
+const abrirMenu = async (p: Page) => {
+  await p.getByRole('button', { name: 'Menú' }).click({ timeout: 10000 })
+  await p.getByRole('link', { name: 'Cartera' }).waitFor({ state: 'visible', timeout: 5000 })
+}
+
 const TODAS: Pantalla[] = [
+  { nombre: '00_menu_abierto', ruta: '/hoy', soloMovil: true, accion: abrirMenu },
+  {
+    nombre: '00_menu_navega',
+    ruta: '/hoy',
+    soloMovil: true,
+    accion: async (p) => {
+      await abrirMenu(p)
+      await p.getByRole('link', { name: 'Cartera' }).click({ timeout: 10000 })
+      await p.waitForURL('**/cartera', { timeout: 10000 })
+      await esperar(p)
+      if ((await p.getByRole('button', { name: 'Menú' }).getAttribute('aria-expanded')) !== 'false')
+        throw new Error('el menú sigue abierto tras navegar')
+    },
+  },
   { nombre: '01_hoy', ruta: '/hoy' },
   { nombre: '02_mercado', ruta: '/dashboard' },
   ...ficha('ACME'),
@@ -144,6 +166,7 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
     const p = await contexto.newPage()
     for (const pantalla of pantallas) {
       if (solo && !solo.some((s) => pantalla.nombre.startsWith(s))) continue
+      if (pantalla.soloMovil && !ancho.movil) continue
       const archivo = join(carpeta, `${pantalla.nombre}_${ancho.sufijo}.png`)
       try {
         await p.goto(WEB + pantalla.ruta, { waitUntil: 'networkidle', timeout: 30000 })
@@ -153,12 +176,19 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
           await esperar(p)
         }
         if (pantalla.accion) await pantalla.accion(p)
+        // Ítem 2.12: a 390 px ninguna pantalla desborda en horizontal. Se dice
+        // qué lo empuja (las tablas van dentro de su propio contenedor con
+        // scroll, que no cuenta). Se fotografía igual, para verlo.
+        const desborde = ancho.movil ? await p.evaluate(desbordeHorizontal) : null
+        const partidos = ancho.movil ? await p.evaluate(palabraAPalabra) : []
         const alto = await p.evaluate(() => document.documentElement.scrollHeight)
         await p.screenshot({
           path: archivo,
           fullPage: alto <= ALTO_MAXIMO,
           clip: alto > ALTO_MAXIMO ? { x: 0, y: 0, width: ancho.viewport.width, height: ALTO_MAXIMO } : undefined,
         })
+        if (desborde) throw new Error(`desborda en horizontal: ${desborde}`)
+        if (partidos.length) throw new Error(`texto partido palabra a palabra: ${partidos.join('; ')}`)
         console.log(`  ✓ ${archivo}`)
       } catch (e) {
         const motivo = String(e).split('\n')[0]
@@ -169,6 +199,51 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
     await contexto.close()
   }
   return fallos
+}
+
+/** En el navegador: null si la página no desborda en horizontal; si no, cuánto
+ *  y los elementos más externos que salen del ancho (sin contar lo que está
+ *  dentro de un contenedor con scroll propio). */
+function desbordeHorizontal(): string | null {
+  const ancho = document.documentElement.clientWidth
+  const sobra = document.documentElement.scrollWidth - ancho
+  if (sobra <= 0) return null
+  const conScroll = (el: Element | null): boolean => {
+    for (let e = el?.parentElement; e; e = e.parentElement) {
+      const o = getComputedStyle(e).overflowX
+      if (o === 'auto' || o === 'scroll' || o === 'hidden') return true
+    }
+    return false
+  }
+  const culpables: string[] = []
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const r = el.getBoundingClientRect()
+    if (r.right <= ancho + 1 || r.width === 0 || conScroll(el)) continue
+    const padre = el.parentElement?.getBoundingClientRect()
+    if (padre && padre.right > ancho + 1 && !conScroll(el.parentElement)) continue
+    const clase = typeof el.className === 'string' ? el.className.split(' ').slice(0, 3).join('.') : ''
+    culpables.push(`${el.tagName.toLowerCase()}${clase ? '.' + clase : ''} «${(el.textContent ?? '').trim().slice(0, 30)}»`)
+    if (culpables.length >= 4) break
+  }
+  return `${sobra} px (${culpables.join('; ')})`
+}
+
+/** En el navegador: los textos de tres o más palabras con UNA palabra por
+ *  línea, que es lo que pasaba a 390 px con la barra lateral fija (ítem 2.12). */
+function palabraAPalabra(): string[] {
+  const salida: string[] = []
+  const recorrido = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+  for (let n = recorrido.nextNode(); n; n = recorrido.nextNode()) {
+    const texto = (n.textContent ?? '').trim()
+    const palabras = texto.split(/\s+/).filter(Boolean)
+    if (palabras.length < 3) continue
+    const rango = document.createRange()
+    rango.selectNodeContents(n)
+    const lineas = new Set(Array.from(rango.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top)))
+    if (lineas.size >= palabras.length) salida.push(`«${texto.slice(0, 40)}»`)
+    if (salida.length >= 4) break
+  }
+  return salida
 }
 
 async function hastaQueResponda(url: string, segundos = 90) {

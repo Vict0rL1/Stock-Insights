@@ -112,8 +112,10 @@ function Calidad({ datos }: { datos: CalidadBeneficios }) {
             (filas as Record<string, number | string | null>[]).length ? (
               <div key={titulo as string} className="mb-3 overflow-x-auto">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">{titulo as string}</div>
-                <table className="w-full text-right text-xs tabular-nums">
-                  <thead className="text-[10px] text-slate-400">
+                <table className="w-full text-right text-xs tabular-nums [&_td]:pl-3 [&_td:first-child]:pl-0 [&_th]:pl-3 [&_th:first-child]:pl-0">
+                  {/* Sin partir: la tabla ya se desplaza en su marco, y a 390 px
+                      «Días de cobro» salía palabra a palabra (ítem 2.12). */}
+                  <thead className="whitespace-nowrap text-[10px] text-slate-400">
                     <tr>
                       <th className="text-left">Periodo</th>
                       <th>CFO/beneficio</th>

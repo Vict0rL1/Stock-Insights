@@ -7,7 +7,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { History } from '../api/types'
-import { fmtCompacto, fmtFecha, fmtPrecio } from '../lib/formato'
+import { decimalesPrecio, fmtCompacto, fmtFecha, fmtNum, fmtPrecio } from '../lib/formato'
 import { conOpacidad, leerToken, type Token } from '../lib/tokens'
 
 function toTime(ts: string): UTCTimestamp {
@@ -60,10 +60,20 @@ const LEYENDA_INDICADORES: { token: Token; label: string }[] = [
  */
 export const LOCALIZACION = {
   locale: 'es-ES',
-  priceFormatter: (p: number) => fmtPrecio(p),
+  // Para los paneles (RSI, MACD), que no son precios: con `fmtPrecio` aquí, un
+  // MACD de 0,1234 ensanchaba el eje y el gráfico entero se desplazaba.
+  priceFormatter: (p: number) => fmtNum(p, 2),
   timeFormatter: (t: unknown) => (typeof t === 'number' ? fmtFecha(new Date(t * 1000), { zona: 'UTC' }) : String(t)),
 }
 export const FORMATO_VOLUMEN = { type: 'custom' as const, formatter: (v: number) => fmtCompacto(v), minMove: 1 }
+
+/** El eje del precio con las cifras del precio: para una acción de 0,003, el paso
+ *  de 0,01 por defecto y dos decimales dejaban el eje en «0,00» (auditoría del
+ *  19 oct). Desde 1, lo de siempre: dos decimales y paso de 0,01. */
+export function formatoPrecio(ultimo: number | undefined) {
+  const decimales = ultimo !== undefined && Number.isFinite(ultimo) ? decimalesPrecio(ultimo) : 2
+  return { type: 'custom' as const, formatter: (p: number) => fmtPrecio(p), minMove: 10 ** -decimales }
+}
 
 // El volumen es contexto, no protagonista: semitransparente y en la quinta parte
 // de abajo del panel del precio.
@@ -104,6 +114,7 @@ export function PriceChart({ history }: { history: History }) {
       wickUpColor: c('buy'),
       wickDownColor: c('sell'),
       borderVisible: false,
+      priceFormat: formatoPrecio(history.bars.at(-1)?.close),
     })
     candles.setData(
       history.bars.map((b) => ({
@@ -144,6 +155,7 @@ export function PriceChart({ history }: { history: History }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        priceFormat: formatoPrecio(history.bars.at(-1)?.close),
       })
       line.setData(data)
     }
@@ -257,7 +269,9 @@ export function PriceChart({ history }: { history: History }) {
   return (
     <div>
       <div ref={containerRef} className="h-[560px] w-full" />
-      <div className="mt-2 flex gap-4 text-xs text-slate-500">
+      {/* `flex-wrap`: en una fila, la leyenda empujaba la ficha 32 px fuera de
+          una pantalla de 390 (ítem 2.12). */}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
         {LEYENDA_INDICADORES.map(({ token, label }) => (
           <span key={label} className="flex items-center gap-1">
             <span className="h-0.5 w-4" style={{ backgroundColor: `var(--${token})` }} />
