@@ -346,7 +346,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 | A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | hecho (abajo) |
 | A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | hecho (abajo) |
 | A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | hecho (abajo) |
-| A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | pendiente |
+| A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | hecho (abajo) |
 | A6 (P2) | El backend aceptaba cualquier cabecera `Host` | pendiente |
 | A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | pendiente |
 
@@ -395,6 +395,13 @@ día de su saldo» (extremos, `test_e2e_evolucion`, coste de oportunidad) lo dec
 `registrado_en`: con el reloj real quedaban anotadas después de su propio `ahora`. Golden igual.
 Guardas: anotada con fecha atrasada, saldo antiguo anotado después, corrección del mismo día y
 la pantalla coherente (los cuatro fallan con el código anterior).
+
+**A5.** `_lectura_congelada` filtra por `disponible_en(creado_en, ahora) is True` antes de
+coger la más reciente, como ya hacía `anterior_comparable`. Barrido de las otras consultas «la
+más reciente» de instantáneas: `anterior_comparable` ya filtraba antes; el historial de la ficha
+lista todas y el antiduplicado de `congelar_analisis` es del momento presente. Guarda: dos
+lecturas reales (`analizar_y_congelar`) a dos fechas; la del medio ve la primera (falla con el
+código anterior), después ve la segunda y antes de las dos, ninguna.
 
 ## Informe del repaso de seguridad (0.9)
 

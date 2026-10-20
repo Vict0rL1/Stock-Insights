@@ -7,19 +7,24 @@ posterior a la fecha de la decisión.
 A4: una anotación de efectivo contaba en cuanto su saldo estaba fechado antes de
 la decisión, aunque se hubiera escrito después; y mandaba la última FILA, así que
 anotar un saldo antiguo tapaba el de hoy.
+
+A5: la lectura congelada de una posición era la más reciente de la base y, si
+era posterior a la fecha pedida, no había lectura, aunque hubiera una anterior.
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
 from app.db.engine import get_session
 from app.db.models import CashBalance
 from app.main import app
-from app.oportunidad import efectivo_usd
+from app.oportunidad import _lectura_congelada, efectivo_usd
+from app.routers.empresa import analizar_y_congelar
 from app.routers.signals import _detalle_efectivo
+from tests.fakes_empresa import AHORA, ServicioFalso, financieros_base
 
 DECISION = datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
 ANOTADO = datetime(2026, 9, 11, 15, 0, tzinfo=timezone.utc)
@@ -119,3 +124,18 @@ def test_la_pantalla_de_efectivo_ensena_el_mismo_saldo_que_usan_los_calculos(ses
     finally:
         app.dependency_overrides.clear()
     assert [x["importe"] for x in saldos] == [10000.0]
+
+
+def test_una_lectura_posterior_no_esconde_la_anterior_valida(session_factory):
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    antes, despues = AHORA - timedelta(days=2), AHORA + timedelta(days=3)
+    with session_factory() as s:
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=antes, con_pares=False)["instantanea"]
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=despues, con_pares=False)["instantanea"]
+        assert primera["id"] != segunda["id"]
+        entonces = _lectura_congelada(s, "AAPL", AHORA)
+        luego = _lectura_congelada(s, "AAPL", despues + timedelta(hours=1))
+        nunca = _lectura_congelada(s, "AAPL", antes - timedelta(days=1))
+    assert entonces["lectura_de"] == primera["creado_en"]
+    assert luego["lectura_de"] == segunda["creado_en"]
+    assert nunca == {}

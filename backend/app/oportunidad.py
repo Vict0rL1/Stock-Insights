@@ -123,13 +123,20 @@ def efectivo_con_cambio(session: Session, service, ahora: datetime) -> dict:
 
 
 def _lectura_congelada(session: Session, symbol: str, ahora: datetime) -> dict:
-    """La última lectura de análisis de una posición, tal como se congeló."""
-    snap = session.execute(
+    """La última lectura de análisis de una posición que ya existía en `ahora`,
+    tal como se congeló.
+
+    Se filtra ANTES de elegir la más reciente: antes se cogía la más reciente y,
+    si era posterior a `ahora`, se devolvía nada, así que una reconstrucción
+    del 12 con una lectura del 15 en la base salía «sin lectura» aunque hubiera
+    una válida del 10 (auditoría del 19 oct), como hace `anterior_comparable`."""
+    filas = session.execute(
         select(DecisionSnapshot)
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{sn.ORIGEN_ANALISIS}:%"))
         .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
-    ).scalars().first()
-    if snap is None or pit.disponible_en(snap.creado_en, ahora) is False:
+    ).scalars()
+    snap = next((s for s in filas if pit.disponible_en(s.creado_en, ahora) is True), None)
+    if snap is None:
         return {}
     a = (snap.contexto or {}).get("analisis") or {}
     return {

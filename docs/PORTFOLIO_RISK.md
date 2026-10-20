@@ -73,7 +73,8 @@ el último tipo que ya se conocía en la fecha de la decisión (`punto_en_el_tie
 mismo día no, FRED lo publica después), nunca con uno posterior; sin ninguno, el
 efectivo es desconocido; con uno de más de 7 días (`fx.DIAS_FRESCO`) se convierte igual
 pero el estado es `viejo` y la nota de Hoy dice su fecha. De cada posición, su última
-lectura **congelada** (acción, tesis, valoración, confianza): no se reanaliza la
+lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
+anterior) (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».
 
 **Reglas visibles.**
