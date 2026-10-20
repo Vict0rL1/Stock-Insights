@@ -80,7 +80,7 @@ def entorno(tmp_path):
         s.commit()
         s.add(ThesisTrigger(thesis_id=t.id, kind="metrica", descripcion="margen operativo < 18 %",
                             config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}))
-        s.add(CashBalance(moneda="USD", importe=300.0, as_of=T0 - timedelta(days=1)))
+        s.add(CashBalance(moneda="USD", importe=300.0, as_of=T0 - timedelta(days=1), registrado_en=T0 - timedelta(days=1)))
         s.commit()
     return factory, servicio
 

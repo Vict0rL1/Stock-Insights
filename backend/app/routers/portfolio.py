@@ -1217,7 +1217,8 @@ class EfectivoAnotar(BaseModel):
 @router.post("/efectivo")
 def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session)):
     """Anota el efectivo disponible en una moneda. Se guarda la historia; manda
-    la última anotación. Sin anotación, el efectivo es desconocido, no cero."""
+    el saldo más reciente (`oportunidad._ultimas_anotaciones`). Sin anotación, el
+    efectivo es desconocido, no cero."""
     from app.db.models import CashBalance
 
     moneda = _moneda_legible(body.moneda)
@@ -1241,13 +1242,12 @@ def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session
 
 @router.get("/efectivo")
 def ver_efectivo(session: Session = Depends(get_session)):
-    from sqlalchemy import func
+    # La misma vigencia que usan Hoy y el coste de oportunidad: con la última
+    # fila (`max(id)`), un saldo antiguo anotado después salía aquí como el de
+    # hoy mientras los cálculos usaban el otro (auditoría del 19 oct).
+    from app.oportunidad import _ultimas_anotaciones
 
-    from app.db.models import CashBalance
-
-    filas = session.execute(
-        select(CashBalance).where(CashBalance.id.in_(select(func.max(CashBalance.id)).group_by(CashBalance.moneda)))
-    ).scalars().all()
+    filas = sorted(_ultimas_anotaciones(session, datetime.now(timezone.utc)), key=lambda c: c.moneda)
     return {
         "saldos": [{"moneda": c.moneda, "importe": c.importe, "as_of": _utc_iso(c.as_of), "nota": c.nota} for c in filas],
         "nota": None if filas else "Sin efectivo anotado: el motor de coste de oportunidad lo trata como DESCONOCIDO.",

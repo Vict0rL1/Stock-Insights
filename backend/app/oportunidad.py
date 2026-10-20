@@ -3,7 +3,7 @@
 El motor (`analysis/coste_de_oportunidad.py`) es puro. Aquí se le dan sus
 entradas, sin inventar ninguna:
 
-- el **efectivo** que el usuario anotó (la última anotación de cada moneda,
+- el **efectivo** que el usuario anotó (el saldo vigente de cada moneda,
   convertida); sin anotación, desconocido;
 - el **tamaño máximo** de la idea, del dimensionador de siempre, con la cartera
   abierta y la confianza de la idea como entrada declarada;
@@ -32,19 +32,28 @@ from app.formato import fmt_fecha
 
 
 def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]:
-    """La última anotación de cada moneda que ya existía en `ahora`.
+    """La anotación VIGENTE de cada moneda en `ahora`.
 
-    Antes se cogía la última de cada moneda y, si era posterior a `ahora`, se
-    descartaba: en un análisis a fecha pasada el efectivo de entonces salía «no
-    anotado» en vez de ser la anotación anterior. Son pocas filas: se filtran
-    aquí, con el punto en el tiempo, en vez de en SQL.
+    Cuenta solo lo que ya se sabía en `ahora`: un saldo fechado antes Y anotado
+    antes. Antes bastaba la fecha del saldo, y un efectivo anotado hoy con fecha
+    del 1 de septiembre aparecía en una reconstrucción del 12, cuando aún no se
+    había escrito (auditoría del 19 oct); y lo que no se podía probar (`None`)
+    contaba como sabido.
+
+    Entre las que cuentan, manda el saldo MÁS RECIENTE (`as_of`), no la última
+    fila: anotar después un saldo antiguo, para la historia, no tapa el de hoy.
+    Con el mismo `as_of`, la anotada después corrige a la anterior. Son pocas
+    filas: se filtran aquí, con el punto en el tiempo, en vez de en SQL.
     """
-    filas = session.execute(select(CashBalance).order_by(CashBalance.id)).scalars().all()
-    por_moneda: dict[str, CashBalance] = {}
+    filas = session.execute(select(CashBalance)).scalars().all()
+    vigente: dict[str, tuple] = {}
     for c in filas:
-        if pit.disponible_en(c.as_of, ahora) is not False:
-            por_moneda[c.moneda] = c
-    return list(por_moneda.values())
+        if not (pit.disponible_en(c.as_of, ahora) is True and pit.disponible_en(c.registrado_en, ahora) is True):
+            continue
+        orden = (pit.marca(c.as_of)[0], pit.marca(c.registrado_en)[0], c.id)
+        if c.moneda not in vigente or orden > vigente[c.moneda][0]:
+            vigente[c.moneda] = (orden, c)
+    return [c for _, c in vigente.values()]
 
 
 def _tipo_en(serie: list, ahora: datetime) -> dict | None:

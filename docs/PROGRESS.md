@@ -345,7 +345,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 | A1 (P1) | El stop de la posición se redondeaba a dos decimales ANTES de compararlo: coste 0,005, stop 0,004 y precio 0,003 salía «mantener» (la regla preguntaba «0,003 ≤ 0»), con el stop a «−100 %» | hecho (abajo) |
 | A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | hecho (abajo) |
 | A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | hecho (abajo) |
-| A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | pendiente |
+| A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | hecho (abajo) |
 | A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | pendiente |
 | A6 (P2) | El backend aceptaba cualquier cabecera `Host` | pendiente |
 | A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | pendiente |
@@ -383,6 +383,18 @@ pasa por `_moneda_segura`. Barrido: todas las rutas GET de la cartera con una po
 oportunidad) decía «moneda desconocida» de una moneda que se sabe en peniques; ahora da el
 motivo real. Guardas: la cartera con GBX y USD (200, total solo con USD, ninguna serie de FRED
 pedida) y el motivo del contexto (fallan con el código anterior).
+
+**A4.** Una anotación cuenta en `ahora` solo si su saldo está fechado antes **y** se anotó antes
+(`registrado_en`), las dos con `disponible_en(...) is True`: antes bastaba la fecha del saldo y
+lo que no se podía probar (`None`) contaba como sabido. Vigencia definida: entre las que
+cuentan manda el saldo más reciente (`as_of`), no la última fila; con el mismo `as_of`, la
+anotada después corrige. Hermano: `GET /api/portfolio/efectivo` enseñaba la última fila
+(`max(id)`), así que un saldo antiguo anotado después salía en pantalla como el de hoy mientras
+los cálculos usaban otro; ahora usa la misma función. Las tres fixtures que modelan «anotado el
+día de su saldo» (extremos, `test_e2e_evolucion`, coste de oportunidad) lo declaran en
+`registrado_en`: con el reloj real quedaban anotadas después de su propio `ahora`. Golden igual.
+Guardas: anotada con fecha atrasada, saldo antiguo anotado después, corrección del mismo día y
+la pantalla coherente (los cuatro fallan con el código anterior).
 
 ## Informe del repaso de seguridad (0.9)
 

@@ -701,7 +701,8 @@ class CashBalance(Base):
 
     La app no conoce tu cuenta: sin este dato, «¿hace falta vender algo para
     comprar esto?» no tiene respuesta. Se guarda la historia (cada anotación es
-    una fila) y se usa la última de cada moneda; no anotada = DESCONOCIDO, no 0.
+    una fila) y manda el saldo más reciente de cada moneda ya anotado
+    (`oportunidad._ultimas_anotaciones`); no anotada = DESCONOCIDO, no 0.
     """
 
     __tablename__ = "cash_balances"

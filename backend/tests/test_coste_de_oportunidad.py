@@ -201,8 +201,11 @@ def test_el_efectivo_de_entonces_es_la_ultima_anotacion_ya_hecha(session_factory
 
     ahora = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
     with session_factory() as s:
-        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(days=10)))
-        s.add(CashBalance(moneda="USD", importe=5000.0, as_of=ahora + timedelta(days=3)))
+        # Cada saldo, anotado el día de su fecha (sin `registrado_en` quedaban
+        # anotados con el reloj real, después de `ahora`).
+        for importe, dias in ((1000.0, -10), (5000.0, 3)):
+            s.add(CashBalance(moneda="USD", importe=importe, as_of=ahora + timedelta(days=dias),
+                              registrado_en=ahora + timedelta(days=dias)))
         s.commit()
         entonces = efectivo_usd(s, {}, ahora)
         hoy = efectivo_usd(s, {}, ahora + timedelta(days=5))
@@ -271,7 +274,8 @@ def test_la_ficha_convierte_el_efectivo_en_una_moneda_sin_posiciones(session_fac
         s.add(inst)
         s.commit()
         s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=90.0, opened_at=ahora - timedelta(days=30)))
-        s.add(CashBalance(moneda="CAD", importe=13700.0, as_of=ahora - timedelta(days=1)))
+        s.add(CashBalance(moneda="CAD", importe=13700.0, as_of=ahora - timedelta(days=1),
+                          registrado_en=ahora - timedelta(days=1)))
         s.commit()
         ctx = contexto_cartera.construir(s, sv, ahora=ahora)
         efectivo = efectivo_usd(s, ctx, ahora)
