@@ -90,7 +90,7 @@ def convertir_serie(serie: list[tuple[date, float]], moneda: str | None, fx_seri
 def construir(session: Session, service, *, descargar: bool = False, ahora: datetime | None = None) -> dict:
     """{posiciones, series (en USD), sin_peso, mercado, total_usd}. Nunca lanza
     por una posición: la que falla queda fuera con su motivo."""
-    from app.routers.portfolio import _cotizacion, _fx_completo, _historico_largo, _moneda_segura, _resolver_divisa
+    from app.routers.portfolio import _cotizacion, _fx_completo, _historico_largo, _resolver_divisa
 
     ahora = ahora or datetime.now(timezone.utc)
     filas = session.execute(
@@ -113,13 +113,19 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
     monedas = set()
     for a in agregadas.values():
         precio, moneda, estado = _cotizacion(service, a["symbol"])
-        moneda = _moneda_segura(_resolver_divisa(session, service, a["instrument"], moneda))
+        cruda = _resolver_divisa(session, service, a["instrument"], moneda)
+        # Una moneda en peniques (GBX) se sabe cuál es: decir «desconocida»
+        # escondía el motivo (auditoría del 19 oct, hermano del 500 de la cartera).
+        try:
+            moneda, sin_moneda = fx.normalizar(cruda), "moneda desconocida: no se supone dólar"
+        except fx.SinTipo as exc:
+            moneda, sin_moneda = None, str(exc)
         a.update(precio=datos.precio(precio), moneda=moneda, precio_estado=estado.get("estado"))
         if a["precio"] is None:
             sin_peso.append({"symbol": a["symbol"], "motivo": "sin precio: fuera de los pesos (no vale cero)"})
             continue
         if moneda is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": "moneda desconocida: no se supone dólar"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": sin_moneda})
             continue
         monedas.add(moneda)
         valoradas.append(a)

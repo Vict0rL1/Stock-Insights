@@ -158,3 +158,30 @@ def test_la_nota_dice_que_divisas_hay_y_cuanto_pesa_cada_una(client):
     assert d["monedas"] == {"CAD": 200.0, "USD": 100.0}
     assert d["tipos_usados"]["CAD"]["serie"] == "DEXCAUS"
     assert d["tipos_usados"]["CAD"]["por_usd"] == pytest.approx(1.37)
+
+
+def test_una_posicion_en_peniques_no_tumba_la_cartera_y_queda_fuera_del_total(client):
+    """Auditoría del 19 oct: `fx.normalizar("GBX")` lanzaba al reunir las monedas
+    y `/api/portfolio` daba un 500. La fila se ve, fuera del total, con su motivo;
+    no se supone que un penique sea una libra."""
+    c, service = client(
+        [("VOD.L", 100, 70.0), ("AAPL", 10, 90.0)],
+        precios={"VOD.L": (72.0, "GBX"), "AAPL": (100.0, "USD")},
+    )
+    r = c.get("/api/portfolio")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    fila = next(p for p in d["positions"] if p["symbol"] == "VOD.L")
+    assert fila["market_value_base"] is None and "céntimos" in fila["sin_convertir"]
+    assert d["summary"]["total_market_value"] == pytest.approx(1000.0)
+    assert not [x for x in service.llamadas if x.startswith("macro")]
+
+
+def test_el_contexto_de_cartera_dice_que_son_peniques_no_moneda_desconocida(client, session_factory):
+    from app import contexto_cartera
+
+    _, service = client([("VOD.L", 100, 70.0)], precios={"VOD.L": (72.0, "GBX")})
+    with session_factory() as s:
+        ctx = contexto_cartera.construir(s, service)
+    assert ctx["total_usd"] is None
+    assert "céntimos" in ctx["sin_peso"][0]["motivo"]

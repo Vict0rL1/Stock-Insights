@@ -712,7 +712,11 @@ def get_portfolio(
     # CONVERTIR ANTES DE SUMAR. Hasta aquí `market_value` está cada uno en su
     # moneda; sumarlos directamente daba un total creíble y equivocado, y de ese
     # total cuelgan los pesos, la concentración y el presupuesto de riesgo.
-    monedas = {m for p in open_positions if (m := fx.normalizar(p.get("currency")))}
+    # `_moneda_segura`, no `fx.normalizar`: una posición en peniques (GBX, ZAC,
+    # ILA) hacía saltar `SinTipo` aquí y la cartera entera daba un 500
+    # (auditoría del 19 oct). `convertir_cartera` la deja visible, fuera del
+    # total y con su motivo.
+    monedas = {m for p in open_positions if (m := _moneda_segura(p.get("currency")))}
     monedas |= {p["currency"] for p in closed if p.get("currency")}
     tipos, series_fx, _ = _fx_completo(service, monedas)
     realizado_base, realizado_fuera = _realizado_en_base(closed, series_fx)

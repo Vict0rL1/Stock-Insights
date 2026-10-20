@@ -344,7 +344,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 |---|---|---|
 | A1 (P1) | El stop de la posición se redondeaba a dos decimales ANTES de compararlo: coste 0,005, stop 0,004 y precio 0,003 salía «mantener» (la regla preguntaba «0,003 ≤ 0»), con el stop a «−100 %» | hecho (abajo) |
 | A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | hecho (abajo) |
-| A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | pendiente |
+| A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | hecho (abajo) |
 | A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | pendiente |
 | A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | pendiente |
 | A6 (P2) | El backend aceptaba cualquier cabecera `Host` | pendiente |
@@ -375,6 +375,14 @@ usaba el reloj real con una serie anclada a `AHORA`: ahora usa `AHORA` (con el r
 tipo tenía semanas, y eso ya se dice). Guardas: el caso de la auditoría (100 USD, no 86,67),
 el tipo del mismo día, la serie que empieza después y el tipo viejo (fallan con el código
 anterior); el tipo reciente sin aviso es guarda.
+
+**A3.** El `fx.normalizar` suelto que reunía las monedas lanzaba `SinTipo` antes de llegar a
+`convertir_cartera`, que ya sabía dejar la fila visible, fuera del total y con su motivo; ahora
+pasa por `_moneda_segura`. Barrido: todas las rutas GET de la cartera con una posición en GBX
+(solo `/api/portfolio` caía). Hermano: el contexto de cartera (ficha, riesgo, coste de
+oportunidad) decía «moneda desconocida» de una moneda que se sabe en peniques; ahora da el
+motivo real. Guardas: la cartera con GBX y USD (200, total solo con USD, ninguna serie de FRED
+pedida) y el motivo del contexto (fallan con el código anterior).
 
 ## Informe del repaso de seguridad (0.9)
 

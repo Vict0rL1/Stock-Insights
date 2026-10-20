@@ -976,7 +976,9 @@ siguiente fuente) y al convertir.
 Sin tipo, la posición queda **fuera del total** y se nombra en pantalla con su
 motivo, en vez de convertirse a la par o sumarse a pelo. Un total parcial que se
 sabe parcial sirve; uno que se cree completo, no. La divisa, por cierto, siempre
-venía en la cotización y el portafolio se quedaba solo con el precio.
+venía en la cotización y el portafolio se quedaba solo con el precio. Lo mismo una
+cotización en peniques o centavos (GBX, ZAC, ILA): se ve, fuera del total, con el
+motivo («son céntimos, no una moneda»), sin suponer que un penique es una libra.
 
 ## Tres gráficos que enseñan lo que un número esconde
 
