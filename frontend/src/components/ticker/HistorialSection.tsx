@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { ReplayDecision } from '../../api/types'
 import { etiqueta, etiquetaOrigen } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
@@ -79,7 +79,7 @@ function Replay({ r }: { r: ReplayDecision }) {
         {precio && (
           <Bloque titulo="Precio utilizado">
             <p className="text-xs text-slate-700">
-              {fmtNum(precio.valor, 2)} {precio.moneda ?? ''} · {precio.fuente ?? 'fuente desconocida'} · {precio.publicado ? fmtFecha(precio.publicado, { hora: true, zona: 'UTC' }) : 'sin fecha'} · {etiqueta(precio.estado)}
+              {fmtPrecio(precio.valor)} {precio.moneda ?? ''} · {precio.fuente ?? 'fuente desconocida'} · {precio.publicado ? fmtFecha(precio.publicado, { hora: true, zona: 'UTC' }) : 'sin fecha'} · {etiqueta(precio.estado)}
             </p>
           </Bloque>
         )}
@@ -206,7 +206,7 @@ export function HistorialSection({ symbol }: { symbol: string }) {
                       <td className="py-1 text-slate-700">{fmtFecha(f.creado_en, { hora: true })}</td>
                       <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
                       <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
-                      <td className="text-right tabular-nums">{fmtNum(f.precio, 2)}</td>
+                      <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
                       <td className="text-right tabular-nums">{fmtNum(f.score, 2)}</td>
                       <td className="text-right">
                         <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">

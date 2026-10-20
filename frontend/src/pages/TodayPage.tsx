@@ -13,7 +13,7 @@ import type {
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { coord } from '../lib/svg'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
@@ -135,7 +135,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
                 Zona de compra
               </div>
               <div className="text-sm tabular-nums text-slate-800">
-                {fmtNum(levels.entrada_desde, 2)}–{fmtNum(levels.entrada_hasta, 2)}
+                {fmtPrecio(levels.entrada_desde)}–{fmtPrecio(levels.entrada_hasta)}
               </div>
             </div>
           )}
@@ -144,7 +144,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Stop
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(levels.stop, 2)}{' '}
+              {fmtPrecio(levels.stop)}{' '}
               <span className="text-xs text-slate-400">
                 {fmtPct(distanciaAlStop(decision), 1, { signo: true, enPuntos: true })}
               </span>
@@ -155,7 +155,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Objetivo
             </div>
             <div className="text-sm tabular-nums text-emerald-700">
-              {fmtNum(levels.objetivo, 2)}{' '}
+              {fmtPrecio(levels.objetivo)}{' '}
               <span className="text-xs text-slate-400">
                 {fmtPct(levels.objetivo_pct, 1, { signo: true, enPuntos: true })}
               </span>
@@ -380,7 +380,7 @@ function IdeaCard({
         {price && (
           <div className="text-right">
             <div className="text-base tabular-nums text-slate-900">
-              {fmtNum(price.last, 2)}
+              {fmtPrecio(price.last)}
             </div>
             {/* Sin variación, neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
             <div
@@ -409,7 +409,7 @@ function IdeaCard({
               Comprar entre
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtNum(niveles.entrada_desde, 2)}–{fmtNum(niveles.entrada_hasta, 2)}
+              {fmtPrecio(niveles.entrada_desde)}–{fmtPrecio(niveles.entrada_hasta)}
             </div>
           </div>
           <div>
@@ -417,7 +417,7 @@ function IdeaCard({
               Vender si baja a
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(niveles.stop, 2)}
+              {fmtPrecio(niveles.stop)}
             </div>
           </div>
           <div>
@@ -725,7 +725,7 @@ function SignalRow({
           {signal.price ? (
             <>
               <span className="block text-sm tabular-nums text-slate-800">
-                {fmtNum(signal.price.last, 2)}
+                {fmtPrecio(signal.price.last)}
               </span>
               <span
                 className={`block text-xs tabular-nums ${
@@ -781,8 +781,8 @@ function SignalRow({
               <div className="flex items-baseline justify-between text-xs text-slate-500">
                 <span>Rango de 52 semanas</span>
                 <span className="tabular-nums">
-                  {fmtNum(signal.price.low_52w, 2)} –{' '}
-                  {fmtNum(signal.price.high_52w, 2)}
+                  {fmtPrecio(signal.price.low_52w)} –{' '}
+                  {fmtPrecio(signal.price.high_52w)}
                 </span>
               </div>
               {signal.price.range_position !== null && (

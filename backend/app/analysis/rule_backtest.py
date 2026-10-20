@@ -38,6 +38,7 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
+from app import datos
 from app.analysis.backtest import (
     BACKTESTABLE_WEIGHTS,
     _closest_bar,
@@ -181,9 +182,9 @@ def simular_operacion(
 
     return {
         "entrada_fecha": entrada_fecha.isoformat(),
-        "entrada": round(entrada, 2),
+        "entrada": datos.redondear_precio(entrada),
         "salida_fecha": salida_fecha.isoformat(),
-        "salida": round(salida, 2),
+        "salida": datos.redondear_precio(salida),
         "motivo": motivo,
         "sesiones": (salida_fecha - entrada_fecha).days,
         "stop_pct": stop_pct,

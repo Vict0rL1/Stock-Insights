@@ -335,6 +335,36 @@ pintan códigos en mayúsculas sin `etiqueta()` (`BUENO`, `CONTANGO`…); Multif
 `sin_puntuar`; el `DailyPrice` del frontend no declara `estado` (Hoy no dice «dato viejo» en la fila);
 un replay pedido para un símbolo puede llegar tras cambiar de símbolo.
 
+## Auditoría del 19-oct-2026 (sobre `main` d28a058)
+
+Una auditoría externa con siete hallazgos; todos seguían en esta rama. Se arreglan en orden de
+prioridad, cada uno con un test que falla con el código anterior.
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| A1 (P1) | El stop de la posición se redondeaba a dos decimales ANTES de compararlo: coste 0,005, stop 0,004 y precio 0,003 salía «mantener» (la regla preguntaba «0,003 ≤ 0»), con el stop a «−100 %» | hecho (abajo) |
+| A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | pendiente |
+| A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | pendiente |
+| A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | pendiente |
+| A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | pendiente |
+| A6 (P2) | El backend aceptaba cualquier cabecera `Host` | pendiente |
+| A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | pendiente |
+
+**A1.** Se compara con el valor sin redondear (el stop guardado tal cual, el recalculado sin
+`round`) y solo se redondea lo que se sirve, con `datos.redondear_precio`: dos decimales desde 1 (el
+tick de siempre; las cifras de las acciones normales no cambian y el golden queda idéntico) y cuatro
+cifras significativas por debajo. Lo mismo en los otros sitios que perdían la cifra: Yahoo servía el
+último cierre con `round(x, 2)` (0,003 era 0 y el motor decía «sin precio»), los niveles de compra
+(entrada 0,00–0,00, stop 0,00), el stop fijado al abrir (`round(…, 4)`: 0,00005 se guardaba como 0,
+es decir «sin stop»), la cartera (`round(…, 2)` del stop) y las operaciones del backtest. Para
+pintarlos, `fmt_precio`/`fmtPrecio` (gemelos, 18 casos en la tabla compartida) en Hoy, la ficha, la
+cartera, tesis, vigilancia, historial y el gráfico. Hermano: un stop guardado con tres decimales
+(92,004) también se redondeaba y un precio de 92,002 salía «mantener». Guardas: el caso de la
+auditoría (vender, stop 0,004, distancia +33,3 %, disparador «0,004»), niveles positivos y ordenados
+de 1e-8 a 1e5, stop recalculado bajo el coste, Yahoo, el stop guardado por la API y el render de Hoy
+(9 de los 18 tests del backend y el de Hoy fallan con el código anterior; el resto son guardas de no
+regresión para precios normales).
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

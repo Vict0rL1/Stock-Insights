@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import math
 
+from app import datos
 from app.providers.base import (
     BASIC_FUNDAMENTAL_KEYS,
     DataNotFoundError,
@@ -76,8 +77,13 @@ def _price_summary(closes) -> dict | None:
         paso = (len(valores) - 1) / (SPARK_POINTS - 1)
         spark = [valores[round(i * paso)] for i in range(SPARK_POINTS)]
 
+    # Los precios con `datos.redondear_precio`, no con `round(x, 2)`: una acción
+    # de céntimos que cerraba a 0,003 salía con `last` 0,0, el motor la daba
+    # por «sin precio» y su stop no se vigilaba (auditoría del 19 oct).
+    precio = datos.redondear_precio
+
     def media(n: int) -> float | None:
-        return round(sum(valores[-n:]) / n, 2) if len(valores) >= n else None
+        return precio(sum(valores[-n:]) / n) if len(valores) >= n else None
 
     sma50, sma200 = media(50), media(200)
 
@@ -96,10 +102,10 @@ def _price_summary(closes) -> dict | None:
         vol_diaria = round(math.sqrt(varianza) * 100, 3)
 
     return {
-        "last": round(last, 2),
+        "last": precio(last),
         "change_pct": round((last / prev - 1) * 100, 2) if prev else None,
-        "low_52w": round(low, 2),
-        "high_52w": round(high, 2),
+        "low_52w": precio(low),
+        "high_52w": precio(high),
         # Dónde está el precio dentro de su rango anual: 0 = mínimo, 1 = máximo.
         "range_position": round((last - low) / (high - low), 3) if high > low else None,
         "sma50": sma50,
@@ -109,7 +115,7 @@ def _price_summary(closes) -> dict | None:
         "above_sma200": (last > sma200) if sma200 else None,
         "daily_vol_pct": vol_diaria,
         "drawdown_pct": round((last / high - 1) * 100, 2) if high else None,
-        "spark": [round(v, 2) for v in spark],
+        "spark": [precio(v) for v in spark],
         "points": len(valores),
     }
 

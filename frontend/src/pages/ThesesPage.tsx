@@ -4,7 +4,7 @@ import { api, ApiError } from '../api/client'
 import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
@@ -104,13 +104,13 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
                     {fmtFecha(s.created_at)} ({s.days_elapsed} d)
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.price_at_creation !== null ? fmtNum(s.price_at_creation) : '—'}
+                    {fmtPrecio(s.price_at_creation)}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
                     {s.value_mid !== null ? fmtNum(s.value_mid) : '—'}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.current_price !== null ? fmtNum(s.current_price) : '—'}
+                    {fmtPrecio(s.current_price)}
                   </td>
                   <td
                     className={`px-2 py-1.5 tabular-nums ${
@@ -302,7 +302,7 @@ export function ThesesPage() {
                       </h2>
                       <div className="text-xs text-slate-400">
                         Escrita el {fmtFecha(thesis.created_at, { hora: true })} · {fmtAntiguedad(thesis.created_at)}
-                        {thesis.current_price !== null && ` · precio hoy ${fmtNum(thesis.current_price)}`}
+                        {thesis.current_price !== null && ` · precio hoy ${fmtPrecio(thesis.current_price)}`}
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -343,7 +343,7 @@ export function ThesesPage() {
                             <b>{etiqueta(s.kind, { mayuscula: true })}</b>
                             {s.value_mid !== null && ` · valor estimado ${fmtNum(s.value_mid)}`}
                             {s.price_at_creation !== null &&
-                              ` · precio entonces ${fmtNum(s.price_at_creation)}`}
+                              ` · precio entonces ${fmtPrecio(s.price_at_creation)}`}
                             <span className="ml-2 text-xs text-slate-400">hace {s.days_elapsed} d</span>
                           </span>
                           <OutcomeChip scenario={s} />

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
@@ -259,7 +259,7 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                   <div className="text-xs text-slate-500">
                     {vs !== null && (
                       <>
-                        {fmtPct(vs)} vs. precio actual ({fmtNum(result.current_price)}) ·{' '}
+                        {fmtPct(vs)} vs. precio actual ({fmtPrecio(result.current_price)}) ·{' '}
                       </>
                     )}
                     terminal pesa {fmtPct(sc.terminal_weight)}

@@ -14,7 +14,7 @@ import type {
   RiskBudget,
   Vigilancia,
 } from '../api/types'
-import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { useDato, type CargaConReintento } from '../lib/useDato'
 
@@ -651,9 +651,9 @@ function PortfolioTab() {
                             </td>
                             <td className="px-2 py-1.5 text-xs text-slate-500">{p.sector}</td>
                             <td className="px-2 py-1.5 tabular-nums">{fmtNum(p.quantity, 0)}</td>
-                            <td className="px-2 py-1.5 tabular-nums">{fmtDinero(p.cost_basis, monedaDe(p.currency))}</td>
+                            <td className="px-2 py-1.5 tabular-nums">{fmtPrecio(p.cost_basis, monedaDe(p.currency))}</td>
                             <td className="px-2 py-1.5 tabular-nums">
-                              {fmtDinero(p.price, monedaDe(p.currency))}
+                              {fmtPrecio(p.price, monedaDe(p.currency))}
                               <EstadoDelPrecio p={p} />
                             </td>
                             <td className="px-2 py-1.5 tabular-nums">
@@ -811,7 +811,7 @@ function WatchlistTab() {
                 <div className="flex items-center gap-4">
                   {item.quote ? (
                     <span className="tabular-nums text-slate-700">
-                      {fmtNum(item.quote.price)}
+                      {fmtPrecio(item.quote.price)}
                       {/* Sin variación, en neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
                       <span
                         className={`ml-2 text-sm ${
@@ -901,7 +901,7 @@ function AvisoDeVigilancia({ v }: { v: Vigilancia | null }) {
 function textoDeCondicion(c: PriceAlert['condition']): string {
   const verbo = c.op === 'lt' ? 'baja de' : c.op === 'gt' ? 'sube de' : null
   if (verbo === null) return `condición no reconocida (${c.op ?? 'sin operador'})`
-  return `${verbo} ${fmtNum(c.price)}`
+  return `${verbo} ${fmtPrecio(c.price)}`
 }
 
 /** Lo que no se puede comprobar no se pinta como tranquilo. */
@@ -1031,7 +1031,7 @@ function AlertsTab() {
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm tabular-nums text-slate-600">
-                        {a.current_price !== null ? fmtNum(a.current_price) : '—'}
+                        {fmtPrecio(a.current_price)}
                       </span>
                       <button
                         onClick={() => borrar(a.id)}

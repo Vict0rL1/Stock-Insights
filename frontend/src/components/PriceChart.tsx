@@ -7,7 +7,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import type { History } from '../api/types'
-import { fmtCompacto, fmtFecha, fmtNum } from '../lib/formato'
+import { fmtCompacto, fmtFecha, fmtPrecio } from '../lib/formato'
 import { conOpacidad, leerToken, type Token } from '../lib/tokens'
 
 function toTime(ts: string): UTCTimestamp {
@@ -60,7 +60,7 @@ const LEYENDA_INDICADORES: { token: Token; label: string }[] = [
  */
 export const LOCALIZACION = {
   locale: 'es-ES',
-  priceFormatter: (p: number) => fmtNum(p, 2),
+  priceFormatter: (p: number) => fmtPrecio(p),
   timeFormatter: (t: unknown) => (typeof t === 'number' ? fmtFecha(new Date(t * 1000), { zona: 'UTC' }) : String(t)),
 }
 export const FORMATO_VOLUMEN = { type: 'custom' as const, formatter: (v: number) => fmtCompacto(v), minMove: 1 }

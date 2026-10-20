@@ -16,7 +16,7 @@ import { QueCambioSection } from '../components/ticker/QueCambioSection'
 import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { CalidadSection } from '../components/ticker/CalidadSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
-import { fmtCompacto, fmtPct, fmtNum } from '../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 // Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
 // fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
 // otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1).
@@ -201,7 +201,7 @@ export function TickerPage() {
                       q && (
                         <>
                           <span className="text-3xl font-semibold tabular-nums text-slate-900">
-                            {fmtNum(q.price)}
+                            {fmtPrecio(q.price)}
                             <span className="ml-1 text-base font-normal text-slate-400">
                               {q.currency ?? profile?.currency ?? ''}
                             </span>
@@ -222,8 +222,8 @@ export function TickerPage() {
                 <div className="text-xs text-slate-400">
                   {quote && (
                     <>
-                      Ant.: {fmtNum(quote.prev_close)} · Rango día:{' '}
-                      {fmtNum(quote.day_low)}–{fmtNum(quote.day_high)}
+                      Ant.: {fmtPrecio(quote.prev_close)} · Rango día:{' '}
+                      {fmtPrecio(quote.day_low)}–{fmtPrecio(quote.day_high)}
                     </>
                   )}
                   {cap !== null ? `${quote ? ' · ' : ''}Cap.: ${fmtCompacto(cap)}` : ''}

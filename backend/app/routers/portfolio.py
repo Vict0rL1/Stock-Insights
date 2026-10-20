@@ -570,7 +570,9 @@ def create_position(
     if stop is None and body.cost_basis > 0:
         clase = "cripto" if instrument.symbol.endswith("-USD") else "accion"
         vol = _volatilidad_de(service, instrument.symbol)
-        stop = round(body.cost_basis * (1 - _stop_pct(vol, clase) / 100), 4)
+        # Con `round(…, 4)`, el stop de una posición a 0,00005 se guardaba como
+        # 0,0: «sin stop», y se volvía a calcular cada día (auditoría del 19 oct).
+        stop = datos.redondear_precio(body.cost_basis * (1 - _stop_pct(vol, clase) / 100))
     position = Position(
         instrument_id=instrument.id,
         quantity=body.quantity,
@@ -684,10 +686,10 @@ def get_portfolio(
         # cambio (sin stop guardado) lo recalculan, y se marca.
         stop_fijado = datos.precio(position.stop)
         if stop_fijado is not None:
-            stop = round(stop_fijado, 2)
+            stop = stop_fijado
         else:
             vol = _volatilidad_de(service, instrument.symbol)
-            stop = round(position.cost_basis * (1 - _stop_pct(vol, clase) / 100), 2)
+            stop = datos.redondear_precio(position.cost_basis * (1 - _stop_pct(vol, clase) / 100))
         open_positions.append(
             {
                 "id": position.id,

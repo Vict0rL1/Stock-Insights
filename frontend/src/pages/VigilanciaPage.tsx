@@ -8,7 +8,7 @@ import type {
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
+import { fmtAntiguedad, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
@@ -333,11 +333,11 @@ function Decision({ d }: { d: DecisionRegistrada }) {
         </span>
         {d.price_at_decision !== null && (
           <span className="ml-auto text-xs tabular-nums text-slate-500">
-            {fmtNum(d.price_at_decision, 2)}
+            {fmtPrecio(d.price_at_decision)}
             {d.precio_actual !== null && (
               <>
                 {' → '}
-                {fmtNum(d.precio_actual, 2)}{' '}
+                {fmtPrecio(d.precio_actual)}{' '}
                 {d.cambio_pct !== null && (
                   <span
                     className={d.cambio_pct >= 0 ? 'text-emerald-700' : 'text-red-700'}

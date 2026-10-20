@@ -105,6 +105,30 @@ export function fmtDinero(
 }
 
 /**
+ * Los decimales de un precio por acción, como `decimales_precio` en el backend.
+ * Desde 1, dos; por debajo, los que den cuatro cifras significativas: con dos
+ * fijos, el stop de 0,004 de una acción de céntimos salía «0,00» (auditoría del
+ * 19 oct). El exponente sale de la representación más corta, como en Python.
+ */
+function decimalesPrecio(valor: number): number {
+  const a = Math.abs(valor)
+  if (a >= 1 || a === 0) return 2
+  const exponente = Number(a.toExponential().split('e')[1])
+  return Math.min(20, Math.max(2, 3 - exponente))
+}
+
+/** Un precio por acción o un nivel: 150 → «150,00»; 0,004 → «0,004». */
+export function fmtPrecio(
+  valor: Num,
+  moneda?: string | null,
+  { signo = false }: { signo?: boolean } = {},
+): string {
+  if (!finito(valor)) return GUION
+  const cifra = conSigno(valor, esEs(valor, 2, decimalesPrecio(valor)), signo)
+  return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
+}
+
+/**
  * El valor de un `<input type="number">`: el navegador lo exige con punto
  * decimal y sin miles («12.5»), sea cual sea el idioma. No es texto para leer;
  * está aquí para que sea el único `toFixed` del código.

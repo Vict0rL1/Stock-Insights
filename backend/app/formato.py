@@ -107,6 +107,40 @@ def fmt_dinero(valor, moneda: str | None, decimales: int = 2, *, signo: bool = F
     return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
 
 
+PRECIO_MAX_DECIMALES = 20  # el tope de Intl.NumberFormat en el gemelo
+
+
+def decimales_precio(valor: float) -> int:
+    """Los decimales con que se escribe (y se guarda) un precio por acción.
+
+    Desde 1, dos: el tick de las acciones que cotizan por encima del dólar. Por
+    debajo, los que den cuatro cifras significativas: con dos fijos, el stop de
+    0,004 de una acción de céntimos era 0,00 y un precio de 0,003 era 0, y el
+    stop no se perforaba nunca (auditoría del 19 oct). El exponente sale de la
+    representación más corta del número, la misma que `toExponential()` en el
+    gemelo: con `log10` los dos lados podían discrepar en la frontera."""
+    a = abs(valor)
+    if a >= 1 or a == 0:
+        return 2
+    exponente = Decimal(repr(a)).adjusted()
+    return min(PRECIO_MAX_DECIMALES, max(2, 3 - exponente))
+
+
+def fmt_precio(valor, moneda: str | None = None, *, signo: bool = False) -> str:
+    """Un precio por acción o un nivel: 150 → «150,00»; 0,004 → «0,004».
+
+    Al menos dos decimales y, por debajo de 1, hasta cuatro cifras
+    significativas sin ceros de más (`decimales_precio`)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    decimales = decimales_precio(valor)
+    d = _redondear(valor, decimales)
+    entera, _, fraccion = _es_es(d, decimales).partition(",")
+    cifra = _con_signo(d, f"{entera},{fraccion.rstrip('0').ljust(2, '0')}", signo)
+    return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
+
+
 def _corto(valor: float, max_decimales: int) -> str:
     """Hasta `max_decimales`, sin ceros a la derecha: 400,0 → «400»; 1,25 → «1,25»."""
     return fmt_num(valor, max_decimales, ceros=False)
