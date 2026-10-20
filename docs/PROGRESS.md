@@ -343,7 +343,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 | # | Hallazgo | Estado |
 |---|---|---|
 | A1 (P1) | El stop de la posición se redondeaba a dos decimales ANTES de compararlo: coste 0,005, stop 0,004 y precio 0,003 salía «mantener» (la regla preguntaba «0,003 ≤ 0»), con el stop a «−100 %» | hecho (abajo) |
-| A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | pendiente |
+| A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | hecho (abajo) |
 | A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | pendiente |
 | A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | pendiente |
 | A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | pendiente |
@@ -364,6 +364,17 @@ auditoría (vender, stop 0,004, distancia +33,3 %, disparador «0,004»), nivele
 de 1e-8 a 1e5, stop recalculado bajo el coste, Yahoo, el stop guardado por la API y el render de Hoy
 (9 de los 18 tests del backend y el de Hoy fallan con el código anterior; el resto son guardas de no
 regresión para precios normales).
+
+**A2.** El tipo es el último que ya se conocía en la fecha de la decisión (`pit.filtrar`; el del
+mismo día de una decisión con hora no, salvo prueba), y viaja en el detalle con su fecha
+(`tipo_por_usd`, `tipo_fecha`, `tipo_fresco`). Se distinguen los tres casos: ningún tipo
+conocido a esa fecha (desconocido, con su motivo), uno de más de `fx.DIAS_FRESCO` días (se
+convierte, estado `viejo`, y la nota de Hoy dice la fecha del tipo) y uno reciente. Nuevo
+`pit.antiguedad_dias` para no restar fechas a mano. El test de la ficha con efectivo en CAD
+usaba el reloj real con una serie anclada a `AHORA`: ahora usa `AHORA` (con el reloj real el
+tipo tenía semanas, y eso ya se dice). Guardas: el caso de la auditoría (100 USD, no 86,67),
+el tipo del mismo día, la serie que empieza después y el tipo viejo (fallan con el código
+anterior); el tipo reciente sin aviso es guarda.
 
 ## Informe del repaso de seguridad (0.9)
 

@@ -65,7 +65,11 @@ No dice «vende X y compra Y». Concluye una de cinco:
 **Entradas, sin inventar ninguna.** Tamaño máximo del dimensionador de siempre
 (cartera abierta, confianza de la idea como entrada declarada). Efectivo
 anotado por el usuario (`POST /api/portfolio/efectivo`, migración 0008; la última
-anotación por moneda manda; sin anotar = desconocido). De cada posición, su última
+anotación por moneda manda; sin anotar = desconocido). Otra moneda se convierte con
+el último tipo que ya se conocía en la fecha de la decisión (`punto_en_el_tiempo`: el del
+mismo día no, FRED lo publica después), nunca con uno posterior; sin ninguno, el
+efectivo es desconocido; con uno de más de 7 días (`fx.DIAS_FRESCO`) se convierte igual
+pero el estado es `viejo` y la nota de Hoy dice su fecha. De cada posición, su última
 lectura **congelada** (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».
 

@@ -701,7 +701,8 @@ y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
 valor de las posiciones abiertas: tu concentración real es entonces menor y los
 topes aprietan antes de lo debido, y la nota lo dice. Si hay posiciones que el
 barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
-cartera inventaría liquidez). La nota dice qué efectivo se usó y de qué fecha, y
+cartera inventaría liquidez). La nota dice qué efectivo se usó y de qué fecha (y
+la del tipo de cambio si tiene más de una semana; nunca se usa uno posterior), y
 la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
 cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
 tras anotar efectivo o abrir una posición, «Actualizar» la recalcula; y las posiciones que un barrido no cubre

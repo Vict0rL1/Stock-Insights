@@ -263,7 +263,9 @@ def test_la_ficha_convierte_el_efectivo_en_una_moneda_sin_posiciones(session_fac
 
     sv = ServicioFalso(AHORA).empresa("AAPL", precio=100.0, score=None)
     sv.macro["DEXCAUS"] = _serie_fx(FX_BUENO)
-    ahora = datetime.now(timezone.utc)
+    # La serie de tipos acaba el día antes de AHORA: con el reloj real, el tipo
+    # tenía semanas y, desde la auditoría del 19 oct, eso se dice («viejo»).
+    ahora = AHORA
     with session_factory() as s:
         inst = Instrument(symbol="AAPL", currency="USD")
         s.add(inst)

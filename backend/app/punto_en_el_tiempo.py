@@ -94,6 +94,15 @@ def disponible_en(publicado, decision, obtenido_en=None) -> bool | None:
     return None
 
 
+def antiguedad_dias(publicado, decision) -> int | None:
+    """Días de calendario (UTC) de `publicado` a `decision`; None si no se pueden
+    fechar. Para decir «tipo de hace 12 días» sin restar fechas a mano."""
+    p, d = marca(publicado), marca(decision)
+    if p is None or d is None:
+        return None
+    return (_dia(d[0]) - _dia(p[0])).days
+
+
 def barra_disponible(ts, decision, obtenido_en=None) -> bool:
     """¿Se conocía el cierre de esta barra diaria en el momento `decision`?
 

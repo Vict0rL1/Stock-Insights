@@ -28,6 +28,7 @@ from app.analysis import fx, portfolio_risk
 from app.analysis.rule_backtest import costes_por_lado
 from app.analysis.sizing import MAX_POR_POSICION_PCT, dimensionar
 from app.db.models import CashBalance, DecisionSnapshot
+from app.formato import fmt_fecha
 
 
 def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]:
@@ -46,26 +47,56 @@ def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]
     return list(por_moneda.values())
 
 
+def _tipo_en(serie: list, ahora: datetime) -> dict | None:
+    """El último tipo de la serie que ya se conocía en `ahora`, con su fecha.
+
+    Antes se cogía el último de la serie, fuera de cuando fuera: 130 CAD
+    anotados el 11 de septiembre, a 1,30, valían 100 USD; recalculado el 12 con
+    la serie ya descargada hasta el 14 (1,50), 86,67 USD (auditoría del 19 oct).
+    Un tipo fechado el mismo día de una decisión con hora no se conocía salvo
+    prueba (`punto_en_el_tiempo`): FRED lo publica después."""
+    disponibles = pit.filtrar(sorted(serie or []), lambda p: p[0], ahora)["disponibles"]
+    utiles = [(fecha, tipo) for fecha, tipo in disponibles if datos.precio(tipo) is not None]
+    if not utiles:
+        return None
+    fecha, tipo = utiles[-1]
+    dias = pit.antiguedad_dias(fecha, ahora)
+    return {"por_usd": tipo, "fecha": fecha.isoformat(), "dias": dias, "fresco": dias <= fx.DIAS_FRESCO}
+
+
 def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
-    """{usd, detalle}. Una moneda sin tipo de cambio deja el total DESCONOCIDO."""
+    """{usd, estado, detalle}. Una moneda sin tipo de cambio conocido en `ahora`
+    deja el total DESCONOCIDO; con un tipo de más de `fx.DIAS_FRESCO` días se
+    convierte igual, como en la cartera, pero el estado es «viejo» y se dice."""
     ultimas = _ultimas_anotaciones(session, ahora)
     if not ultimas:
         return {"usd": None, "estado": "desconocido", "motivo": "no hay efectivo anotado"}
-    total, detalle = 0.0, []
+    total, detalle, viejos = 0.0, [], []
     for c in ultimas:
+        tipo = None
         if c.moneda == "USD":
             usd = c.importe
         else:
-            serie = sorted(ctx.get("fx_series", {}).get(c.moneda) or [])
-            tipo = serie[-1][1] if serie else None
-            if not tipo:
-                return {"usd": None, "estado": "desconocido",
-                        "motivo": f"efectivo en {c.moneda} sin tipo de cambio: no se supone 1:1"}
-            usd = c.importe / tipo
+            serie = ctx.get("fx_series", {}).get(c.moneda) or []
+            tipo = _tipo_en(serie, ahora)
+            if tipo is None:
+                motivo = (f"efectivo en {c.moneda} sin tipo de cambio conocido a esa fecha (la serie empieza "
+                          "después): no se supone 1:1") if serie else (
+                          f"efectivo en {c.moneda} sin tipo de cambio: no se supone 1:1")
+                return {"usd": None, "estado": "desconocido", "motivo": motivo}
+            usd = c.importe / tipo["por_usd"]
+            if not tipo["fresco"]:
+                viejos.append(f"{c.moneda}, del {fmt_fecha(tipo['fecha'])}")
         total += usd
         detalle.append({"moneda": c.moneda, "importe": c.importe, "usd": round(usd, 2),
-                        "as_of": sn.iso_utc(c.as_of)})
-    return {"usd": round(total, 2), "estado": "valido", "detalle": detalle}
+                        "as_of": sn.iso_utc(c.as_of),
+                        **({"tipo_por_usd": tipo["por_usd"], "tipo_fecha": tipo["fecha"],
+                            "tipo_fresco": tipo["fresco"]} if tipo else {})})
+    salida = {"usd": round(total, 2), "estado": "viejo" if viejos else "valido", "detalle": detalle}
+    if viejos:
+        salida["motivo"] = (f"tipo de cambio de más de {fx.DIAS_FRESCO} días ({'; '.join(viejos)}): "
+                            "se convierte con él y se dice")
+    return salida
 
 
 def efectivo_con_cambio(session: Session, service, ahora: datetime) -> dict:

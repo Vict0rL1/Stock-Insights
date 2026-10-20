@@ -288,7 +288,13 @@ def _detalle_efectivo(detalle: list[dict] | None) -> str | None:
     """
     if not detalle:
         return None
-    partes = [f"{fmt_dinero(d.get('importe'), d.get('moneda'))}, del {fmt_fecha(d.get('as_of'))}" for d in detalle]
+    # Un tipo de cambio viejo se dice con su fecha (auditoría del 19 oct): la
+    # cifra en dólares depende de él tanto como del importe.
+    partes = [
+        f"{fmt_dinero(d.get('importe'), d.get('moneda'))}, del {fmt_fecha(d.get('as_of'))}"
+        + (f", al tipo de cambio del {fmt_fecha(d.get('tipo_fecha'))}" if d.get("tipo_fresco") is False else "")
+        for d in detalle
+    ]
     return f"(efectivo anotado: {'; '.join(partes)})"
 
 
