@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
 
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Los nombres con que se puede llamar al backend (cabecera `Host`), sin
+    # puerto. Escuchar solo en 127.0.0.1 no basta: una web cualquiera puede
+    # hacer que su dominio resuelva a 127.0.0.1 (DNS rebinding) y llamar a la
+    # API con `Host: su-dominio`, y el backend la atendía (auditoría del 19 oct).
+    # En .env, como lista JSON: ALLOWED_HOSTS='["localhost", "127.0.0.1", "[::1]"]'.
+    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]"]
 
 
 # TTL de caché en segundos, por tipo de dato. El caché es parte del diseño

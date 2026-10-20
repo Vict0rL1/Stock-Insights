@@ -551,7 +551,9 @@ def _cliente(servicio):
     app.dependency_overrides[get_service] = lambda: servicio
     app.dependency_overrides[get_session] = sesion
     try:
-        yield TestClient(app)
+        # `localhost`: fuera de pytest (`python -m tests.golden.generar`, el
+        # exportador de fixtures) no hay `testserver` entre los hosts permitidos.
+        yield TestClient(app, base_url="http://localhost")
     finally:
         app.dependency_overrides.clear()
 

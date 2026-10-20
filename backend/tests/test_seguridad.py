@@ -6,7 +6,8 @@
   patrón en cada parámetro o campo con «symbol» en el nombre. Y se prueba el
   comportamiento: un símbolo malicioso es un 422 en español y NUNCA una llamada
   a un proveedor.
-- El backend solo escucha en 127.0.0.1; CORS solo admite el Vite local.
+- El backend solo escucha en 127.0.0.1; CORS solo admite el Vite local; y solo
+  atiende a una cabecera `Host` de esta máquina (auditoría del 19 oct, A6).
 - `.env` no se versiona y `.env.example` no lleva claves; ningún fichero
   versionado contiene algo con forma de clave.
 """
@@ -201,6 +202,30 @@ def test_el_backend_solo_escucha_en_local_y_cors_solo_admite_el_vite_local(clien
     local = c.options("/api/meta/health", headers={"Origin": "http://localhost:5173",
                                                    "Access-Control-Request-Method": "GET"})
     assert local.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+@pytest.mark.parametrize("host", ["malicioso.example", "malicioso.example:8000", "192.168.1.20:8000",
+                                  "localhost.malicioso.example", "", "::1"])
+def test_un_host_ajeno_es_un_400_en_espanol_y_no_llega_a_la_api(cliente, host):
+    # Escuchar en 127.0.0.1 no basta: con DNS rebinding, una web hace que su
+    # dominio resuelva a 127.0.0.1 y llama a la API con `Host: su-dominio`.
+    c, espia = cliente
+    r = c.get("/api/stocks/AAPL/quote", headers={"host": host})
+    assert r.status_code == 400
+    assert r.json()["detail"].startswith("Cabecera Host no permitida")
+    assert espia.llamadas == []
+
+
+@pytest.mark.parametrize("host", ["localhost:5173", "127.0.0.1:8000", "[::1]:8000", "LocalHost:5173", "localhost"])
+def test_los_hosts_de_esta_maquina_pasan(cliente, host):
+    c, _ = cliente
+    assert c.get("/api/meta/health", headers={"host": host}).status_code == 200
+
+
+def test_fuera_de_los_tests_testserver_no_esta_permitido():
+    from app.config import Settings
+
+    assert Settings.model_fields["allowed_hosts"].default == ["localhost", "127.0.0.1", "[::1]"]
 
 
 def test_env_no_se_versiona_y_la_plantilla_no_lleva_claves():

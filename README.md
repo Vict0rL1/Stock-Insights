@@ -88,6 +88,12 @@ http://localhost:8000/docs. Los logs quedan en `/tmp/bolsa-backend.log` y
 cambió (compara un hash), y libera los puertos 8000 y 5173 si quedaron
 ocupados por una ejecución anterior que no cerró bien.
 
+El backend escucha solo en 127.0.0.1 y, además, solo atiende a una cabecera
+`Host` de esta máquina (`localhost`, `127.0.0.1`, `[::1]`); cualquier otra es un
+400. Escuchar en local no basta: con *DNS rebinding*, una web puede hacer que su
+dominio resuelva a 127.0.0.1 y llamar a la API con su propio `Host`. Para usar
+otro nombre, `ALLOWED_HOSTS` en `.env` (lista JSON).
+
 ### La base de datos se migra sola (desde el RC1)
 
 Al arrancar, la app pone `backend/data/app.db` al día con Alembic, y **si no

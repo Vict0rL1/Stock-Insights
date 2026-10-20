@@ -347,7 +347,7 @@ prioridad, cada uno con un test que falla con el código anterior.
 | A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | hecho (abajo) |
 | A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | hecho (abajo) |
 | A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | hecho (abajo) |
-| A6 (P2) | El backend aceptaba cualquier cabecera `Host` | pendiente |
+| A6 (P2) | El backend aceptaba cualquier cabecera `Host` | hecho (abajo) |
 | A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | pendiente |
 
 **A1.** Se compara con el valor sin redondear (el stop guardado tal cual, el recalculado sin
@@ -402,6 +402,17 @@ más reciente» de instantáneas: `anterior_comparable` ya filtraba antes; el hi
 lista todas y el antiduplicado de `congelar_analisis` es del momento presente. Guarda: dos
 lecturas reales (`analizar_y_congelar`) a dos fechas; la del medio ve la primera (falla con el
 código anterior), después ve la segunda y antes de las dos, ninguna.
+
+**A6.** `HostDeConfianza` en `main.py`, la más externa: una cabecera `Host` que no es de esta
+máquina (`settings.allowed_hosts`, por defecto `localhost`, `127.0.0.1`, `[::1]`; `ALLOWED_HOSTS`
+en `.env`) es un 400 con el motivo en `detail`, en español, antes de llegar a ninguna ruta. No es
+el `TrustedHostMiddleware` de Starlette porque responde en inglés y en texto plano y su lector
+de la cabecera es privado (`starlette._utils`); este compara sin distinguir mayúsculas. Los
+tests añaden `testserver` en `conftest.py` (solo ahí); el golden y el exportador de fixtures,
+que corren fuera de pytest, llaman con `base_url="http://localhost"`. Guardas: seis hosts ajenos
+(dominio, con puerto, IP de la red, sufijo engañoso, vacío, `::1` sin corchetes) son 400 sin
+llamar a ningún proveedor, cinco de esta máquina pasan y el valor por defecto no incluye
+`testserver` (los siete primeros fallan con el código anterior). Golden y fixtures idénticos.
 
 ## Informe del repaso de seguridad (0.9)
 

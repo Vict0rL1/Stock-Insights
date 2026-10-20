@@ -9,6 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
 from app.db.engine import SessionLocal, init_db
@@ -96,6 +97,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def nombre_de_host(cabecera: str | None) -> str | None:
+    """«localhost:5173» → «localhost»; «[::1]:8000» → «[::1]». None si no se lee."""
+    texto = (cabecera or "").strip().lower()
+    if texto.startswith("["):
+        fin = texto.find("]")
+        resto = texto[fin + 1:] if fin > 1 else None
+        return texto[: fin + 1] if resto is not None and (resto == "" or resto.startswith(":")) else None
+    if texto.count(":") > 1:
+        return None
+    return texto.partition(":")[0] or None
+
+
+class HostDeConfianza:
+    """Rechaza con un 400 la petición cuya cabecera `Host` no es de esta máquina.
+
+    Es lo que hace `TrustedHostMiddleware` de Starlette, con dos diferencias: el
+    motivo va en español y en `detail`, como cualquier error de la API, y se
+    compara sin distinguir mayúsculas (un nombre de host no las distingue). Antes
+    se aceptaba cualquier `Host` (auditoría del 19 oct).
+    """
+
+    def __init__(self, app: ASGIApp, permitidos: list[str]) -> None:
+        self.app = app
+        self.permitidos = {p.strip().lower() for p in permitidos}
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            cabecera = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
+            if nombre_de_host(cabecera) not in self.permitidos:
+                respuesta = JSONResponse(status_code=400, content={"detail": (
+                    f"Cabecera Host no permitida: «{cabecera[:80]}». El backend solo atiende a "
+                    f"{', '.join(sorted(self.permitidos))}; para llamarlo con otro nombre, añádelo a "
+                    "ALLOWED_HOSTS en .env.")})
+                await respuesta(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
+# La última en añadirse es la de fuera: el Host se comprueba antes que nada.
+app.add_middleware(HostDeConfianza, permitidos=settings.allowed_hosts)
 
 app.include_router(stocks.router)
 app.include_router(market.router)

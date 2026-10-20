@@ -11,6 +11,9 @@ import tempfile
 # de datos real. Un test no puede tocar datos del usuario, ni para limpiar.
 _BASE_DE_TESTS = tempfile.mkdtemp(prefix="app-tests-")
 os.environ["DATABASE_PATH"] = os.path.join(_BASE_DE_TESTS, "tests.db")
+# `TestClient` llama con `Host: testserver`. Se añade aquí, solo en los tests:
+# fuera de ellos el backend solo atiende a nombres de esta máquina (A6).
+os.environ["ALLOWED_HOSTS"] = '["localhost", "127.0.0.1", "[::1]", "testserver"]'
 
 import pytest  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
