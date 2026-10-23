@@ -160,7 +160,7 @@ cd frontend && npm run build               # type-check estricto + build
 
 ### Capturas de pantalla
 
-Todas las pantallas, a 1440 px y a 390 px, con datos ficticios (nunca tu base):
+Todas las pantallas, a 1440 px, a 820 px (tableta) y a 390 px, con datos ficticios (nunca tu base):
 
 ```bash
 cd frontend && npm run capturas -- /ruta/de/salida               # todos los escenarios
@@ -173,8 +173,9 @@ pasadas del mismo código dan las mismas imágenes. Escenarios: normal, cartera 
 día sin candidatas, empresa sin datos y contenido de IA visible. La primera vez:
 `npx playwright install chromium`.
 
-A 390 px la pasada **falla** (sale con código 1) si una pantalla desborda en horizontal
-o parte un texto palabra a palabra, y fotografía además el menú de móvil abierto y la
+A 820 y a 390 px la pasada **falla** (sale con código 1) si una pantalla desborda en
+horizontal, si un contenedor con `overflow-x: hidden` recorta texto o si parte un texto
+palabra a palabra; a 390 fotografía además el menú de móvil abierto y la
 navegación desde él. Los clics son normales, no «a la fuerza»: si algo tapa un botón,
 es un fallo de la pantalla.
 
