@@ -60,12 +60,16 @@ const LEYENDA_INDICADORES: { token: Token; label: string }[] = [
  */
 export const LOCALIZACION = {
   locale: 'es-ES',
-  // Para los paneles (RSI, MACD), que no son precios: con `fmtPrecio` aquí, un
-  // MACD de 0,1234 ensanchaba el eje y el gráfico entero se desplazaba.
-  priceFormatter: (p: number) => fmtNum(p, 2),
+  // Sin `priceFormatter`: en lightweight-charts el global manda sobre el
+  // `priceFormat` de cada serie, y con él una acción de 0,003 volvía a tener el
+  // eje entero en «0,00» (revisión de A7). Cada serie lleva el suyo
+  // (`formatoPrecio`, `FORMATO_RSI`, `formatoMacd`, `FORMATO_VOLUMEN`); ninguna
+  // puede quedarse sin él, o volvería el «123.45» inglés.
   timeFormatter: (t: unknown) => (typeof t === 'number' ? fmtFecha(new Date(t * 1000), { zona: 'UTC' }) : String(t)),
 }
 export const FORMATO_VOLUMEN = { type: 'custom' as const, formatter: (v: number) => fmtCompacto(v), minMove: 1 }
+/** El RSI va de 0 a 100: dos decimales, como siempre. */
+export const FORMATO_RSI = { type: 'custom' as const, formatter: (p: number) => fmtNum(p, 2), minMove: 0.01 }
 
 /** El eje del precio con las cifras del precio: para una acción de 0,003, el paso
  *  de 0,01 por defecto y dos decimales dejaban el eje en «0,00» (auditoría del
@@ -73,6 +77,13 @@ export const FORMATO_VOLUMEN = { type: 'custom' as const, formatter: (v: number)
 export function formatoPrecio(ultimo: number | undefined) {
   const decimales = ultimo !== undefined && Number.isFinite(ultimo) ? decimalesPrecio(ultimo) : 2
   return { type: 'custom' as const, formatter: (p: number) => fmtPrecio(p), minMove: 10 ** -decimales }
+}
+
+/** El MACD está en unidades de precio: con una acción de céntimos, sus cifras
+ *  también lo son y necesitan las del precio. Desde 1, dos decimales como
+ *  siempre: con `fmtPrecio`, un MACD de 0,1234 ensanchaba el eje. */
+export function formatoMacd(ultimo: number | undefined) {
+  return ultimo !== undefined && Number.isFinite(ultimo) && Math.abs(ultimo) < 1 ? formatoPrecio(ultimo) : FORMATO_RSI
 }
 
 // El volumen es contexto, no protagonista: semitransparente y en la quinta parte
@@ -174,7 +185,7 @@ export function PriceChart({ history }: { history: History }) {
     if (rsi.length > 0) {
       const serie = chart.addSeries(
         LineSeries,
-        { color: c('indicador'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+        { color: c('indicador'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, priceFormat: FORMATO_RSI },
         panel,
       )
       serie.setData(rsi)
@@ -206,7 +217,7 @@ export function PriceChart({ history }: { history: History }) {
       // El histograma primero para que quede DETRÁS de las dos líneas.
       const hist = chart.addSeries(
         HistogramSeries,
-        { priceLineVisible: false, lastValueVisible: false },
+        { priceLineVisible: false, lastValueVisible: false, priceFormat: formatoMacd(history.bars.at(-1)?.close) },
         panel,
       )
       hist.setData(
@@ -223,7 +234,10 @@ export function PriceChart({ history }: { history: History }) {
       ] as const) {
         const linea = chart.addSeries(
           LineSeries,
-          { color: c(token), lineWidth: 1, priceLineVisible: false, lastValueVisible: false },
+          {
+            color: c(token), lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+            priceFormat: formatoMacd(history.bars.at(-1)?.close),
+          },
           panel,
         )
         linea.setData(overlay(history.bars, valores))
