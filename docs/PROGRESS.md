@@ -512,6 +512,27 @@ forma, en las 17 tablas, con guarda en `MarcoTabla.test.tsx`. Golden idéntico.
 2.12. Las 11 pestañas de la ficha en 5 filas en móvil: es el 2.6 (6 + «Más ▾»). En el gráfico,
 el primer rótulo del eje de tiempo cortado y los rótulos de 70/30 del RSI sobre los ticks.
 
+### Hermanos de A1–A6 (verificados, 23 oct)
+
+De la revisión adversarial del código de A1–A6, los hallazgos con dos o tres votos a favor.
+
+**A4.** Desde que manda el `as_of` más reciente, un saldo enviado solo con el día
+(«2026-10-20») se guardaba como su medianoche y perdía siempre contra uno con hora anotado
+antes ese día: el POST respondía 200 y seguían mandando los 10.000 de la mañana, el lado no
+prudente. Un día suelto se lee como día (hoy, la hora del registro; uno pasado, su último
+instante), un `as_of` unos minutos adelantado se recorta a ahora (la pantalla decía «Sin
+efectivo anotado» esos minutos) y el POST dice si la anotación queda `vigente`.
+
+**A3.** (1) yfinance da «GBp» para Londres y tres sitios lo pasaban a mayúsculas: «GBP», y la
+posición se convertía como libras, cien veces su valor. Una sola lectura, `fx.codigo`, para la
+cotización, el perfil y el instrumento. (2) Una fila en peniques no contaba como otra divisa:
+la nota decía «Toda la cartera está en USD» y Riesgo, «moneda desconocida». (3) Dos lotes en
+peniques del mismo símbolo: el primero salía dos veces y el segundo no se podía cerrar (las
+filas sin convertir se reponían por símbolo; ahora por id). (4) La curva y las cerradas
+también decían «moneda desconocida»; el aviso de la curva decía «por no tener histórico» de
+cualquier excluida, y ahora dice el motivo de cada una. (5) El motivo pedía «Corrige la divisa
+de la posición», que la app no permite: ahora dice que viene del proveedor y queda fuera.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

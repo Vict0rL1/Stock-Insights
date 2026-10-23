@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from datetime import date
+from app.analysis import fx
 from app.formato import plural
 
 # Por debajo de esto no hay curva: hay dos puntos y una recta entre ellos.
@@ -81,7 +82,13 @@ def historial(
     usables, excluidas = [], []
     for p in posiciones:
         symbol = p["symbol"]
-        moneda = (p.get("currency") or "").upper() or None
+        try:
+            moneda = fx.normalizar(p.get("currency"))
+        except fx.SinTipo:
+            # Se sabe en qué está; lo que no se puede es convertirla. Antes salía
+            # «moneda desconocida», como en la cartera (revisión de A3).
+            excluidas.append({"symbol": symbol, "motivo": f"en céntimos ({fx.codigo(p.get('currency'))}), sin conversión"})
+            continue
         if moneda is None:
             # Antes: `currency or base`, o sea, la moneda desconocida se suponía
             # dólar y una posición canadiense se dibujaba un 37 % más grande.
@@ -323,9 +330,11 @@ def _aviso(base: str, cierres: list[date], excluidas: list[dict], hay_divisas: b
             "usar el actual convertiría un movimiento de divisa en uno de la acción."
         )
     if excluidas:
-        nombres = ", ".join(e["symbol"] for e in excluidas[:4])
+        # Con el motivo de cada una: «por no tener histórico» se decía también de
+        # una moneda desconocida o en céntimos, que lo tienen y no se convierten.
+        nombres = "; ".join(f"{e['symbol']}, {e['motivo']}" for e in excluidas[:4])
         partes.append(
-            f"{len(excluidas)} {plural(len(excluidas), 'posición queda', 'posiciones quedan')} fuera de la curva ({nombres}) por "
-            "no tener histórico: la línea describe el resto."
+            f"{len(excluidas)} {plural(len(excluidas), 'posición queda', 'posiciones quedan')} fuera de la curva ({nombres}): "
+            "la línea describe el resto."
         )
     return " ".join(partes)

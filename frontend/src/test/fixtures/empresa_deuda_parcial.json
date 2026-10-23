@@ -2160,6 +2160,7 @@
      "nota": "La cartera tiene 2 divisas (CAD, USD) y todo se convierte a USD antes de sumar. Antes se sumaban sin convertir, que es un total creíble y equivocado. 1 posición queda FUERA del total por no poder convertirse (SHOP.TO). Un total parcial que se sabe parcial sirve; uno que se cree completo, no.",
      "sin_convertir": [
       {
+       "id": 2,
        "moneda": "CAD",
        "motivo": "No hay tipo de cambio disponible para CAD.",
        "symbol": "SHOP.TO"
@@ -2407,7 +2408,7 @@
   },
   "/api/portfolio/historial?descargar=false": {
    "json": {
-    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: el efectivo que anotas no entra en la curva, ni el de cada venta tampoco. 1 posición queda fuera de la curva (SHOP.TO) por no tener histórico: la línea describe el resto.",
+    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: el efectivo que anotas no entra en la curva, ni el de cada venta tampoco. 1 posición queda fuera de la curva (SHOP.TO, sin histórico de tipo de cambio para CAD): la línea describe el resto.",
     "base": "USD",
     "cierres": [],
     "desde": "2026-02-24",

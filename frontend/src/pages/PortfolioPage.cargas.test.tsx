@@ -212,6 +212,28 @@ describe('posiciones cerradas (ítem 2.1)', () => {
     expect(xyz.textContent).toContain('+12,00')
     expect(xyz.textContent).toContain('moneda desconocida')
   })
+
+  it('una cerrada en peniques dice su código y que no se convierte, no «moneda desconocida»', async () => {
+    // Revisión de A3: se sabía que era GBX y salía «moneda desconocida».
+    servir(con((_, cartera) => {
+      cartera.closed_positions = [
+        {
+          id: 11, symbol: 'VOD.L', quantity: 100, cost_basis: 70, realized_pnl: 200,
+          opened_at: '2026-01-05T15:00:00+00:00', closed_at: '2026-06-01T15:00:00+00:00',
+          currency: 'GBX', realized_pnl_base: null,
+          sin_convertir: '«GBX» son céntimos de GBP, no una moneda',
+        },
+      ]
+      cartera.summary.realizado_sin_convertir = ['VOD.L']
+    }))
+    pintar()
+    const lista = (await screen.findByText('Posiciones cerradas')).parentElement!
+    const vod = within(lista).getByText('VOD.L').closest('li')!
+    expect(vod.textContent).toContain('+200,00\u00a0GBX')
+    expect(vod.textContent).toContain('sin convertir')
+    expect(vod.textContent).not.toContain('moneda desconocida')
+    expect(within(vod).getByText('sin convertir').getAttribute('title')).toContain('céntimos de GBP')
+  })
 })
 
 describe('estado del precio de cada fila (ítem 2.1)', () => {

@@ -185,3 +185,79 @@ def test_el_contexto_de_cartera_dice_que_son_peniques_no_moneda_desconocida(clie
         ctx = contexto_cartera.construir(s, service)
     assert ctx["total_usd"] is None
     assert "céntimos" in ctx["sin_peso"][0]["motivo"]
+
+
+def _dos_lotes(session_factory, symbol, lotes, cerrada=None, moneda=None):
+    """Varios lotes del mismo símbolo (un solo instrumento) y, si se pide, una
+    cerrada `(cantidad, coste, pnl)`. `moneda`, la que el instrumento aprendió
+    de las cotizaciones mientras estuvo abierto."""
+    with session_factory() as s:
+        inst = Instrument(symbol=symbol, name=symbol, sector="Tech", currency=moneda)
+        s.add(inst)
+        s.flush()
+        for cantidad, coste in lotes:
+            s.add(Position(instrument_id=inst.id, quantity=cantidad, cost_basis=coste,
+                           opened_at=datetime.now(timezone.utc)))
+        if cerrada:
+            cantidad, coste, pnl = cerrada
+            s.add(Position(instrument_id=inst.id, quantity=cantidad, cost_basis=coste, realized_pnl=pnl,
+                           opened_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+                           closed_at=datetime(2026, 6, 1, tzinfo=timezone.utc)))
+        s.commit()
+
+
+def test_el_gbp_de_yahoo_son_peniques_no_libras(client, session_factory):
+    """Revisión de A3: yfinance da «GBp» para Londres; pasado a mayúsculas era
+    «GBP» y la posición se convertía como libras, cien veces su valor."""
+    from app import validacion
+
+    assert validacion.validar("quote", {"price": 72.0, "currency": "GBp"})["currency"] == "GBX"
+    assert validacion.validar("quote", {"price": 72.0, "currency": " gbp "})["currency"] == "GBP"
+    c, _ = client([("VOD.L", 100, 70.0), ("AAPL", 10, 90.0)],
+                  precios={"VOD.L": (72.0, "GBp"), "AAPL": (100.0, "USD")})
+    d = c.get("/api/portfolio").json()
+    fila = next(p for p in d["positions"] if p["symbol"] == "VOD.L")
+    assert fila["currency"] == "GBX" and "céntimos de GBP" in fila["sin_convertir"]
+    assert d["summary"]["total_market_value"] == pytest.approx(1000.0)
+    with session_factory() as s:
+        assert s.query(Instrument).filter_by(symbol="VOD.L").one().currency == "GBX"
+
+
+def test_una_fila_en_peniques_cuenta_como_otra_divisa(client):
+    """Revisión de A3: sin su código en `sin_convertir`, la nota decía «Toda la
+    cartera está en USD» y los importes en peniques salían sin código."""
+    c, _ = client([("VOD.L", 100, 70.0), ("AAPL", 10, 90.0)],
+                  precios={"VOD.L": (72.0, "GBX"), "AAPL": (100.0, "USD")})
+    d = c.get("/api/portfolio").json()["divisas"]
+    assert d["mezcla_de_divisas"] is True
+    assert d["sin_convertir"][0]["moneda"] == "GBX"
+    assert not d["nota"].startswith("Toda la cartera")
+
+
+def test_dos_lotes_en_peniques_salen_los_dos_una_vez(client, session_factory):
+    """Revisión de A3: las filas sin convertir se reponían por símbolo, así que
+    el primer lote salía dos veces y el segundo no se podía cerrar."""
+    c, _ = client([], precios={"VOD.L": (72.0, "GBX")})
+    _dos_lotes(session_factory, "VOD.L", [(100, 70.0), (50, 71.0)])
+    filas = [p for p in c.get("/api/portfolio").json()["positions"] if p["symbol"] == "VOD.L"]
+    assert len({p["id"] for p in filas}) == 2
+    assert sorted(p["quantity"] for p in filas) == [50, 100]
+
+
+def test_una_cerrada_en_peniques_dice_por_que_no_entra(client, session_factory):
+    """Revisión de A3: salía «moneda desconocida», cuando se sabe que es GBX."""
+    c, service = client([], precios={"VOD.L": (72.0, "GBX")})
+    _dos_lotes(session_factory, "VOD.L", [], cerrada=(100, 70.0, 200.0), moneda="GBX")
+    d = c.get("/api/portfolio").json()
+    cerrada = d["closed_positions"][0]
+    assert cerrada["currency"] == "GBX" and "céntimos" in cerrada["sin_convertir"]
+    assert d["summary"]["realizado_sin_convertir"] == ["VOD.L"]
+    assert not [x for x in service.llamadas if x.startswith("macro")]
+
+
+def test_el_motivo_no_pide_una_correccion_que_la_app_no_permite():
+    from app.analysis import fx
+
+    with pytest.raises(fx.SinTipo) as exc:
+        fx.normalizar("GBX")
+    assert "Corrige" not in str(exc.value) and "fuera de los totales" in str(exc.value)

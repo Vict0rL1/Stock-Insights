@@ -64,11 +64,9 @@ def _quote(payload: dict) -> dict:
         if campo in saneado:
             saneado[campo] = datos.numero(saneado[campo])
 
-    moneda = saneado.get("currency")
-    if isinstance(moneda, str) and moneda.strip():
-        saneado["currency"] = moneda.strip().upper()
-    elif moneda is not None:
-        saneado["currency"] = None
+    # `fx.codigo` y no `upper()`: el «GBp» (peniques) de Yahoo salía «GBP» (libras).
+    if saneado.get("currency") is not None:
+        saneado["currency"] = fx.codigo(saneado["currency"])
     return saneado
 
 

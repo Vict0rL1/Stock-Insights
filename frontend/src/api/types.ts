@@ -411,7 +411,7 @@ export interface DivisasDeCartera {
   base: string
   mezcla_de_divisas: boolean
   monedas: Record<string, number>
-  sin_convertir: { symbol?: string; moneda?: string; motivo: string }[]
+  sin_convertir: { id?: number | null; symbol?: string; moneda?: string | null; motivo: string }[]
   tipos_usados: Record<string, { por_usd: number; fecha: string | null; serie: string }>
   /** Ganancia (+) o pérdida (−) en la base causada solo por el tipo de cambio desde la compra. */
   efecto_divisa_base?: number | null
@@ -434,6 +434,9 @@ export interface ClosedPosition {
   currency: string | null
   /** El realizado convertido a la base, si se pudo convertir. */
   realized_pnl_base?: number | null
+  /** Por qué no se puede convertir aunque se sepa la moneda (en céntimos, GBX):
+   *  antes salía «moneda desconocida» (revisión de A3). */
+  sin_convertir?: string | null
 }
 
 export interface Allocation {

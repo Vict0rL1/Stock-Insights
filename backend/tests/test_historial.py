@@ -265,3 +265,15 @@ def test_cada_punto_lleva_su_indice():
     r = h.historial([_pos("AAA")], {"AAA": _serie(DIAS)}, hoy=HOY)
     assert all("indice" in p for p in r["puntos"])
     assert r["puntos"][0]["indice"] == pytest.approx(100.0)
+
+
+def test_una_posicion_en_peniques_dice_por_que_queda_fuera_de_la_curva():
+    """Revisión de A3: salía «moneda desconocida» y el aviso decía «por no tener
+    histórico», cuando lo tiene y lo que no se puede es convertirla."""
+    r = h.historial(
+        [_pos("VOD.L", coste=70.0, moneda="GBX"), _pos("AAA")],
+        {"VOD.L": _serie(DIAS, 70.0), "AAA": _serie(DIAS)},
+        hoy=HOY,
+    )
+    assert r["excluidas"] == [{"symbol": "VOD.L", "motivo": "en céntimos (GBX), sin conversión"}]
+    assert "VOD.L, en céntimos (GBX)" in r["aviso"] and "por no tener histórico" not in r["aviso"]

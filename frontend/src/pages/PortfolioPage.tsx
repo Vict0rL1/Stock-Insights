@@ -557,8 +557,8 @@ function PortfolioTab() {
                   </div>
                   {(data.summary.realizado_sin_convertir?.length ?? 0) > 0 && (
                     <div className="mt-1 text-[11px] text-amber-800">
-                      Sin contar {data.summary.realizado_sin_convertir!.join(', ')}: moneda o
-                      tipo de cambio desconocidos.
+                      Sin contar {data.summary.realizado_sin_convertir!.join(', ')}: no se pueden
+                      convertir (moneda desconocida, en céntimos o sin tipo de cambio).
                     </div>
                   )}
                 </div>
@@ -733,6 +733,11 @@ function PortfolioTab() {
                           <Pnl value={p.realized_pnl} pct={null} moneda={monedaDe(p.currency)} />
                           {p.currency == null && p.realized_pnl !== null && (
                             <span className="ml-1 text-[10px] text-amber-800">moneda desconocida</span>
+                          )}
+                          {p.currency != null && p.sin_convertir && (
+                            <span className="ml-1 text-[10px] text-amber-800" title={p.sin_convertir}>
+                              sin convertir
+                            </span>
                           )}
                         </span>
                       </li>

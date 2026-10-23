@@ -998,7 +998,11 @@ motivo, en vez de convertirse a la par o sumarse a pelo. Un total parcial que se
 sabe parcial sirve; uno que se cree completo, no. La divisa, por cierto, siempre
 venía en la cotización y el portafolio se quedaba solo con el precio. Lo mismo una
 cotización en peniques o centavos (GBX, ZAC, ILA): se ve, fuera del total, con el
-motivo («son céntimos, no una moneda»), sin suponer que un penique es una libra.
+motivo («son céntimos de GBP, no una moneda»), sin suponer que un penique es una libra.
+Yahoo los escribe con minúscula («GBp» son peniques; «GBP», libras): todo código de
+moneda que llega se lee con `fx.codigo`, nunca con un `upper()` a ciegas. La fila cuenta
+como otra divisa (los importes llevan su código) y la curva y las cerradas dicen el
+mismo motivo.
 
 ## Tres gráficos que enseñan lo que un número esconde
 

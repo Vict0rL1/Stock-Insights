@@ -287,8 +287,20 @@ def _moneda_segura(valor) -> str | None:
         return None
 
 
+def _divisa_de_cerrada(divisa: str | None) -> dict:
+    """La divisa de una posición cerrada y, si no se puede convertir, por qué.
+
+    Una cerrada en peniques salía «moneda desconocida», cuando se sabe cuál es:
+    lo que no se puede es convertirla (revisión de A3). Queda fuera del realizado
+    en la base (`_realizado_en_base`: no hay tipo para «GBX») con su motivo."""
+    try:
+        return {"currency": fx.normalizar(divisa), "sin_convertir": None}
+    except fx.SinTipo as exc:
+        return {"currency": fx.codigo(divisa), "sin_convertir": str(exc)}
+
+
 def _moneda_legible(valor) -> str | None:
-    return valor.strip().upper() if isinstance(valor, str) and valor.strip() else None
+    return fx.codigo(valor)
 
 
 def _resolver_divisa(
@@ -679,9 +691,7 @@ def get_portfolio(
                     "realized_pnl": position.realized_pnl,
                     "opened_at": _utc_iso(position.opened_at),
                     "closed_at": _utc_iso(position.closed_at),
-                    "currency": _moneda_segura(
-                        _resolver_divisa(session, service, instrument, None)
-                    ),
+                    **_divisa_de_cerrada(_resolver_divisa(session, service, instrument, None)),
                 }
             )
             continue
@@ -729,10 +739,11 @@ def get_portfolio(
     # (auditoría del 19 oct). `convertir_cartera` la deja visible, fuera del
     # total y con su motivo.
     monedas = {m for p in open_positions if (m := _moneda_segura(p.get("currency")))}
-    monedas |= {p["currency"] for p in closed if p.get("currency")}
+    monedas |= {p["currency"] for p in closed if p.get("currency") and not p.get("sin_convertir")}
     tipos, series_fx, _ = _fx_completo(service, monedas)
     realizado_base, realizado_fuera = _realizado_en_base(closed, series_fx)
     divisas = fx.convertir_cartera(open_positions, tipos)
+    abiertas_por_id = {o["id"]: o for o in open_positions}
     _coste_al_tipo_de_compra(divisas["posiciones"], series_fx)
     efectos = [p["efecto_divisa_base"] for p in divisas["posiciones"]
                if p.get("efecto_divisa_base") is not None]
@@ -773,11 +784,13 @@ def get_portfolio(
         + [
             # Las que no se pudieron convertir siguen visibles en la tabla —con
             # su importe en su moneda— pero fuera de todos los totales.
-            {**next(o for o in open_positions if o["symbol"] == s_["symbol"]),
+            # Por id, no por símbolo: dos lotes en peniques del mismo símbolo
+            # salían como el primero dos veces, y el segundo no se podía cerrar.
+            {**abiertas_por_id[s_["id"]],
              "market_value_base": None, "invested_base": None,
              "sin_convertir": s_["motivo"]}
             for s_ in divisas["sin_convertir"]
-            if any(o["symbol"] == s_["symbol"] for o in open_positions)
+            if s_.get("id") in abiertas_por_id
         ],
         "closed_positions": closed,
         "divisas": {k: v for k, v in divisas.items() if k != "posiciones"},
@@ -1045,17 +1058,16 @@ def historial_de_cartera(
     posiciones, symbols, monedas, sin_moneda = [], [], set(), []
     for position, instrument in filas:
         _, divisa = _precio_y_divisa(service, instrument.symbol)
-        try:
-            moneda = fx.normalizar(_resolver_divisa(session, service, instrument, divisa))
-        except fx.SinTipo:
-            moneda = None
+        moneda = _resolver_divisa(session, service, instrument, divisa)
         if moneda is None:
             # Sin moneda no entra en la curva: suponer dólar dibujaría una
             # posición canadiense un 37 % más grande de lo que es. Pasa igual
             # a `historial`, que la excluye y la nombra en el aviso de pantalla.
             sin_moneda.append(instrument.symbol)
-        else:
-            monedas.add(moneda)
+        elif convertible := _moneda_segura(moneda):
+            # Una en céntimos (GBX) va tal cual: `historial` la excluye con ese
+            # motivo, no con «moneda desconocida» (revisión de A3).
+            monedas.add(convertible)
         symbols.append(instrument.symbol)
         posiciones.append(
             {
