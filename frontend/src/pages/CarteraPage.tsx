@@ -15,7 +15,8 @@ import type {
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useDato } from '../lib/useDato'
-import { MARCO_TABLA, TABLA_COMPACTA } from '../lib/tablas'
+import { TABLA_COMPACTA } from '../lib/tablas'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 /** Color de una celda de correlación.
  *
@@ -62,7 +63,7 @@ function Correlacion({ c }: { c: MatrizCorrelacion }) {
   const { simbolos, matriz } = c
   return (
     <>
-      <div className="overflow-x-auto">
+      <MarcoTabla etiqueta="Matriz de correlaciones">
         <table className="text-[11px] tabular-nums">
           <thead>
             <tr>
@@ -95,7 +96,7 @@ function Correlacion({ c }: { c: MatrizCorrelacion }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
 
       {c.parejas && c.parejas.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
@@ -307,7 +308,7 @@ function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
 
   return (
     <>
-      <div className={MARCO_TABLA}>
+      <MarcoTabla etiqueta="Características de la cartera">
         <table className={`${TABLA_COMPACTA} text-xs`}>
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
@@ -361,7 +362,7 @@ function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
       <Aviso>
         {c.nota}
         {c.con_referencia && ` Universo: ${c.universo_empresas} empresas escaneadas.`}

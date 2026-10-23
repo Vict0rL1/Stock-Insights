@@ -215,7 +215,7 @@ function FormularioDisparador({
     if (kind !== 'noticia' && (u === null || !Number.isFinite(u))) {
       setError(
         enPct
-          ? 'Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.'
+          ? 'Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0\u00a0%.'
           : 'Escribe el umbral como número (p. ej. 1,5): vacío no es 0.',
       )
       return

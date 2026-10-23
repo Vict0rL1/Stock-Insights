@@ -5,6 +5,7 @@ import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 const ESTADO: Record<string, string> = {
   bueno: 'bg-emerald-100 text-emerald-800',
@@ -114,7 +115,7 @@ function Calidad({ datos }: { datos: CalidadBeneficios }) {
           <h2 className="mb-2 text-sm font-semibold text-slate-800">Evolución</h2>
           {[['Ejercicios', datos.historia], ['Trimestres', datos.trimestral ?? []]].map(([titulo, filas]) =>
             (filas as Record<string, number | string | null>[]).length ? (
-              <div key={titulo as string} className="mb-3 overflow-x-auto">
+              <MarcoTabla key={titulo as string} etiqueta={`Evolución: ${(titulo as string).toLowerCase()}`} className="mb-3">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">{titulo as string}</div>
                 <table className={`${TABLA_COMPACTA} text-right text-xs tabular-nums`}>
                   <thead className="text-[10px] text-slate-400">
@@ -144,7 +145,7 @@ function Calidad({ datos }: { datos: CalidadBeneficios }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </MarcoTabla>
             ) : null,
           )}
         </section>

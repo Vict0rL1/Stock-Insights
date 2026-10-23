@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { ReplayDecision } from '../../api/types'
 import { etiqueta, etiquetaOrigen } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from './QueCambioSection'
-import { MARCO_TABLA, TABLA_COMPACTA } from '../../lib/tablas'
+import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 function Bloque({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -106,7 +107,7 @@ function Replay({ r }: { r: ReplayDecision }) {
         {s.valoracion && (
           <Bloque titulo="Valoración">
             <p className="text-xs text-slate-700">
-              P/E {fmtNum((s.valoracion as { pe?: { valor: number | null } }).pe?.valor ?? null, 1)} · crecimiento implícito (DCF inverso al 9 %){' '}
+              P/E {fmtNum((s.valoracion as { pe?: { valor: number | null } }).pe?.valor ?? null, 1)} · crecimiento implícito (DCF inverso al 9&nbsp;%){' '}
               {fmtPct((s.valoracion as { dcf_inverso?: { crecimiento_implicito?: number | null } }).dcf_inverso?.crecimiento_implicito ?? null, 1)}
             </p>
           </Bloque>
@@ -133,7 +134,7 @@ function Replay({ r }: { r: ReplayDecision }) {
           <Bloque titulo="Noticias disponibles hasta ese momento">
             <ul className="text-[11px] text-slate-600">
               {((s.noticias as { items: { headline: string; published_at: string; source: string }[] }).items ?? []).map((n, i) => (
-                <li key={i}>{fmtFecha(n.published_at, { hora: true })} · {n.source} · {n.headline}</li>
+                <li key={i}>{fmtFecha(n.published_at, { hora: true, zona: ZONA_MERCADO })} · {n.source} · {n.headline}</li>
               ))}
             </ul>
           </Bloque>
@@ -197,7 +198,7 @@ export function HistorialSection({ symbol }: { symbol: string }) {
             mensajeVacio="Todavía no hay decisiones congeladas de esta empresa. Abre «Qué cambió» para crear la primera."
           >
             {(lista) => (
-              <div className={MARCO_TABLA}>
+              <MarcoTabla etiqueta="Historial de decisiones">
                 <table className={`${TABLA_COMPACTA} text-xs`}>
                   <thead className="text-[10px] uppercase tracking-wide text-slate-400">
                     <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
@@ -219,7 +220,7 @@ export function HistorialSection({ symbol }: { symbol: string }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </MarcoTabla>
             )}
           </BloqueDatos>
         </div>

@@ -16,6 +16,7 @@ import { fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
 import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const LABEL_STYLES: Record<string, string> = {
   'muy favorable': 'bg-emerald-100 text-emerald-800',
@@ -105,7 +106,7 @@ function SignalCard({ signal }: { signal: QuantSignal }) {
                 {fmtPct(signal.probability, 0)}
               </span>
               <span className="text-xs text-slate-500">
-                IC 95 %: {fmtPct(signal.probability_ci[0], 0)} –{' '}
+                IC 95&nbsp;%: {fmtPct(signal.probability_ci[0], 0)} –{' '}
                 {fmtPct(signal.probability_ci[1], 0)} · n={signal.sample_size}
               </span>
             </div>
@@ -223,11 +224,11 @@ function BacktestPanel({ result }: { result: BacktestResponse }) {
       </div>
 
       {Object.keys(result.calibration).length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <MarcoTabla etiqueta="Calibración por rangos de puntuación" className="mt-4">
           <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                {['Rango de puntuación', 'n', 'Aciertos', 'Tasa', 'IC 95 %', 'Fiable'].map((h) => (
+                {['Rango de puntuación', 'n', 'Aciertos', 'Tasa', 'IC 95\u00a0%', 'Fiable'].map((h) => (
                   <th key={h} className="px-2 py-1 font-normal">
                     {h}
                   </th>
@@ -262,7 +263,7 @@ function BacktestPanel({ result }: { result: BacktestResponse }) {
                 })}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
 
       <p className="mt-3 text-xs text-slate-500">{result.methodology}</p>
@@ -570,7 +571,7 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           value={fmtPct(result.tasa_acierto, 0)}
           hint={
             result.tasa_acierto_ic
-              ? `IC 95 %: ${fmtNum(result.tasa_acierto_ic[0] * 100, 0)}–${fmtPct(result.tasa_acierto_ic[1], 0)}`
+              ? `IC 95\u00a0%: ${fmtNum(result.tasa_acierto_ic[0] * 100, 0)}–${fmtPct(result.tasa_acierto_ic[1], 0)}`
               : undefined
           }
         />

@@ -56,6 +56,13 @@ export default tseslint.config(
             ":matches(NewExpression, CallExpression)[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat)$/]",
           message: 'Intl solo dentro de lib/formato.ts: un formateador propio es otro sistema de formato.',
         },
+        // Una cifra y su «%» con espacio normal se parten al final de una línea:
+        // en móvil, «21» / «% supuesto» (revisión del 2.12). Espacio duro, como
+        // `fmtPct`: `\u00a0` en una cadena, `&nbsp;` en el texto de JSX.
+        ...['Literal[value=/\\d %/]', 'JSXText[value=/\\d %/]', 'TemplateElement[value.raw=/\\d %/]'].map((selector) => ({
+          selector,
+          message: 'Entre una cifra y su «%», espacio duro (\\u00a0 o &nbsp;): con un espacio normal se parten en dos líneas.',
+        })),
         // `codigo.replace(/_/g, ' ')` enseña un código en crudo con espacios:
         // «LOW VOLATILITY», «working capital over assets», «Realestate» (revisión
         // de la Fase 1). Un código se enseña con etiqueta().

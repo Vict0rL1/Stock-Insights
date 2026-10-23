@@ -427,9 +427,8 @@ sin partir las etiquetas) y la cabecera de la tabla de Calidad («Días de cobro
 nuevas, solo a 390: el menú abierto y la navegación desde él, con clics reales. Hermano,
 regresión de A1: el `priceFormatter` global del gráfico con `fmtPrecio` formateaba también RSI y
 MACD (valores bajo 1 con cuatro decimales), el eje se ensanchaba y el gráfico se desplazaba; ahora
-el global vuelve a `fmtNum(p, 2)` y solo las series de precio usan `fmtPrecio`, con el paso
-(`minMove`) que dan los decimales del precio (a 1440 la ficha vuelve a ser idéntica píxel a
-píxel). Capturas: 68 sin fallos; a 1440, 24 idénticas y el resto con diferencias de antialiasing
+cada serie lleva su formato (las de precio `fmtPrecio`, con el paso que dan sus decimales) y no
+hay formateador global, que mandaba sobre el de cada serie (segunda revisión, abajo). Capturas: 68 sin fallos; a 1440, 24 idénticas y el resto con diferencias de antialiasing
 salvo Calidad (relleno de columnas). Guardas: 5 tests del cajón en `Layout.test.tsx` (fallan con
 el código anterior) y las dos guardas de las capturas. Queda como estaba el aviso de Vite por el
 tamaño del paquete (~717 kB): es el 2.14 (rendimiento).
@@ -444,7 +443,7 @@ adversarial del código de A1–A6 (abajo, cuando se verifique).
 recortada a la primera pantalla (`clip` sin `fullPage`), y tras pulsar un botón la cabecera fija
 se pintaba a media página. Tablas que se apretaban o escondían columnas (Historial, Calibración
 de expectativas, Características de la cartera, Calidad, Fundamentales, comparador de ETFs):
-`lib/tablas.ts` (`MARCO_TABLA`, `TABLA_COMPACTA`, `COLUMNA_FIJA`), una sola forma de hacerlo; en
+`lib/tablas.ts` (`TABLA_COMPACTA`, `COLUMNA_FIJA`) y `<MarcoTabla>`, una sola forma de hacerlo; en
 Fundamentales y ETFs, sin `min-w` y con el rótulo fijo, de modo que las cifras se ven o asoman.
 Rótulo y motivo pegados en «Valoración frente a su propia historia» («P/ESolo…»); fecha ISO en
 Catalizadores (`fmtFecha`); la hora del Historial sin zona junto a un origen en UTC; los
@@ -465,8 +464,8 @@ decimal en los presets del screener; «Desempleo EE. UU.» sin partir.
 «ratio corriente < 1» se guardaba como 0,01 y el punto no saltaba nunca, un control de riesgo
 desactivado en silencio. El catálogo dice ahora la `unidad` de cada métrica (`pct` o `veces`), el
 formulario y la serie de la tarjeta la usan, el detalle sale en la unidad («21,0 % … 18,0 %», no
-«0,210 … 0,180») y un umbral en `veces` por debajo de `UMBRAL_VECES_SOSPECHOSO` (0,1) lleva un
-aviso para que se rehaga (exento del golden: solo decide un texto). Dos tests ajustados a la cifra
+«0,210 … 0,180») y un umbral en `veces` positivo hasta `UMBRAL_VECES_SOSPECHOSO` (0,1) queda sin
+comprobar, con el motivo y cómo rehacerlo (segunda revisión, abajo). Dos tests ajustados a la cifra
 nueva (`test_gramatica`, `test_thesis_watch`: la frase es la misma); el de opciones busca el «%»
 con espacio duro. El recorte «Ideas nuevas al 0 %» se reconoce por una constante
 (`sizing.RECORTE_SIN_HUECO_DE_RIESGO`) y no buscando el texto «0 %» suelto. Golden idéntico.
@@ -484,6 +483,29 @@ de la cartera («No se puede bajar el stop de 0 a 0») y (5) su minigráfico (32
 verde). (6) Las medias de `/history` a 4 decimales fijos (0 o el doble del precio por debajo de
 0,0001). Golden idéntico; guardas en `test_precision_precios.py`, `DecisionExplicada.test.tsx`
 (todas fallan con el código anterior).
+
+**Segunda revisión (de `ea20bc9` y `eda2424`, verificada).** (1) Regresión de A7: el
+`priceFormatter` global de lightweight-charts manda sobre el `priceFormat` de cada serie, así que
+con `fmtNum(p, 2)` una acción de 0,003 volvía a tener todo el eje en «0,00»; se quita el global y
+cada serie lleva el suyo (RSI a dos decimales, MACD como el precio si es menor que 1). (2) El
+umbral sospechoso solo avisaba, y el punto seguía contando como «no cruzado»: la tesis salía
+intacta con un control que el código sabía roto. Ahora queda sin comprobar (`medible: False`,
+como un dato que falta) y dice qué haría («no saltaría nunca» o «saltaría siempre»); cero y
+negativos siguen siendo umbrales legítimos (exento del golden por eso; el caso nuevo del golden,
+para Victor). (3) El cajón: tocar el velo no devolvía el foco a «Menú», y abierto no era modal
+(Mayús+Tab salía a la cabecera tapada); ahora la cabecera y el contenido quedan `inert` y el cajón
+es un diálogo. (4) La lista de Hoy entre 768 y 1280 px apretaba el nombre hasta una letra por
+línea: las barras de factores se ven desde `xl` y, debajo, al desplegar la fila; captura nueva a
+820 × 1180 y vista «Todas» con sus guardas. (5) `fmtFecha` con hora y sin zona escribía la hora
+local del navegador sin rótulo («16:35» en «Qué cambió» y «14:35 UTC» en el Historial para la
+misma instantánea): ahora UTC rotulada, como el gemelo (caso nuevo en `formato.casos.json`); las
+horas de las noticias, en ET. (6) Los KPI de Fundamentales a 390 px, en dos columnas. (7) Espacio
+duro en los literales del frontend («IC 95 %», «0 %», «100 %»), con regla de ESLint. (8) Las
+capturas fallan también si un contenedor con `overflow-x: hidden` recorta texto, y la guarda de
+«palabra por línea» cuenta líneas de verdad (rectángulos del texto) y no parte por el espacio
+duro. (9) Las tablas con scroll eran un `div` sin foco: con teclado no se llegaba a las columnas
+de fuera; `<MarcoTabla>` (región con nombre, `tabIndex=0` y anillo de foco) es ahora la única
+forma, en las 17 tablas, con guarda en `MarcoTabla.test.tsx`. Golden idéntico.
 
 **Visual, no se toca (registrado).** El texto de la IA se pinta con el Markdown sin interpretar
 (`BloqueIA`; los prompts piden Markdown): pide un renderizador seguro o texto plano, fuera del

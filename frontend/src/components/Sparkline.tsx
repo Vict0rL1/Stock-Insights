@@ -194,7 +194,7 @@ export function Histograma({
               className="absolute -translate-x-1/2"
               style={{ left: `${frac * 100}%` }}
             >
-              0 %
+              0&nbsp;%
             </span>
           )
         })()}

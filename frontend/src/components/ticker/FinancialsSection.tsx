@@ -5,7 +5,8 @@ import { fmtCompacto, fmtNum, fmtPct } from '../../lib/formato'
 import { Ausencia, ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
-import { COLUMNA_FIJA, MARCO_TABLA } from '../../lib/tablas'
+import { COLUMNA_FIJA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 const METRIC_ROWS: { key: string; label: string; kind: 'big' | 'ratio' | 'pct' }[] = [
   { key: 'revenue', label: 'Ingresos', kind: 'big' },
@@ -16,7 +17,7 @@ const METRIC_ROWS: { key: string; label: string; kind: 'big' | 'ratio' | 'pct' }
   { key: 'operating_margin', label: 'Margen operativo', kind: 'pct' },
   { key: 'net_margin', label: 'Margen neto', kind: 'pct' },
   { key: 'roe', label: 'ROE', kind: 'pct' },
-  { key: 'roic', label: 'ROIC (impuesto 21 % supuesto)', kind: 'pct' },
+  { key: 'roic', label: 'ROIC (impuesto 21\u00a0% supuesto)', kind: 'pct' },
   { key: 'current_ratio', label: 'Ratio corriente', kind: 'ratio' },
   { key: 'debt_to_equity', label: 'Deuda / Capital', kind: 'ratio' },
   { key: 'interest_coverage', label: 'Cobertura de intereses', kind: 'ratio' },
@@ -82,7 +83,9 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
         </h2>
         <EstadoDato data={data} />
       </div>
-      <div className="mb-3 flex gap-4 text-xs text-slate-500">
+      {/* En móvil, dos columnas (ítem 2.12): las tres en fila partían cada cifra en
+          tres líneas a 390 px. */}
+      <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500 sm:flex sm:gap-4">
         <span>
           CAGR ingresos <Ventana anos={data.growth.years} />:{' '}
           <b className="tabular-nums">{fmtPct(data.growth.revenue_cagr)}</b>
@@ -100,7 +103,7 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
           con todo el ancho y las cifras fuera de la vista, sin pista de que se
           pudiera desplazar (ítem 2.12). Ahora la tabla cabe si puede; si no, se
           desplaza con el rótulo fijo a la izquierda. */}
-      <div className={MARCO_TABLA}>
+      <MarcoTabla etiqueta="Estados financieros anuales">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
@@ -128,7 +131,7 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
             ))}
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
       <p className="mt-2 text-xs text-slate-400">
         Fuente primaria: filings 10-K en SEC EDGAR. “—” = la empresa no reporta esa
         partida con etiquetas XBRL estándar.
@@ -140,7 +143,7 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
 function Pares({ peers, symbol }: { peers: PeersResponse; symbol: string }) {
   return (
     <>
-      <div className="overflow-x-auto">
+      <MarcoTabla etiqueta="Comparación con los pares">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
@@ -179,7 +182,7 @@ function Pares({ peers, symbol }: { peers: PeersResponse; symbol: string }) {
             </tr>
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
       <p className="mt-2 text-xs text-slate-400">{peers.note}</p>
     </>
   )

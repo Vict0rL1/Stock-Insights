@@ -6,6 +6,7 @@ import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
+import { MarcoTabla } from '../MarcoTabla'
 
 type ScenarioName = 'bear' | 'base' | 'bull'
 
@@ -274,7 +275,7 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
               <h3 className="mb-1 text-xs font-semibold text-slate-600">
                 Sensibilidad (escenario base): valor/acción según WACC × crecimiento
               </h3>
-              <div className="overflow-x-auto">
+              <MarcoTabla etiqueta="Sensibilidad del valor por acción">
                 <table className="text-xs tabular-nums">
                   <thead>
                     <tr>
@@ -299,7 +300,7 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </MarcoTabla>
               <p className="mt-2 text-xs text-slate-400">
                 Si la matriz se mueve mucho entre celdas vecinas, el valor central es poco
                 robusto: la incertidumbre es información, no un defecto.

@@ -107,7 +107,7 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       {report.valuation.cheapness_score !== null && (
         <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
           Índice de baratura frente a su historia:{' '}
-          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100 % = lo más barata que
+          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100&nbsp;% = lo más barata que
           ha estado en el periodo).
         </p>
       )}

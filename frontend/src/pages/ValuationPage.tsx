@@ -11,6 +11,7 @@ import type {
 } from '../api/types'
 import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const ESCENARIOS = ['bajista', 'base', 'alcista'] as const
 type NombreEscenario = (typeof ESCENARIOS)[number]
@@ -393,7 +394,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
       )}
 
       {c.pares && c.pares.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
+        <MarcoTabla etiqueta="Comparación con los pares" className="mt-3">
           <table className="w-full min-w-[420px] text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
@@ -428,7 +429,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
     </section>
   )

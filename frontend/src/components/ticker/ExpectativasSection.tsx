@@ -5,7 +5,8 @@ import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
-import { MARCO_TABLA, TABLA_COMPACTA } from '../../lib/tablas'
+import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 // De dónde sale cada fuente. El nombre es su etiqueta (uno solo en toda la app);
 // esto solo añade la procedencia, que en la guidance es además la marca de IA.
@@ -243,7 +244,7 @@ function Expectativas({ symbol }: { symbol: string }) {
 function Calibracion({ cal }: { cal: CalibracionExpectativas }) {
   return (
     <>
-      <div className={MARCO_TABLA}>
+      <MarcoTabla etiqueta="Calibración de las expectativas">
         <table className={`${TABLA_COMPACTA} text-xs tabular-nums`}>
           <thead className="text-[10px] text-slate-400"><tr><th className="text-left">Fuente</th><th className="text-right">n</th><th className="text-right">Error medio</th><th className="text-right">Sesgo</th><th className="text-right">Cerca</th><th className="text-right">Mejor prevista</th></tr></thead>
           <tbody>
@@ -259,7 +260,7 @@ function Calibracion({ cal }: { cal: CalibracionExpectativas }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
       <p className="mt-1 text-[10px] text-slate-400">{cal.nota} Sesgo positivo = lo real salió por encima de lo esperado.</p>
     </>
   )

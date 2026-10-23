@@ -657,14 +657,19 @@ function FactorBars({
 }
 
 /** Cabecera de columnas: alineada con la fila, con las mismas anchuras. */
+// La cabecera y la fila comparten columnas: cede «Empresa» (flexible), nunca la
+// puntuación ni la acción. Con anchos fijos dentro de un `overflow-hidden`, a
+// 390 px y en tableta (768–1140 px, con la barra lateral) desaparecían justo
+// la señal y la acción; las barras de factores van desde `xl` y, por debajo,
+// en el panel desplegado (revisión de A7).
 function ListHeader() {
   return (
     <div className="flex items-center gap-4 border-b border-slate-100 px-4 py-2 text-[10px] uppercase tracking-wide text-slate-400">
-      <span className="w-7 shrink-0" />
-      <span className="w-40 shrink-0">Empresa</span>
+      <span className="hidden w-7 shrink-0 sm:block" />
+      <span className="min-w-0 flex-1 xl:w-40 xl:flex-none">Empresa</span>
       <span className="hidden w-20 shrink-0 lg:block">Año</span>
       <span className="hidden w-24 shrink-0 text-right sm:block">Precio</span>
-      <span className="hidden flex-1 pl-4 md:block">
+      <span className="hidden flex-1 pl-4 xl:block">
         <span className="flex gap-3">
           {FACTOR_KEYS.map((key) => (
             <span key={key} className="w-16">
@@ -673,8 +678,11 @@ function ListHeader() {
           ))}
         </span>
       </span>
-      <span className="ml-auto pr-[7.5rem] text-right">Puntuación</span>
-      <span className="w-20 pr-6 text-right">Acción</span>
+      <span className="ml-auto flex shrink-0 items-center gap-3">
+        <span className="w-16 whitespace-nowrap text-right">Puntuación</span>
+        <span className="w-20 text-right">Acción</span>
+        <span className="w-1.5" aria-hidden />
+      </span>
     </div>
   )
 }
@@ -696,11 +704,11 @@ function SignalRow({
         aria-expanded={expanded}
         className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-slate-50"
       >
-        <span className="w-7 shrink-0 text-xs tabular-nums text-slate-300">
+        <span className="hidden w-7 shrink-0 text-xs tabular-nums text-slate-300 sm:block">
           {signal.rank}
         </span>
 
-        <span className="flex w-40 shrink-0 items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-2 xl:w-40 xl:flex-none">
           <CompanyLogo symbol={signal.symbol} size="sm" />
           <span className="min-w-0">
             <span className="font-medium text-slate-900">{signal.symbol}</span>
@@ -747,13 +755,13 @@ function SignalRow({
           )}
         </span>
 
-        <span className="hidden flex-1 pl-4 md:block">
+        <span className="hidden flex-1 pl-4 xl:block">
           <FactorBars families={signal.families} />
         </span>
 
-        <span className="ml-auto flex items-center gap-3">
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <span
-            className={`w-12 text-right text-sm font-semibold tabular-nums ${
+            className={`w-16 text-right text-sm font-semibold tabular-nums ${
               positive ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
@@ -764,7 +772,7 @@ function SignalRow({
             <ActionChip decision={signal.decision} />
           </span>
           <span
-            className={`text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
+            className={`w-1.5 text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
             aria-hidden
           >
             ›
@@ -774,7 +782,7 @@ function SignalRow({
 
       {expanded && (
         <div className="space-y-3 bg-slate-50/70 px-4 pb-4 pt-1 md:pl-[4.75rem]">
-          <div className="md:hidden">
+          <div className="xl:hidden">
             <FactorBars families={signal.families} withLabels />
           </div>
           <DecisionPlan decision={signal.decision} symbol={signal.symbol} />
@@ -1032,7 +1040,7 @@ export function TodayPage() {
             Una idea sostenida por un solo factor es una apuesta a ese factor, no al
             activo — y comprar algo <em>porque ha subido</em> es exactamente el
             razonamiento que las otras tres familias existen para contrastar. Los
-            stops son mucho más anchos (hasta 60 %) porque la volatilidad lo exige,
+            stops son mucho más anchos (hasta 60&nbsp;%) porque la volatilidad lo exige,
             y por eso el peso sugerido de cartera sale mucho más pequeño.
           </p>
         </div>

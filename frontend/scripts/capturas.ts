@@ -39,9 +39,14 @@ const ALTO_MAXIMO = 4000
 const AHORA = new Date('2026-09-12T14:40:00Z')
 const CARGANDO = /Cargando|Analizando|Calculando…|Calculando\.\.\.|Redactando|Interpretando|Resumiendo/
 
+// `comprobar`: aplicar las guardas del 2.12 (desbordes, recortes y texto partido).
+// 820 px es una tableta en vertical: entre 768 y ~1140 px la barra lateral
+// vuelve a estar fija y la lista de Hoy perdía la puntuación y la acción, sin
+// que ninguna captura lo viera (revisión de A7).
 const ANCHOS = [
-  { sufijo: '1440', viewport: { width: 1440, height: 900 }, movil: false },
-  { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true },
+  { sufijo: '1440', viewport: { width: 1440, height: 900 }, movil: false, comprobar: false },
+  { sufijo: '820', viewport: { width: 820, height: 1180 }, movil: false, comprobar: true },
+  { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true, comprobar: true },
 ]
 
 type Pantalla = { nombre: string; ruta: string; pestana?: string; accion?: (p: Page) => Promise<void>; soloMovil?: boolean }
@@ -100,6 +105,9 @@ const TODAS: Pantalla[] = [
     },
   },
   { nombre: '01_hoy', ruta: '/hoy' },
+  // La lista entera, con sus columnas: «Mejores ideas» son tarjetas y la lista de
+  // señales no se medía nunca (revisión de A7).
+  { nombre: '01b_hoy_todas', ruta: '/hoy', accion: pulsar(/^Todas \(/) },
   { nombre: '02_mercado', ruta: '/dashboard' },
   ...ficha('ACME'),
   { nombre: '13_cartera', ruta: '/cartera' },
@@ -179,8 +187,9 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
         // Ítem 2.12: a 390 px ninguna pantalla desborda en horizontal. Se dice
         // qué lo empuja (las tablas van dentro de su propio contenedor con
         // scroll, que no cuenta). Se fotografía igual, para verlo.
-        const desborde = ancho.movil ? await p.evaluate(desbordeHorizontal) : null
-        const partidos = ancho.movil ? await p.evaluate(palabraAPalabra) : []
+        const desborde = ancho.comprobar ? await p.evaluate(desbordeHorizontal) : null
+        const recortado = ancho.comprobar ? await p.evaluate(recortes) : []
+        const partidos = ancho.comprobar ? await p.evaluate(palabraAPalabra) : []
         // Arriba antes de fotografiar: tras pulsar un botón la página queda
         // desplazada y la cabecera fija de móvil salía pintada a media página,
         // tapando una fila. Y `fullPage` siempre: con `clip` solo, una página de
@@ -194,6 +203,7 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
           clip: alto > ALTO_MAXIMO ? { x: 0, y: 0, width: ancho.viewport.width, height: ALTO_MAXIMO } : undefined,
         })
         if (desborde) throw new Error(`desborda en horizontal: ${desborde}`)
+        if (recortado.length) throw new Error(`contenido recortado en su marco: ${recortado.join('; ')}`)
         if (partidos.length) throw new Error(`texto partido palabra a palabra: ${partidos.join('; ')}`)
         console.log(`  ✓ ${archivo}`)
       } catch (e) {
@@ -234,19 +244,61 @@ function desbordeHorizontal(): string | null {
   return `${sobra} px (${culpables.join('; ')})`
 }
 
-/** En el navegador: los textos de tres o más palabras con UNA palabra por
- *  línea, que es lo que pasaba a 390 px con la barra lateral fija (ítem 2.12). */
+/** En el navegador: lo que un marco `overflow-hidden` (o `clip`) recorta en
+ *  horizontal. La página no se ensancha, así que `desbordeHorizontal` no lo ve,
+ *  y en Hoy la columna «Acción» quedaba entera fuera de la lista (revisión de
+ *  A7). Lo que se recorta a propósito con puntos suspensivos (`truncate`) o
+ *  por líneas (`line-clamp`) no cuenta, ni lo que solo se oculta a la vista. */
+function recortes(): string[] {
+  const salida: string[] = []
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const s = getComputedStyle(el)
+    if (s.overflowX !== 'hidden' && s.overflowX !== 'clip') continue
+    if (s.textOverflow === 'ellipsis' || s.webkitLineClamp !== 'none' || el.classList.contains('sr-only')) continue
+    const h = el as HTMLElement
+    if (h.clientWidth === 0 || h.scrollWidth <= h.clientWidth + 1) continue
+    const clase = typeof el.className === 'string' ? el.className.split(' ').slice(0, 3).join('.') : ''
+    salida.push(`${el.tagName.toLowerCase()}${clase ? '.' + clase : ''} (${h.scrollWidth} px en ${h.clientWidth})`)
+    if (salida.length >= 4) break
+  }
+  return salida
+}
+
+/** En el navegador: los textos de tres o más palabras partidos casi palabra a
+ *  palabra, que es lo que pasaba a 390 px con la barra lateral fija (ítem 2.12).
+ *
+ *  Por elemento y no por nodo de texto (React parte `{a} {b}` en varios
+ *  nodos), y por proporción y no por igualdad: en español «de la» o «y el»
+ *  comparten línea, y «Margen / de la / empresa» pasaba (revisión de A7). */
 function palabraAPalabra(): string[] {
   const salida: string[] = []
-  const recorrido = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
-  for (let n = recorrido.nextNode(); n; n = recorrido.nextNode()) {
-    const texto = (n.textContent ?? '').trim()
-    const palabras = texto.split(/\s+/).filter(Boolean)
+  const enBloque = (e: Element) => !getComputedStyle(e).display.startsWith('inline')
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const conTexto = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())
+    if (!conTexto || Array.from(el.children).some(enBloque)) continue
+    const texto = (el.textContent ?? '').trim()
+    // Sin partir por el espacio duro: «10,0 %» es una cifra, no dos palabras.
+    const palabras = texto.split(/[^\S\u00a0]+/).filter(Boolean)
     if (palabras.length < 3) continue
-    const rango = document.createRange()
-    rango.selectNodeContents(n)
-    const lineas = new Set(Array.from(rango.getClientRects()).filter((r) => r.width > 0).map((r) => Math.round(r.top)))
-    if (lineas.size >= palabras.length) salida.push(`«${texto.slice(0, 40)}»`)
+    // Solo las cajas del TEXTO (un `<input>` dentro de la `label` contaba como
+    // otra línea), agrupadas por solapamiento vertical y no por `top`: el texto
+    // de una insignia con otro tamaño, en la misma línea, tiene otro `top`.
+    const cajas: DOMRect[] = []
+    const textos = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    for (let n = textos.nextNode(); n; n = textos.nextNode()) {
+      const rango = document.createRange()
+      rango.selectNodeContents(n)
+      cajas.push(...Array.from(rango.getClientRects()).filter((r) => r.width > 0))
+    }
+    const lineas: { arriba: number; abajo: number }[] = []
+    for (const r of cajas.sort((a, b) => a.top - b.top)) {
+      const misma = lineas.find((l) => r.top < l.abajo - 2 && r.bottom > l.arriba + 2)
+      if (misma) {
+        misma.arriba = Math.min(misma.arriba, r.top)
+        misma.abajo = Math.max(misma.abajo, r.bottom)
+      } else lineas.push({ arriba: r.top, abajo: r.bottom })
+    }
+    if (lineas.length >= Math.max(3, Math.ceil(palabras.length * 0.6))) salida.push(`«${texto.slice(0, 40)}»`)
     if (salida.length >= 4) break
   }
   return salida

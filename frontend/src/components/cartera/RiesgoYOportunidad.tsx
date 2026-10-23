@@ -6,6 +6,7 @@ import { leerNumero } from '../../lib/entrada'
 import { useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from '../ticker/QueCambioSection'
+import { MarcoTabla } from '../MarcoTabla'
 
 function Caja({ titulo, subtitulo, children }: { titulo: string; subtitulo: string; children: React.ReactNode }) {
   return (
@@ -58,7 +59,7 @@ export function ContribucionAlRiesgoPanel() {
                       </div>
                     </div>
                   )}
-                  <div className="overflow-x-auto">
+                  <MarcoTabla etiqueta="Contribución al riesgo por posición">
                     <table className="w-full text-right text-xs tabular-nums [&_td]:px-1.5 [&_th]:px-1.5">
                       <thead className="text-[10px] uppercase tracking-wide text-slate-400">
                         <tr>
@@ -90,7 +91,7 @@ export function ContribucionAlRiesgoPanel() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </MarcoTabla>
                   <p className="text-[10px] text-slate-400">{c.metodo}. {c.nota}</p>
                 </>
               )}

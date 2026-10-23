@@ -14,6 +14,7 @@ import type {
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtDinero, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 /** Enlace al documento en la SEC. Cada dato de esta pantalla sale de uno, y sin
  *  el enlace el análisis sería una opinión anónima sobre una empresa. */
@@ -191,7 +192,7 @@ function FichaComparacion({ c }: { c: Comparacion }) {
             Calculada por el código a partir de las dos cifras extraídas, no por
             el modelo.
           </p>
-          <div className="mt-2 overflow-x-auto">
+          <MarcoTabla etiqueta="Variación del guidance" className="mt-2">
             <table className="w-full min-w-[480px] text-sm">
               <thead className="text-[10px] uppercase tracking-wide text-slate-400">
                 <tr className="border-b border-slate-200">
@@ -236,7 +237,7 @@ function FichaComparacion({ c }: { c: Comparacion }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </MarcoTabla>
         </div>
       )}
 

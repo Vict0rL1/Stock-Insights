@@ -11,6 +11,7 @@ import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtNum, fmtPct } from '../lib/formato'
 import { useDato } from '../lib/useDato'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const FAMILIAS: Familia[] = [
   'value',
@@ -152,7 +153,7 @@ function HistoriaPropia({ fila }: { fila: Pick<FilaMultifactor, 'historia'> }) {
           ))
         )}
       </div>
-      <div className="overflow-x-auto">
+      <MarcoTabla etiqueta="Métricas frente a su propia historia">
         <table className="w-full min-w-[520px] text-xs">
           <thead className="text-[10px] uppercase tracking-wide text-slate-400">
             <tr className="border-b border-slate-200">
@@ -183,7 +184,7 @@ function HistoriaPropia({ fila }: { fila: Pick<FilaMultifactor, 'historia'> }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </MarcoTabla>
       <p className="text-[11px] leading-relaxed text-slate-400">
         El percentil compara a la empresa con sus propios ejercicios anteriores, no
         con el sector. El z-score de arriba dice quién va mejor hoy; esto dice si
@@ -432,7 +433,7 @@ export function MultifactorPage() {
 
           {/* --- El ranking --- */}
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <div className="overflow-x-auto">
+            <MarcoTabla etiqueta="Ranking multifactor">
               <table className="w-full min-w-[820px] text-sm">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
                   <tr>
@@ -461,7 +462,7 @@ export function MultifactorPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </MarcoTabla>
           </section>
 
           <p className="text-[11px] leading-relaxed text-slate-400">

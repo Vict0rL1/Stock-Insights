@@ -7,6 +7,7 @@ import { etiqueta } from '../lib/etiquetas'
 import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const ESCENARIOS = ['bear', 'base', 'bull'] as const
 
@@ -78,7 +79,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
       </div>
 
       {record.scenarios.length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <MarcoTabla etiqueta="Escenarios de la tesis" className="mt-4">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
@@ -126,7 +127,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
     </section>
   )

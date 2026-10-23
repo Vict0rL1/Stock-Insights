@@ -5,7 +5,8 @@ import type { EtfComparison, EtfRecommendation } from '../api/types'
 import { EstadoDato } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtPct } from '../lib/formato'
-import { COLUMNA_FIJA, MARCO_TABLA } from '../lib/tablas'
+import { COLUMNA_FIJA } from '../lib/tablas'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const ETF_ACTION_STYLES: Record<string, string> = {
   comprar: 'bg-emerald-600 text-white',
@@ -150,7 +151,7 @@ export function EtfsPage() {
                 hubiera más: el desplazamiento iba en la sección entera (ítem
                 2.12). Ahora va en la tabla, con el rótulo fijo y cada ETF con
                 un ancho mínimo, así que el segundo asoma. */}
-            <div className={MARCO_TABLA}>
+            <MarcoTabla etiqueta="Comparador de ETFs">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
@@ -181,7 +182,7 @@ export function EtfsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </MarcoTabla>
             {/* Cada ETF se pide por separado y puede llegar viejo por su
                 cuenta: una sola insignia, la del primero, daba por fresco un
                 segundo rescatado de la caché (revisión del 2.1). */}

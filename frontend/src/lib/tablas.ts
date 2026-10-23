@@ -4,10 +4,10 @@
  * A 390 px una tabla `w-full` sin relleno se apretaba hasta juntar columnas
  * («SesgoCerca», «-24,3 %25 %», «CARTERACOBERTURA») o partir cada celda casi
  * palabra a palabra («análisis / de las / 14:35 / UTC»). Con estas clases la
- * tabla no parte sus celdas, separa las columnas y, dentro de `MARCO_TABLA`, se
- * desplaza en su marco en vez de apretarse o empujar la página.
+ * tabla no parte sus celdas, separa las columnas y, dentro de `<MarcoTabla>`
+ * (components/MarcoTabla.tsx), se desplaza en su marco en vez de apretarse o
+ * empujar la página.
  */
-export const MARCO_TABLA = 'overflow-x-auto'
 export const TABLA_COMPACTA =
   'w-full whitespace-nowrap [&_td]:pl-3 [&_td:first-child]:pl-0 [&_th]:pl-3 [&_th:first-child]:pl-0'
 

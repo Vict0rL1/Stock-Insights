@@ -17,6 +17,7 @@ import type {
 import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { useDato, type CargaConReintento } from '../lib/useDato'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 // Las cifras que se escriben aquí se guardan: con `parseFloat`, «1.250,50»
 // (como la app escribe un importe) era 1,25 y «12,5» era 12, sin aviso. Una
@@ -598,98 +599,100 @@ function PortfolioTab() {
                 </div>
               )}
 
-              <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <h2 className="mb-2 text-sm font-semibold text-slate-700">Posiciones abiertas</h2>
                 {data.positions.length === 0 ? (
                   <p className="text-sm text-slate-400">Sin posiciones abiertas.</p>
                 ) : (
-                  <table className="w-full min-w-[640px] text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                        {/* «1 año» y no una cabecera vacía: `key={h}` haría colisión
-                            con la columna en blanco del final, y además dice qué
-                            periodo dibuja la línea. */}
-                        {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Valor', 'No realizado', 'Peso', ''].map(
-                          (h) => (
-                            <th key={h} className="px-2 py-1 font-normal">
-                              {h}
-                            </th>
-                          ),
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.positions.map((p) => {
-                        const weight = data.allocation_by_position.find((a) => a.label === p.symbol)
-                        return (
-                          <tr
-                            key={p.id}
-                            className={`border-b border-slate-100 ${
-                              p.sin_convertir ? 'bg-amber-50' : ''
-                            }`}
-                            title={p.sin_convertir ?? undefined}
-                          >
-                            <td className="px-2 py-1.5">
-                              <Link
-                                to={`/ticker/${p.symbol}`}
-                                className="flex items-center gap-2 font-medium hover:underline"
-                              >
-                                <CompanyLogo symbol={p.symbol} size="sm" />
-                                {p.symbol}
-                                {p.currency && p.currency !== data.divisas?.base && (
-                                  <span
-                                    className={`rounded px-1 py-0.5 text-[9px] font-medium ${
-                                      p.sin_convertir
-                                        ? 'bg-amber-100 text-amber-800'
-                                        : 'bg-slate-100 text-slate-600'
-                                    }`}
-                                  >
-                                    {p.currency}
-                                  </span>
-                                )}
-                              </Link>
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <Sparkline valores={p.spark} width={64} height={20} />
-                            </td>
-                            <td className="px-2 py-1.5 text-xs text-slate-500">{p.sector}</td>
-                            <td className="px-2 py-1.5 tabular-nums">{fmtNum(p.quantity, 0)}</td>
-                            <td className="px-2 py-1.5 tabular-nums">{fmtPrecio(p.cost_basis, monedaDe(p.currency))}</td>
-                            <td className="px-2 py-1.5 tabular-nums">
-                              {fmtPrecio(p.price, monedaDe(p.currency))}
-                              <EstadoDelPrecio p={p} />
-                            </td>
-                            <td className="px-2 py-1.5 tabular-nums">
-                              {fmtDinero(p.market_value, monedaDe(p.currency))}
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <Pnl value={p.unrealized_pnl} pct={p.unrealized_pct} moneda={monedaDe(p.currency)} />
-                            </td>
-                            <td className="px-2 py-1.5 tabular-nums text-slate-600">
-                              {weight ? fmtPct(weight.weight) : '—'}
-                            </td>
-                            <td className="px-2 py-1.5 text-right">
-                              {p.stop_fijado_al_abrir === false && (
-                                <button
-                                  onClick={() => fijarStop(p.id, p.stop)}
-                                  title="Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo."
-                                  className="mr-3 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
+                  <MarcoTabla etiqueta="Posiciones abiertas">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                          {/* «1 año» y no una cabecera vacía: `key={h}` haría colisión
+                              con la columna en blanco del final, y además dice qué
+                              periodo dibuja la línea. */}
+                          {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Valor', 'No realizado', 'Peso', ''].map(
+                            (h) => (
+                              <th key={h} className="px-2 py-1 font-normal">
+                                {h}
+                              </th>
+                            ),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.positions.map((p) => {
+                          const weight = data.allocation_by_position.find((a) => a.label === p.symbol)
+                          return (
+                            <tr
+                              key={p.id}
+                              className={`border-b border-slate-100 ${
+                                p.sin_convertir ? 'bg-amber-50' : ''
+                              }`}
+                              title={p.sin_convertir ?? undefined}
+                            >
+                              <td className="px-2 py-1.5">
+                                <Link
+                                  to={`/ticker/${p.symbol}`}
+                                  className="flex items-center gap-2 font-medium hover:underline"
                                 >
-                                  Fijar stop
+                                  <CompanyLogo symbol={p.symbol} size="sm" />
+                                  {p.symbol}
+                                  {p.currency && p.currency !== data.divisas?.base && (
+                                    <span
+                                      className={`rounded px-1 py-0.5 text-[9px] font-medium ${
+                                        p.sin_convertir
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-slate-100 text-slate-600'
+                                      }`}
+                                    >
+                                      {p.currency}
+                                    </span>
+                                  )}
+                                </Link>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Sparkline valores={p.spark} width={64} height={20} />
+                              </td>
+                              <td className="px-2 py-1.5 text-xs text-slate-500">{p.sector}</td>
+                              <td className="px-2 py-1.5 tabular-nums">{fmtNum(p.quantity, 0)}</td>
+                              <td className="px-2 py-1.5 tabular-nums">{fmtPrecio(p.cost_basis, monedaDe(p.currency))}</td>
+                              <td className="px-2 py-1.5 tabular-nums">
+                                {fmtPrecio(p.price, monedaDe(p.currency))}
+                                <EstadoDelPrecio p={p} />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums">
+                                {fmtDinero(p.market_value, monedaDe(p.currency))}
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Pnl value={p.unrealized_pnl} pct={p.unrealized_pct} moneda={monedaDe(p.currency)} />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums text-slate-600">
+                                {weight ? fmtPct(weight.weight) : '—'}
+                              </td>
+                              <td className="px-2 py-1.5 text-right">
+                                {p.stop_fijado_al_abrir === false && (
+                                  <button
+                                    onClick={() => fijarStop(p.id, p.stop)}
+                                    title="Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo."
+                                    className="mr-3 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
+                                  >
+                                    Fijar stop
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => close(p.id)}
+                                  className="text-xs text-slate-400 hover:text-slate-700"
+                                >
+                                  Cerrar
                                 </button>
-                              )}
-                              <button
-                                onClick={() => close(p.id)}
-                                className="text-xs text-slate-400 hover:text-slate-700"
-                              >
-                                Cerrar
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </MarcoTabla>
                 )}
               </section>
 
