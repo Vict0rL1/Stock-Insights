@@ -533,6 +533,18 @@ también decían «moneda desconocida»; el aviso de la curva decía «por no te
 cualquier excluida, y ahora dice el motivo de cada una. (5) El motivo pedía «Corrige la divisa
 de la posición», que la app no permite: ahora dice que viene del proveedor y queda fuera.
 
+**A2 y A5, en la cartera del contexto.** `contexto_cartera.construir`, reconstruido a una fecha:
+(1) filtraba en SQL por `closed_at IS NULL`, y una posición abierta ese día y cerrada después
+faltaba del capital y de los comparables mientras el mismo análisis la daba por abierta; (2)
+pesaba cada posición con la cotización de hoy (ahora, el último cierre conocido entonces,
+«viejo»); (3) convertía con el último tipo de la serie mientras el efectivo usaba el de
+entonces: dos tipos para el mismo CAD en el mismo capital. **Encontrado de paso, en vivo:** una
+cotización o unos fundamentales descargados durante el análisis llevan la hora de la descarga,
+milisegundos después del `ahora` con que empezó, y `seccion_mercado` los tiraba como
+«posteriores» (precio fresco de yfinance → se decidía con el cierre de ayer, «viejo»; los pares
+sin señal). `pit.descargado_a_tiempo` les da un margen de 5 minutos (`MARGEN_DE_DESCARGA`); a una
+reconstrucción del pasado no le cambia nada. Golden idéntico.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

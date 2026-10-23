@@ -75,7 +75,9 @@ guarda como ahora. El POST responde `vigente` y, si un saldo más reciente sigue
 el último tipo que ya se conocía en la fecha de la decisión (`punto_en_el_tiempo`: el del
 mismo día no, FRED lo publica después), nunca con uno posterior; sin ninguno, el
 efectivo es desconocido; con uno de más de 7 días (`fx.DIAS_FRESCO`) se convierte igual
-pero el estado es `viejo` y la nota de Hoy dice su fecha. De cada posición, su última
+pero el estado es `viejo` y la nota de Hoy dice su fecha. Las posiciones del capital, igual:
+las abiertas en esa fecha (también las cerradas después), al último cierre conocido si la
+cotización es posterior, y convertidas con el mismo tipo que el efectivo. De cada posición, su última
 lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
 anterior) (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».

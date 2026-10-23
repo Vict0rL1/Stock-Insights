@@ -190,6 +190,7 @@ def _cotizacion(service: MarketDataService, symbol: str) -> tuple[float | None, 
     return q.get("price"), q.get("currency"), {
         "estado": q.get("estado", "valido"),
         "antiguedad_segundos": q.get("antiguedad_segundos"),
+        "publicado": q.get("as_of"),
     }
 
 

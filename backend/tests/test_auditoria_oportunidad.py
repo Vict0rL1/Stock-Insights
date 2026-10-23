@@ -212,3 +212,80 @@ def test_una_lectura_posterior_no_esconde_la_anterior_valida(session_factory):
     assert entonces["lectura_de"] == primera["creado_en"]
     assert luego["lectura_de"] == segunda["creado_en"]
     assert nunca == {}
+
+
+# --- Hermanos de A2 y A5: la cartera del contexto, reconstruida a una fecha --------
+
+
+def _posicion(s, symbol, cantidad=10, coste=100.0, abierta=None, cerrada=None, moneda="USD"):
+    from app.db.models import Instrument, Position
+
+    inst = Instrument(symbol=symbol, name=symbol, sector="Tech", currency=moneda)
+    s.add(inst)
+    s.flush()
+    s.add(Position(instrument_id=inst.id, quantity=cantidad, cost_basis=coste,
+                   opened_at=abierta or AHORA - timedelta(days=60), closed_at=cerrada,
+                   realized_pnl=0.0 if cerrada else None))
+    s.commit()
+
+
+def test_una_posicion_cerrada_despues_sigue_en_la_cartera_de_ese_dia(session_factory):
+    # Revisión de A5: se filtraba en SQL por `closed_at IS NULL` y MSFT, abierta
+    # el 12 y cerrada el 14, faltaba del capital y de los comparables del 12.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT", cerrada=AHORA + timedelta(days=2))
+        entonces = contexto_cartera.construir(s, servicio, ahora=AHORA)
+        luego = contexto_cartera.construir(s, servicio, ahora=AHORA + timedelta(days=3))
+    assert [p["symbol"] for p in entonces["posiciones"]] == ["MSFT"]
+    assert entonces["total_usd"] == 3000.0
+    assert luego["posiciones"] == []
+
+
+def test_la_reconstruccion_valora_con_el_cierre_de_entonces_no_con_la_cotizacion_de_hoy(session_factory):
+    # Revisión de A5: la reconstrucción del 12 pesaba MSFT con la cotización
+    # del 15 (300); entonces el último cierre conocido era el del 11.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3)).empresa("MSFT", precio=300.0, score=None)
+    servicio.cache.set("price_history_long", {"symbol": "MSFT"}, {"bars": [
+        {"ts": "2026-09-10", "close": 200.0}, {"ts": "2026-09-11", "close": 210.0},
+        {"ts": "2026-09-14", "close": 300.0}]})
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["precio"] == 210.0 and p["precio_estado"] == "viejo" and p["valor_usd"] == 2100.0
+
+
+def test_la_posicion_y_el_efectivo_en_cad_se_convierten_con_el_mismo_tipo(session_factory):
+    # Revisión de A2: la posición iba al último tipo de la serie (1,50, del 14) y
+    # el efectivo al de entonces (1,30): dos tipos para el mismo CAD.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=130.0, score=None, moneda="CAD")
+    servicio.macro["DEXCAUS"] = [{"ts": "2026-09-11", "value": "1.30"}, {"ts": "2026-09-14", "value": "1.50"}]
+    with session_factory() as s:
+        _posicion(s, "SHOP.TO", cantidad=1, moneda="CAD")
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        ctx = contexto_cartera.construir(s, servicio, ahora=DECISION)
+        efectivo = efectivo_usd(s, ctx, DECISION)
+    assert ctx["posiciones"][0]["valor_usd"] == 100.0
+    assert efectivo["usd"] == 100.0
+
+
+def test_lo_descargado_durante_el_analisis_no_es_informacion_futura():
+    # Una cotización pedida durante el análisis lleva la hora de la descarga,
+    # posterior al `ahora` con que empezó: se tiraba como futura y se decidía
+    # con el cierre de ayer, «viejo».
+    from app.analisis_empresa import seccion_mercado
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=100.0, score=None)
+    servicio.quotes["SHOP.TO"]["as_of"] = (AHORA + timedelta(seconds=2)).isoformat()
+    fresca, _ = seccion_mercado(servicio, "SHOP.TO", AHORA)
+    servicio.quotes["SHOP.TO"]["as_of"] = (AHORA + timedelta(days=1)).isoformat()
+    futura, _ = seccion_mercado(servicio, "SHOP.TO", AHORA)
+    assert fresca["estado"] == "valido" and fresca["precio"]["valor"] == 100.0
+    assert futura["estado"] == "viejo" and futura["precio"]["valor"] != 100.0

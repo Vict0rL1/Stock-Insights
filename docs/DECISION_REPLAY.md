@@ -9,7 +9,7 @@ empresa.
 
 | Pieza | Archivo | Qué hace |
 |---|---|---|
-| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None |
+| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None; `descargado_a_tiempo` para lo que se pide durante el propio cálculo (cotización, fundamentales: lleva la hora de la descarga, hasta `MARGEN_DE_DESCARGA` después) |
 | Análisis de empresa | `backend/app/analisis_empresa.py` | Reúne precio, EDGAR con linaje, DCF inverso, tesis, noticias, señal, posición, decisión, riesgo, calidad, expectativas, confianza y coste de oportunidad |
 | Traza de reglas | `backend/app/analysis/decision.py` | Cada decisión trae `reglas` (resultado, valor, umbral, papel) y `cambiaria` |
 | Congelar y reproducir | `backend/app/snapshots.py` | `congelar_analisis`, `anterior_comparable`, `reproducir` |

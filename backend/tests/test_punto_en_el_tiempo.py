@@ -9,7 +9,7 @@ aceptó a las 21:00. Estos tests fijan cómo se resuelve cada caso.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app import punto_en_el_tiempo as pit
 from app.analysis.backtest import momentum_12_1, point_in_time_period
@@ -100,3 +100,16 @@ def test_una_barra_diaria_del_mismo_dia_necesita_prueba_de_descarga():
     assert pit.barra_disponible("2026-05-16", decision, "2026-05-15T14:00:00+00:00") is False
     # Decisión por día (backtest al cierre): la convención de siempre, <=.
     assert pit.barra_disponible("2026-05-15", date(2026, 5, 15)) is True
+
+
+def test_lo_descargado_durante_el_calculo_cuenta_y_lo_de_despues_no():
+    """El margen es para la descarga en curso, no para colar el futuro: lo de
+    unos segundos después de una decisión con hora cuenta; lo de un día, no; y
+    con una decisión por día no cambia nada."""
+    decision = datetime(2026, 9, 12, 14, 35, tzinfo=timezone.utc)
+    assert pit.disponible_en(decision + timedelta(seconds=2), decision) is False
+    assert pit.descargado_a_tiempo(decision + timedelta(seconds=2), decision) is True
+    assert pit.descargado_a_tiempo(decision + pit.MARGEN_DE_DESCARGA + timedelta(seconds=1), decision) is False
+    assert pit.descargado_a_tiempo(decision + timedelta(days=1), decision) is False
+    assert pit.descargado_a_tiempo("2026-09-13", date(2026, 9, 12)) is False
+    assert pit.descargado_a_tiempo(None, decision) is None

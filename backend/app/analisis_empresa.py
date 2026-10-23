@@ -142,7 +142,7 @@ def seccion_mercado(service, symbol: str, ahora: datetime) -> tuple[dict, dict]:
     barras = [b for b in barras if pit.barra_disponible(b.get("ts"), ahora, obtenida)]
     resumen = _price_summary(pd.Series([float(b["close"]) for b in barras], dtype="float64")) if barras else None
 
-    if quote is not None and pit.disponible_en(quote.get("as_of"), ahora) is False:
+    if quote is not None and pit.descargado_a_tiempo(quote.get("as_of"), ahora) is False:
         # Una cotización fechada DESPUÉS del análisis (un análisis a una fecha
         # pasada, o un reloj adelantado) es información futura: fuera.
         quote, fallo_q = None, "cotización posterior al momento del análisis"
@@ -526,7 +526,7 @@ def seccion_senal(service, symbol: str, con_pares: bool, ahora: datetime) -> dic
         fund, _ = _traer(service, "fundamentals", symbol=symbol)
         # Los fundamentales de los pares son los de HOY: para un análisis a una
         # fecha pasada serían información futura.
-        if fund and fund.get("metrics") and pit.disponible_en(fund.get("as_of"), ahora) is not False:
+        if fund and fund.get("metrics") and pit.descargado_a_tiempo(fund.get("as_of"), ahora) is not False:
             try:
                 p = _peer_signal(service, symbol, dict(fund["metrics"]))
             except Exception:  # noqa: BLE001 — sin señal se decide «sin datos», no se cae

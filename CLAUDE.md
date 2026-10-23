@@ -48,7 +48,8 @@ código nuevo, comentarios, mensajes de error, textos de UI, docs y commits.
   nuevo necesita etiqueta (test exhaustivo);
   las palabras siguen `docs/GLOSARIO.md` («BPA», nunca «EPS»), también con test.
 - **Punto en el tiempo:** toda reconstrucción del pasado pregunta a
-  `app/punto_en_el_tiempo.py` (`disponible_en`, `barra_disponible`, `filtrar`).
+  `app/punto_en_el_tiempo.py` (`disponible_en`, `barra_disponible`, `filtrar`; lo que se
+  descarga durante el propio cálculo, `descargado_a_tiempo`).
   No comparar fechas a mano. Un dato fechado por día el mismo día de una
   decisión con hora no está disponible salvo prueba (`obtenido_en`).
 - **El motor de decisión** es una lista de reglas con prioridad; su traza
