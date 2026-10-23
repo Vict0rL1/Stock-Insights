@@ -271,8 +271,9 @@ EXENTOS: dict[str, str] = {
     "app.analysis.signal.MIN_OBSERVATIONS": "fiabilidad de la calibración del historial de puntuaciones, no una decisión",
     "app.analysis.fx.DIAS_FRESCO": "solo decide un aviso de texto y una comprobación de coherencia, ninguna cifra",
     "app.analysis.thesis_watch.UMBRAL_VECES_SOSPECHOSO": (
-        "solo decide si un punto de invalidación lleva un aviso de texto (umbral guardado con la conversión "
-        "vieja); no cambia ni `salta` ni `medible`"
+        "solo afecta a puntos guardados con la conversión vieja del formulario (un ratio en «veces» dividido "
+        "entre 100), que deja sin comprobar; cubierto por test_thesis_watch. Añadir un caso al golden de "
+        "tesis exige reescribirlo: pendiente del visto bueno de Victor"
     ),
     "app.analysis.risk_budget.HEAT_MAXIMO_PCT": "presupuesto de riesgo de la página de cartera: avisa, no recorta",
     "app.analysis.risk_budget.HEAT_GRUPO_MAXIMO_PCT": "presupuesto de riesgo de la página de cartera: avisa, no recorta",

@@ -317,12 +317,27 @@ def test_un_ratio_se_lee_en_veces_y_no_en_porcentaje():
     assert "aviso" not in r
 
 
-def test_un_umbral_en_veces_con_la_conversion_vieja_se_avisa():
-    # 1 escrito en el formulario viejo se guardó como 0,01: no salta y se dice.
+def test_un_umbral_en_veces_con_la_conversion_vieja_queda_sin_comprobar():
+    # 1 escrito en el formulario viejo se guardó como 0,01: con «<» no saltaría
+    # nunca. No es «no cruzado»: es «no se puede comprobar» (UNKNOWN nunca PASS).
     r = _ratio("current_ratio", "lt", 0.01, 0.8)
-    assert r["salta"] is False
-    assert "sospechosamente bajo" in r["aviso"] and "Si querías decir 1," in r["aviso"]
+    assert r["salta"] is False and r["medible"] is False
+    assert "no saltaría nunca" in r["motivo"] and "si querías decir 1)" in r["motivo"]
+
+
+def test_con_mayor_que_la_conversion_vieja_saltaria_siempre_y_se_dice():
+    # «Deuda/capital > 2» guardado como 0,02: con D/E 0,5 salía CRUZADO.
+    r = _ratio("debt_to_equity", "gt", 0.02, 0.5)
+    assert r["medible"] is False and "saltaría siempre" in r["motivo"]
+    # El borde cuenta: un «10» viejo guardado como 0,1.
+    assert _ratio("interest_coverage", "lt", 0.1, 3.0)["medible"] is False
+
+
+def test_cero_o_negativo_es_un_umbral_legitimo():
+    # «Cobertura de intereses < 0» (EBIT negativo) no es la conversión vieja.
+    r = _ratio("interest_coverage", "lt", 0.0, -1.5)
+    assert r["medible"] is True and r["salta"] is True
 
 
 def test_un_margen_bajo_en_porcentaje_no_es_sospechoso():
-    assert "aviso" not in _ratio("operating_margin", "lt", 0.05, 0.21)
+    assert _ratio("operating_margin", "lt", 0.05, 0.21)["medible"] is True

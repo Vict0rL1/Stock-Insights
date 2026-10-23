@@ -108,8 +108,13 @@ def test_sin_senal_de_compra_no_hay_nada_que_financiar():
 
 def test_si_no_cabe_por_limites_no_trade_y_dice_que_limite():
     assert _evaluar([_pos()], tamano=0.0)["veredicto"]["accion"] == "NO_TRADE"
-    r = _evaluar([_pos()], tamano=0.0, recortes=["Ideas nuevas al 0 %: la cartera que YA tienes estima un 30 % de volatilidad"])
-    assert "volatilidad" in r["veredicto"]["motivo"]
+    # Con la constante del dimensionador y comprobando lo que SOLO dice el recorte:
+    # con «0 %» y espacio normal ya no casaba, el motivo caía en el genérico (que
+    # también dice «volatilidad») y el test pasaba sin probar nada (revisión del 2.12).
+    recorte = f"{sizing.RECORTE_SIN_HUECO_DE_RIESGO}: la cartera que YA tienes estima un 30\u00a0% de volatilidad"
+    r = _evaluar([_pos()], tamano=0.0, recortes=[recorte])
+    assert "la cartera que YA tienes" in r["veredicto"]["motivo"]
+    assert "Ninguno de los límites" not in r["veredicto"]["motivo"]
 
 
 def test_si_no_cabe_pero_el_efectivo_es_desconocido_no_se_concluye():

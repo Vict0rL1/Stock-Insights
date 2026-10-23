@@ -67,7 +67,7 @@ CRECIMIENTOS = {
 # junto al «< 18 %» del título (revisión del 2.12).
 EN_PORCENTAJE = frozenset({"operating_margin", "net_margin", "gross_margin", "fcf_margin", "roe", "roic",
                            *CRECIMIENTOS})
-# Por debajo de esto, un umbral en «veces» huele a la conversión vieja (1 → 0,01).
+# Hasta esto (incluido), un umbral en «veces» huele a la conversión vieja (1 → 0,01).
 UMBRAL_VECES_SOSPECHOSO = 0.1
 
 
@@ -116,8 +116,25 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
             ),
         }
     texto_op, prueba = OPERADORES[op]
-    salta = prueba(valor, umbral)
     en_pct = unidad_de(config.get("metrica")) == "pct"
+    # Un umbral en «veces» guardado con la conversión vieja (1 → 0,01) no se puede
+    # creer: con «<» no saltaría nunca y con «>» saltaría siempre. Queda SIN
+    # COMPROBAR, no «no cruzado»: antes contaba como superado y la tesis salía
+    # «intacta» con un control que el propio código sabía roto (revisión del
+    # 2.12). Cero o negativo es un umbral legítimo (patrimonio o EBIT negativos).
+    if not en_pct and 0 < umbral <= UMBRAL_VECES_SOSPECHOSO:
+        efecto = "no saltaría nunca" if op in ("lt", "lte") else "saltaría siempre"
+        return {
+            "salta": False,
+            "medible": False,
+            "motivo": (
+                f"Umbral de {fmt_num(umbral, 3, ceros=False)} veces, sospechosamente bajo: antes el formulario "
+                "guardaba también los ratios como porcentaje (escribir 1 guardaba 0,01), así que este punto "
+                f"{efecto}. Queda sin comprobar hasta que lo quites y lo crees de nuevo (si querías decir "
+                f"{fmt_num(umbral * 100, 2, ceros=False)})."
+            ),
+        }
+    salta = prueba(valor, umbral)
 
     def cifra(v: float) -> str:
         return fmt_pct(v, 1) if en_pct else fmt_num(v, 2)
@@ -132,13 +149,6 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
             + ("" if salta else " Todavía no lo cruza.")
         ),
     }
-    if not en_pct and abs(umbral) < UMBRAL_VECES_SOSPECHOSO:
-        resultado["aviso"] = (
-            f"Un umbral de {fmt_num(umbral, 3, ceros=False)} veces es sospechosamente bajo: antes el "
-            "formulario guardaba también los ratios como porcentaje (escribir 1 guardaba 0,01) y así el "
-            f"punto no salta nunca. Si querías decir {fmt_num(umbral * 100, 2, ceros=False)}, quítalo y "
-            "créalo de nuevo."
-        )
     return resultado
 
 
