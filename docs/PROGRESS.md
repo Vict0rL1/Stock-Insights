@@ -471,6 +471,20 @@ nueva (`test_gramatica`, `test_thesis_watch`: la frase es la misma); el de opcio
 con espacio duro. El recorte «Ideas nuevas al 0 %» se reconoce por una constante
 (`sizing.RECORTE_SIN_HUECO_DE_RIESGO`) y no buscando el texto «0 %» suelto. Golden idéntico.
 
+**Código, A1 (tres votos a favor), arreglado.** (1) Fail-unsafe: con el stop ya entero, Yahoo seguía
+sirviendo el último cierre redondeado a dos decimales; un stop de 1,8165 con el cierre en 1,8155
+se comparaba con 1,82 y salía «mantener». Ahora `_price_summary` sirve el cierre tal cual (la
+pantalla lo escribe con `fmtPrecio`). (2) La traza de «¿Por qué?» y «¿Qué la cambiaría?» pintaba
+los precios con `fmtNum(v, 2)`: el caso de la auditoría se leía «0,00 frente a 0,00»; ahora las
+reglas de precio usan `fmtPrecio`. (3) Lo servido y lo escrito no coincidían en los empates de
+medio céntimo (`round()` frente al formateador: stop 2,67 en la tarjeta, «2,68» en el disparador):
+los textos escriben ahora el valor servido. Hacerlo al revés —servir con el redondeo del
+formateador— cambiaba `decide` y `hoy` del golden, y eso es de Victor. (4) Los mensajes de stop
+de la cartera («No se puede bajar el stop de 0 a 0») y (5) su minigráfico (32 ceros, plano y en
+verde). (6) Las medias de `/history` a 4 decimales fijos (0 o el doble del precio por debajo de
+0,0001). Golden idéntico; guardas en `test_precision_precios.py`, `DecisionExplicada.test.tsx`
+(todas fallan con el código anterior).
+
 **Visual, no se toca (registrado).** El texto de la IA se pinta con el Markdown sin interpretar
 (`BloqueIA`; los prompts piden Markdown): pide un renderizador seguro o texto plano, fuera del
 2.12. Las 11 pestañas de la ficha en 5 filas en móvil: es el 2.6 (6 + «Más ▾»). En el gráfico,

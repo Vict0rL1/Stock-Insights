@@ -22,6 +22,7 @@ from app.analysis.valuation import dcf, scenario_set, sensitivity_grid
 from app.cache.cache import MarketDataService
 from app.config import settings
 from app.deps import get_service
+from app.formato import decimales_precio
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.schemas.market import (
@@ -61,6 +62,13 @@ def _fetch(service: MarketDataService, data_type: str, **kwargs) -> dict:
 
 def _nan_to_none(series: pd.Series) -> list[float | None]:
     return [None if pd.isna(v) else round(float(v), 4) for v in series]
+
+
+def _medias(series: pd.Series) -> list[float | None]:
+    """Una media móvil es un precio: con 4 decimales fijos, a 0,00004 salía 0,0
+    y a 0,00005 el doble del precio, pintadas junto a las velas (revisión de
+    A1). Al menos 4 decimales, como antes, y más si el precio los necesita."""
+    return [None if pd.isna(v) else round(float(v), max(4, decimales_precio(float(v)))) for v in series]
 
 
 @router.get("/{symbol}/quote", response_model=QuoteResponse)
@@ -161,9 +169,9 @@ def get_history(
     macd_df = macd(closes)
     payload["range"] = range
     payload["indicators"] = {
-        "sma20": _nan_to_none(sma(closes, 20)),
-        "sma50": _nan_to_none(sma(closes, 50)),
-        "sma200": _nan_to_none(sma(closes, 200)),
+        "sma20": _medias(sma(closes, 20)),
+        "sma50": _medias(sma(closes, 50)),
+        "sma200": _medias(sma(closes, 200)),
         "rsi14": _nan_to_none(rsi(closes, 14)),
         "macd": {
             "macd": _nan_to_none(macd_df["macd"]),

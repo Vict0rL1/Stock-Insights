@@ -5231,7 +5231,7 @@
         "id": "frescura_fundamentales"
        },
        {
-        "detalle": "finnhub y yfinance difieren un 5,6 %",
+        "detalle": "finnhub y yfinance difieren un 5,5 %",
         "estado": "ok",
         "factor": "Acuerdo entre proveedores",
         "id": "contraste_proveedores"
@@ -5794,7 +5794,7 @@
        "motivo": null,
        "obtenido_en": "2026-07-14T14:35:00+00:00",
        "sesiones": 201,
-       "ultimo_cierre": 98.53
+       "ultimo_cierre": 98.5328
       },
       "precio": {
        "antiguedad_segundos": null,

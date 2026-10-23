@@ -34,7 +34,7 @@ from app.db.models import (
     WatchlistItem,
 )
 from app.deps import get_service
-from app.formato import fmt_fecha, fmt_num
+from app.formato import decimales_precio, fmt_fecha, fmt_num
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import Simbolo, validar_simbolo
@@ -162,7 +162,10 @@ def _spark_cacheado(
     if len(cierres) < PUNTOS_SPARK:
         return None
     paso = (len(cierres) - 1) / (PUNTOS_SPARK - 1)
-    return [round(cierres[round(i * paso)], 2) for i in range(PUNTOS_SPARK)]
+    # `redondear_precio`, como el minigráfico de Yahoo: con `round(x, 2)`, una
+    # posición de céntimos que caía de 0,004 a 0,003 eran 32 ceros, una línea
+    # plana y en verde (revisión de A1).
+    return [datos.redondear_precio(cierres[round(i * paso)]) for i in range(PUNTOS_SPARK)]
 
 
 def _precio_y_divisa(service: MarketDataService, symbol: str) -> tuple[float | None, str | None]:
@@ -266,6 +269,14 @@ def _utc_iso(cuando) -> str | None:
     cambiaba de DÍA en husos negativos. Mismo fallo que en las alertas."""
     utc = alertas.como_utc(cuando)
     return utc.isoformat() if utc else None
+
+
+def _tecleado(valor: float) -> str:
+    """Un precio que escribió la persona, para repetírselo en un mensaje: hasta
+    cuatro decimales, como siempre, y los que haga falta por debajo de 1. Con
+    `fmt_num(…, 4)`, un stop de 0,00004 se repetía como «0» («No se puede bajar
+    el stop de 0 a 0»; revisión de A1)."""
+    return fmt_num(valor, max(4, decimales_precio(valor)), ceros=False)
 
 
 def _moneda_segura(valor) -> str | None:
@@ -521,7 +532,7 @@ class PositionCreate(BaseModel):
         coste = info.data.get("cost_basis")
         if v is not None and coste is not None and v >= coste:
             raise ValueError(
-                f"El stop ({fmt_num(v, 4, ceros=False)}) tiene que estar por debajo del coste ({fmt_num(coste, 4, ceros=False)}): "
+                f"El stop ({_tecleado(v)}) tiene que estar por debajo del coste ({_tecleado(coste)}): "
                 "un stop por encima no protege de ninguna caída."
             )
         return v
@@ -558,7 +569,7 @@ def create_position(
                     status_code=409,
                     detail=(
                         f"Posición duplicada: ya hay una de {instrument.symbol} con "
-                        f"{fmt_num(body.quantity, 4, ceros=False)} acciones a {fmt_num(body.cost_basis, 4, ceros=False)}, "
+                        f"{fmt_num(body.quantity, 4, ceros=False)} acciones a {_tecleado(body.cost_basis)}, "
                         f"abierta el {fmt_fecha(abierta, hora=True, zona='UTC')} (#{gemela.id}). Si de verdad "
                         "es un segundo lote, repite con `confirmar_duplicado: true`."
                     ),
@@ -610,7 +621,7 @@ def fijar_stop(position_id: int, body: StopUpdate, session: Session = Depends(ge
         raise HTTPException(
             status_code=409,
             detail=(
-                f"No se puede bajar el stop de {fmt_num(actual, 4, ceros=False)} a {fmt_num(body.stop, 4, ceros=False)}. Bajar un stop "
+                f"No se puede bajar el stop de {_tecleado(actual)} a {_tecleado(body.stop)}. Bajar un stop "
                 "es alejarlo justo cuando el precio se acerca: el control que protege "
                 "la posición deja de hacerlo. Si la tesis cambió, cierra la posición."
             ),

@@ -102,7 +102,11 @@ def _price_summary(closes) -> dict | None:
         vol_diaria = round(math.sqrt(varianza) * 100, 3)
 
     return {
-        "last": precio(last),
+        # El cierre tal cual, sin redondear: es lo que el motor compara con el
+        # stop. Redondeado a dos decimales, un stop de 1,8165 con el cierre en
+        # 1,8155 se comparaba con 1,82 y la venta no salía (revisión de A1). La
+        # pantalla lo escribe con `fmtPrecio`.
+        "last": datos.numero(last),
         "change_pct": round((last / prev - 1) * 100, 2) if prev else None,
         "low_52w": precio(low),
         "high_52w": precio(high),

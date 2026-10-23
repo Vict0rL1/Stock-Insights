@@ -1,6 +1,6 @@
 import type { AlternativaDecision, Decision, ReglaTraza } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { ESPACIO_DURO, fmtNum, fmtPct } from '../lib/formato'
+import { ESPACIO_DURO, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 
 // Todo lo que se pinta aquí sale de la traza del motor de reglas: qué regla se
 // evaluó, con qué valor, contra qué umbral y qué papel tuvo. No hay texto
@@ -21,9 +21,14 @@ const RESULTADO: Record<string, { texto: string; tono: string }> = {
   desconocido: { texto: '? desconocido', tono: 'text-amber-800' },
 }
 
-function valor(v: unknown): string {
+// Las reglas cuyo valor y umbral son precios. Con `fmtNum(v, 2)` el caso de la
+// auditoría (precio 0,003, stop 0,004) se leía «0,00 frente a 0,00» justo en la
+// traza, que ES la explicación (revisión de A1).
+const REGLAS_DE_PRECIO = new Set(['stop_perforado', 'tendencia_perdida', 'tendencia_a_favor'])
+
+function valor(v: unknown, esPrecio = false): string {
   if (v === null || v === undefined) return '—'
-  if (typeof v === 'number') return fmtNum(v, 2)
+  if (typeof v === 'number') return esPrecio ? fmtPrecio(v) : fmtNum(v, 2)
   return etiqueta(String(v))
 }
 
@@ -32,18 +37,22 @@ export function PorQue({ reglas }: { reglas: ReglaTraza[] }) {
   const orden = ['decide', 'modifica', 'bloquea', 'a_favor', 'informa', 'evaluada']
   const ordenadas = [...reglas].sort((a, b) => orden.indexOf(a.papel) - orden.indexOf(b.papel))
   return (
-    <ul className="space-y-1">
+    // Más aire entre reglas que dentro de una: en móvil cada regla ocupa dos o
+    // tres líneas y, con `space-y-1` frente a `gap-2`, la etiqueta de una parecía
+    // de la siguiente (revisión del 2.12).
+    <ul className="space-y-2">
       {ordenadas.map((r) => {
         const p = PAPEL[r.papel] ?? PAPEL.evaluada
         const res = RESULTADO[r.resultado] ?? RESULTADO.desconocido
         const tieneCifras = r.datos?.valor !== undefined && r.datos?.umbral !== undefined
         return (
-          <li key={r.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+          <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${p.tono}`}>{p.texto}</span>
             <span className="text-slate-700">{r.regla}</span>
             {tieneCifras && (
               <span className="tabular-nums text-slate-500">
-                ({valor(r.datos.valor)} frente a {valor(r.datos.umbral)})
+                ({valor(r.datos.valor, REGLAS_DE_PRECIO.has(r.id))} frente a{' '}
+                {valor(r.datos.umbral, REGLAS_DE_PRECIO.has(r.id))})
               </span>
             )}
             <span className={`font-medium ${res.tono}`}>{res.texto}</span>
@@ -74,7 +83,7 @@ export function QueLaCambiaria({ cambiaria }: { cambiaria: AlternativaDecision[]
                 · {c.condicion}
                 {c.distancia !== null && c.distancia !== undefined && (
                   <span className="ml-1 tabular-nums text-slate-400">
-                    (ahora {valor(c.actual)}; falta{' '}
+                    (ahora {valor(c.actual, c.unidad === '%')}; falta{' '}
                     {c.unidad === '%'
                       ? fmtPct(c.distancia, 2, { enPuntos: true, signo: true })
                       : fmtNum(c.distancia, 2, { signo: true }) + (c.unidad ? `${ESPACIO_DURO}${c.unidad}` : '')})

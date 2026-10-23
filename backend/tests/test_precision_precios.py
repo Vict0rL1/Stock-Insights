@@ -26,7 +26,7 @@ from app.analysis.decision import decide
 from app.db.engine import get_session
 from app.db.models import Position
 from app.deps import get_service
-from app.formato import fmt_precio
+from app.formato import fmt_num, fmt_precio
 from app.main import app
 from app.providers.base import DataNotFoundError, iso_utc
 from app.providers.yfinance_provider import _price_summary
@@ -136,3 +136,64 @@ def test_el_stop_fijado_al_abrir_una_posicion_de_centimos_no_se_guarda_como_cero
     assert stop is not None and 0 < stop < 0.00005
     pos = c.get("/api/portfolio").json()["positions"][0]
     assert pos["stop"] == stop and pos["stop_fijado_al_abrir"] is True
+
+
+def test_el_motor_compara_el_stop_con_el_cierre_entero_de_yahoo():
+    # Revisión de A1: con el stop ya entero, el cierre seguía llegando redondeado
+    # a dos decimales. Stop 1,8165 y cierre 1,8155 → Yahoo servía 1,82 y la
+    # posición salía «mantener» con el stop perforado.
+    resumen = _price_summary(pd.Series([1.70 + i * 0.0005 for i in range(220)] + [1.8155], dtype="float64"))
+    d = decide(señal(0.8), resumen, {"cost_basis": 1.90, "stop": 1.8165})
+    assert d["action"] == "vender"
+    assert next(r for r in d["reglas"] if r["papel"] == "decide")["id"] == "stop_perforado"
+
+
+def test_el_stop_servido_y_el_escrito_son_el_mismo():
+    # Revisión de A1: `levels.stop` se servía con `round()` (2,675 → 2,67) y el
+    # texto se escribía del valor entero con el formateador (2,68).
+    d = decide(señal(0.8), precio(3.10, 2.0), {"cost_basis": 3.0, "stop": 2.675})
+    servido = d["levels"]["stop"]
+    escrito = fmt_precio(servido)
+    assert f"Vender si cierra por debajo de {escrito}" in d["triggers"]
+    condiciones = [c["condicion"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"] == "stop_perforado"]
+    assert condiciones and all(f"precio > {escrito} (stop)" in c or f"precio ≤ {escrito} (stop)" in c for c in condiciones)
+
+
+def test_las_medias_del_grafico_no_se_redondean_a_cero():
+    # Revisión de A1: `/history` redondeaba las SMA a 4 decimales; a 0,00004 la
+    # media salía 0,0 y a 0,00005, el doble del precio.
+    from app.routers.stocks import _medias
+
+    assert _medias(pd.Series([0.00004, float("nan")])) == [0.00004, None]
+    assert _medias(pd.Series([0.00005])) == [0.00005]
+    assert _medias(pd.Series([92.123456])) == [92.1235]  # desde 1, los 4 de siempre
+
+
+def test_el_mensaje_de_no_bajar_el_stop_repite_las_cifras_de_centimos(cliente):
+    # Revisión de A1: con `fmt_num(…, 4)` decía «No se puede bajar el stop de 0 a 0».
+    c, factory = cliente
+    r = c.post("/api/portfolio/positions", json={"symbol": "CENT", "quantity": 1000, "cost_basis": 0.00005})
+    with factory() as s:
+        stop = s.get(Position, r.json()["id"]).stop
+    rechazo = c.post(f"/api/portfolio/positions/{r.json()['id']}/stop", json={"stop": 0.00003})
+    assert rechazo.status_code == 409
+    detalle = rechazo.json()["detail"]
+    assert "de 0 a 0" not in detalle and "0,00003" in detalle
+    assert fmt_num(stop, 12, ceros=False)[:7] in detalle
+
+
+def test_el_minigrafico_de_la_cartera_no_aplana_una_accion_de_centimos():
+    # Revisión de A1: `round(cierre, 2)` daba 32 ceros, una línea plana y verde.
+    from app.routers.portfolio import _spark_cacheado
+
+    class _Cache:
+        def get(self, tipo, params):
+            if tipo != "price_history_long":
+                return None
+            return {"bars": [{"close": 0.004 - i * 0.000004} for i in range(260)]}
+
+    class _Sv:
+        cache = _Cache()
+
+    spark = _spark_cacheado(_Sv(), "CENT")
+    assert spark[0] > spark[-1] > 0

@@ -261,7 +261,7 @@ def decide(
                 respecto_coste = "sin coste utilizable con el que compararlo"
             razones.append(
                 f"El precio ({fmt_precio(ultimo)}) perforó el stop de la posición "
-                f"({fmt_precio(stop_posicion)}), {respecto_coste}."
+                f"({fmt_precio(datos.redondear_precio(stop_posicion))}), {respecto_coste}."
             )
         elif decisiva and decisiva["id"] == "tendencia_perdida":
             razones.append(
@@ -324,7 +324,11 @@ def decide(
                 "stop_fijado_al_abrir": stop_fijado is not None,
             }
         disparadores = [
-            f"Vender si cierra por debajo de {fmt_precio(stop_posicion)}" if stop_posicion is not None else
+            # El texto escribe el stop SERVIDO (`levels.stop`), no el entero: con
+            # 2,675, la tarjeta decía «Stop 2,67» y el disparador «2,68», porque
+            # `round()` y el formateador redondean distinto (revisión de A1).
+            f"Vender si cierra por debajo de {fmt_precio(datos.redondear_precio(stop_posicion))}"
+            if stop_posicion is not None else
             "Vender si el precio perfora tu stop",
             f"Vender si la puntuación baja de {fmt_num(desfavorable_max, signo=True)}",
             "Revisar si pierde la media de 200 sesiones",
@@ -571,7 +575,7 @@ def _c_precio(op: str, umbral: float | None, ultimo: float, id_: str, que: str) 
                 "nota": "desconocido: no hay media de 200 sesiones utilizable"}
     return {
         "regla": id_,
-        "condicion": f"precio {op} {fmt_precio(umbral)} ({que})",
+        "condicion": f"precio {op} {fmt_precio(datos.redondear_precio(umbral))} ({que})",
         "actual": ultimo,
         "umbral": datos.redondear_precio(umbral),
         "distancia": round((umbral / ultimo - 1) * 100, 2),
