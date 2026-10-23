@@ -178,8 +178,12 @@ function aFecha(valor: string | Date | null | undefined): Fecha | null {
  */
 export function fmtFecha(
   valor: string | Date | null | undefined,
-  { hora = false, zona }: { hora?: boolean; zona?: string } = {},
+  { hora = false, zona: zonaPedida }: { hora?: boolean; zona?: string } = {},
 ): string {
+  // Con hora y sin zona, UTC y rotulada, como el gemelo de Python: con la hora
+  // local del navegador y sin rótulo, la misma instantánea salía «14:35 UTC» en
+  // el Historial y «16:35» en «Qué cambió» (revisión del 2.12).
+  const zona = zonaPedida ?? (hora ? 'UTC' : undefined)
   if (valor === null || valor === undefined || valor === '') return GUION
   const f = aFecha(valor)
   if (!f) return String(valor)

@@ -94,6 +94,7 @@
     [["2026-09-12T14:35:00+00:00"], {"zona": "Europe/Madrid"}, "12 sept 2026"],
     [["2026-09-12T23:30:00Z"], {"zona": "Europe/Madrid"}, "13 sept 2026"],
     [["2026-09-12T14:35:00"], {"hora": true, "zona": "UTC"}, "12 sept 2026, 14:35\u00a0UTC"],
+    [["2026-09-12T14:35:00Z"], {"hora": true}, "12 sept 2026, 14:35\u00a0UTC"],
     [["2026-01-05T09:05:00-05:00"], {"hora": true, "zona": "Europe/Madrid"}, "5 ene 2026, 15:05"],
     [["2026-03-29T01:30:00Z"], {"hora": true, "zona": "Europe/Madrid"}, "29 mar 2026, 03:30"],
     [["2026-12-31T23:59:00Z"], {"hora": true, "zona": "America/Toronto"}, "31 dic 2026, 18:59\u00a0ET"],

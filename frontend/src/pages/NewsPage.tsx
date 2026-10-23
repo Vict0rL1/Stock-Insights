@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { Interpretation, NewsItem } from '../api/types'
 import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
-import { fmtFecha } from '../lib/formato'
+import { fmtFecha, ZONA_MERCADO } from '../lib/formato'
 import { useLlmEstado, useLlmStatus } from '../lib/llm'
 import { primerSimbolo } from '../lib/simbolos'
 import { useDato } from '../lib/useDato'
@@ -60,7 +60,7 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
             {item.headline}
           </a>
           <div className="mt-0.5 text-xs text-slate-400">
-            {item.source ?? '—'} · {fmtFecha(item.published_at, { hora: true })}
+            {item.source ?? '—'} · {fmtFecha(item.published_at, { hora: true, zona: ZONA_MERCADO })}
             {item.related ? ` · ${item.related}` : ''}
           </div>
           {item.summary && (
