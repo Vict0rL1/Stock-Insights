@@ -28,7 +28,11 @@ def test_el_umbral_de_un_punto_se_lee_entero():
     r = evaluar({"id": 1, "kind": "metrica", "descripcion": "x", "activo": True,
                  "config": {"metrica": "operating_margin", "op": "lt", "umbral": 0.18}},
                 {"ratios": [{"fiscal_year": 2025, "operating_margin": 0.21}]})
-    assert r["detalle"] == "Margen operativo = 0,210; el punto salta si cae por debajo de 0,180. Todavía no lo cruza."
+    # Desde la revisión del 2.12, en la unidad de la métrica: un margen en %,
+    # como el «< 18 %» del título (antes «0,210 … 0,180»).
+    assert r["detalle"] == (
+        "Margen operativo = 21,0\u00a0%; el punto salta si cae por debajo de 18,0\u00a0%. Todavía no lo cruza."
+    )
 
 
 def test_ninguno_de_los_1_puntos():

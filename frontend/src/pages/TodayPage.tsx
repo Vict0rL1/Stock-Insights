@@ -489,9 +489,12 @@ function AvoidList({
         {signals.map((s) => (
           <li key={s.symbol} className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-medium text-slate-800">{s.symbol}</span>
-            <span className="text-slate-500">{s.context.name}</span>
+            {/* El separador, al final del nombre: al saltar de línea en móvil,
+                al principio de la descripción quedaba colgando («· Information
+                Technology…»; ítem 2.12). */}
+            <span className="text-slate-500">{s.context.name} ·</span>
             <span className="text-xs text-slate-400">
-              · {s.context.sector_name} · {s.conviction.resumen}
+              {s.context.sector_name} · {s.conviction.resumen}
             </span>
           </li>
         ))}
@@ -1043,10 +1046,11 @@ export function TodayPage() {
       <BloqueDatos carga={mercados} que="los mercados">
         {(lista) =>
           lista.length > 1 && (
-            // Los selectores se desplazan dentro de su propio marco y sus
-            // etiquetas no se parten: a 390 px los botones se encogían y
-            // «Mejores ideas (5)» salía en tres líneas (ítem 2.12).
-            <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5">
+            // Los selectores saltan de línea y sus etiquetas no se parten: a
+            // 390 px los botones se encogían y «Mejores ideas (5)» salía en tres
+            // líneas; desplazándose en su marco, la opción activa quedaba
+            // recortada contra el borde y las demás, escondidas (ítem 2.12).
+            <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
               {lista.map((m) => (
                 <button
                   key={m.key}
@@ -1089,7 +1093,7 @@ export function TodayPage() {
         <>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-0.5">
+              <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
                 {(
                   [
                     ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],

@@ -152,4 +152,38 @@ describe('Vigilancia (revisión del 2.1)', () => {
     await waitFor(() => expect(cuerpos).toHaveLength(1))
     expect((cuerpos[0] as { config: { umbral: number } }).config.umbral).toBeCloseTo(0.00125, 10)
   })
+
+  it('un ratio se escribe en veces y se envía tal cual: «ratio corriente < 1,2» no es 0,012', async () => {
+    // Revisión del 2.12: el formulario lo dividía todo entre 100, y un punto
+    // sobre el ratio corriente se guardaba cien veces más bajo y no saltaba nunca.
+    const cuerpos: unknown[] = []
+    servir({
+      ...BASE,
+      '/api/theses/vigilancia/metricas': {
+        status: 200,
+        json: {
+          metricas: [
+            { clave: 'operating_margin', etiqueta: 'margen operativo', alto_mejor: true, unidad: 'pct' },
+            { clave: 'current_ratio', etiqueta: 'ratio corriente', alto_mejor: false, unidad: 'veces' },
+          ],
+          crecimientos: [], operadores: [{ clave: 'lt', etiqueta: 'por debajo de' }], nota: '',
+        },
+      },
+      'POST /api/theses/3/triggers': { status: 200, json: { id: 12 } },
+    })
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation((e, init) => {
+      if (init?.method === 'POST') cuerpos.push(JSON.parse(String(init.body)))
+      return fetchBase(e, init)
+    })
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: '+ punto de invalidación' }))
+    fireEvent.change(screen.getByPlaceholderText('Por qué esto invalidaría la tesis'), { target: { value: 'Sin liquidez' } })
+    fireEvent.change(screen.getByDisplayValue('margen operativo'), { target: { value: 'current_ratio' } })
+    expect(screen.getByText('veces')).toBeInTheDocument()
+    fireEvent.change(screen.getByDisplayValue('18'), { target: { value: '1.2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(cuerpos).toHaveLength(1))
+    expect((cuerpos[0] as { config: { umbral: number } }).config.umbral).toBeCloseTo(1.2, 10)
+  })
 })

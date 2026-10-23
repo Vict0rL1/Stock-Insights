@@ -5,6 +5,7 @@ import type { EtfComparison, EtfRecommendation } from '../api/types'
 import { EstadoDato } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtPct } from '../lib/formato'
+import { COLUMNA_FIJA, MARCO_TABLA } from '../lib/tablas'
 
 const ETF_ACTION_STYLES: Record<string, string> = {
   comprar: 'bg-emerald-600 text-white',
@@ -143,38 +144,44 @@ export function EtfsPage() {
 
       {data && data.etfs.length > 0 && (
         <>
-          <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Comparador lado a lado</h2>
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                  <th className="py-1 pr-2 font-normal">Métrica</th>
-                  {data.etfs.map((etf) => (
-                    <th key={etf.symbol} className="px-2 py-1 text-right font-normal">
-                      {etf.symbol}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  ['Nombre', (e: (typeof data.etfs)[0]) => e.name ?? '—'],
-                  ['Categoría', (e: (typeof data.etfs)[0]) => e.category ?? '—'],
-                  ['Coste anual', (e: (typeof data.etfs)[0]) => fmtPct(e.expense_ratio, 2)],
-                  ['AUM', (e: (typeof data.etfs)[0]) => fmtCompacto(e.aum)],
-                  ['Rentabilidad por dividendo', (e: (typeof data.etfs)[0]) => fmtPct(e.dividend_yield)],
-                ].map(([label, get]) => (
-                  <tr key={label as string} className="border-b border-slate-100">
-                    <td className="py-1.5 pr-2 text-slate-500">{label as string}</td>
+            {/* A 390 px solo se veían el rótulo y el primer ETF, y nada decía que
+                hubiera más: el desplazamiento iba en la sección entera (ítem
+                2.12). Ahora va en la tabla, con el rótulo fijo y cada ETF con
+                un ancho mínimo, así que el segundo asoma. */}
+            <div className={MARCO_TABLA}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                    <th className={`${COLUMNA_FIJA} min-w-[8.5rem] py-1 pr-2 font-normal`}>Métrica</th>
                     {data.etfs.map((etf) => (
-                      <td key={etf.symbol} className="px-2 py-1.5 text-right text-slate-800">
-                        {(get as (e: typeof etf) => string)(etf)}
-                      </td>
+                      <th key={etf.symbol} className="min-w-[7.5rem] px-2 py-1 text-right font-normal">
+                        {etf.symbol}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {[
+                    ['Nombre', (e: (typeof data.etfs)[0]) => e.name ?? '—'],
+                    ['Categoría', (e: (typeof data.etfs)[0]) => e.category ?? '—'],
+                    ['Coste anual', (e: (typeof data.etfs)[0]) => fmtPct(e.expense_ratio, 2)],
+                    ['AUM', (e: (typeof data.etfs)[0]) => fmtCompacto(e.aum)],
+                    ['Rentabilidad por dividendo', (e: (typeof data.etfs)[0]) => fmtPct(e.dividend_yield)],
+                  ].map(([label, get]) => (
+                    <tr key={label as string} className="border-b border-slate-100">
+                      <td className={`${COLUMNA_FIJA} py-1.5 pr-2 text-slate-500`}>{label as string}</td>
+                      {data.etfs.map((etf) => (
+                        <td key={etf.symbol} className="px-2 py-1.5 text-right text-slate-800">
+                          {(get as (e: typeof etf) => string)(etf)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {/* Cada ETF se pide por separado y puede llegar viejo por su
                 cuenta: una sola insignia, la del primero, daba por fresco un
                 segundo rescatado de la caché (revisión del 2.1). */}

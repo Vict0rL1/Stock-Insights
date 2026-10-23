@@ -146,7 +146,7 @@ def evaluar(analisis: dict, ahora: datetime) -> dict:
             "sensibilidad_valoracion", "Sensibilidad de la valoración al WACC",
             OK if amplitud <= AMPLITUD_DCF_INVERSO else DEBIL,
             f"el crecimiento implícito va de {fmt_pct(rango['bajo'])} a {fmt_pct(rango['alto'])} "
-            "entre un WACC del 7 % y del 12 %",
+            "entre un WACC del 7\u00a0% y del 12\u00a0%",
         ))
     else:
         factores.append(_f("sensibilidad_valoracion", "Sensibilidad de la valoración al WACC",

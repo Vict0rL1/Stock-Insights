@@ -141,6 +141,49 @@ def _formatos_sueltos() -> list[str]:
     return malos
 
 
+# Un literal con «15 %» y espacio normal se parte al final de una línea: en
+# móvil salía «acotados al 15» / «% de crecimiento» (revisión del 2.12). La
+# cifra y su «%» van con espacio duro, como los escribe `fmt_pct`.
+LITERALES_CON_ESPACIO_NORMAL = {
+    ("cambios.py", "Crecimiento implícito (DCF inverso, 9 %)"):
+        "entra en el hash de la versión de los umbrales de «Qué cambió»: otro espacio sería otra versión",
+}
+
+
+def _porcentajes_con_espacio_normal(raiz: Path = APP) -> list[str]:
+    malos = []
+    for f in sorted(raiz.rglob("*.py")):
+        arbol = ast.parse(f.read_text())
+        docstrings = {
+            id(n.body[0].value) for n in ast.walk(arbol)
+            if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)
+        }
+        for n in ast.walk(arbol):
+            if (isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docstrings
+                    and re.search(r"\d %", n.value) and (f.name, n.value) not in LITERALES_CON_ESPACIO_NORMAL):
+                malos.append(f"{f.relative_to(raiz.parent)}:{n.lineno} «{n.value[:60]}»")
+    return malos
+
+
+def test_ningun_literal_separa_la_cifra_de_su_porcentaje():
+    malos = _porcentajes_con_espacio_normal()
+    assert not malos, "Cifra y «%» con espacio normal (usa \\u00a0 o fmt_pct):\n  " + "\n  ".join(malos)
+
+
+def test_la_guarda_del_espacio_duro_ve_los_literales_y_no_los_docstrings(tmp_path):
+    paquete = tmp_path / "app"
+    paquete.mkdir()
+    (paquete / "malo.py").write_text(
+        '"""Un 5 % en el docstring no se enseña."""\n'
+        'A = "al 15 % de"\n'
+        'B = "al 15\\u00a0% de"\n'
+        'def f(x):\n'
+        '    return f"{x} y un 3 % más"\n'
+    )
+    assert [m.split(" ", 1)[0] for m in _porcentajes_con_espacio_normal(paquete)] == ["app/malo.py:2", "app/malo.py:5"]
+
+
 def test_ningun_modulo_formatea_cifras_por_su_cuenta():
     malos = _formatos_sueltos()
     assert not malos, (

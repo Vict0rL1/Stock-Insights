@@ -434,6 +434,48 @@ salvo Calidad (relleno de columnas). Guardas: 5 tests del cajón en `Layout.test
 el código anterior) y las dos guardas de las capturas. Queda como estaba el aviso de Vite por el
 tamaño del paquete (~717 kB): es el 2.14 (rendimiento).
 
+### Revisión del 2.12 y de A1–A6 (workflow, 23 oct)
+
+Dos pistas en paralelo: las 35 capturas a 390 px, con un verificador por hallazgo (44
+confirmados, muchos repetidos entre pantallas; 32 refutados como estéticos), y una revisión
+adversarial del código de A1–A6 (abajo, cuando se verifique).
+
+**Visual, arreglado.** La herramienta de capturas: a 390 px una página de más de 4000 px salía
+recortada a la primera pantalla (`clip` sin `fullPage`), y tras pulsar un botón la cabecera fija
+se pintaba a media página. Tablas que se apretaban o escondían columnas (Historial, Calibración
+de expectativas, Características de la cartera, Calidad, Fundamentales, comparador de ETFs):
+`lib/tablas.ts` (`MARCO_TABLA`, `TABLA_COMPACTA`, `COLUMNA_FIJA`), una sola forma de hacerlo; en
+Fundamentales y ETFs, sin `min-w` y con el rótulo fijo, de modo que las cifras se ven o asoman.
+Rótulo y motivo pegados en «Valoración frente a su propia historia» («P/ESolo…»); fecha ISO en
+Catalizadores (`fmtFecha`); la hora del Historial sin zona junto a un origen en UTC; los
+selectores de Hoy saltan de línea en vez de recortar la opción activa; el «·» huérfano en «Lo que
+NO comprar»; el «quitar» de Vigilancia tapaba el detalle (ahora va en el flujo); el porcentaje
+del P&L de Portafolio se salía de su tarjeta; el botón de IA de Noticias dejaba media tarjeta al
+titular; «Qué cambió» sin espacio antes de «(umbrales…)» y con el hash entero, valores que
+perdían la alineación al bajar de línea y el botón de IA activo con el resumen ya a la vista
+(cada toque gastaba API); los KPI de concentración en dos columnas; contraste de los títulos
+del menú (1,9:1 → `slate-400`) y el significado del tachado de la barra de APIs a la vista; el
+marcador de las filas desplegables de Calidad; la cabecera móvil centrada. Espacio duro: 18
+literales del backend con «15 %» y espacio normal (en móvil, «15» / «% de crecimiento»), con
+guarda AST en `test_formato.py`; el único exento, la etiqueta que entra en el hash de los
+umbrales de «Qué cambió» (otro espacio sería otra versión). «ratio corriente ≥ 1.2» con punto
+decimal en los presets del screener; «Desempleo EE. UU.» sin partir.
+
+**Hermano serio, arreglado.** El formulario de Vigilancia lo pedía todo en % y dividía entre 100:
+«ratio corriente < 1» se guardaba como 0,01 y el punto no saltaba nunca, un control de riesgo
+desactivado en silencio. El catálogo dice ahora la `unidad` de cada métrica (`pct` o `veces`), el
+formulario y la serie de la tarjeta la usan, el detalle sale en la unidad («21,0 % … 18,0 %», no
+«0,210 … 0,180») y un umbral en `veces` por debajo de `UMBRAL_VECES_SOSPECHOSO` (0,1) lleva un
+aviso para que se rehaga (exento del golden: solo decide un texto). Dos tests ajustados a la cifra
+nueva (`test_gramatica`, `test_thesis_watch`: la frase es la misma); el de opciones busca el «%»
+con espacio duro. El recorte «Ideas nuevas al 0 %» se reconoce por una constante
+(`sizing.RECORTE_SIN_HUECO_DE_RIESGO`) y no buscando el texto «0 %» suelto. Golden idéntico.
+
+**Visual, no se toca (registrado).** El texto de la IA se pinta con el Markdown sin interpretar
+(`BloqueIA`; los prompts piden Markdown): pide un renderizador seguro o texto plano, fuera del
+2.12. Las 11 pestañas de la ficha en 5 filas en móvil: es el 2.6 (6 + «Más ▾»). En el gráfico,
+el primer rótulo del eje de tiempo cortado y los rótulos de 70/30 del RSI sobre los ticks.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

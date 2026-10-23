@@ -804,6 +804,14 @@ umbral de margen es enorme y no se ve.
 vigilar el P/E sería vigilar la cotización, y para eso están las alertas de
 precio. Un punto de invalidación habla de la empresa.
 
+**Cada métrica en su unidad.** El catálogo (`GET /api/theses/vigilancia/metricas`) dice
+la `unidad` de cada una: los márgenes, el ROE, el ROIC y los crecimientos son `pct` (se
+escriben en %, «18», y se guardan como fracción, 0,18); deuda/capital, ratio corriente y
+cobertura de intereses son `veces` (un ratio corriente de 1,2 se escribe y se guarda 1,2).
+Antes el formulario lo pedía todo en % y dividía entre 100: «ratio corriente < 1» se
+guardaba como 0,01 y el punto no saltaba nunca. Un umbral en `veces` por debajo de 0,1
+lleva un aviso que lo dice.
+
 ### Que un punto salte NO es una señal de venta
 
 Es que tú, en un momento en que pensabas con más calma que ahora, dijiste que

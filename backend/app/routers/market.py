@@ -56,7 +56,7 @@ YIELD_TENORS = [
 ]
 
 MACRO_SERIES = [
-    ("UNRATE", "Desempleo EE. UU.", "pct"),
+    ("UNRATE", "Desempleo EE.\u00a0UU.", "pct"),  # sin partir la abreviatura (ítem 2.12)
     ("FEDFUNDS", "Tasa Fed (efectiva)", "pct"),
     ("CPIAUCSL", "Inflación (CPI, interanual)", "yoy"),
 ]

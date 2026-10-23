@@ -70,8 +70,10 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       <div className="mt-3 space-y-4">
         {Object.entries(report.valuation.multiples).map(([key, stats]) => (
           <div key={key}>
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
+            {/* Con `gap` y el rótulo sin encoger: a 390 px el motivo ocupaba todo
+                el ancho y se leía «P/ESolo 10 observaciones…» (ítem 2.12). */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+              <span className="shrink-0 font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
               {stats.available ? (
                 <span className="tabular-nums text-slate-600">
                   actual{' '}
@@ -370,7 +372,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
           ) : (
             <ul className="mt-2 space-y-1 text-sm">
               {report.catalysts.map((c, i) => (
-                <li key={i} className="flex justify-between border-b border-slate-100 py-1">
+                <li key={i} className="flex justify-between gap-3 border-b border-slate-100 py-1">
                   <span className="text-slate-700">
                     {c.url ? (
                       <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
@@ -381,7 +383,8 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                     )}
                     <span className="ml-2 text-xs text-slate-400">{c.detail}</span>
                   </span>
-                  <span className="shrink-0 text-xs text-slate-400">{c.when ?? '—'}</span>
+                  {/* Con `fmtFecha`: salía «2026-10-06» en crudo. */}
+                  <span className="shrink-0 text-xs text-slate-400">{fmtFecha(c.when)}</span>
                 </li>
               ))}
             </ul>

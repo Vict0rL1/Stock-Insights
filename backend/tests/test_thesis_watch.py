@@ -47,7 +47,8 @@ def test_un_umbral_cruzado_salta_con_el_valor_y_el_umbral():
     assert r["salta"] is True
     assert r["valor"] == 0.16
     assert r["umbral"] == 0.18
-    assert "0,160" in r["detalle"]
+    # En su unidad: un margen en % (antes «0,160»; revisión del 2.12).
+    assert "16,0\u00a0%" in r["detalle"]
     assert r["ejercicio"] == 2025
 
 
@@ -294,3 +295,34 @@ def test_noticias_incompletas_no_prueban_que_ningun_titular_lo_diga():
     assert nada["medible"] is False and "copia guardada hace 3 h" in nada["motivo"]
     hay = evaluar_noticia({"palabras": ["recall"]}, [_noticia("Big recall announced")], incompletas="copia guardada hace 3 h")
     assert hay["medible"] is True and hay["salta"] is True
+
+
+# --- Revisión del 2.12: cada métrica en su unidad --------------------------
+#
+# El formulario pedía todo en % y dividía entre 100: «ratio corriente < 1» se
+# guardaba como 0,01 y el punto no saltaba nunca. Ahora el catálogo dice la
+# unidad, y un umbral en «veces» con la conversión vieja se avisa.
+
+
+def _ratio(metrica, op, umbral, valor):
+    return evaluar({"id": 1, "kind": "metrica", "descripcion": "x", "activo": True,
+                    "config": {"metrica": metrica, "op": op, "umbral": umbral}},
+                   {"ratios": [{"fiscal_year": 2025, metrica: valor}]})
+
+
+def test_un_ratio_se_lee_en_veces_y_no_en_porcentaje():
+    r = _ratio("current_ratio", "lt", 1.0, 0.8)
+    assert r["salta"] is True
+    assert r["detalle"].startswith("Ratio corriente = 0,80; el punto salta si ") and "%" not in r["detalle"]
+    assert "aviso" not in r
+
+
+def test_un_umbral_en_veces_con_la_conversion_vieja_se_avisa():
+    # 1 escrito en el formulario viejo se guardó como 0,01: no salta y se dice.
+    r = _ratio("current_ratio", "lt", 0.01, 0.8)
+    assert r["salta"] is False
+    assert "sospechosamente bajo" in r["aviso"] and "Si querías decir 1," in r["aviso"]
+
+
+def test_un_margen_bajo_en_porcentaje_no_es_sospechoso():
+    assert "aviso" not in _ratio("operating_margin", "lt", 0.05, 0.21)

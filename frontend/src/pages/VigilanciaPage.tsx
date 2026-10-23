@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api, ApiError } from '../api/client'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DecisionRegistrada,
   DisparadorVigilado,
   MetricasVigilables,
+  UnidadMetrica,
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
@@ -27,7 +28,9 @@ const TONO_ACCION: Record<string, string> = {
  *  Tres estados, y el tercero importa tanto como los otros: cruzado, no
  *  cruzado, y NO SE PUDO MEDIR. Pintar el tercero como el segundo convertiría
  *  un fallo de datos en tranquilidad. */
-function Disparador({ d }: { d: DisparadorVigilado }) {
+function Disparador({ d, accion, unidad }: { d: DisparadorVigilado; accion?: ReactNode; unidad?: UnidadMetrica }) {
+  // La serie, en la unidad de la métrica: un margen en %, un ratio en veces.
+  const cifra = (v: number) => (unidad === 'pct' ? fmtPct(v, 1) : unidad === 'veces' ? fmtNum(v, 2) : fmtNum(v, 3))
   const estado = !d.medible ? 'sin_medir' : d.salta ? 'salta' : 'ok'
   const borde =
     estado === 'salta'
@@ -66,7 +69,7 @@ function Disparador({ d }: { d: DisparadorVigilado }) {
 
       {d.serie && d.serie.length > 1 && (
         <p className="mt-1 text-[11px] tabular-nums text-slate-500">
-          Últimos ejercicios: {d.serie.map((v) => fmtNum(v, 3)).join(' → ')}
+          Últimos ejercicios: {d.serie.map(cifra).join(' → ')}
           {d.tendencia && (
             <span
               className={
@@ -103,6 +106,7 @@ function Disparador({ d }: { d: DisparadorVigilado }) {
       {d.aviso && (
         <p className="mt-2 text-[11px] leading-relaxed text-amber-800">{d.aviso}</p>
       )}
+      {accion && <div className="mt-1 flex justify-end">{accion}</div>}
     </li>
   )
 }
@@ -111,10 +115,12 @@ function TarjetaTesis({
   t,
   onBorrar,
   onAñadir,
+  unidadDe,
 }: {
   t: VigilanciaTesis
   onBorrar: (id: number) => void
   onAñadir: (thesisId: number) => void
+  unidadDe: (clave: unknown) => UnidadMetrica | undefined
 }) {
   const v = t.vigilancia
   return (
@@ -145,16 +151,23 @@ function TarjetaTesis({
       {v.total > 0 ? (
         <ul className="mt-3 space-y-2">
           {v.disparadores.map((d) => (
-            <div key={d.id} className="relative">
-              <Disparador d={d} />
-              <button
-                onClick={() => onBorrar(d.id)}
-                className="absolute right-2 top-9 text-[10px] text-slate-400 hover:text-red-600"
-                title="Quitar este punto"
-              >
-                quitar
-              </button>
-            </div>
+            // «quitar» va en el flujo de la tarjeta: con `absolute`, a 390 px
+            // caía encima del detalle y tapaba «por» en «…si cae por debajo de
+            // 0,180» (ítem 2.12).
+            <Disparador
+              key={d.id}
+              d={d}
+              unidad={unidadDe(d.config.metrica)}
+              accion={
+                <button
+                  onClick={() => onBorrar(d.id)}
+                  className="text-[10px] text-slate-400 hover:text-red-600"
+                  title="Quitar este punto"
+                >
+                  quitar
+                </button>
+              }
+            />
           ))}
         </ul>
       ) : null}
@@ -185,6 +198,10 @@ function FormularioDisparador({
 
   const opciones =
     kind === 'crecimiento' ? (metricas?.crecimientos ?? []) : (metricas?.metricas ?? [])
+  // Solo lo que es un porcentaje se divide entre 100. Antes se dividía todo, y
+  // «ratio corriente < 1» se guardaba como 0,01: el punto no saltaba nunca
+  // (revisión del 2.12). Sin catálogo con unidad, se mantiene el % de siempre.
+  const enPct = (opciones.find((m) => m.clave === metrica)?.unidad ?? 'pct') === 'pct'
 
   const enviar = async () => {
     setError(null)
@@ -196,14 +213,18 @@ function FormularioDisparador({
     // un número también llega vacío.
     const u = umbral.trim() === '' ? null : Number(umbral)
     if (kind !== 'noticia' && (u === null || !Number.isFinite(u))) {
-      setError('Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.')
+      setError(
+        enPct
+          ? 'Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0 %.'
+          : 'Escribe el umbral como número (p. ej. 1,5): vacío no es 0.',
+      )
       return
     }
     try {
       const config =
         kind === 'noticia'
           ? { palabras: palabras.split(',').map((p) => p.trim()).filter(Boolean) }
-          : { metrica, op, umbral: (u as number) / 100 }
+          : { metrica, op, umbral: enPct ? (u as number) / 100 : (u as number) }
       await api.addTrigger(thesisId, { kind, descripcion, config })
       onHecho()
     } catch (e) {
@@ -293,7 +314,7 @@ function FormularioDisparador({
             onChange={(e) => setUmbral(e.target.value)}
             className="w-20 rounded-lg border border-sky-300 bg-white px-2 py-1.5 text-sm tabular-nums"
           />
-          <span className="text-sm text-sky-800">%</span>
+          <span className="text-sm text-sky-800">{enPct ? '%' : 'veces'}</span>
         </div>
       )}
 
@@ -396,6 +417,8 @@ export function VigilanciaPage() {
   const sin = useDato(() => api.sinTesis(), 'sin-tesis')
   const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
   const metricas = useDato(() => api.metricasVigilables(), 'metricas')
+  const catalogo = [...(metricas.datos?.metricas ?? []), ...(metricas.datos?.crecimientos ?? [])]
+  const unidadDe = (clave: unknown) => catalogo.find((m) => m.clave === clave)?.unidad
   const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
   const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
   const [error, setError] = useState<string | null>(null)
@@ -503,7 +526,7 @@ export function VigilanciaPage() {
           ) : (
             <>
               {v.tesis.map((t) => (
-                <TarjetaTesis key={t.thesis_id} t={t} onAñadir={setAñadiendoA} onBorrar={quitar} />
+                <TarjetaTesis key={t.thesis_id} t={t} onAñadir={setAñadiendoA} onBorrar={quitar} unidadDe={unidadDe} />
               ))}
             </>
           )

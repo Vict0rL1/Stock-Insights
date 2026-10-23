@@ -7,6 +7,7 @@ import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from './QueCambioSection'
+import { MARCO_TABLA, TABLA_COMPACTA } from '../../lib/tablas'
 
 function Bloque({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -196,27 +197,29 @@ export function HistorialSection({ symbol }: { symbol: string }) {
             mensajeVacio="Todavía no hay decisiones congeladas de esta empresa. Abre «Qué cambió» para crear la primera."
           >
             {(lista) => (
-              <table className="w-full text-xs">
-                <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-                  <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
-                </thead>
-                <tbody>
-                  {lista.map((f) => (
-                    <tr key={f.id} className={`border-t border-slate-100 ${replay?.id === f.id ? 'bg-slate-50' : ''}`}>
-                      <td className="py-1 text-slate-700">{fmtFecha(f.creado_en, { hora: true })}</td>
-                      <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
-                      <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
-                      <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
-                      <td className="text-right tabular-nums">{fmtNum(f.score, 2)}</td>
-                      <td className="text-right">
-                        <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
-                          Replay
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className={MARCO_TABLA}>
+                <table className={`${TABLA_COMPACTA} text-xs`}>
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {lista.map((f) => (
+                      <tr key={f.id} className={`border-t border-slate-100 ${replay?.id === f.id ? 'bg-slate-50' : ''}`}>
+                        <td className="py-1 text-slate-700">{fmtFecha(f.creado_en, { hora: true, zona: 'UTC' })}</td>
+                        <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
+                        <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
+                        <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
+                        <td className="text-right tabular-nums">{fmtNum(f.score, 2)}</td>
+                        <td className="text-right">
+                          <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
+                            Replay
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </BloqueDatos>
         </div>

@@ -47,7 +47,9 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
 
   return (
     <li className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* En móvil, el botón de IA debajo: a la derecha con `shrink-0`, dejaba al
+          titular y al resumen la mitad de la tarjeta (ítem 2.12). */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <a
             href={item.url}
@@ -70,7 +72,7 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
             onClick={interpret}
             disabled={busy}
             title="Llama al API de Claude (una vez por noticia; luego queda en caché)"
-            className="shrink-0"
+            className="shrink-0 self-start"
           >
             {busy ? 'Interpretando…' : '¿Por qué importa? (IA)'}
           </BotonIA>

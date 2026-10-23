@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 
 from app import datos
+from app.analysis.sizing import RECORTE_SIN_HUECO_DE_RIESGO
 from app.etiquetas import etiqueta
 from app.formato import fmt_pct, plural
 
@@ -198,14 +199,15 @@ def evaluar(
         # del dato.
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": None}, "veredicto": {
             "accion": INDETERMINADO,
-            "motivo": ("Sin efectivo anotado, la cartera se mide como invertida al 100 % y así la idea no cabe. "
+            "motivo": ("Sin efectivo anotado, la cartera se mide como invertida al 100\u00a0% y así la idea no cabe. "
                        "Anota tu efectivo para saber si de verdad no cabe."),
         }}
     if tamano_maximo <= 0:
-        porque = " ".join(r for r in recortes or [] if "0 %" in r or candidata.get("symbol", "") in r)
+        porque = " ".join(r for r in recortes or []
+                          if r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) or candidata.get("symbol", "") in r)
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": round(efectivo, 4)}, "veredicto": {
             "accion": NO_TRADE,
-            "motivo": "No cabe: los límites de la cartera le dejan 0 %. " + (
+            "motivo": "No cabe: los límites de la cartera le dejan 0\u00a0%. " + (
                 porque or "Ninguno de los límites (posición, sector, correlación, volatilidad) deja hueco."),
         }}
 

@@ -5,6 +5,7 @@ import { fmtCompacto, fmtNum, fmtPct } from '../../lib/formato'
 import { Ausencia, ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
+import { COLUMNA_FIJA, MARCO_TABLA } from '../../lib/tablas'
 
 const METRIC_ROWS: { key: string; label: string; kind: 'big' | 'ratio' | 'pct' }[] = [
   { key: 'revenue', label: 'Ingresos', kind: 'big' },
@@ -95,13 +96,17 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
           <b className="tabular-nums">{fmtPct(data.growth.fcf_cagr)}</b>
         </span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+      {/* Sin `min-w-[640px]`: con tres columnas, a 390 px el rótulo se quedaba
+          con todo el ancho y las cifras fuera de la vista, sin pista de que se
+          pudiera desplazar (ítem 2.12). Ahora la tabla cabe si puede; si no, se
+          desplaza con el rótulo fijo a la izquierda. */}
+      <div className={MARCO_TABLA}>
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-              <th className="py-1 pr-2 font-normal">Métrica</th>
+              <th className={`${COLUMNA_FIJA} py-1 pr-2 font-normal`}>Métrica</th>
               {merged.map((p) => (
-                <th key={p.fiscal_year} className="px-2 py-1 text-right font-normal">
+                <th key={p.fiscal_year} className="whitespace-nowrap px-2 py-1 text-right font-normal">
                   {p.fiscal_year}
                 </th>
               ))}
@@ -110,11 +115,11 @@ function EstadosFinancieros({ data, symbol }: { data: Financials; symbol: string
           <tbody>
             {METRIC_ROWS.map(({ key, label, kind }) => (
               <tr key={key} className="border-b border-slate-100">
-                <td className="py-1.5 pr-2 text-slate-500">{label}</td>
+                <td className={`${COLUMNA_FIJA} py-1.5 pr-2 text-slate-500`}>{label}</td>
                 {merged.map((p) => (
                   <td
                     key={p.fiscal_year}
-                    className="px-2 py-1.5 text-right tabular-nums text-slate-800"
+                    className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-slate-800"
                   >
                     {fmtCell(p[key] as number | null | undefined, kind)}
                   </td>

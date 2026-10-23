@@ -81,7 +81,7 @@
      },
      "retrieved_at": "2026-08-06"
     },
-    "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
+    "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
@@ -2541,7 +2541,7 @@
      },
      "retrieved_at": "2026-08-06"
     },
-    "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
+    "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
     "fetched_now": 120,
     "instantaneas": {
      "error": null,

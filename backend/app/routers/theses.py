@@ -24,6 +24,7 @@ from app.analysis.thesis_watch import (
     coherencia,
     copia_vieja,
     instantanea,
+    unidad_de,
     vigilar,
 )
 from app.analysis.track_record import (
@@ -366,9 +367,11 @@ def _serializar_disparador(t: ThesisTrigger) -> dict:
 def metricas_vigilables():
     """Qué se puede vigilar. Solo lo que sale de estados financieros."""
     return {
-        "metricas": [{"clave": k, "etiqueta": v[0], "alto_mejor": v[1]}
+        # `unidad`: «pct» se escribe en % y se guarda como fracción; «veces», tal
+        # cual (un ratio corriente de 1,2 es 1,2, no un 1,2 %).
+        "metricas": [{"clave": k, "etiqueta": v[0], "alto_mejor": v[1], "unidad": unidad_de(k)}
                      for k, v in METRICAS.items()],
-        "crecimientos": [{"clave": k, "etiqueta": v} for k, v in CRECIMIENTOS.items()],
+        "crecimientos": [{"clave": k, "etiqueta": v, "unidad": unidad_de(k)} for k, v in CRECIMIENTOS.items()],
         "operadores": [{"clave": k, "etiqueta": v[0]} for k, v in OPERADORES.items()],
         "nota": (
             "No se vigilan múltiplos ni precios: vigilar el P/E sería vigilar la "

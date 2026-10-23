@@ -1220,7 +1220,7 @@ def _today(
             "predicción: 'Comprar' significa que la empresa puntúa mejor que "
             "sus comparables de sector y que el precio acompaña, no que vaya a "
             "subir. " + _frase_validacion(reglas) + " El tamaño sugerido asume "
-            "arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación."
+            "arriesgar un 1\u00a0% de tu cartera por operación; ajústalo a tu situación."
         ),
     }
 

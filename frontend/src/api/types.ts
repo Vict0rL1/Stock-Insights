@@ -1613,9 +1613,12 @@ export interface VigilanciaResponse {
   aviso_sin_disparadores: string | null
 }
 
+/** «pct»: se escribe en % y se guarda como fracción; «veces»: un ratio, tal cual. */
+export type UnidadMetrica = 'pct' | 'veces'
+
 export interface MetricasVigilables {
-  metricas: { clave: string; etiqueta: string; alto_mejor: boolean }[]
-  crecimientos: { clave: string; etiqueta: string }[]
+  metricas: { clave: string; etiqueta: string; alto_mejor: boolean; unidad?: UnidadMetrica }[]
+  crecimientos: { clave: string; etiqueta: string; unidad?: UnidadMetrica }[]
   operadores: { clave: string; etiqueta: string }[]
   nota: string
 }

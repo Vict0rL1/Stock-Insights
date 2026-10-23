@@ -49,6 +49,10 @@ MAX_POR_SECTOR_PCT = 25.0
 MAX_POR_CLUSTER_PCT = 25.0      # lo que se mueve junto cuenta como uno
 UMBRAL_CORRELACION = 0.70       # a partir de aquí, dos posiciones son una
 OBJETIVO_VOL_ANUAL_PCT = 12.0   # volatilidad que se busca para la cartera
+# El principio del recorte que deja TODAS las ideas a cero por la volatilidad del
+# libro. El coste de oportunidad lo busca para explicar por qué una idea no cabe;
+# antes buscaba el texto «0 %» suelto, que se rompía con solo cambiar el espacio.
+RECORTE_SIN_HUECO_DE_RIESGO = "Ideas nuevas al 0\u00a0%"
 SESIONES_ANO = 252
 
 # Volatilidad que se SUPONE cuando no se pudo medir. Está por encima de la
@@ -462,7 +466,7 @@ def dimensionar(
         if vol_solo_libro and vol_solo_libro * 100 >= objetivo_vol_pct:
             escala = 0.0
             recortes.append(
-                f"Ideas nuevas al 0 %: la cartera que YA tienes estima un "
+                f"{RECORTE_SIN_HUECO_DE_RIESGO}: la cartera que YA tienes estima un "
                 f"{fmt_pct(vol_solo_libro)} de volatilidad, por encima del "
                 f"objetivo ({fmt_pct(objetivo_vol_pct, en_puntos=True, ceros=False)}). No es que las ideas sean malas "
                 "— es que no cabe más riesgo. Bajar del objetivo pasa por soltar "
@@ -551,8 +555,8 @@ def dimensionar(
         "nota": (
             "El tamaño se decide sobre la cartera entera, no idea por idea: la "
             "misma empresa merece un peso distinto según qué más tengas. Los "
-            "topes cuentan lo que YA tienes — con un 20 % en tecnología, una "
-            "idea nueva del sector solo puede aspirar al 5 % que queda — y los "
+            "topes cuentan lo que YA tienes — con un 20\u00a0% en tecnología, una "
+            "idea nueva del sector solo puede aspirar al 5\u00a0% que queda — y los "
             "pesos que salen aquí son lo que se AÑADE, no el peso final. La "
             "volatilidad solo se escala hacia ABAJO: escalar hacia arriba es "
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "

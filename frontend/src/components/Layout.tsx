@@ -41,8 +41,10 @@ const NAV_GROUPS: { title: string | null; items: { to: string; label: string }[]
  *  <img>: así hereda el color del tema y no cuesta una petición. */
 function Marca({ lema = true }: { lema?: boolean }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <svg viewBox="0 0 32 32" aria-hidden="true" className="mt-0.5 h-7 w-7 shrink-0 rounded-md bg-slate-900">
+    // Sin lema (cabecera de móvil), centrado: arriba, el nombre quedaba 7 px
+    // por encima del centro del logo y del botón «Menú».
+    <div className={`flex gap-2.5 ${lema ? 'items-start' : 'items-center'}`}>
+      <svg viewBox="0 0 32 32" aria-hidden="true" className={`h-7 w-7 shrink-0 rounded-md bg-slate-900 ${lema ? 'mt-0.5' : ''}`}>
         <polyline
           points="5,22 10,17 14,19 19,11 23,14 27,7"
           fill="none"
@@ -141,7 +143,8 @@ export function Layout() {
           {NAV_GROUPS.map((group, i) => (
             <div key={group.title ?? i} className="flex flex-col gap-0.5">
               {group.title && (
-                <div className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-slate-300">
+                // `slate-400`: con `slate-300`, 1,9:1 de contraste a 10 px.
+                <div className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-slate-400">
                   {group.title}
                 </div>
               )}

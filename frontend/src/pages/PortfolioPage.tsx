@@ -344,9 +344,12 @@ function Pnl({ value, pct, moneda = null }: { value: number | null; pct: number 
   if (value === null) return <span className="text-slate-400">—</span>
   const up = value >= 0
   return (
-    <span className={`tabular-nums font-medium ${up ? 'text-emerald-600' : 'text-red-600'}`}>
-      {fmtDinero(value, moneda, 2, { signo: true })}
-      {pct !== null && <span className="ml-1 text-xs">({fmtPct(pct)})</span>}
+    // Con `flex-wrap`, el porcentaje baja de línea si no cabe: entre el importe y
+    // «(9,0 %)» no había por dónde partir, y a 390 px el porcentaje se salía de su
+    // tarjeta y lo tapaba la de al lado (ítem 2.12).
+    <span className={`inline-flex flex-wrap items-baseline gap-x-1 tabular-nums font-medium ${up ? 'text-emerald-600' : 'text-red-600'}`}>
+      <span>{fmtDinero(value, moneda, 2, { signo: true })}</span>
+      {pct !== null && <span className="text-xs">({fmtPct(pct)})</span>}
     </span>
   )
 }
@@ -510,7 +513,7 @@ function PortfolioTab() {
           const monedaDe = (m: string | null | undefined) => (conCodigo ? (m ?? null) : null)
           return (
             <>
-              <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 [&>div]:min-w-0">
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="text-xs text-slate-400">Invertido</div>
                   <div className="text-xl font-semibold tabular-nums">

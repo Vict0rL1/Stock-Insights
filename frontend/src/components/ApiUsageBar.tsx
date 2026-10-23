@@ -56,7 +56,9 @@ export function ApiUsageBar() {
       className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400"
       title={errorUso && usage.length ? `Últimas cifras conocidas: la consulta del uso falló (${errorUso}).` : undefined}
     >
-      <span className="w-full uppercase tracking-wider text-slate-300">APIs</span>
+      {/* `slate-400`, no `slate-300`: a 10 px daba un contraste de 1,9:1 y en el
+          cajón de móvil apenas se leía (revisión del 2.12). */}
+      <span className="w-full uppercase tracking-wider text-slate-400">APIs</span>
       {usage.length === 0 && errorUso && (
         <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={errorUso}>
           uso desconocido: no se pudo consultar
@@ -88,6 +90,11 @@ export function ApiUsageBar() {
           {u.provider} {u.remaining}/{u.limit}
         </span>
       ))}
+      {/* Qué significa el tachado, a la vista: solo estaba en el `title`, y en
+          una pantalla táctil no hay `hover` (revisión del 2.12). */}
+      {usage.some((u) => !u.configured) && (
+        <span className="w-full text-slate-400">Tachado: sin API key en .env.</span>
+      )}
       {llm && (
         <span
           title={

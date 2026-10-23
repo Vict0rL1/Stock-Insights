@@ -260,7 +260,7 @@ def señales_de_opciones(
             "nota": (
                 f"{base['n']} {plural(base['n'], 'lectura guardada', 'lecturas guardadas')} desde {base['desde']}. Los juicios "
                 "de «alto» o «inusual» se hacen contra esta historia, no contra un "
-                "umbral universal: un 40 % de IV es tranquilidad en una "
+                "umbral universal: un 40\u00a0% de IV es tranquilidad en una "
                 "biotecnológica y pánico en una eléctrica."
                 if base["n"]
                 else "Primera lectura de esta empresa. Los percentiles aparecerán "

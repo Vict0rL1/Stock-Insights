@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_antiguedad, fmt_num, plural
+from app.formato import fmt_antiguedad, fmt_num, fmt_pct, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -58,6 +58,22 @@ CRECIMIENTOS = {
     "eps_cagr": "Crecimiento del beneficio por acción (CAGR)",
     "fcf_cagr": "Crecimiento del flujo de caja libre (CAGR)",
 }
+
+# Las que son una fracción y se leen en %: un margen de 0,21 es un 21 %. Las demás
+# (deuda/capital, ratio corriente, cobertura de intereses) son «veces»: un ratio
+# corriente de 1,2 es 1,2. Antes no se distinguía: el formulario pedía todo en %
+# y dividía entre 100, así que «ratio corriente < 1» se guardaba como 0,01 y el
+# punto no saltaba nunca; y el detalle escribía «0,210 … por debajo de 0,180»
+# junto al «< 18 %» del título (revisión del 2.12).
+EN_PORCENTAJE = frozenset({"operating_margin", "net_margin", "gross_margin", "fcf_margin", "roe", "roic",
+                           *CRECIMIENTOS})
+# Por debajo de esto, un umbral en «veces» huele a la conversión vieja (1 → 0,01).
+UMBRAL_VECES_SOSPECHOSO = 0.1
+
+
+def unidad_de(clave: str | None) -> str:
+    """«pct» si la métrica se lee en porcentaje; «veces» si es un ratio."""
+    return "pct" if clave in EN_PORCENTAJE else "veces"
 
 # Ventana de noticias que se mira. Más atrás sería repetir avisos ya vistos.
 DIAS_NOTICIAS = 14
@@ -101,16 +117,29 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
         }
     texto_op, prueba = OPERADORES[op]
     salta = prueba(valor, umbral)
-    return {
+    en_pct = unidad_de(config.get("metrica")) == "pct"
+
+    def cifra(v: float) -> str:
+        return fmt_pct(v, 1) if en_pct else fmt_num(v, 2)
+
+    resultado = {
         "salta": salta,
         "medible": True,
         "valor": round(valor, 4),
         "umbral": umbral,
         "detalle": (
-            f"{etiqueta} = {fmt_num(valor, 3)}; el punto salta si {texto_op} {fmt_num(umbral, 3)}."
+            f"{etiqueta} = {cifra(valor)}; el punto salta si {texto_op} {cifra(umbral)}."
             + ("" if salta else " Todavía no lo cruza.")
         ),
     }
+    if not en_pct and abs(umbral) < UMBRAL_VECES_SOSPECHOSO:
+        resultado["aviso"] = (
+            f"Un umbral de {fmt_num(umbral, 3, ceros=False)} veces es sospechosamente bajo: antes el "
+            "formulario guardaba también los ratios como porcentaje (escribir 1 guardaba 0,01) y así el "
+            f"punto no salta nunca. Si querías decir {fmt_num(umbral * 100, 2, ceros=False)}, quítalo y "
+            "créalo de nuevo."
+        )
+    return resultado
 
 
 def evaluar_metrica(config: dict, ratios: list[dict]) -> dict:

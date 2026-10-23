@@ -396,7 +396,7 @@ def valorar(
             {"valor": medido, "supuesto": False}
             if medido is not None
             else {"valor": CRECIMIENTO_SUPUESTO, "supuesto": True,
-                  "motivo": "sin crecimiento histórico de ingresos medible: supuesto del 3 %"}
+                  "motivo": "sin crecimiento histórico de ingresos medible: supuesto del 3\u00a0%"}
         )
         margen = (
             margen_implicito(

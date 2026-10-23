@@ -15,6 +15,7 @@ import type {
 import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useDato } from '../lib/useDato'
+import { MARCO_TABLA, TABLA_COMPACTA } from '../lib/tablas'
 
 /** Color de una celda de correlación.
  *
@@ -306,59 +307,61 @@ function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
 
   return (
     <>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
-            <th className="pb-1 font-medium">Característica</th>
-            <th className="pb-1 text-right font-medium">Tu cartera</th>
-            {c.con_referencia && (
-              <>
-                <th className="pb-1 text-right font-medium">Empresa típica</th>
-                <th className="pb-1 pl-3 font-medium">Inclinación</th>
-              </>
-            )}
-            <th className="pb-1 text-right font-medium">Cobertura</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {conDato.map((x) => (
-            <tr key={x.campo}>
-              <td className="py-1.5 text-slate-700">
-                {x.etiqueta}
-                <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-400">
-                  {etiqueta(x.familia)}
-                </span>
-              </td>
-              <td className="py-1.5 text-right font-medium tabular-nums text-slate-800">
-                {formatear(x.campo, x.valor as number)}
-              </td>
+      <div className={MARCO_TABLA}>
+        <table className={`${TABLA_COMPACTA} text-xs`}>
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="pb-1 font-medium">Característica</th>
+              <th className="pb-1 text-right font-medium">Tu cartera</th>
               {c.con_referencia && (
                 <>
-                  <td className="py-1.5 text-right tabular-nums text-slate-500">
-                    {x.referencia !== undefined ? formatear(x.campo, x.referencia) : '—'}
-                  </td>
-                  <td className="py-1.5 pl-3">
-                    {x.inclinacion && (
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          x.inclinacion === 'hacia'
-                            ? 'bg-sky-100 text-sky-800'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {x.inclinacion}
-                      </span>
-                    )}
-                  </td>
+                  <th className="pb-1 text-right font-medium">Empresa típica</th>
+                  <th className="pb-1 pl-3 font-medium">Inclinación</th>
                 </>
               )}
-              <td className="py-1.5 text-right tabular-nums text-slate-500">
-                {fmtPct(x.cobertura_pct, 0, { enPuntos: true })}
-              </td>
+              <th className="pb-1 text-right font-medium">Cobertura</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {conDato.map((x) => (
+              <tr key={x.campo}>
+                <td className="py-1.5 text-slate-700">
+                  {x.etiqueta}
+                  <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-400">
+                    {etiqueta(x.familia)}
+                  </span>
+                </td>
+                <td className="py-1.5 text-right font-medium tabular-nums text-slate-800">
+                  {formatear(x.campo, x.valor as number)}
+                </td>
+                {c.con_referencia && (
+                  <>
+                    <td className="py-1.5 text-right tabular-nums text-slate-500">
+                      {x.referencia !== undefined ? formatear(x.campo, x.referencia) : '—'}
+                    </td>
+                    <td className="py-1.5 pl-3">
+                      {x.inclinacion && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            x.inclinacion === 'hacia'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {x.inclinacion}
+                        </span>
+                      )}
+                    </td>
+                  </>
+                )}
+                <td className="py-1.5 text-right tabular-nums text-slate-500">
+                  {fmtPct(x.cobertura_pct, 0, { enPuntos: true })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <Aviso>
         {c.nota}
         {c.con_referencia && ` Universo: ${c.universo_empresas} empresas escaneadas.`}

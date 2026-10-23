@@ -253,7 +253,7 @@ def _dcf_defaults(periods: list[dict], quote: dict | None) -> dict | None:
         "shares_outstanding": shares,
         "current_price": (quote or {}).get("price"),
         "note": (
-            "Supuestos de partida derivados del histórico, acotados al 15 % de "
+            "Supuestos de partida derivados del histórico, acotados al 15\u00a0% de "
             "crecimiento. Edítalos en la pestaña Valoración: el resultado es muy "
             "sensible a la tasa de descuento y al crecimiento terminal."
         ),

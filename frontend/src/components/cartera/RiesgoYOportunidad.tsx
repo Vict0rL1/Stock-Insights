@@ -43,7 +43,9 @@ export function ContribucionAlRiesgoPanel() {
                     {fmtPct(c.cobertura_peso ?? null, 0)} del peso.
                   </p>
                   {c.concentracion && (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    // Dos columnas también en móvil (ítem 2.12): cabe de sobra, y
+                    // apiladas ocupaban 175 px para dos cifras.
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-lg bg-slate-50 p-3 text-xs">
                         <div className="text-[10px] uppercase tracking-wide text-slate-400">Top 3 por capital</div>
                         <div className="text-lg font-semibold tabular-nums text-slate-900">{fmtPct(c.concentracion.top3_capital.peso, 0)}</div>

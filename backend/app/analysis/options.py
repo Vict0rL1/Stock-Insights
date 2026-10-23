@@ -122,7 +122,7 @@ def limpiar(contratos: list[dict], hoy: date | None = None) -> tuple[list[dict],
             f"De {total} contratos se usan {len(limpios)}. Se descartan los que no "
             f"cruzan desde hace más de {MAX_DIAS_SIN_CRUZAR} días, los de horquilla "
             f"mayor del {fmt_pct(MAX_HORQUILLA, 0)} y los de IV fuera de "
-            f"[{fmt_pct(IV_MIN, 0)}, {fmt_pct(IV_MAX, 0)}]: un strike ilíquido con IV de 300 % "
+            f"[{fmt_pct(IV_MIN, 0)}, {fmt_pct(IV_MAX, 0)}]: un strike ilíquido con IV de 300\u00a0% "
             "arrastra cualquier media y parece señal."
         ),
     }

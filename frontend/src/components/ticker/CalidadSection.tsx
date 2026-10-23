@@ -4,6 +4,7 @@ import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
+import { TABLA_COMPACTA } from '../../lib/tablas'
 
 const ESTADO: Record<string, string> = {
   bueno: 'bg-emerald-100 text-emerald-800',
@@ -40,8 +41,11 @@ function Entrada({ nombre, e }: { nombre: string; e: Linaje }) {
 function Fila({ e }: { e: EvidenciaCalidad }) {
   const esFraccion = !['conversion_caja'].includes(e.categoria)
   return (
-    <details className="border-b border-slate-100 py-2 last:border-0">
+    <details className="group border-b border-slate-100 py-2 last:border-0">
+      {/* Con `display:flex` el `summary` pierde su triángulo, y en móvil no hay
+          `hover` que diga que la fila se despliega (revisión del 2.12). */}
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-2 text-xs">
+        <span aria-hidden="true" className="text-slate-400 transition-transform group-open:rotate-90">▸</span>
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ESTADO[e.estado]}`}>{e.estado.toUpperCase()}</span>
         <span className="font-medium text-slate-800">{etiqueta(e.categoria, { mayuscula: true })}</span>
         <span className="tabular-nums text-slate-600">
@@ -112,10 +116,8 @@ function Calidad({ datos }: { datos: CalidadBeneficios }) {
             (filas as Record<string, number | string | null>[]).length ? (
               <div key={titulo as string} className="mb-3 overflow-x-auto">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">{titulo as string}</div>
-                <table className="w-full text-right text-xs tabular-nums [&_td]:pl-3 [&_td:first-child]:pl-0 [&_th]:pl-3 [&_th:first-child]:pl-0">
-                  {/* Sin partir: la tabla ya se desplaza en su marco, y a 390 px
-                      «Días de cobro» salía palabra a palabra (ítem 2.12). */}
-                  <thead className="whitespace-nowrap text-[10px] text-slate-400">
+                <table className={`${TABLA_COMPACTA} text-right text-xs tabular-nums`}>
+                  <thead className="text-[10px] text-slate-400">
                     <tr>
                       <th className="text-left">Periodo</th>
                       <th>CFO/beneficio</th>

@@ -5,6 +5,7 @@ import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
+import { MARCO_TABLA, TABLA_COMPACTA } from '../../lib/tablas'
 
 // De dónde sale cada fuente. El nombre es su etiqueta (uno solo en toda la app);
 // esto solo añade la procedencia, que en la guidance es además la marca de IA.
@@ -242,21 +243,23 @@ function Expectativas({ symbol }: { symbol: string }) {
 function Calibracion({ cal }: { cal: CalibracionExpectativas }) {
   return (
     <>
-      <table className="w-full text-xs tabular-nums">
-        <thead className="text-[10px] text-slate-400"><tr><th className="text-left">Fuente</th><th className="text-right">n</th><th className="text-right">Error medio</th><th className="text-right">Sesgo</th><th className="text-right">Cerca</th><th className="text-right">Mejor prevista</th></tr></thead>
-        <tbody>
-          {Object.entries(cal.por_fuente).map(([f, c]) => (
-            <tr key={f} className="border-t border-slate-100">
-              <td className="text-left text-slate-700">{fuente(f)}{!c.total.suficiente && <span className="ml-1 text-amber-800">(muestra insuficiente)</span>}</td>
-              <td className="text-right">{c.total.n}</td>
-              <td className="text-right">{fmtPct(c.total.error_medio_abs ?? null, 1)}</td>
-              <td className="text-right">{fmtPct(c.total.sesgo ?? null, 1)}</td>
-              <td className="text-right">{fmtPct(c.total.cerca_pct ?? null, 0)}</td>
-              <td className="text-right">{etiqueta(c.mejor_prevista)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className={MARCO_TABLA}>
+        <table className={`${TABLA_COMPACTA} text-xs tabular-nums`}>
+          <thead className="text-[10px] text-slate-400"><tr><th className="text-left">Fuente</th><th className="text-right">n</th><th className="text-right">Error medio</th><th className="text-right">Sesgo</th><th className="text-right">Cerca</th><th className="text-right">Mejor prevista</th></tr></thead>
+          <tbody>
+            {Object.entries(cal.por_fuente).map(([f, c]) => (
+              <tr key={f} className="border-t border-slate-100">
+                <td className="text-left text-slate-700">{fuente(f)}{!c.total.suficiente && <span className="ml-1 text-amber-800">(muestra insuficiente)</span>}</td>
+                <td className="text-right">{c.total.n}</td>
+                <td className="text-right">{fmtPct(c.total.error_medio_abs ?? null, 1)}</td>
+                <td className="text-right">{fmtPct(c.total.sesgo ?? null, 1)}</td>
+                <td className="text-right">{fmtPct(c.total.cerca_pct ?? null, 0)}</td>
+                <td className="text-right">{etiqueta(c.mejor_prevista)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p className="mt-1 text-[10px] text-slate-400">{cal.nota} Sesgo positivo = lo real salió por encima de lo esperado.</p>
     </>
   )

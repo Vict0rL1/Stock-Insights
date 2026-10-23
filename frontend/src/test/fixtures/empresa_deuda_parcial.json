@@ -67,7 +67,7 @@
      "base_fcf": 200.0,
      "current_price": 104.0,
      "net_debt": 180.0,
-     "note": "Supuestos de partida derivados del histórico, acotados al 15 % de crecimiento. Edítalos en la pestaña Valoración: el resultado es muy sensible a la tasa de descuento y al crecimiento terminal.",
+     "note": "Supuestos de partida derivados del histórico, acotados al 15 % de crecimiento. Edítalos en la pestaña Valoración: el resultado es muy sensible a la tasa de descuento y al crecimiento terminal.",
      "scenarios": {
       "base": {
        "assumptions": {
@@ -734,7 +734,7 @@
         "id": "historico"
        },
        {
-        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
         "estado": "debil",
         "factor": "Sensibilidad de la valoración al WACC",
         "id": "sensibilidad_valoracion"
@@ -772,7 +772,7 @@
        "1 dato desconocido: deuda neta (parcial)",
        "último trimestre (2025-Q4) publicado hace 214 días",
        "2 ejercicios y 260 sesiones de precio",
-       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
        "reglas razonables pero no validadas"
       ],
       "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."
@@ -4304,7 +4304,7 @@
         "id": "historico"
        },
        {
-        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
         "estado": "debil",
         "factor": "Sensibilidad de la valoración al WACC",
         "id": "sensibilidad_valoracion"
@@ -4342,7 +4342,7 @@
        "1 dato desconocido: deuda neta (parcial)",
        "último trimestre (2025-Q4) publicado hace 214 días",
        "2 ejercicios y 260 sesiones de precio",
-       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
        "reglas razonables pero no validadas"
       ],
       "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."

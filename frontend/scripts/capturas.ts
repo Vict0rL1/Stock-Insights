@@ -181,10 +181,16 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
         // scroll, que no cuenta). Se fotografía igual, para verlo.
         const desborde = ancho.movil ? await p.evaluate(desbordeHorizontal) : null
         const partidos = ancho.movil ? await p.evaluate(palabraAPalabra) : []
+        // Arriba antes de fotografiar: tras pulsar un botón la página queda
+        // desplazada y la cabecera fija de móvil salía pintada a media página,
+        // tapando una fila. Y `fullPage` siempre: con `clip` solo, una página de
+        // más de ALTO_MAXIMO salía recortada a la primera pantalla (844 px a 390),
+        // y la lista de Hoy en móvil no llegaba a verse (revisión del 2.12).
+        await p.evaluate(() => window.scrollTo(0, 0))
         const alto = await p.evaluate(() => document.documentElement.scrollHeight)
         await p.screenshot({
           path: archivo,
-          fullPage: alto <= ALTO_MAXIMO,
+          fullPage: true,
           clip: alto > ALTO_MAXIMO ? { x: 0, y: 0, width: ancho.viewport.width, height: ALTO_MAXIMO } : undefined,
         })
         if (desborde) throw new Error(`desborda en horizontal: ${desborde}`)

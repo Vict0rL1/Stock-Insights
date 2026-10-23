@@ -37,7 +37,9 @@ function Cambio({ c }: { c: CambioMetrica }) {
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 py-1 text-xs last:border-0">
       <span className="text-slate-700">{c.etiqueta}</span>
-      <span className={`tabular-nums ${tono}`}>
+      {/* `ml-auto`: al bajar de línea (rótulo largo en móvil) el valor seguía a
+          la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
+      <span className={`ml-auto tabular-nums ${tono}`}>
         {fmtValor(c.antes, c.unidad)} → {fmtValor(c.ahora, c.unidad)}
         {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
@@ -291,13 +293,19 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
               <p className="text-[10px] text-slate-400">
                 {cambios.materiales} {plural(cambios.materiales, 'cambio material', 'cambios materiales')};{' '}
                 {cambios.irrelevantes} por debajo de su umbral no se {plural(cambios.irrelevantes, 'enseña', 'enseñan')}
-                (umbrales v{cambios.umbrales?.version}).
+                {/* Faltaba el espacio («enseñan(umbrales v…)») y el identificador iba
+                    entero; corto, como un commit, sigue sirviendo para cotejar. */}
+                {cambios.umbrales?.version ? ` (versión de los umbrales ${cambios.umbrales.version.slice(0, 7)})` : ''}.
               </p>
             )}
             <div>
-              <BotonIA onClick={pedirResumen} disabled={pidiendoIa}>
-                {pidiendoIa ? 'Resumiendo…' : 'Resumir este diff con IA (opcional, gasta API)'}
-              </BotonIA>
+              {/* Con el resumen ya a la vista, el botón se va, como en Noticias:
+                  cada toque volvía a llamar al modelo y a gastar API. */}
+              {!resumenIa && (
+                <BotonIA onClick={pedirResumen} disabled={pidiendoIa}>
+                  {pidiendoIa ? 'Resumiendo…' : 'Resumir este diff con IA (opcional, gasta API)'}
+                </BotonIA>
+              )}
               {errorIa && <p className="mt-2 text-xs text-red-700">No se pudo resumir con IA: {errorIa}</p>}
               {resumenIa && (
                 <BloqueIA className="mt-2" modelo={resumenIa.model} aviso={resumenIa.aviso}>

@@ -440,3 +440,14 @@ def test_con_todo_documentado_no_se_inventa_un_reproche(client):
     d = c.get("/api/theses/sin-tesis").json()
     assert d["posiciones_sin_tesis"] == []
     assert "Todas tus posiciones abiertas tienen una tesis escrita" in d["nota"]
+
+
+def test_el_catalogo_dice_en_que_unidad_se_escribe_cada_metrica(client):
+    # Revisión del 2.12: sin unidad, el formulario lo pedía todo en % y un ratio
+    # corriente de 1 se guardaba como 0,01.
+    c, _ = client()
+    m = c.get("/api/theses/vigilancia/metricas").json()
+    unidad = {x["clave"]: x["unidad"] for x in m["metricas"] + m["crecimientos"]}
+    assert unidad["operating_margin"] == "pct" and unidad["roe"] == "pct" and unidad["revenue_cagr"] == "pct"
+    assert unidad["current_ratio"] == "veces" and unidad["debt_to_equity"] == "veces"
+    assert unidad["interest_coverage"] == "veces"
