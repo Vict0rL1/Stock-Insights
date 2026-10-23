@@ -72,6 +72,11 @@ function Marca({ lema = true }: { lema?: boolean }) {
  * el contenido se partía palabra a palabra y tapaba los botones, hasta el
  * punto de que las capturas tenían que pulsar «a la fuerza» (auditoría del
  * 19 oct). Se cierra al navegar, con Escape y tocando fuera.
+ *
+ * Abierto, es modal de verdad: la cabecera y el contenido quedan `inert` (ni el
+ * tabulador ni un lector de pantalla llegan a lo que tapa el velo) y el cajón es
+ * un `dialog`. Antes Mayús+Tab salía a «Menú», debajo del velo, y tras los
+ * enlaces el foco pasaba a los botones de la pantalla tapada (revisión de A7).
  */
 export function Layout() {
   const [abierto, setAbierto] = useState(false)
@@ -79,6 +84,13 @@ export function Layout() {
   const [ruta, setRuta] = useState(pathname)
   const boton = useRef<HTMLButtonElement>(null)
   const cerrar = useRef<HTMLButtonElement>(null)
+  // El foco vuelve a «Menú» DESPUÉS de cerrar: mientras el cajón está abierto la
+  // cabecera es `inert` y no se puede enfocar nada dentro.
+  const devolverFoco = useRef(false)
+  const cerrarYVolver = () => {
+    devolverFoco.current = true
+    setAbierto(false)
+  }
   // Al cambiar de pantalla, en el mismo render: un efecto dejaría un render
   // con el cajón abierto encima de la pantalla nueva.
   if (ruta !== pathname) {
@@ -86,12 +98,16 @@ export function Layout() {
     setAbierto(false)
   }
   useEffect(() => {
-    if (!abierto) return
+    if (!abierto) {
+      if (devolverFoco.current) boton.current?.focus()
+      devolverFoco.current = false
+      return
+    }
     cerrar.current?.focus()
     const alPulsar = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      devolverFoco.current = true
       setAbierto(false)
-      boton.current?.focus()
     }
     window.addEventListener('keydown', alPulsar)
     return () => window.removeEventListener('keydown', alPulsar)
@@ -99,7 +115,10 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-slate-50 md:flex">
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:hidden">
+      <header
+        inert={abierto || undefined}
+        className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:hidden"
+      >
         <Marca lema={false} />
         <button
           ref={boton}
@@ -116,11 +135,13 @@ export function Layout() {
         </button>
       </header>
       {abierto && (
-        <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setAbierto(false)} />
+        <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={cerrarYVolver} />
       )}
       <aside
         id="navegacion"
         aria-label="Navegación"
+        role={abierto ? 'dialog' : undefined}
+        aria-modal={abierto || undefined}
         className={`${
           abierto ? 'fixed inset-y-0 left-0 z-50 flex w-64 overflow-y-auto shadow-xl' : 'hidden'
         } shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-5 md:static md:z-auto md:flex md:w-56 md:overflow-visible md:shadow-none`}
@@ -130,10 +151,7 @@ export function Layout() {
           <button
             ref={cerrar}
             type="button"
-            onClick={() => {
-              setAbierto(false)
-              boton.current?.focus()
-            }}
+            onClick={cerrarYVolver}
             className="rounded-md px-2 py-1 text-sm text-slate-500 hover:text-slate-900 md:hidden"
           >
             Cerrar
@@ -177,7 +195,7 @@ export function Layout() {
           </p>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-7">
+      <main inert={abierto || undefined} className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-7">
         <Outlet />
       </main>
     </div>

@@ -66,10 +66,25 @@ describe('Layout: el menú en móvil', () => {
     expect(document.activeElement).toBe(menu())
   })
 
-  it('tocar fuera lo cierra', () => {
+  it('tocar fuera lo cierra y devuelve el foco a «Menú»', () => {
     const { container } = pintar()
     fireEvent.click(menu())
     fireEvent.click(container.querySelector('.bg-black\\/60')!)
     expect(abierto()).toBe(false)
+    expect(document.activeElement).toBe(menu())
+  })
+
+  it('abierto es modal: lo de detrás queda inerte y el cajón es un diálogo', () => {
+    // Revisión de A7: Mayús+Tab salía a «Menú», bajo el velo, y tras los enlaces
+    // el foco pasaba a la pantalla tapada.
+    const { container } = pintar()
+    fireEvent.click(menu())
+    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(true)
+    expect(container.querySelector('header')!.hasAttribute('inert')).toBe(true)
+    expect(cajon().getAttribute('role')).toBe('dialog')
+    expect(cajon().getAttribute('aria-modal')).toBe('true')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(false)
+    expect(cajon().getAttribute('role')).toBeNull()
   })
 })
