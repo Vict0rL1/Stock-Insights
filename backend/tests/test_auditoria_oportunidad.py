@@ -126,6 +126,79 @@ def test_la_pantalla_de_efectivo_ensena_el_mismo_saldo_que_usan_los_calculos(ses
     assert [x["importe"] for x in saldos] == [10000.0]
 
 
+def _cliente(session_factory):
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = sesion
+    return TestClient(app)
+
+
+def _anotar(cliente, importe, as_of=None):
+    cuerpo = {"moneda": "USD", "importe": importe} | ({"as_of": as_of} if as_of else {})
+    r = cliente.post("/api/portfolio/efectivo", json=cuerpo)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_un_saldo_de_hoy_anotado_solo_con_el_dia_manda(session_factory):
+    # Revisión de A4: «2026-10-20» se guardaba como su medianoche y perdía contra
+    # los 10.000 anotados esa mañana; el POST respondía 200 y seguían mandando.
+    cliente = _cliente(session_factory)
+    try:
+        _anotar(cliente, 10000.0)
+        nueva = _anotar(cliente, 1000.0, datetime.now(timezone.utc).date().isoformat())
+        saldos = cliente.get("/api/portfolio/efectivo").json()["saldos"]
+    finally:
+        app.dependency_overrides.clear()
+    assert nueva["vigente"] is True and nueva["nota"] is None
+    assert [x["importe"] for x in saldos] == [1000.0]
+    assert _vale(session_factory, datetime.now(timezone.utc)) == 1000.0
+
+
+def test_un_saldo_de_un_dia_pasado_cuenta_al_final_de_ese_dia_y_avisa_si_no_manda(session_factory):
+    cliente = _cliente(session_factory)
+    ayer = datetime.now(timezone.utc).date() - timedelta(days=1)
+    try:
+        _anotar(cliente, 10000.0)
+        vieja = _anotar(cliente, 1000.0, ayer.isoformat())
+        saldos = cliente.get("/api/portfolio/efectivo").json()["saldos"]
+    finally:
+        app.dependency_overrides.clear()
+    assert datetime.fromisoformat(vieja["as_of"]) == datetime.combine(ayer, datetime.max.time(), tzinfo=timezone.utc)
+    assert vieja["vigente"] is False
+    assert "no es el saldo vigente" in vieja["nota"] and "10.000,00\u00a0USD" in vieja["nota"]
+    assert [x["importe"] for x in saldos] == [10000.0]
+
+
+def test_un_saldo_unos_minutos_adelantado_se_ve_en_cuanto_se_anota(session_factory):
+    # Revisión de A4: el margen de 5 minutos es por el reloj de quien llama;
+    # guardado tal cual, la pantalla decía «Sin efectivo anotado» esos minutos.
+    cliente = _cliente(session_factory)
+    try:
+        r = _anotar(cliente, 5000.0, (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat())
+        efectivo = cliente.get("/api/portfolio/efectivo").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert datetime.fromisoformat(r["as_of"]) <= datetime.now(timezone.utc)
+    assert [x["importe"] for x in efectivo["saldos"]] == [5000.0] and efectivo["nota"] is None
+
+
+def test_una_fecha_que_no_es_fecha_se_rechaza(session_factory):
+    cliente = _cliente(session_factory)
+    try:
+        malas = [cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": f}).status_code for f in ("ayer", "2026-13-01")]
+        manana = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+        futura = cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": manana}).status_code
+    finally:
+        app.dependency_overrides.clear()
+    assert malas == [422, 422] and futura == 422
+
+
 def test_una_lectura_posterior_no_esconde_la_anterior_valida(session_factory):
     servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
     antes, despues = AHORA - timedelta(days=2), AHORA + timedelta(days=3)

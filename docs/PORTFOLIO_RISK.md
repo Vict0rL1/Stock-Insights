@@ -67,8 +67,11 @@ No dice «vende X y compra Y». Concluye una de cinco:
 anotado por el usuario (`POST /api/portfolio/efectivo`, migración 0008; sin anotar =
 desconocido). Cuenta lo que ya se sabía en la fecha de la decisión: un saldo fechado antes
 **y anotado antes** (`registrado_en`); entre esos, manda el saldo más reciente (`as_of`), no
-la última fila, y con el mismo `as_of` la anotación posterior corrige a la anterior. La
-pantalla de efectivo usa la misma regla. Otra moneda se convierte con
+la última fila, y con el mismo `as_of` la anotación posterior corrige a la anterior. Un
+`as_of` de solo día es el saldo de ese día, no su medianoche: el de hoy vale ahora y el de un
+día pasado, su último instante; uno con hora unos minutos adelantado (reloj de quien llama) se
+guarda como ahora. El POST responde `vigente` y, si un saldo más reciente sigue mandando, una
+`nota` que lo dice. La pantalla de efectivo usa la misma regla. Otra moneda se convierte con
 el último tipo que ya se conocía en la fecha de la decisión (`punto_en_el_tiempo`: el del
 mismo día no, FRED lo publica después), nunca con uno posterior; sin ninguno, el
 efectivo es desconocido; con uno de más de 7 días (`fx.DIAS_FRESCO`) se convierte igual

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import datos, vigilancia
+from app import punto_en_el_tiempo as pit
 from app.analysis import alertas, fx, historial as hist, portfolio_risk
 from app.analysis.decision import _stop_pct
 from app.analysis.risk_budget import presupuesto_de_riesgo
@@ -34,7 +35,7 @@ from app.db.models import (
     WatchlistItem,
 )
 from app.deps import get_service
-from app.formato import decimales_precio, fmt_fecha, fmt_num
+from app.formato import decimales_precio, fmt_dinero, fmt_fecha, fmt_num
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import Simbolo, validar_simbolo
@@ -1221,7 +1222,9 @@ def riesgo_de_cartera(
 class EfectivoAnotar(BaseModel):
     moneda: str = Field("USD", min_length=3, max_length=8)
     importe: float = Field(ge=0, allow_inf_nan=False)
-    as_of: str | None = Field(None, description="Fecha del saldo (ISO); por defecto, ahora")
+    as_of: str | None = Field(
+        None, description="Fecha del saldo (ISO): con hora, o un día (hoy = ahora; uno pasado, su final); por defecto, ahora"
+    )
     nota: str | None = None
 
 
@@ -1232,23 +1235,53 @@ def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session
     efectivo es desconocido, no cero."""
     from app.db.models import CashBalance
 
+    from app.oportunidad import _ultimas_anotaciones
+
     moneda = _moneda_legible(body.moneda)
-    try:
-        cuando = datetime.fromisoformat(body.as_of.replace("Z", "+00:00")) if body.as_of else datetime.now(timezone.utc)
-    except ValueError:
-        raise HTTPException(status_code=422, detail=f"Fecha inválida: {body.as_of!r}") from None
-    if cuando.tzinfo is None:
-        cuando = cuando.replace(tzinfo=timezone.utc)
-    # SQLite guarda la hora de pared sin zona y se relee como UTC: un saldo de
-    # hace un minuto en +02:00 quedaba fechado dos horas en el futuro y el punto
-    # en el tiempo lo descartaba (revisión de M3).
-    cuando = cuando.astimezone(timezone.utc)
-    if cuando > datetime.now(timezone.utc) + timedelta(minutes=5):
+    ahora = datetime.now(timezone.utc)
+    leida = pit.marca(body.as_of) if body.as_of else (ahora, True)
+    if leida is None:
+        raise HTTPException(status_code=422, detail=f"Fecha inválida: {body.as_of!r}")
+    momento, con_hora = leida
+    if con_hora:
+        # SQLite guarda la hora de pared sin zona y se relee como UTC: un saldo de
+        # hace un minuto en +02:00 quedaba fechado dos horas en el futuro y el punto
+        # en el tiempo lo descartaba (revisión de M3).
+        cuando = momento.astimezone(timezone.utc)
+    else:
+        # Un día suelto es el saldo de ESE día, no su medianoche: como medianoche
+        # perdía siempre contra un saldo con hora anotado antes ese mismo día, y
+        # `POST {importe: 1000, as_of: hoy}` respondía 200 mientras mandaban los
+        # 10.000 de la mañana (revisión de A4). Hoy, la hora del registro; un día
+        # pasado, su último instante (lo que `punto_en_el_tiempo` da por sabido).
+        cuando = ahora if momento == ahora.date() else pit.fin_del_dia(momento)
+    if cuando > ahora + timedelta(minutes=5):
         raise HTTPException(status_code=422, detail="Un saldo no puede estar fechado en el futuro.")
+    # El margen es por el desfase del reloj de quien llama, no para fechar en el
+    # futuro: guardado tal cual, la pantalla decía «Sin efectivo anotado» durante
+    # esos minutos (revisión de A4).
+    cuando = min(cuando, ahora)
     fila = CashBalance(moneda=moneda, importe=body.importe, as_of=cuando, nota=body.nota)
     session.add(fila)
     session.commit()
-    return {"id": fila.id, "moneda": moneda, "importe": fila.importe, "as_of": _utc_iso(fila.as_of)}
+    # Anotar un saldo antiguo (para la historia) no tapa uno más reciente, y la
+    # respuesta lo dice: antes era un 200 mudo con el saldo de antes al mando.
+    vigente = next(c for c in _ultimas_anotaciones(session, datetime.now(timezone.utc)) if c.moneda == moneda)
+    nota = None
+    if vigente.id != fila.id:
+        nota = (
+            f"Anotado para la historia, pero no es el saldo vigente: manda el de "
+            f"{fmt_fecha(_utc_iso(vigente.as_of), hora=True)} ({fmt_dinero(vigente.importe, moneda)}), "
+            "más reciente. Para corregir el saldo de hoy, anótalo sin fecha."
+        )
+    return {
+        "id": fila.id,
+        "moneda": moneda,
+        "importe": fila.importe,
+        "as_of": _utc_iso(fila.as_of),
+        "vigente": vigente.id == fila.id,
+        "nota": nota,
+    }
 
 
 @router.get("/efectivo")
