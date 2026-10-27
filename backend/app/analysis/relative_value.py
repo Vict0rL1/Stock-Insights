@@ -29,7 +29,8 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from app.formato import fmt_num
+from app import datos
+from app.formato import fmt_num, fmt_precio
 
 # Menos de esto y una regresión de dos variables no tiene grados de libertad
 # suficientes para nada. Es un límite duro, no una recomendación.
@@ -309,8 +310,8 @@ def rango_de_precio_implicito(
     bajo, alto = multiplo_bajo * valor_por_accion, multiplo_alto * valor_por_accion
     salida = {
         "disponible": True,
-        "precio_bajo": round(bajo, 2),
-        "precio_alto": round(alto, 2),
+        "precio_bajo": datos.redondear_precio(bajo),
+        "precio_alto": datos.redondear_precio(alto),
         "precio_actual": precio_actual,
     }
     if precio_actual:
@@ -320,8 +321,8 @@ def rango_de_precio_implicito(
             else "por debajo"
         )
         salida["nota"] = (
-            f"El intervalo de comparables da {fmt_num(bajo, 0)}–{fmt_num(alto, 0)}, y cotiza a "
-            f"{fmt_num(precio_actual, 0)} ({salida['posicion']}). Es un intervalo, no un "
+            f"El intervalo de comparables da {fmt_precio(bajo)}–{fmt_precio(alto)}, y cotiza a "
+            f"{fmt_precio(precio_actual)} ({salida['posicion']}). Es un intervalo, no un "
             "precio objetivo: los extremos valen tanto como cualquier punto de "
             "dentro."
         )

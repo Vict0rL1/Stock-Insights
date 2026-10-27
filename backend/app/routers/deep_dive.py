@@ -8,7 +8,7 @@ puedas leer el informe entero sin gastar nada en Claude.
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_compacto, fmt_num, fmt_pct
+from app.formato import fmt_compacto, fmt_num, fmt_pct, fmt_precio
 from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
 from datetime import datetime, timedelta, timezone
@@ -340,7 +340,7 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
 Sector: {business.get('sector') or 'desconocido'}
 Ingresos último ejercicio ({business.get('latest_fiscal_year')}): {fmt_compacto(business.get('latest_revenue'))}
 Años de histórico disponibles: {business.get('years_of_history')}
-Precio actual: {fmt_num(report.get('price'))}
+Precio actual: {fmt_precio(report.get('price'))}
 
 CRECIMIENTO
 CAGR ingresos {ventana}: {pct(growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}

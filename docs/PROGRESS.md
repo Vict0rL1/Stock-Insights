@@ -564,6 +564,15 @@ sustituía la lista y con `["mi-mac.local"]` el proxy de Vite (que llama como `l
 recibía un 400 en todo; ahora se añade a los nombres de esta máquina. (3) `start.sh` decía
 «Todo listo» con el backend respondiendo 400 (`curl -s`); ahora `curl -sf`.
 
+**A1, los hermanos.** (1) Los umbrales de tendencia salían ya redondeados de `_umbral_entrar`
+y `_umbral_salir`, y con ellos se medía la distancia: con la media en 1,0054 el umbral exacto es
+1,0255 y el servido 1,03, así que «Qué la cambiaría» pedía «precio ≥ 1,03» con 1,0256, una
+condición ya cumplida. Ahora se calcula con el exacto y solo se sirve redondeado. (2) Textos de
+precio con decimales fijos: el motivo de una alerta («a 0,00, por debajo de 0,00»), el prompt
+del análisis IA («Precio actual: 0,00»), el intervalo de comparables («da 0–0, y cotiza a 0»,
+y servido con `round(x, 2)`), el rango de Valoración y su nota. Todos con `fmt_precio`. Golden
+idéntico.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

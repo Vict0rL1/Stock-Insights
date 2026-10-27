@@ -489,12 +489,16 @@ def _regla(id_: str, texto: str, resultado: str, efecto: str | None = None, **da
     return {"id": id_, "regla": texto, "resultado": resultado, "efecto": efecto, "datos": datos_}
 
 
+# Sin redondear: se compara y se mide la distancia con el umbral exacto, y solo
+# el que se sirve va redondeado. Redondeado aquí, con la media en 1,0054 el
+# umbral era 1,03 en vez de 1,0255: la traza daba la tendencia por cumplida con
+# 1,0256 y «Qué la cambiaría» pedía además «precio ≥ 1,03» (revisión de A1).
 def _umbral_entrar(sma200: float | None) -> float | None:
-    return datos.redondear_precio(sma200 * (1 + BANDA_TENDENCIA_ENTRAR_PCT / 100)) if sma200 else None
+    return sma200 * (1 + BANDA_TENDENCIA_ENTRAR_PCT / 100) if sma200 else None
 
 
 def _umbral_salir(sma200: float | None) -> float | None:
-    return datos.redondear_precio(sma200 * (1 - BANDA_TENDENCIA_SALIR_PCT / 100)) if sma200 else None
+    return sma200 * (1 - BANDA_TENDENCIA_SALIR_PCT / 100) if sma200 else None
 
 
 # Los rótulos salen de las constantes: antes «media 200 + 2 %» estaba escrito a
@@ -531,7 +535,7 @@ def _reglas_con_posicion(score, ultimo, stop, sobre_media, tendencia, desfavorab
             "tendencia_perdida",
             f"Precio ≤ media de 200 sesiones − {_banda(BANDA_TENDENCIA_SALIR_PCT)}",
             DESCONOCIDO if tendencia["desconocida"] else CUMPLE if sobre_media is False else NO_CUMPLE,
-            efecto="reducir", valor=ultimo, umbral=_umbral_salir(tendencia["sma200"]),
+            efecto="reducir", valor=ultimo, umbral=datos.redondear_precio(_umbral_salir(tendencia["sma200"])),
         ),
     ]
 
@@ -552,7 +556,7 @@ def _reglas_sin_posicion(score, sobre_media, tendencia, favorable_min, desfavora
             "tendencia_a_favor",
             f"Precio ≥ media de 200 sesiones + {_banda(BANDA_TENDENCIA_ENTRAR_PCT)}",
             DESCONOCIDO if tendencia["desconocida"] else CUMPLE if sobre_media else NO_CUMPLE,
-            efecto="comprar", valor=tendencia["precio"], umbral=_umbral_entrar(tendencia["sma200"]),
+            efecto="comprar", valor=tendencia["precio"], umbral=datos.redondear_precio(_umbral_entrar(tendencia["sma200"])),
         ),
     ]
 

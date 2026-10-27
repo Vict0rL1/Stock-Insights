@@ -197,3 +197,38 @@ def test_el_minigrafico_de_la_cartera_no_aplana_una_accion_de_centimos():
 
     spark = _spark_cacheado(_Sv(), "CENT")
     assert spark[0] > spark[-1] > 0
+
+
+def test_la_tendencia_se_mide_con_el_umbral_exacto_no_con_el_servido():
+    """Revisión de A1: con la media en 1,0054 el umbral de entrada es 1,0255, y
+    redondeado a 1,03 «Qué la cambiaría» pedía «precio ≥ 1,03» con 1,0256, una
+    condición ya cumplida; lo único pendiente eran los resultados."""
+    d = decide(señal(0.8), precio(1.0256, 1.0054), resultados_en="2026-09-14")
+    assert d["action"] == "vigilar"
+    tendencia = next(r for r in d["reglas"] if r["id"] == "tendencia_a_favor")
+    assert tendencia["resultado"] == "cumple" and tendencia["datos"]["umbral"] == 1.03
+    comprar = next(c for c in d["cambiaria"] if c["hacia"] == "comprar")
+    assert [c["regla"] for c in comprar["condiciones"]] == ["resultados_proximos"]
+
+
+def test_los_textos_de_una_alerta_y_del_intervalo_de_comparables_escriben_el_precio():
+    """Revisión de A1, los hermanos: con dos decimales fijos (o ninguno), una
+    acción de 0,003 con la alerta en 0,004 decía «a 0,00, por debajo de 0,00»,
+    y el intervalo de comparables «da 0–0, y cotiza a 0»."""
+    from app.analysis import alertas
+    from app.analysis.relative_value import rango_de_precio_implicito
+
+    alerta = {"symbol": "CENT", "active": True, "condition": {"op": "lt", "price": 0.004}}
+    motivo = alertas.evaluar(alerta, 0.003)["motivo"]
+    assert "0,003" in motivo and "0,004" in motivo
+    r = rango_de_precio_implicito(10.0, 14.0, 0.0002, 0.003)
+    assert r["precio_bajo"] == 0.002 and r["precio_alto"] == 0.0028
+    assert "0,002–0,0028" in r["nota"] and "cotiza a 0,003" in r["nota"]
+
+
+def test_el_prompt_del_analisis_ia_lleva_el_precio_entero():
+    from app.routers.deep_dive import _narrative_prompt
+
+    prompt = _narrative_prompt("CENT", {"price": 0.003, "business": {}, "growth": {}, "margins": {},
+                                        "balance": {}, "valuation": {}, "catalysts": []})
+    assert "Precio actual: 0,003" in prompt
