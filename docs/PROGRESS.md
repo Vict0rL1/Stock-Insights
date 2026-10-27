@@ -573,6 +573,18 @@ del análisis IA («Precio actual: 0,00»), el intervalo de comparables («da 0�
 y servido con `round(x, 2)`), el rango de Valoración y su nota. Todos con `fmt_precio`. Golden
 idéntico.
 
+**A2 y A5, los últimos.** (1) El estado «viejo» del efectivo y el motivo «sin tipo de cambio a
+esa fecha» se quedaban en `coste_oportunidad.efectivo`, que ninguna pantalla lee: la ficha daba
+«Hay efectivo… no hace falta vender nada» con un tipo de hace tres semanas, y pedía «Anota tu
+efectivo» con el efectivo anotado. El motor recibe `aviso_efectivo` y lo dice en el veredicto.
+(2) El antiduplicado de `congelar_analisis` miraba la instantánea más reciente aunque fuera
+posterior a `ahora`: con una del día siguiente en la base, cada análisis igual congelaba una
+copia inmutable. Filtra como `_lectura_congelada`. **Queda, para Victor:** los lotes de posición
+no guardan cuándo se anotaron (`opened_at` lo escribe el usuario), así que uno anotado hoy con
+fecha atrasada entra en una reconstrucción anterior. Arreglarlo pide una columna
+`registrado_en` en `positions` (migración) y decidir qué hacer con las filas viejas, sin fecha
+de registro: exigirla como al efectivo las sacaría también del análisis de hoy. Golden idéntico.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

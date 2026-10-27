@@ -73,13 +73,16 @@ def _tipo_en(serie: list, ahora: datetime) -> dict | None:
     return {"por_usd": tipo, "fecha": fecha.isoformat(), "dias": dias, "fresco": dias <= fx.DIAS_FRESCO}
 
 
+SIN_ANOTAR = "no hay efectivo anotado"
+
+
 def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
     """{usd, estado, detalle}. Una moneda sin tipo de cambio conocido en `ahora`
     deja el total DESCONOCIDO; con un tipo de más de `fx.DIAS_FRESCO` días se
     convierte igual, como en la cartera, pero el estado es «viejo» y se dice."""
     ultimas = _ultimas_anotaciones(session, ahora)
     if not ultimas:
-        return {"usd": None, "estado": "desconocido", "motivo": "no hay efectivo anotado"}
+        return {"usd": None, "estado": "desconocido", "motivo": SIN_ANOTAR}
     total, detalle, viejos = 0.0, [], []
     for c in ultimas:
         tipo = None
@@ -250,6 +253,8 @@ def evaluar(
         tipo_impositivo=tipo_impositivo,
         max_posicion=MAX_POR_POSICION_PCT / 100,
         recortes=(sizing or {}).get("recortes"),
+        # Anotado pero sin tipo a esa fecha, o con uno viejo: el veredicto lo dice.
+        aviso_efectivo=efectivo.get("motivo") if efectivo["estado"] != "valido" and efectivo.get("motivo") != SIN_ANOTAR else None,
     )
     resultado["efectivo"] = efectivo
     resultado["sizing"] = {k: (sizing or {}).get(k) for k in ("controles", "recortes", "todos_los_limites_aplicados")}

@@ -289,3 +289,47 @@ def test_lo_descargado_durante_el_analisis_no_es_informacion_futura():
     futura, _ = seccion_mercado(servicio, "SHOP.TO", AHORA)
     assert fresca["estado"] == "valido" and fresca["precio"]["valor"] == 100.0
     assert futura["estado"] == "viejo" and futura["precio"]["valor"] != 100.0
+
+
+def test_una_instantanea_posterior_no_rompe_el_antiduplicado(session_factory):
+    # Revisión de A5: el antiduplicado miraba la instantánea más reciente aunque
+    # fuera posterior a `ahora`; con una del día siguiente en la base, cada
+    # análisis igual congelaba una copia nueva, inmutable e imborrable.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(days=1), con_pares=False)
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=5), con_pares=False)
+    assert primera["instantanea"]["nueva"] is True
+    assert segunda["instantanea"]["nueva"] is False
+    assert segunda["instantanea"]["id"] == primera["instantanea"]["id"]
+
+
+def _idea_con_efectivo_en_cad(session_factory, serie):
+    from app import oportunidad
+
+    analisis = {"symbol": "IDEA", "sector": "Tech", "decision": {"action": "comprar", "levels": {"peso_bruto_pct": 4.0}},
+                "mercado": {"vol_diaria_pct": 1.5, "precio": {"moneda": "USD"}}, "senal": {"score": 0.6}}
+    ctx = {"posiciones": [], "series": {}, "total_usd": None, "mercado": None, "fx_series": {"CAD": serie}}
+    with session_factory() as s:
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        return oportunidad.evaluar(s, analisis, ctx, None, DECISION)
+
+
+def test_un_efectivo_convertido_con_un_tipo_viejo_lo_dice_el_veredicto(session_factory):
+    # Revisión de A2: el estado «viejo» se quedaba en `efectivo` y la ficha
+    # decía «Hay efectivo… no hace falta vender nada» sin más.
+    r = _idea_con_efectivo_en_cad(session_factory, [(date(2026, 8, 20), 1.30)])
+    assert r["efectivo"]["estado"] == "viejo"
+    assert r["veredicto"]["accion"] == "COMPRAR_CON_EFECTIVO"
+    assert "Ojo con el efectivo" in r["veredicto"]["motivo"] and "20 ago 2026" in r["veredicto"]["motivo"]
+
+
+def test_un_efectivo_anotado_sin_tipo_a_esa_fecha_no_pide_que_lo_anotes(session_factory):
+    # Revisión de A2: con el efectivo anotado y la serie empezando después, el
+    # veredicto pedía «Anota tu efectivo».
+    r = _idea_con_efectivo_en_cad(session_factory, [(date(2026, 9, 14), 1.50)])
+    assert r["efectivo"]["estado"] == "desconocido"
+    assert "Anota tu efectivo" not in r["veredicto"]["motivo"]
+    assert "sin tipo de cambio conocido a esa fecha" in r["veredicto"]["motivo"]

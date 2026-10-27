@@ -320,11 +320,16 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     symbol = limpio["symbol"]
     fecha = ahora.astimezone(timezone.utc).date().isoformat()
 
-    ultimo = session.execute(
+    # La última que ya existía en `ahora`, como `oportunidad._lectura_congelada`:
+    # con una posterior en la base (un reloj adelantado que se corrigió, un
+    # análisis fechado), la más reciente era de otro día y cada vez que se abría
+    # la empresa se congelaba una copia idéntica e imborrable (revisión de A5).
+    filas = session.execute(
         select(DecisionSnapshot)
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"))
         .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
-    ).scalars().first()
+    ).scalars()
+    ultimo = next((s for s in filas if pit.disponible_en(s.creado_en, ahora) is True), None)
     if ultimo is not None and ultimo.fecha == fecha and (ultimo.contexto or {}).get("huella_material") == huella_m:
         return ultimo, False
 

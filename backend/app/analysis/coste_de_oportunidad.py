@@ -175,11 +175,17 @@ def evaluar(
     tipo_impositivo: float | None = None,
     max_posicion: float | None = None,
     recortes: list[str] | None = None,
+    aviso_efectivo: str | None = None,
 ) -> dict:
     """La comparación entera. Todo en FRACCIONES del capital total.
 
     `recortes`: lo que el dimensionador dijo al recortar esta idea; si la deja
     en 0 %, el veredicto cita QUÉ límite lo hizo en vez de enumerarlos todos.
+
+    `aviso_efectivo`: por qué el efectivo ANOTADO es desconocido (sin tipo de
+    cambio a esa fecha) o viejo (un tipo de hace semanas). El veredicto lo dice:
+    antes pedía «Anota tu efectivo» con el efectivo anotado, y con un tipo de
+    hace tres semanas daba «hay efectivo» sin más (revisión de A2).
     """
     base = {"candidata": {**candidata, "atractivo": atractivo(candidata)},
             "parametros": parametros(), "generado_por": "app"}
@@ -199,7 +205,10 @@ def evaluar(
         # del dato.
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": None}, "veredicto": {
             "accion": INDETERMINADO,
-            "motivo": ("Sin efectivo anotado, la cartera se mide como invertida al 100\u00a0% y así la idea no cabe. "
+            "motivo": (f"Con el efectivo desconocido ({aviso_efectivo}), la cartera se mide como invertida al "
+                       "100\u00a0% y así la idea no cabe: es una conclusión del supuesto, no del dato."
+                       if aviso_efectivo else
+                       "Sin efectivo anotado, la cartera se mide como invertida al 100\u00a0% y así la idea no cabe. "
                        "Anota tu efectivo para saber si de verdad no cabe."),
         }}
     if tamano_maximo <= 0:
@@ -222,7 +231,8 @@ def evaluar(
     if necesidad == 0:
         return {**base, "tamano": tamano, "veredicto": {
             "accion": COMPRAR_CON_EFECTIVO,
-            "motivo": f"Hay efectivo ({fmt_pct(efectivo)}) para el tamaño permitido ({fmt_pct(tamano_maximo)}): no hace falta vender nada.",
+            "motivo": f"Hay efectivo ({fmt_pct(efectivo)}) para el tamaño permitido ({fmt_pct(tamano_maximo)}): no hace falta vender nada."
+                      + (f" Ojo con el efectivo: {aviso_efectivo}." if aviso_efectivo else ""),
         }}
 
     a_cand = base["candidata"]["atractivo"]["puntos"]
@@ -260,23 +270,28 @@ def evaluar(
         revisables.append(fila)
     revisables.sort(key=lambda f: (-f["prioridad"]["puntos"], -(f["mejora"] or 0)))
 
-    veredicto = _veredicto(candidata, revisables, necesidad)
+    veredicto = _veredicto(candidata, revisables, necesidad, aviso_efectivo)
     if efectivo and necesidad:
         # Con lo que hay se puede comprar una parte sin vender nada; el resto es
         # lo que exige la comparación.
         veredicto["parcial_con_efectivo"] = round(efectivo, 4)
         veredicto["motivo"] += (f" Con el efectivo disponible ({fmt_pct(efectivo)}) puedes comprar esa "
                                 "parte sin tocar nada.")
+    if efectivo is not None and aviso_efectivo:
+        veredicto["motivo"] += f" Ojo con el efectivo: {aviso_efectivo}."
     return {**base, "tamano": tamano, "candidatos_a_revisar": revisables, "veredicto": veredicto}
 
 
-def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None) -> dict:
+def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None, aviso_efectivo: str | None = None) -> dict:
     elegibles = [f for f in revisables if f.get("elegible")]
     superan = [f for f in elegibles if f.get("supera_umbral")]
     if necesidad is None:
         return {
             "accion": INDETERMINADO,
-            "motivo": ("Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
+            "motivo": (f"Efectivo desconocido ({aviso_efectivo}): no se puede saber si comprar esta idea exige "
+                       "vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero."
+                       if aviso_efectivo else
+                       "Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
                        "Anota tu efectivo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero."),
             "si_no_hubiera_efectivo": superan[0]["symbol"] if superan else None,
         }
