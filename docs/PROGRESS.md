@@ -606,7 +606,7 @@ comprobar) tenía tres fallos: un punto cruzado con las dos lecturas («cobertur
 como 0,1, con EBIT negativo) pasaba de CRUZADO a «sin medir», fail-unsafe; un umbral nuevo y
 legítimo («Deuda/capital > 0,1») quedaba sin comprobar para siempre; y uno viejo de 0,15
 seguía «no cruzado». Ahora los puntos nuevos guardan `unidad` al crearse, y uno viejo en `veces`
-con el umbral por debajo de 1 (`LEGADO_MAX`) se lee tal cual y ×100: si coinciden, ese es el
+con el umbral por debajo de 1 (`LEGADO_MAX`, desde la cuarta revisión `TOPE_LEGADO` por métrica) se lee tal cual y ×100: si coinciden, ese es el
 veredicto; si no, sin comprobar con lo que daría cada una. La nota de la tesis ya no atribuye
 todo lo no comprobado a «falta de datos». Golden idéntico (su `D/E > 2` se lee tal cual).
 
@@ -645,6 +645,46 @@ oculto. (6) La regla de ESLint del espacio duro ve también una cifra y su «%»
 salto de línea. (7) En Hoy por debajo de 640 px, el puesto global va junto al símbolo. Capturas:
 104 sin fallos.
 
+### Cuarta revisión (de la tercera, workflow, 27 oct)
+
+Revisores sobre `d790aa9`…`21a0b8b` y un barrido de hermanos, con las tres lentes: 22
+confirmados, ninguno descartado. Cada arreglo lleva un test que falla sin él; golden idéntico.
+
+**Lo alto.** (1) «Capturar expectativas» daba 500 con la caché fría: el calendario de Finnhub se
+descarga durante la captura, llega fechado segundos después de `ahora` y `_guardar` comparaba sin
+margen. Ahora `descargado_a_tiempo` e `informacion_hasta` como mucho `ahora`; fuera del margen, 422.
+(2) En vivo, una posición sin cotización entraba en los pesos con el último cierre de la caché
+(total 3000 frente a los 1000 de `/api/portfolio`): ese respaldo queda para las reconstrucciones.
+
+**FX.** Un punto suelto fuera de banda convertía la serie de la candidata (volatilidad cien veces
+mayor), la curva de valor y el P&L realizado: `fx.puntos_en_banda` lo trata como un día sin
+publicar. El tipo de la fecha de la decisión sigue rechazándose con su motivo.
+
+**Tesis.** La lectura ×100 de un punto sin `unidad` solo si cabe en la métrica (`TOPE_LEGADO`:
+10 veces en D/E y ratio corriente, 30 en cobertura; antes un «D/E > 0,5» se leía también como 50 y
+un CRUZADO quedaba sin comprobar); ×100 redondeado (0,07 × 100 ≠ 7 en coma flotante); el motivo y el
+detalle con el umbral entero (0,005, no «0,01») y sin afirmar «anterior al arreglo»; con las dos
+lecturas iguales, un aviso; la nota ya no dice «no se ha cruzado» de lo no comprobado; la exención
+del inventario del golden decía que lo cubría el golden y lo cubre `test_thesis_watch`.
+
+**Decisión y textos.** Los umbrales de la banda se sirven y se escriben hacia el lado en que la
+frase es cierta (`redondear_precio(..., hacia=...)`: entrada hacia arriba, reducir hacia abajo);
+el disparador con posición dice «Reducir si cierra en o por debajo de X (media 200 − 1 %)»; «Qué
+cambió» escribe los precios con `fmt_precio` y el resultado con `etiqueta()`; un test pasa por
+`seccion_mercado` (media entera al motor, redondeada a la ficha); el backtest de reglas entra con la
+banda del motor y lo anota (`banda_tendencia_pct`); README y el estado vacío de Hoy nombran la banda.
+
+**Instantáneas, fechas y origen.** El antiduplicado compara con la última congelada (`id`): una del
+mismo día a una hora posterior y otra huella volvía a duplicar. La fecha de apertura de mañana en
+UTC cuenta como hoy, como el efectivo. `.env.example` y el README ya no prometen «cualquier puerto»
+con un nombre de `ALLOWED_HOSTS` por http (un test lo fija).
+
+**Frontend.** Valores por acción con `fmtPrecio` (BPA del replay, DCF, valor estimado de las
+tesis; la matriz con `fmtValorRedondo`), `fmtMetrica` compartido por el replay y «Qué cambió», y
+ESLint contra `fmtNum` sobre un valor por acción. El anillo de `MarcoTabla` es una capa hermana por
+encima de la columna fija (la tapaba en tres tablas); medido en Chromium con Tab, en reposo y
+desplazada. Capturas: 104 sin fallos.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -662,8 +702,8 @@ salto de línea. (7) En Hoy por debajo de 640 px, el puesto global va junto al s
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
 Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
-arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con tres rondas de revisión
-adversarial arregladas (la última, 34 hallazgos, en `d790aa9`…`21a0b8b`). Lo siguiente es 2.2
+arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
+adversarial arregladas (la última, 22 hallazgos, en `5f6ddd3`…`f0d5757`). Lo siguiente es 2.2
 (`AvisoAgrupado`).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
@@ -672,4 +712,10 @@ de la paridad; M10, M11 y M16; una regla de permisos para crear y empujar las et
 del golden de tesis para un punto viejo en «veces»; servir con el redondeo del formateador (cambia
 `decide` y `hoy` del golden); la caché de 6 h de Hoy (M3); la columna `registrado_en` de los lotes
 de posición y el rastro de los puntos de tesis borrados (los dos piden migración); y aprobar la
-migración 0009, que vacía la moneda «GBP» aprendida (se vuelve a aprender sola).
+migración 0009, que vacía la moneda «GBP» aprendida (se vuelve a aprender sola). De la cuarta
+revisión: los topes de `TOPE_LEGADO` (10, 10 y 30) y una forma de confirmar la unidad de un punto
+viejo sin borrarlo (un PATCH que conserve `created_at`; hoy rehacerlo lo saca de las
+reconstrucciones anteriores); volver a ejecutar el backtest de reglas, porque los guardados sin
+`banda_tendencia_pct` entraron con «precio > media» y siguen dando «calibrada» (¿invalidarlos, como
+los anteriores al RC1?); y, si se quiere la cifra de la banda en el estado vacío de Hoy, servirla
+en `thresholds` (cambia el golden de `hoy`).
