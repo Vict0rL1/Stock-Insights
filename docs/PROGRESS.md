@@ -662,6 +662,14 @@ salto de línea. (7) En Hoy por debajo de 640 px, el puesto global va junto al s
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
 Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
-arregladas, capturas repetidas). Lo siguiente es 2.2 (`AvisoAgrupado`). Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
-`thesis_watch` y en el tipo de cambio, las bandas de FX cerca de la paridad, M10, M11 y M16, y una
-regla de permisos para crear y empujar las etiquetas.
+arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con tres rondas de revisión
+adversarial arregladas (la última, 34 hallazgos, en `d790aa9`…`21a0b8b`). Lo siguiente es 2.2
+(`AvisoAgrupado`).
+
+Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
+cambio (`fx.tipo_desde_observaciones` mide la frescura con `date.today()`); las bandas de FX cerca
+de la paridad; M10, M11 y M16; una regla de permisos para crear y empujar las etiquetas; el caso
+del golden de tesis para un punto viejo en «veces»; servir con el redondeo del formateador (cambia
+`decide` y `hoy` del golden); la caché de 6 h de Hoy (M3); la columna `registrado_en` de los lotes
+de posición y el rastro de los puntos de tesis borrados (los dos piden migración); y aprobar la
+migración 0009, que vacía la moneda «GBP» aprendida (se vuelve a aprender sola).
