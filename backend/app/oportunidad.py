@@ -56,19 +56,27 @@ def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]
     return [c for _, c in vigente.values()]
 
 
-def _tipo_en(serie: list, ahora: datetime) -> dict | None:
+def _tipo_en(serie: list, ahora: datetime, moneda: str | None = None) -> dict | None:
     """El último tipo de la serie que ya se conocía en `ahora`, con su fecha.
 
     Antes se cogía el último de la serie, fuera de cuando fuera: 130 CAD
     anotados el 11 de septiembre, a 1,30, valían 100 USD; recalculado el 12 con
     la serie ya descargada hasta el 14 (1,50), 86,67 USD (auditoría del 19 oct).
     Un tipo fechado el mismo día de una decisión con hora no se conocía salvo
-    prueba (`punto_en_el_tiempo`): FRED lo publica después."""
+    prueba (`punto_en_el_tiempo`): FRED lo publica después.
+
+    Con `moneda`, el tipo elegido pasa el detector de inversión
+    (`fx.comprobar_banda`, que lanza `fx.SinTipo`), como el tipo de hoy en
+    `fx.tipo_desde_observaciones`: la serie solo comprueba su mediana, y un
+    último punto de 13 en vez de 1,30 convertía la posición a 10 USD sin aviso
+    (revisión de 2f8d84b)."""
     disponibles = pit.filtrar(sorted(serie or []), lambda p: p[0], ahora)["disponibles"]
     utiles = [(fecha, tipo) for fecha, tipo in disponibles if datos.precio(tipo) is not None]
     if not utiles:
         return None
     fecha, tipo = utiles[-1]
+    if moneda is not None:
+        fx.comprobar_banda(moneda, tipo)
     dias = pit.antiguedad_dias(fecha, ahora)
     return {"por_usd": tipo, "fecha": fecha.isoformat(), "dias": dias, "fresco": dias <= fx.DIAS_FRESCO}
 
@@ -90,7 +98,10 @@ def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
             usd = c.importe
         else:
             serie = ctx.get("fx_series", {}).get(c.moneda) or []
-            tipo = _tipo_en(serie, ahora)
+            try:
+                tipo = _tipo_en(serie, ahora, c.moneda)
+            except fx.SinTipo as exc:
+                return {"usd": None, "estado": "desconocido", "motivo": f"efectivo en {c.moneda}: {exc}"}
             if tipo is None:
                 motivo = (f"efectivo en {c.moneda} sin tipo de cambio conocido a esa fecha (la serie empieza "
                           "después): no se supone 1:1") if serie else (

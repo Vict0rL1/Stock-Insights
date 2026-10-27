@@ -118,20 +118,31 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
         a["stops"].append(pos.stop)
         a["abierta_desde"] = min(a["abierta_desde"], pos.opened_at)
 
-    # El histórico va primero: con `ahora` en el pasado, el precio de cada
-    # posición es el último cierre que ya existía, no la cotización de hoy.
+    # Las cotizaciones antes que el histórico largo: el margen de descarga va
+    # anclado a `ahora`, y pedir primero el histórico de todas las posiciones lo
+    # consumía (revisión de 2f8d84b).
+    cotizaciones = {s: _cotizacion(service, s) for s in agregadas}
     crudas, fallos = _historico_largo(service, list(agregadas) + [INDICE_MERCADO], descargar)
     sin_peso, valoradas = [], []
     monedas = set()
     for a in agregadas.values():
-        precio, moneda, estado = _cotizacion(service, a["symbol"])
-        if precio is not None and pit.descargado_a_tiempo(estado.get("publicado"), ahora) is False:
-            # Una cotización posterior a la fecha es información futura, como en
-            # `seccion_mercado`: la reconstrucción del 12 pesaba cada posición
-            # con el precio del 15 (revisión de A5). Se valora con el último
-            # cierre disponible entonces, que es un precio viejo y se dice.
+        precio, moneda, estado = cotizaciones[a["symbol"]]
+        sin_precio = "sin precio: fuera de los pesos (no vale cero)"
+        posterior = precio is not None and pit.descargado_a_tiempo(estado.get("publicado"), ahora) is False
+        if precio is None or posterior:
+            # Sin cotización de entonces, el último cierre que ya existía: un
+            # precio viejo, y se dice, como en `seccion_mercado`. Una cotización
+            # posterior a la fecha es información futura (la reconstrucción del
+            # 12 pesaba cada posición con el precio del 15), y que hoy no haya
+            # cotización no cambia lo que valía entonces (revisión de A5).
             previos = [c for d, c in crudas.get(a["symbol"]) or [] if pit.barra_disponible(d, ahora)]
-            precio, estado = (previos[-1], {"estado": "viejo"}) if previos else (None, {"estado": "desconocido"})
+            if previos:
+                precio, estado = previos[-1], {"estado": "viejo"}
+            else:
+                precio, estado = None, {"estado": "desconocido"}
+                if posterior:
+                    sin_precio = ("sin precio en esa fecha: la cotización es posterior y no hay un cierre "
+                                  "anterior en caché (no vale cero)")
         cruda = _resolver_divisa(session, service, a["instrument"], moneda)
         # Una moneda en peniques (GBX) se sabe cuál es: decir «desconocida»
         # escondía el motivo (auditoría del 19 oct, hermano del 500 de la cartera).
@@ -141,7 +152,7 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
             moneda, sin_moneda = None, str(exc)
         a.update(precio=datos.precio(precio), moneda=moneda, precio_estado=estado.get("estado"))
         if a["precio"] is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": "sin precio: fuera de los pesos (no vale cero)"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": sin_precio})
             continue
         if moneda is None:
             sin_peso.append({"symbol": a["symbol"], "motivo": sin_moneda})
@@ -161,11 +172,15 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
         # del 12 convertía los CAD de la posición a 1,50 (el tipo del 14) y los
         # del efectivo a 1,30: dos tipos para la misma divisa en el mismo capital
         # (revisión de A2).
-        tipo = None if a["moneda"] == fx.BASE else _tipo_en(fx_series.get(a["moneda"]), ahora)
+        motivo = f"sin tipo de cambio para {a['moneda']}"
+        try:
+            tipo = None if a["moneda"] == fx.BASE else _tipo_en(fx_series.get(a["moneda"]), ahora, a["moneda"])
+        except fx.SinTipo as exc:
+            tipo, motivo = None, str(exc)
         por_usd = 1.0 if a["moneda"] == fx.BASE else (tipo or {}).get("por_usd")
         a["valor_usd"] = a["precio"] * a["cantidad"] / por_usd if por_usd else None
         if a["valor_usd"] is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": f"sin tipo de cambio para {a['moneda']}"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": motivo})
     valoradas = [a for a in valoradas if a.get("valor_usd")]
     total = sum(a["valor_usd"] for a in valoradas)
 

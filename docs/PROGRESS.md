@@ -585,6 +585,22 @@ fecha atrasada entra en una reconstrucción anterior. Arreglarlo pide una column
 `registrado_en` en `positions` (migración) y decidir qué hacer con las filas viejas, sin fecha
 de registro: exigirla como al efectivo las sacaría también del análisis de hoy. Golden idéntico.
 
+### Tercera revisión (de los hermanos de A1–A6, workflow, 27 oct)
+
+Once revisores sobre los commits de la segunda revisión y de los hermanos, y tres lentes por
+hallazgo (corrección, reproducción, impacto): 34 con dos o más votos, 1 descartado.
+
+**El margen de descarga, una sola regla.** Lo introdujo `2f8d84b` solo en el análisis: al
+congelar, la cotización aceptada con margen quedaba como «futura» y el replay retiraba el precio
+con que se había decidido (completo=False, FAIL en `./start.sh validar`), en cada análisis en vivo
+con cotización de yfinance o Twelve Data. Ahora `anomalias_temporales` aplica
+`descargado_a_tiempo` a la cotización y a la puntuación de pares, y el desempate por `obtenido_en`
+lleva el mismo margen (la barra o el filing de hoy descargados durante el análisis entraban solo
+si venían de la caché). En `construir`, las cotizaciones se piden antes que el histórico largo,
+sin cotización hoy se usa el cierre de entonces, el motivo dice cuándo la cotización es
+posterior, y `_tipo_en` pasa el detector de inversión (un último punto de 13 en vez de 1,30
+convertía a 10 USD sin aviso).
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

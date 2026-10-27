@@ -333,3 +333,58 @@ def test_un_efectivo_anotado_sin_tipo_a_esa_fecha_no_pide_que_lo_anotes(session_
     assert r["efectivo"]["estado"] == "desconocido"
     assert "Anota tu efectivo" not in r["veredicto"]["motivo"]
     assert "sin tipo de cambio conocido a esa fecha" in r["veredicto"]["motivo"]
+
+
+def test_sin_cotizacion_hoy_la_reconstruccion_usa_el_cierre_de_entonces(session_factory):
+    # Revisión de 2f8d84b: el respaldo al último cierre solo entraba si HOY había
+    # cotización; una posición deslistada salía «sin precio» en la reconstrucción.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3))
+    servicio.cache.set("price_history_long", {"symbol": "XYZ"}, {"bars": [
+        {"ts": "2026-09-10", "close": 38.0}, {"ts": "2026-09-11", "close": 40.0}]})
+    with session_factory() as s:
+        _posicion(s, "XYZ", cerrada=AHORA + timedelta(days=2))
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["precio"] == 40.0 and p["precio_estado"] == "viejo" and p["valor_usd"] == 400.0
+
+
+def test_una_cotizacion_posterior_sin_cierre_anterior_lo_dice(session_factory):
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3)).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["peso"] is None and "la cotización es posterior" in p["motivo"]
+
+
+def test_las_cotizaciones_se_piden_antes_que_el_historico_largo(session_factory):
+    # Revisión de 2f8d84b: el histórico largo de todas las posiciones se pedía
+    # primero y consumía el margen de descarga de las cotizaciones.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        contexto_cartera.construir(s, servicio, ahora=AHORA, descargar=True)
+    tipos = [t for t, _ in servicio.llamadas]
+    assert tipos.index("quote") < tipos.index("price_history_long")
+
+
+def test_un_tipo_de_cambio_fuera_de_banda_deja_fuera_la_posicion_y_el_efectivo(session_factory):
+    # Revisión de 2f8d84b: la serie solo comprueba su mediana y `_tipo_en` no
+    # miraba la banda: un último punto de 13 en vez de 1,30 daba 10 USD sin aviso.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=130.0, score=None, moneda="CAD")
+    servicio.macro["DEXCAUS"] = [{"ts": f"2026-09-0{d}", "value": "1.30"} for d in range(1, 10)] + [
+        {"ts": "2026-09-10", "value": "13.0"}]
+    with session_factory() as s:
+        _posicion(s, "SHOP.TO", cantidad=1, moneda="CAD")
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        ctx = contexto_cartera.construir(s, servicio, ahora=DECISION)
+        efectivo = efectivo_usd(s, ctx, DECISION)
+    assert ctx["posiciones"][0]["peso"] is None and "leída del revés" in ctx["posiciones"][0]["motivo"]
+    assert efectivo["usd"] is None and "leída del revés" in efectivo["motivo"]

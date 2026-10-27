@@ -296,11 +296,22 @@ def huella_material(analisis: dict) -> str:
     })
 
 
+# Lo que el análisis pide durante el propio cálculo y fecha con la hora de la
+# descarga: la cotización y la puntuación contra pares. El análisis las acepta
+# con `pit.descargado_a_tiempo`; aquí, la misma regla, o al congelar quedaban
+# como «futuras» y el replay retiraba el precio con que se decidió (revisión de
+# 2f8d84b).
+DESCARGADOS_EN_EL_CALCULO = frozenset({"precio", "puntuación"})
+
+
 def anomalias_temporales(marcas: list[dict], decision_ts) -> dict:
     """Comprueba cada marca contra el momento de la decisión. No modifica nada."""
     futuras, sin_fecha = [], []
     for m in marcas or []:
-        r = pit.disponible_en(m.get("publicado"), decision_ts, m.get("obtenido_en"))
+        if m.get("dato") in DESCARGADOS_EN_EL_CALCULO:
+            r = pit.descargado_a_tiempo(m.get("publicado"), decision_ts)
+        else:
+            r = pit.disponible_en(m.get("publicado"), decision_ts, m.get("obtenido_en"))
         if r is False:
             futuras.append(m)
         elif r is None:

@@ -113,3 +113,12 @@ def test_lo_descargado_durante_el_calculo_cuenta_y_lo_de_despues_no():
     assert pit.descargado_a_tiempo(decision + timedelta(days=1), decision) is False
     assert pit.descargado_a_tiempo("2026-09-13", date(2026, 9, 12)) is False
     assert pit.descargado_a_tiempo(None, decision) is None
+
+
+def test_el_desempate_por_obtenido_en_lleva_el_margen_de_descarga():
+    """Un dato de hoy descargado durante el análisis (unos segundos después de
+    la decisión) se sabía; uno descargado al día siguiente, no."""
+    decision = datetime(2026, 9, 12, 21, 30, tzinfo=timezone.utc)
+    assert pit.disponible_en("2026-09-12", decision, decision + timedelta(seconds=1)) is True
+    assert pit.disponible_en("2026-09-12", decision, decision + timedelta(days=1)) is False
+    assert pit.disponible_en("2026-09-12", decision) is None

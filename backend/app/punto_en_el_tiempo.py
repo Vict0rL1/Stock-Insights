@@ -90,7 +90,11 @@ def disponible_en(publicado, decision, obtenido_en=None) -> bool | None:
         return False
     prueba = marca(obtenido_en)
     if prueba is not None and prueba[1]:
-        return prueba[0] <= md
+        # Con el margen de descarga: la barra o el filing de hoy descargados
+        # DURANTE el análisis entraban si venían de la caché y no si se pedían
+        # en ese momento (revisión de 2f8d84b). A una reconstrucción del pasado
+        # no le cambia nada: su `obtenido_en` es días posterior.
+        return prueba[0] <= md + MARGEN_DE_DESCARGA
     return None
 
 
@@ -104,9 +108,11 @@ MARGEN_DE_DESCARGA = timedelta(minutes=5)
 
 
 def descargado_a_tiempo(publicado, decision) -> bool | None:
-    """`disponible_en` para lo que se pide durante el propio cálculo (la
-    cotización, los fundamentales): con una decisión con hora, cuenta lo fechado
-    hasta `MARGEN_DE_DESCARGA` después."""
+    """`disponible_en` para lo que se pide durante el propio cálculo y lleva por
+    fecha la de la descarga (la cotización, los fundamentales de los pares): con
+    una decisión con hora, cuenta lo fechado hasta `MARGEN_DE_DESCARGA` después.
+    Lo que se fecha por día ya lleva el margen en el desempate por `obtenido_en`.
+    El análisis, la congelación y el replay usan la misma regla."""
     d = marca(decision)
     if d is not None and d[1]:
         decision = d[0] + MARGEN_DE_DESCARGA

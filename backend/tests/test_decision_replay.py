@@ -466,3 +466,42 @@ def test_un_punto_anadido_despues_no_cruza_la_tesis_de_entonces(session_factory)
         luego = seccion_tesis(s, inst, fund, [], AHORA + timedelta(days=34))
     assert entonces["estado"] == "sin_puntos"
     assert luego["estado"] == "puntos_cruzados"
+
+
+def test_lo_descargado_durante_el_analisis_no_se_retira_en_el_replay(session_factory, servicio):
+    """Revisión de 2f8d84b: el análisis aceptaba con el margen de descarga una
+    cotización fechada unos segundos después de `ahora` (yfinance la fecha al
+    descargarla), pero al congelar quedaba como «futura» y el replay retiraba
+    el precio con que se había decidido."""
+    servicio.quotes["AAPL"]["as_of"] = (AHORA + timedelta(seconds=2)).isoformat()
+    with session_factory() as s:
+        snap, r = _congelar(s, servicio)
+        replay = sn.reproducir(snap)
+    assert r["analisis"]["mercado"]["precio"]["valor"] == 104.0
+    assert (snap.contexto["analisis"]["anomalias_temporales"]["futuras"]) == []
+    assert replay["proteccion_anticipacion"]["retiradas_por_fecha_futura"] == []
+    assert replay["secciones"]["mercado"]["precio"]["valor"] == 104.0 and replay["completo"]
+
+
+def test_la_cotizacion_de_otro_dia_si_se_retira_y_la_puntuacion_de_pares_lleva_el_margen():
+    marcas = [{"dato": "precio", "publicado": (AHORA + timedelta(days=1)).isoformat(), "obtenido_en": None},
+              {"dato": "puntuación", "publicado": (AHORA + timedelta(seconds=3)).isoformat(), "obtenido_en": None},
+              {"dato": "noticia: x", "publicado": (AHORA + timedelta(seconds=3)).isoformat(), "obtenido_en": None}]
+    futuras = [m["dato"] for m in sn.anomalias_temporales(marcas, AHORA)["futuras"]]
+    assert futuras == ["precio", "noticia: x"]
+
+
+def test_la_barra_de_hoy_descargada_durante_el_analisis_entra_como_si_viniera_de_la_cache(session_factory, servicio):
+    """Revisión de 2f8d84b: la barra (o el filing) de hoy entraba si venía de la
+    caché y no si se descargaba en ese momento, unos segundos después de `ahora`."""
+    from app.analisis_empresa import seccion_mercado
+
+    tarde = AHORA.replace(hour=21, minute=30)
+    servicio.historias["AAPL"].append({"ts": tarde.date().isoformat(), "close": 110.0})
+    del servicio.quotes["AAPL"]
+    servicio.ahora = tarde + timedelta(seconds=1)  # el histórico se fecha al descargarlo
+    durante, _ = seccion_mercado(servicio, "AAPL", tarde)
+    servicio.ahora = tarde - timedelta(minutes=1)  # el mismo histórico, de la caché
+    cache, _ = seccion_mercado(servicio, "AAPL", tarde)
+    assert durante["historico"]["hasta"] == cache["historico"]["hasta"] == tarde.date().isoformat()
+    assert durante["precio"]["valor"] == cache["precio"]["valor"] == 110.0
