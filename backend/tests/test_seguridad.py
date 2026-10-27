@@ -257,6 +257,29 @@ def test_la_interfaz_y_el_propio_backend_pasan(cliente, cabeceras):
     assert c.get("/api/meta/health", headers={"host": "127.0.0.1:8000", **cabeceras}).status_code == 200
 
 
+def test_la_interfaz_en_otro_puerto_pasa_por_el_proxy_y_el_403_dice_como_arreglarlo(cliente):
+    # Revisión 3: `npm run preview` (4173) o `npm run dev` con el 5173 ocupado
+    # (5174) recibían 403 en todo POST; el navegador marca same-origin.
+    c, _ = cliente
+    r = c.get("/api/meta/health", headers={"host": "localhost:8000", "origin": "http://localhost:5174",
+                                           "sec-fetch-site": "same-origin"})
+    assert r.status_code == 200
+    ajena = c.get("/api/meta/health", headers={"host": "localhost:8000", "origin": "http://localhost:5174"})
+    assert ajena.status_code == 403 and "CORS_ORIGINS" in ajena.json()["detail"]
+
+
+def test_sin_fetch_metadata_ni_origin_se_mira_el_referer(cliente):
+    # Revisión 3: a un nombre de ALLOWED_HOSTS en http el navegador no manda
+    # Fetch Metadata, y un <img> de otra web pasaba.
+    c, espia = cliente
+    r = c.get("/api/empresa/AAPL/analisis?pares=false",
+              headers={"host": "127.0.0.1:8000", "referer": "https://malicioso.example/pagina"})
+    assert r.status_code == 403 and "Referer" in r.json()["detail"]
+    assert espia.llamadas == []
+    propio = c.get("/api/meta/health", headers={"host": "127.0.0.1:8000", "referer": "http://localhost:5173/hoy"})
+    assert propio.status_code == 200
+
+
 def test_la_interfaz_con_un_nombre_de_allowed_hosts_pasa():
     from starlette.applications import Starlette
     from starlette.responses import PlainTextResponse

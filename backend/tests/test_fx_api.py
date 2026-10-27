@@ -261,3 +261,19 @@ def test_el_motivo_no_pide_una_correccion_que_la_app_no_permite():
     with pytest.raises(fx.SinTipo) as exc:
         fx.normalizar("GBX")
     assert "Corrige" not in str(exc.value) and "fuera de los totales" in str(exc.value)
+
+
+def test_con_toda_la_cartera_en_peniques_riesgo_y_curva_dicen_por_que(client):
+    """Revisión 3: Riesgo decía «Ninguna posición tiene precio» y la curva pedía
+    descargar histórico, cuando lo que pasa es que no se pueden convertir."""
+    from app.analysis.historial import historial
+    from datetime import date
+
+    c, _ = client([("VOD.L", 100, 70.0)], precios={"VOD.L": (72.0, "GBp")})
+    r = c.get("/api/portfolio/riesgo").json()
+    assert r["disponible"] is False and "céntimos de GBP" in r["nota"] and "tiene precio" not in r["nota"]
+    assert r["sin_convertir"][0]["symbol"] == "VOD.L"
+    curva = historial([{"symbol": "VOD.L", "quantity": 100, "cost_basis": 70.0, "currency": "GBX",
+                        "opened_at": date(2026, 1, 2), "closed_at": None}],
+                      {"VOD.L": [(date(2026, 1, 2), 70.0), (date(2026, 1, 5), 71.0)]}, hoy=date(2026, 1, 6))
+    assert "en céntimos (GBX)" in curva["nota"] and "Descargar histórico" not in curva["nota"]

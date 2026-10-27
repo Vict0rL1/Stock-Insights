@@ -98,9 +98,13 @@ los de esta máquina, que siguen siempre (el proxy de Vite llama como `localhost
 Tampoco atiende a otras webs abiertas en el mismo navegador: una petición cuyo
 `Origin` no es la interfaz (`CORS_ORIGINS`, el Vite de `localhost:5173`) ni el
 propio backend, o que sin `Origin` llega marcada `Sec-Fetch-Site: cross-site` o
-`same-site`, es un 403. CORS solo impide *leer* la respuesta: sin esto, un `<img>`
-de cualquier web congelaba análisis en tu historial y gastaba la cuota de los
-proveedores. `start.sh` da el backend por arrancado solo si `/api/meta/health`
+`same-site` (o, sin ninguna de las dos, con un `Referer` de otra web), es un 403.
+`Sec-Fetch-Site: same-origin`, que pone el navegador, siempre pasa: la interfaz por
+el proxy de Vite funciona en cualquier puerto. CORS solo impide *leer* la respuesta:
+sin esto, un `<img>` de cualquier web congelaba análisis en tu historial y gastaba
+la cuota de los proveedores. Límite: a un nombre de `ALLOWED_HOSTS` en http el
+navegador no le manda Fetch Metadata, y una petición sin `Origin` ni `Referer` pasa;
+con `localhost` no hay ese hueco. `start.sh` da el backend por arrancado solo si `/api/meta/health`
 responde sin error (`curl -sf`).
 
 ### La base de datos se migra sola (desde el RC1)
@@ -2006,8 +2010,10 @@ convicción) que el dimensionador usa como entrada declarada. Nada de esto usa u
 LLM, salvo el resumen opcional del diff y el guidance extraído de filings, que
 van marcados.
 
-Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales)
-y **0008** (efectivo anotado). Se aplican solas al arrancar, como las anteriores.
+Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales),
+**0008** (efectivo anotado) y **0009** (vacía la moneda «GBP» que el código anterior
+guardaba por los peniques «GBp» de Londres; se vuelve a aprender del proveedor). Se
+aplican solas al arrancar, como las anteriores.
 
 ## Estado
 

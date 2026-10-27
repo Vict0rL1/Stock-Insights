@@ -172,3 +172,25 @@ def test_el_esquema_migrado_coincide_con_los_modelos(tmp_path):
     with engine.connect() as c:
         diferencias = compare_metadata(MigrationContext.configure(c), Base.metadata)
     assert diferencias == [], f"modelo y migraciones divergen: {diferencias}"
+
+
+def test_el_gbp_que_guardo_el_codigo_viejo_se_vuelve_a_aprender(tmp_path):
+    """Revisión 3: el código anterior a A3 guardaba el «GBp» (peniques) de Yahoo
+    como «GBP» (libras), y con la cotización sin moneda esa mandaba: cien veces
+    el valor. La 0009 vacía esa moneda aprendida; nada más cambia."""
+    from alembic import command
+
+    from app.db.migraciones import _config
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'gbp.db'}")
+    cfg = _config()
+    with engine.begin() as c:
+        cfg.attributes["connection"] = c
+        command.upgrade(cfg, "0008")
+    with engine.begin() as c:
+        for i, (simbolo, moneda) in enumerate([("VOD.L", "GBP"), ("SHOP.TO", "CAD"), ("AAPL", "USD"), ("X", None)], 1):
+            c.execute(text("INSERT INTO instruments (id, symbol, name, type, currency) VALUES (:i, :s, :s, 'stock', :m)"),
+                      {"i": i, "s": simbolo, "m": moneda})
+    migrar(engine)
+    monedas = {f["symbol"]: f["currency"] for f in _filas(engine, "instruments")}
+    assert monedas == {"VOD.L": None, "SHOP.TO": "CAD", "AAPL": "USD", "X": None}

@@ -512,12 +512,16 @@ def _fecha_de_apertura(valor: str | None) -> datetime | None:
         ) from None
     if fecha.tzinfo is None:
         fecha = fecha.replace(tzinfo=timezone.utc)
-    if fecha > datetime.now(timezone.utc) + timedelta(minutes=5):
+    ahora = datetime.now(timezone.utc)
+    if fecha > ahora + timedelta(minutes=5):
         raise ValueError(
             "La fecha de apertura está en el futuro. Una compra que aún no ha "
             "ocurrido descoloca la curva histórica y el tipo de cambio de compra."
         )
-    return fecha
+    # El margen es por el reloj de quien llama: guardada unos minutos en el
+    # futuro, la posición no existía para el análisis ni para el riesgo durante
+    # esos minutos (revisión 3, hermano del efectivo).
+    return min(fecha, ahora)
 
 
 class PositionCreate(BaseModel):
@@ -1151,12 +1155,21 @@ def riesgo_de_cartera(
     ]
     total = sum(p["market_value"] for p in con_precio)
     if not con_precio or not total:
+        # Si hay precio pero nada se pudo convertir (toda la cartera en peniques,
+        # o sin tipo de cambio), decirlo con su motivo: «Ninguna posición tiene
+        # precio» era falso (revisión 3).
+        fuera = divisas["sin_convertir"]
         return {
             "disponible": False,
             "nota": (
+                "Ninguna posición se puede pesar en dólares: "
+                + "; ".join(f"{s['symbol']}, {s['motivo']}" for s in fuera[:4])
+                if fuera else
                 "Ninguna posición tiene precio ahora mismo, así que no hay pesos "
                 "con los que ponderar nada."
             ),
+            "sin_precio": sin_precio,
+            "sin_convertir": fuera,
         }
 
     symbols = [p["symbol"] for p in con_precio]
@@ -1236,7 +1249,8 @@ class EfectivoAnotar(BaseModel):
     moneda: str = Field("USD", min_length=3, max_length=8)
     importe: float = Field(ge=0, allow_inf_nan=False)
     as_of: str | None = Field(
-        None, description="Fecha del saldo (ISO): con hora, o un día (hoy = ahora; uno pasado, su final); por defecto, ahora"
+        None, description=("Fecha del saldo (ISO): con hora, o un día UTC (hoy o mañana en UTC = ahora; uno pasado, "
+                           "su final); por defecto, ahora")
     )
     nota: str | None = None
 
@@ -1267,9 +1281,13 @@ def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session
         # `POST {importe: 1000, as_of: hoy}` respondía 200 mientras mandaban los
         # 10.000 de la mañana (revisión de A4). Hoy, la hora del registro; un día
         # pasado, su último instante (lo que `punto_en_el_tiempo` da por sabido).
-        cuando = ahora if momento == ahora.date() else pit.fin_del_dia(momento)
+        # El día es el UTC, como todo el backend; el de mañana en UTC solo puede
+        # ser el hoy de alguien al este (en Madrid, de 00:00 a 01:00 daba 422):
+        # cuenta como hoy (revisión 3).
+        cuando = ahora if momento in (ahora.date(), ahora.date() + timedelta(days=1)) else pit.fin_del_dia(momento)
     if cuando > ahora + timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="Un saldo no puede estar fechado en el futuro.")
+        raise HTTPException(status_code=422, detail=(
+            f"Un saldo no puede estar fechado en el futuro (hoy, en UTC, es el {fmt_fecha(ahora.date())})."))
     # El margen es por el desfase del reloj de quien llama, no para fechar en el
     # futuro: guardado tal cual, la pantalla decía «Sin efectivo anotado» durante
     # esos minutos (revisión de A4).
@@ -1282,10 +1300,12 @@ def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session
     vigente = next(c for c in _ultimas_anotaciones(session, datetime.now(timezone.utc)) if c.moneda == moneda)
     nota = None
     if vigente.id != fila.id:
+        # Sin suponer que era «para la historia»: al oeste de UTC, de noche, el
+        # día de hoy de quien lo anota es el de ayer en UTC (revisión 3).
         nota = (
-            f"Anotado para la historia, pero no es el saldo vigente: manda el de "
-            f"{fmt_fecha(_utc_iso(vigente.as_of), hora=True)} ({fmt_dinero(vigente.importe, moneda)}), "
-            "más reciente. Para corregir el saldo de hoy, anótalo sin fecha."
+            f"Anotado con fecha del {fmt_fecha(_utc_iso(fila.as_of))} (el día se lee en UTC), pero no es el "
+            f"saldo vigente: manda el de {fmt_fecha(_utc_iso(vigente.as_of), hora=True)} "
+            f"({fmt_dinero(vigente.importe, moneda)}), más reciente. Si es tu saldo de hoy, anótalo sin fecha."
         )
     return {
         "id": fila.id,

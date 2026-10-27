@@ -217,7 +217,9 @@ def evaluar(
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": round(efectivo, 4)}, "veredicto": {
             "accion": NO_TRADE,
             "motivo": "No cabe: los límites de la cartera le dejan 0\u00a0%. " + (
-                porque or "Ninguno de los límites (posición, sector, correlación, volatilidad) deja hueco."),
+                porque or "Ninguno de los límites (posición, sector, correlación, volatilidad) deja hueco.")
+                # Los pesos se miden sobre un capital con ese efectivo dentro.
+                + (f" Ojo con el efectivo: {aviso_efectivo}." if aviso_efectivo else ""),
         }}
 
     tamano = {"maximo_permitido": round(tamano_maximo, 4)}

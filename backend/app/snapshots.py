@@ -331,17 +331,18 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     symbol = limpio["symbol"]
     fecha = ahora.astimezone(timezone.utc).date().isoformat()
 
-    # La última que ya existía en `ahora`, como `oportunidad._lectura_congelada`:
-    # con una posterior en la base (un reloj adelantado que se corrigió, un
-    # análisis fechado), la más reciente era de otro día y cada vez que se abría
-    # la empresa se congelaba una copia idéntica e imborrable (revisión de A5).
-    filas = session.execute(
+    # La última DEL MISMO DÍA. Con la más reciente de la base, una posterior (un
+    # reloj adelantado que se corrigió, un análisis fechado) era de otro día y
+    # cada análisis igual congelaba una copia imborrable (revisión de A5); y
+    # filtrando por «ya existía en `ahora`», dos análisis solapados (el que
+    # empezó después congela antes) dejaban dos copias idénticas (revisión 3).
+    ultimo = session.execute(
         select(DecisionSnapshot)
-        .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"))
+        .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"),
+               DecisionSnapshot.fecha == fecha)
         .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
-    ).scalars()
-    ultimo = next((s for s in filas if pit.disponible_en(s.creado_en, ahora) is True), None)
-    if ultimo is not None and ultimo.fecha == fecha and (ultimo.contexto or {}).get("huella_material") == huella_m:
+    ).scalars().first()
+    if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
         return ultimo, False
 
     # Lo que llegara fechado después de la decisión se anota al congelar: la

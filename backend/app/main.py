@@ -129,10 +129,14 @@ class HostDeConfianza:
       `http://127.0.0.1:8000` es el nuestro, y CORS solo impide LEER la
       respuesta, no que se ejecute: un `<img>` hacia `/api/empresa/AAPL/analisis`
       congelaba una instantánea inmutable y gastaba cuota de los proveedores
-      (revisión de A6). Vale un `Origin` de la interfaz local (`CORS_ORIGINS`, o
-      su puerto con un nombre permitido) o del propio backend (`/docs`); sin
-      `Origin`, `Sec-Fetch-Site` de otro sitio también se rechaza (un `<img>`
-      o un formulario no siempre lo mandan).
+      (revisión de A6). Vale `Sec-Fetch-Site: same-origin`, que pone el
+      navegador y ninguna página puede falsificar (la interfaz por el proxy de
+      Vite en cualquier puerto: `npm run preview`, o el 5174 con el 5173
+      ocupado, recibían 403 en todo POST; revisión 3); vale un `Origin` de la
+      interfaz local (`CORS_ORIGINS`, o su puerto con un nombre permitido) o del
+      propio backend (`/docs`). Sin `Origin`, un `Sec-Fetch-Site` de otro sitio
+      se rechaza, y sin ninguno de los dos (un nombre de ALLOWED_HOSTS en http no
+      recibe Fetch Metadata) se mira el `Referer`.
     """
 
     def __init__(self, app: ASGIApp, permitidos: list[str], origenes: list[str]) -> None:
@@ -158,20 +162,30 @@ class HostDeConfianza:
             cabecera = cabeceras.get(b"host", b"").decode("latin-1")
             origen = cabeceras.get(b"origin")
             sitio = cabeceras.get(b"sec-fetch-site", b"").decode("latin-1").strip().lower()
+            referer = cabeceras.get(b"referer", b"").decode("latin-1").strip()
             respuesta = None
+            ajena = None
             if nombre_de_host(cabecera) not in self.permitidos:
                 respuesta = JSONResponse(status_code=400, content={"detail": (
                     f"Cabecera Host no permitida: «{cabecera[:80]}». El backend solo atiende a "
                     f"{', '.join(sorted(self.permitidos))}; para llamarlo con otro nombre, añádelo a "
                     "ALLOWED_HOSTS en .env.")})
-            elif origen is not None and not self._origen_permitido(origen.decode("latin-1"), cabecera):
+            elif sitio == "same-origin":
+                pass
+            elif origen is not None:
+                if not self._origen_permitido(origen.decode("latin-1"), cabecera):
+                    ajena = f"«{origen.decode('latin-1')[:80]}»"
+            elif sitio in ("cross-site", "same-site"):
+                ajena = f"Sec-Fetch-Site: {sitio}"
+            elif not sitio and referer:
+                esquema, _, resto = referer.partition("://")
+                if not self._origen_permitido(f"{esquema}://{resto.split('/', 1)[0]}", cabecera):
+                    ajena = f"Referer «{referer[:80]}»"
+            if ajena:
                 respuesta = JSONResponse(status_code=403, content={"detail": (
-                    f"Petición de otra web («{origen.decode('latin-1')[:80]}»): el backend solo atiende "
-                    "a la interfaz de esta máquina.")})
-            elif origen is None and sitio in ("cross-site", "same-site"):
-                respuesta = JSONResponse(status_code=403, content={"detail": (
-                    "Petición de otra web (Sec-Fetch-Site: " + sitio + "): el backend solo atiende "
-                    "a la interfaz de esta máquina.")})
+                    f"Petición de otra web ({ajena}): el backend solo atiende a la interfaz de esta "
+                    "máquina. Si es tu interfaz servida en otro puerto o con otro nombre, añade su origen a "
+                    "CORS_ORIGINS en .env (lista JSON).")})
             if respuesta is not None:
                 await respuesta(scope, receive, send)
                 return

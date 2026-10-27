@@ -620,6 +620,20 @@ la banda; «mantener» decía «precio sobre su media» sin media. Los rangos de
 tres cifras significativas a propósito, salían con céntimos («147,00»): `fmt_valor_redondo`, gemelo
 nuevo («147», «0,00347»). «Qué cambió» escribe los precios con `fmtPrecio`.
 
+**Efectivo, peniques, origen y tesis.** (1) El antiduplicado filtraba por «ya existía en `ahora`»
+y dos análisis solapados (el que empezó después congela antes) dejaban dos instantáneas
+iguales; ahora compara con la última del mismo día. (2) «No cabe» con efectivo de tipo viejo no
+lo avisaba; Hoy, con el efectivo anotado y sin tipo, pedía «Puedes anotarlo» y perdía el motivo.
+(3) El «hoy» de un saldo solo con el día es el UTC; el de mañana en UTC (el hoy de quien está al
+este) cuenta como hoy, y los mensajes lo dicen. (4) La fecha de apertura unos minutos adelantada
+se recorta a ahora, como el efectivo. (5) Migración **0009**: vacía la moneda «GBP» que el código
+anterior guardaba por «GBp»; con ella, una cerrada o una cotización sin moneda convertían
+peniques como libras. (6) Con toda la cartera en peniques, Riesgo y la curva dicen el motivo
+real. (7) El origen: `Sec-Fetch-Site: same-origin` pasa (la interfaz en otro puerto recibía 403
+en todo POST), sin Fetch Metadata se mira el `Referer`, y el 403 dice cómo arreglarlo
+(`CORS_ORIGINS`). (8) La ventana de noticias de la tesis acaba en el `ahora` del análisis, no en
+el reloj de la máquina. (9) Test del filtro de puntos de `evaluar(…, ahora)`, que nada cubría.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

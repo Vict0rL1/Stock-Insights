@@ -227,6 +227,13 @@ BASE_CARTERA = {
         "dólares): si guardas liquidez, tu concentración real es menor y los topes "
         "aprietan antes de lo debido. Puedes anotarlo en Cartera."
     ),
+    # Anotado pero sin tipo de cambio: no se le pide que lo anote (revisión 3);
+    # el detalle dice qué moneda y por qué.
+    "invertido_sin_cambio": (
+        "el peso de lo que ya tienes se mide sobre el valor de tus posiciones "
+        "abiertas: el efectivo está anotado, pero no se pudo pasar a dólares y no "
+        "se supone 1:1. Los topes aprietan antes de lo debido, que es el lado prudente."
+    ),
     # Con posiciones que el barrido no valora, sumar todo el efectivo a media
     # cartera inventaría liquidez (revisión de M3): se mide sin él y se dice.
     "invertido_parcial": (

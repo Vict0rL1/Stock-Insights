@@ -188,6 +188,21 @@ def test_la_nota_del_tamano_dice_sobre_que_se_miden_los_pesos():
     assert con_efectivo["sizing"]["invertido_pct"] >= sin_efectivo["sizing"]["invertido_pct"]
 
 
+def test_con_el_efectivo_anotado_pero_sin_tipo_hoy_no_pide_que_lo_anotes():
+    """Revisión 3: con 1.000 CAD anotados y sin serie de CAD, la nota decía «no
+    hay efectivo anotado… Puedes anotarlo en Cartera» y el motivo se perdía."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, "Tech") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Tech", last=100.0))
+    r = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}},
+                                  efectivo_motivo="efectivo en CAD sin tipo de cambio: no se supone 1:1")
+    nota = r["sizing"]["nota"]
+    assert "el efectivo está anotado" in nota and "CAD sin tipo de cambio" in nota
+    assert "Puedes anotarlo" not in nota
+    # Sin efectivo anotado, la frase de siempre.
+    assert "Puedes anotarlo" in _lista_corta_dimensionada(
+        señales, {"VIEJA": {"quantity": 10}}, efectivo_motivo="no hay efectivo anotado")["sizing"]["nota"]
+
+
 def test_hoy_lee_el_efectivo_anotado_y_no_supone_un_tipo_de_cambio(session_factory):
     """La lista de Hoy usa la misma conversión que el coste de oportunidad: una
     moneda sin tipo deja el efectivo desconocido (y Hoy mide sobre lo

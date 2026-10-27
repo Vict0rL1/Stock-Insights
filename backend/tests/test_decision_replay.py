@@ -505,3 +505,26 @@ def test_la_barra_de_hoy_descargada_durante_el_analisis_entra_como_si_viniera_de
     cache, _ = seccion_mercado(servicio, "AAPL", tarde)
     assert durante["historico"]["hasta"] == cache["historico"]["hasta"] == tarde.date().isoformat()
     assert durante["precio"]["valor"] == cache["precio"]["valor"] == 110.0
+
+
+def test_la_ventana_de_noticias_de_la_tesis_acaba_en_el_ahora_del_analisis(session_factory):
+    """Revisión 3: el corte de la ventana usaba el reloj de la máquina, y una
+    tesis reconstruida al 12 de septiembre con un titular del 11 salía «intacta»
+    (el titular quedaba fuera de los 14 días de hoy)."""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall",
+                            config={"palabras": ["recall"]}, created_at=tesis.created_at))
+        s.commit()
+        noticias = [{"headline": "Apple anuncia un recall de cargadores", "summary": "",
+                     "published_at": (AHORA - timedelta(days=1)).isoformat()}]
+        r = seccion_tesis(s, inst, {}, noticias, AHORA)
+    assert r["estado"] == "puntos_cruzados"

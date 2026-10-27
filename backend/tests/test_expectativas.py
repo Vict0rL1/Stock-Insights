@@ -435,6 +435,29 @@ def test_el_resumen_del_analisis_solo_lee_lo_registrado_entonces(session_factory
     assert luego["ultimo"]["guidance"] == "baja" and luego["proximo"]["expectativas"] == 1
 
 
+def test_el_impacto_en_la_tesis_del_resumen_solo_cuenta_los_puntos_de_entonces(session_factory, servicio):
+    """Revisión 3: ningún test cubría el filtro de puntos de `evaluar(…, ahora)`:
+    sin él, un punto creado el 20 de noviembre salía en el resumen del día 3."""
+    with session_factory() as s:
+        _tesis(s)
+        tesis = s.query(Thesis).one()
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        svc.capturar(s, servicio, e, AHORA)
+        servicio.financials["AAPL"]["quarters"].append(
+            trimestre(2026, 3, "2026-10-30", revenue=118.0, operating_income=118.0 * 0.185,
+                      gross_profit=118.0 * 0.45, eps_diluted=1.25))
+        servicio.ahora = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        svc.registrar_reales(s, servicio, e, servicio.ahora)
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="demanda (añadido el 20-nov)",
+                            config={"palabras": ["demanda"]}, created_at=datetime(2026, 11, 20, tzinfo=timezone.utc)))
+        s.commit()
+        entonces = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 3, tzinfo=timezone.utc))
+        luego = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 21, tzinfo=timezone.utc))
+    puntos = lambda r: {i["punto"] for i in r["ultimo"]["impacto_en_tesis"]}  # noqa: E731
+    assert "demanda (añadido el 20-nov)" not in puntos(entonces)
+    assert "demanda (añadido el 20-nov)" in puntos(luego)
+
+
 def test_un_punto_de_la_tesis_anadido_despues_no_fija_una_expectativa_de_antes(session_factory, servicio):
     with session_factory() as s:
         _tesis(s)

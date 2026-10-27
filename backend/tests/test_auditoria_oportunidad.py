@@ -192,11 +192,13 @@ def test_una_fecha_que_no_es_fecha_se_rechaza(session_factory):
     cliente = _cliente(session_factory)
     try:
         malas = [cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": f}).status_code for f in ("ayer", "2026-13-01")]
-        manana = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
-        futura = cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": manana}).status_code
+        # Mañana en UTC es el hoy de alguien al este y cuenta como hoy; pasado
+        # mañana ya es el futuro para cualquiera.
+        pasado = (datetime.now(timezone.utc).date() + timedelta(days=2)).isoformat()
+        futura = cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": pasado})
     finally:
         app.dependency_overrides.clear()
-    assert malas == [422, 422] and futura == 422
+    assert malas == [422, 422] and futura.status_code == 422 and "en UTC" in futura.json()["detail"]
 
 
 def test_una_lectura_posterior_no_esconde_la_anterior_valida(session_factory):
@@ -388,3 +390,36 @@ def test_un_tipo_de_cambio_fuera_de_banda_deja_fuera_la_posicion_y_el_efectivo(s
         efectivo = efectivo_usd(s, ctx, DECISION)
     assert ctx["posiciones"][0]["peso"] is None and "leída del revés" in ctx["posiciones"][0]["motivo"]
     assert efectivo["usd"] is None and "leída del revés" in efectivo["motivo"]
+
+
+def test_el_hoy_de_quien_esta_al_este_de_utc_cuenta_como_hoy(session_factory):
+    # Revisión 3: en Madrid, entre las 00:00 y la 01:00, su fecha de hoy es la de
+    # mañana en UTC y daba 422 «fechado en el futuro».
+    cliente = _cliente(session_factory)
+    try:
+        manana = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+        r = _anotar(cliente, 1000.0, manana)
+    finally:
+        app.dependency_overrides.clear()
+    assert r["vigente"] is True and datetime.fromisoformat(r["as_of"]) <= datetime.now(timezone.utc)
+
+
+def test_una_posicion_unos_minutos_adelantada_existe_en_cuanto_se_anota():
+    # Revisión 3, hermano del efectivo: se guardaba tal cual y la posición no
+    # existía para el análisis ni para el riesgo durante esos minutos.
+    from app.routers.portfolio import _fecha_de_apertura
+
+    fecha = _fecha_de_apertura((datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat())
+    assert fecha <= datetime.now(timezone.utc)
+
+
+def test_dos_analisis_solapados_no_dejan_dos_instantaneas_iguales(session_factory):
+    # Revisión 3: el que empezó después (T+20 s) congela antes; el que empezó en
+    # T ya no la veía («no existía en ahora») y congelaba una copia idéntica.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=20), con_pares=False)
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+    assert segunda["instantanea"]["nueva"] is True
+    assert primera["instantanea"]["nueva"] is False and primera["instantanea"]["id"] == segunda["instantanea"]["id"]
+

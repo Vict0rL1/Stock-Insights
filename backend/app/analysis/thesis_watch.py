@@ -187,7 +187,8 @@ def evaluar_crecimiento(config: dict, crecimiento: dict) -> dict:
 
 
 def evaluar_noticia(
-    config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS, incompletas: str | None = None
+    config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS, incompletas: str | None = None,
+    ahora: datetime | None = None,
 ) -> dict:
     """Palabras clave en titulares. Búsqueda de palabras, no comprensión.
 
@@ -219,7 +220,11 @@ def evaluar_noticia(
             ),
         }
 
-    corte = datetime.now(timezone.utc) - timedelta(days=dias)
+    # La ventana acaba en el `ahora` del análisis, no en el reloj de la máquina:
+    # una tesis reconstruida al 12 de septiembre con un titular del 11 salía
+    # «intacta» porque el titular quedaba fuera de los 14 días de hoy: un punto
+    # no mirado contado como no cruzado (revisión 3).
+    corte = (ahora or datetime.now(timezone.utc)) - timedelta(days=dias)
     coincidencias = []
     revisados = 0
     for n in noticias:
@@ -293,7 +298,8 @@ def evaluar(disparador: dict, datos: dict) -> dict:
         r = evaluar_crecimiento(config, datos.get("crecimiento") or {})
     elif kind == "noticia":
         # Sin `or []`: una clave ausente o None es un fallo de descarga, no cero titulares.
-        r = evaluar_noticia(config, datos.get("noticias"), incompletas=datos.get("noticias_incompletas"))
+        r = evaluar_noticia(config, datos.get("noticias"), incompletas=datos.get("noticias_incompletas"),
+                            ahora=datos.get("ahora"))
     else:
         r = {"salta": False, "medible": False, "motivo": f"Tipo desconocido: {kind}"}
     return {**disparador, **r}

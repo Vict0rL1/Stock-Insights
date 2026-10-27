@@ -160,6 +160,7 @@ def _lista_corta_dimensionada(
     ranked: list[dict], posiciones: dict[str, dict] | None = None,
     efectivo_usd: float | None = None,
     efectivo_detalle: list[dict] | None = None,
+    efectivo_motivo: str | None = None,
 ) -> dict:
     """La lista corta, con el tamaño decidido sobre el conjunto.
 
@@ -194,6 +195,13 @@ def _lista_corta_dimensionada(
     ]
     candidatas = [c for c in candidatas if c["peso_bruto_pct"]]
     cartera, aviso_cartera, base = _cartera_actual(ranked, posiciones or {}, efectivo_usd)
+    from app.oportunidad import SIN_ANOTAR
+
+    sin_cambio = None
+    if base == "invertido" and efectivo_usd is None and efectivo_motivo and efectivo_motivo != SIN_ANOTAR:
+        # Anotado pero sin tipo de cambio: la nota decía «no hay efectivo anotado…
+        # Puedes anotarlo en Cartera» y se perdía el motivo (revisión 3).
+        base, sin_cambio = "invertido_sin_cambio", f"({efectivo_motivo})"
     interesan = {c["symbol"] for c in candidatas} | {p["symbol"] for p in cartera}
 
     corta["sizing"] = dimensionar(
@@ -201,7 +209,7 @@ def _lista_corta_dimensionada(
         retornos=_retornos_desde_spark(ranked, interesan),
         cartera=cartera,
         base_cartera=base,
-        detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else None,
+        detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else sin_cambio,
     )
     corta["sizing"]["base_cartera"] = base
     corta["sizing"]["efectivo"] = (
@@ -1183,7 +1191,8 @@ def _today(
         # convicción y recorta a unas pocas: es la diferencia entre un filtro
         # y una recomendación.
         "shortlist": _lista_corta_dimensionada(
-            ranked, posiciones, efectivo["usd"], efectivo.get("detalle")
+            ranked, posiciones, efectivo["usd"], efectivo.get("detalle"),
+            efectivo_motivo=efectivo.get("motivo"),
         ),
         "counts": {
             "favorables": n_favorables,

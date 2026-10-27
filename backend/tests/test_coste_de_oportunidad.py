@@ -286,3 +286,11 @@ def test_la_ficha_convierte_el_efectivo_en_una_moneda_sin_posiciones(session_fac
         efectivo = efectivo_usd(s, ctx, ahora)
     assert efectivo["estado"] == "valido"
     assert efectivo["usd"] == pytest.approx(13700.0 / FX_BUENO, rel=0.01)
+
+
+def test_no_cabe_con_un_efectivo_de_tipo_viejo_tambien_lo_avisa():
+    # Revisión 3: la rama «No cabe» con el efectivo conocido salía antes de los
+    # avisos; el peso que la deja sin hueco se mide con ese efectivo dentro.
+    r = _evaluar([_pos()], tamano=0.0, aviso_efectivo="tipo de cambio de más de 7 días (CAD, del 20 ago 2026)")
+    assert r["veredicto"]["accion"] == "NO_TRADE"
+    assert "Ojo con el efectivo: tipo de cambio de más de 7 días" in r["veredicto"]["motivo"]

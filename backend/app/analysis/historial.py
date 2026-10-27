@@ -105,12 +105,18 @@ def historial(
         usables.append({**p, "currency": moneda})
 
     if not usables:
+        # Con el motivo de cada una: «pulsa Descargar histórico» se decía también
+        # de una cartera toda en peniques, que tiene histórico y no se puede
+        # convertir (revisión 3). La descarga solo se sugiere si falta histórico.
+        falta_historico = any(e["motivo"] == "sin histórico de precios en caché" for e in excluidas)
         return {
             "disponible": False,
             "excluidas": excluidas,
             "nota": (
-                "Ninguna posición tiene histórico utilizable. Abre Cartera y pulsa "
-                "«Descargar histórico completo» para que haya con qué dibujar."
+                "Ninguna posición se puede dibujar ("
+                + "; ".join(f"{e['symbol']}, {e['motivo']}" for e in excluidas[:4]) + ")."
+                + (" Abre Cartera y pulsa «Descargar histórico completo» para que haya con qué dibujar."
+                   if falta_historico else "")
             ),
         }
 

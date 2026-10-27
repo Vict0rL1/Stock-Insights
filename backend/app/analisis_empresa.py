@@ -412,6 +412,7 @@ def seccion_tesis(
             "crecimiento": growth_summary(periodos) if periodos else {},
             "noticias": noticias,
             "noticias_incompletas": noticias_incompletas,
+            "ahora": ahora,
         },
     )
     if not vigilancia["total"]:
