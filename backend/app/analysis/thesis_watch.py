@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_antiguedad, fmt_num, fmt_pct, plural
+from app.formato import fmt_antiguedad, fmt_num, fmt_pct, fmt_valor_redondo, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -67,9 +67,13 @@ CRECIMIENTOS = {
 # junto al «< 18 %» del título (revisión del 2.12).
 EN_PORCENTAJE = frozenset({"operating_margin", "net_margin", "gross_margin", "fcf_margin", "roe", "roic",
                            *CRECIMIENTOS})
-# Un punto viejo en «veces» guardado con 1 o más no salió del formulario viejo:
-# sería un umbral de 100 o más escrito, y ninguna de estas métricas se vigila así.
-LEGADO_MAX = 1.0
+# El umbral más alto que tiene sentido escribir para cada métrica en «veces». Un
+# punto sin `unidad` guardada se lee también ×100 (el formulario viejo dividía
+# entre 100) solo si esa lectura cabe aquí. Con un tope común de 100, un
+# «Deuda/capital > 0,5» legítimo se leía también como 50 veces de apalancamiento,
+# una cifra que nadie vigila, y con D/E 0,6 un punto CRUZADO quedaba sin comprobar
+# (revisión 4). Un 0,02 sigue siendo dudoso: puede ser 0,02 o 2.
+TOPE_LEGADO = {"debt_to_equity": 10.0, "current_ratio": 10.0, "interest_coverage": 30.0}
 
 
 def unidad_de(clave: str | None) -> str:
@@ -122,30 +126,45 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
     def cifra(v: float) -> str:
         return fmt_pct(v, 1) if en_pct else fmt_num(v, 2)
 
+    def cifra_umbral(v: float) -> str:
+        # Un umbral en «veces» con más de dos decimales se escribe entero: con
+        # dos fijos, 0,015 salía «0,02» y 0,005, «0,01» (revisión 4).
+        return cifra(v) if en_pct or round(v, 2) == v else fmt_valor_redondo(v)
+
     salta = prueba(valor, umbral)
-    if not en_pct and config.get("unidad") is None and abs(umbral) < LEGADO_MAX:
-        # Un punto en «veces» de antes del arreglo del formulario, que lo pedía
-        # todo en % y dividía entre 100: lo guardado puede ser lo escrito o su
-        # centésima parte. Se lee de las dos formas. Si coinciden, ese es el
-        # veredicto (un punto cruzado con las dos no puede quedar sin comprobar).
-        # Si no, queda SIN COMPROBAR y se dice qué daría cada una: antes un
-        # corte por valor (≤ 0,1) dejaba sin comprobar también los umbrales
-        # nuevos y legítimos y daba por «no cruzados» los viejos de 0,15
-        # (revisión 3). Los puntos nuevos llevan `unidad` y se leen tal cual,
-        # y uno viejo de `LEGADO_MAX` o más no pudo salir de esa conversión.
-        otra = prueba(valor, umbral * 100)
+    aviso = None
+    # ×100 redondeado: en coma flotante 0,07 × 100 es 7,000000000000001, y con
+    # una cobertura de 7 exacta las dos lecturas de «< 7» «discrepaban» (revisión 4).
+    escrito = round(umbral * 100, 9)
+    tope = TOPE_LEGADO.get(config.get("metrica"))
+    if not en_pct and config.get("unidad") is None and tope is not None and abs(escrito) <= tope:
+        # Un punto en «veces» sin unidad guardada: el formulario viejo lo pedía
+        # todo en % y dividía entre 100, así que lo guardado puede ser lo escrito
+        # o su centésima parte. Se lee de las dos formas. Si coinciden, ese es el
+        # veredicto (un punto cruzado con las dos no puede quedar sin comprobar),
+        # con un aviso de la duda. Si no, queda SIN COMPROBAR y se dice qué daría
+        # cada una: antes un corte por valor (≤ 0,1) dejaba sin comprobar también
+        # los umbrales nuevos y legítimos y daba por «no cruzados» los viejos de
+        # 0,15 (revisión 3). Los puntos nuevos llevan `unidad` y se leen tal cual.
+        # Aquí, con todas las cifras enteras: con dos decimales el motivo decía
+        # «Deuda / capital = 0,01: con 0,01 saltaría» (revisión 4).
+        otra = prueba(valor, escrito)
+        lecturas = (f"Punto guardado sin unidad, y el formulario viejo guardaba los ratios divididos entre 100: "
+                    f"el umbral guardado, {fmt_valor_redondo(umbral)}, puede ser {fmt_valor_redondo(escrito)} "
+                    "escrito por ti.")
         if otra != salta:
             return {
                 "salta": False,
                 "medible": False,
                 "motivo": (
-                    f"Punto anterior al arreglo del formulario, que guardaba los ratios divididos entre 100: "
-                    f"el umbral guardado, {cifra(umbral)}, puede ser {cifra(umbral * 100)} escrito por ti. "
-                    f"{etiqueta} = {cifra(valor)}: con {cifra(umbral)} {'saltaría' if salta else 'no saltaría'} "
-                    f"y con {cifra(umbral * 100)}, {'sí' if otra else 'no'}. Queda sin comprobar hasta que lo "
-                    "quites y lo crees de nuevo."
+                    f"{lecturas} {etiqueta} = {fmt_valor_redondo(valor)}: con {fmt_valor_redondo(umbral)} "
+                    f"{'saltaría' if salta else 'no saltaría'} y con {fmt_valor_redondo(escrito)}, "
+                    f"{'sí' if otra else 'no'}. Queda sin comprobar hasta que lo quites y lo crees de nuevo."
                 ),
             }
+        if escrito != umbral:
+            aviso = (f"{lecturas} Con las dos lecturas {'salta' if salta else 'no salta'}; para quitar la duda, "
+                     "quítalo y créalo de nuevo.")
 
     resultado = {
         "salta": salta,
@@ -153,10 +172,12 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
         "valor": round(valor, 4),
         "umbral": umbral,
         "detalle": (
-            f"{etiqueta} = {cifra(valor)}; el punto salta si {texto_op} {cifra(umbral)}."
+            f"{etiqueta} = {cifra(valor)}; el punto salta si {texto_op} {cifra_umbral(umbral)}."
             + ("" if salta else " Todavía no lo cruza.")
         ),
     }
+    if aviso:
+        resultado["aviso"] = aviso
     return resultado
 
 
@@ -340,6 +361,19 @@ def _resumen(saltan: int, sin_medir: int, total: int) -> str:
             "una señal de venta: es que tú, cuando pensabas con más calma, dijiste "
             "que esto importaba. Toca releer la tesis."
         )
+    elif sin_medir == total:
+        # Ninguno comprobado: decir «no se ha cruzado» era contar UNKNOWN como
+        # PASS en el texto, bajo la insignia «sin medir» (revisión 4).
+        partes.append(
+            ("El único punto de invalidación no se pudo comprobar" if total == 1
+             else f"Los {total} puntos de invalidación no se pudieron comprobar")
+            + " (falta un dato o el punto hay que rehacerlo; cada uno dice por qué) — que no es lo mismo que estar bien."
+        )
+        return " ".join(partes)
+    elif sin_medir:
+        comprobados = total - sin_medir
+        partes.append("El único punto comprobado no se ha cruzado." if comprobados == 1
+                      else f"Ninguno de los {comprobados} puntos comprobados se ha cruzado.")
     else:
         partes.append("El único punto de invalidación no se ha cruzado." if total == 1
                       else f"Ninguno de los {total} puntos de invalidación se ha cruzado.")

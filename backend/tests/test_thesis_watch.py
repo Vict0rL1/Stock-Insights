@@ -323,7 +323,7 @@ def test_un_punto_viejo_cuyas_dos_lecturas_discrepan_queda_sin_comprobar():
     # y con 1, sí. No es «no cruzado»: es «no se puede comprobar» (UNKNOWN nunca PASS).
     r = _ratio("current_ratio", "lt", 0.01, 0.8)
     assert r["salta"] is False and r["medible"] is False
-    assert "con 0,01 no saltaría y con 1,00, sí" in r["motivo"]
+    assert "con 0,01 no saltaría y con 1, sí" in r["motivo"]
     # «Deuda/capital > 2» guardado como 0,02, con D/E 0,5: antes salía CRUZADO.
     assert _ratio("debt_to_equity", "gt", 0.02, 0.5)["medible"] is False
     # Revisión 3: uno viejo de 0,15 («< 15») con cobertura 8 salía «no cruzado».
@@ -353,3 +353,59 @@ def test_cero_o_negativo_es_un_umbral_legitimo():
 
 def test_un_margen_bajo_en_porcentaje_no_es_sospechoso():
     assert _ratio("operating_margin", "lt", 0.05, 0.21)["medible"] is True
+
+
+# --- Revisión 4: la doble lectura, acotada por métrica y con todas las cifras ---
+
+
+def test_un_umbral_que_x100_no_cabe_en_la_metrica_se_lee_tal_cual():
+    # «Deuda/capital > 0,5» sin unidad (creado entre el arreglo del formulario y
+    # el que guarda la unidad, o por la API) se leía también como 50 veces de
+    # apalancamiento y, con D/E 0,6, un punto CRUZADO quedaba sin comprobar.
+    r = _ratio("debt_to_equity", "gt", 0.5, 0.6)
+    assert r["medible"] is True and r["salta"] is True and "aviso" not in r
+    assert _ratio("current_ratio", "lt", 0.8, 0.7)["salta"] is True
+    # Un 0,02 sí sigue siendo dudoso (0,02 o 2), y una cobertura de 0,15 (15).
+    assert _ratio("debt_to_equity", "gt", 0.02, 0.5)["medible"] is False
+    assert _ratio("interest_coverage", "lt", 0.15, 8.0)["medible"] is False
+
+
+def test_la_lectura_x100_no_se_equivoca_en_coma_flotante():
+    # 0,07 × 100 = 7,000000000000001: «cobertura < 7» con cobertura 7 exacta
+    # «discrepaba» y el motivo decía «con 7,00, sí» cuando 7 < 7 es falso.
+    r = _ratio("interest_coverage", "lt", 0.07, 7.0)
+    assert r["medible"] is True and r["salta"] is False
+    # Y 0,1 × 100 = 10,000000000000002 no se sale del tope de 10.
+    assert _ratio("debt_to_equity", "gt", 0.1, 0.5)["medible"] is False
+
+
+def test_un_punto_sin_unidad_con_las_dos_lecturas_iguales_lo_avisa_con_su_umbral_entero():
+    # «D/E > 0,25» escrito en el formulario viejo se guardó como 0,0025: con D/E
+    # 0,6 salta con las dos lecturas, pero el detalle decía «salta si sube por
+    # encima de 0,00» y nada avisaba de la duda.
+    r = _ratio("debt_to_equity", "gt", 0.0025, 0.6)
+    assert r["medible"] is True and r["salta"] is True
+    assert "por encima de 0,0025" in r["detalle"]
+    assert "0,0025" in r["aviso"] and "puede ser 0,25 escrito por ti" in r["aviso"]
+    assert "Con las dos lecturas salta" in r["aviso"]
+
+
+def test_el_motivo_de_un_punto_dudoso_no_redondea_las_cifras():
+    # «D/E > 0,5» viejo, guardado 0,005, con D/E 0,008: el motivo decía «el
+    # umbral guardado, 0,01 … Deuda / capital = 0,01: con 0,01 saltaría».
+    r = _ratio("debt_to_equity", "gt", 0.005, 0.008)
+    assert r["medible"] is False
+    assert "el umbral guardado, 0,005, puede ser 0,5 escrito por ti" in r["motivo"]
+    assert "Deuda / capital = 0,008: con 0,005 saltaría y con 0,5, no" in r["motivo"]
+    assert "anterior al arreglo" not in r["motivo"]
+
+
+def test_la_nota_no_da_por_no_cruzado_lo_que_no_se_pudo_comprobar():
+    from app.analysis.thesis_watch import _resumen
+
+    uno = _resumen(0, 1, 1)
+    assert "no se ha cruzado" not in uno and uno.startswith("El único punto de invalidación no se pudo comprobar")
+    assert _resumen(0, 3, 3).startswith("Los 3 puntos de invalidación no se pudieron comprobar")
+    dos = _resumen(0, 2, 3)
+    assert dos.startswith("El único punto comprobado no se ha cruzado. 2 no se pudieron comprobar")
+    assert _resumen(0, 1, 3).startswith("Ninguno de los 2 puntos comprobados se ha cruzado. 1 no se pudo")

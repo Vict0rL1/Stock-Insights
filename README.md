@@ -824,9 +824,12 @@ escriben en %, «18», y se guardan como fracción, 0,18); deuda/capital, ratio 
 cobertura de intereses son `veces` (un ratio corriente de 1,2 se escribe y se guarda 1,2).
 Antes el formulario lo pedía todo en % y dividía entre 100: «ratio corriente < 1» se
 guardaba como 0,01 y el punto no saltaba nunca. Los puntos nuevos guardan su `unidad`. Uno
-de antes en `veces` (sin `unidad`, con el umbral por debajo de 1) se lee de las dos formas,
-tal cual y ×100: si coinciden, ese es el resultado; si no, queda **sin comprobar** y dice qué
-daría cada una, hasta que lo quites y lo crees de nuevo.
+en `veces` sin `unidad` guardada se lee de las dos formas, tal cual y ×100, solo si la
+lectura ×100 cabe en la métrica (`TOPE_LEGADO`: hasta 10 veces en deuda/capital y ratio
+corriente, hasta 30 en cobertura; un «D/E > 0,5» no puede ser 50 veces y se lee tal cual): si
+coinciden, ese es el resultado, con un aviso de la duda; si no, queda **sin comprobar** y dice
+qué daría cada una, hasta que lo quites y lo crees de nuevo. La nota de la tesis solo dice «no
+se ha cruzado» de los puntos que sí se comprobaron.
 
 ### Que un punto salte NO es una señal de venta
 
