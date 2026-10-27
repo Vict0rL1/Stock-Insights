@@ -513,10 +513,15 @@ def _fecha_de_apertura(valor: str | None) -> datetime | None:
     if fecha.tzinfo is None:
         fecha = fecha.replace(tzinfo=timezone.utc)
     ahora = datetime.now(timezone.utc)
+    if len(valor) == 10 and fecha.date() == ahora.date() + timedelta(days=1):
+        # El día suelto de mañana en UTC solo puede ser el hoy de alguien al este:
+        # en Madrid, de 00:00 a 01:00, su fecha de hoy daba 422 aquí y 200 en el
+        # efectivo. Cuenta como hoy, como allí (revisión 4).
+        return ahora
     if fecha > ahora + timedelta(minutes=5):
         raise ValueError(
-            "La fecha de apertura está en el futuro. Una compra que aún no ha "
-            "ocurrido descoloca la curva histórica y el tipo de cambio de compra."
+            f"La fecha de apertura está en el futuro (hoy, en UTC, es el {fmt_fecha(ahora.date())}). "
+            "Una compra que aún no ha ocurrido descoloca la curva histórica y el tipo de cambio de compra."
         )
     # El margen es por el reloj de quien llama: guardada unos minutos en el
     # futuro, la posición no existía para el análisis ni para el riesgo durante

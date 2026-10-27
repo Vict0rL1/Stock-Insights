@@ -293,6 +293,26 @@ def test_la_interfaz_con_un_nombre_de_allowed_hosts_pasa():
     assert c.get("/", headers={"host": "mi-mac.local:8000", "origin": "http://mi-mac.local:3000"}).status_code == 403
 
 
+def test_con_un_nombre_de_allowed_hosts_otro_puerto_de_vite_va_en_cors_origins():
+    # Revisión 4: .env.example prometía «cualquier puerto» también aquí. Por http
+    # el navegador no manda Fetch Metadata, el proxy deja pasar el Referer y un
+    # Vite en el 5174 recibía 403 hasta en las lecturas. Lo dice la documentación.
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+
+    from app.main import HostDeConfianza
+
+    interna = Starlette(routes=[Route("/", lambda _: PlainTextResponse("ok"))])
+    lectura = {"host": "localhost:8000", "referer": "http://mi-mac.local:5174/hoy"}
+    por_defecto = TestClient(HostDeConfianza(interna, ["localhost", "mi-mac.local"], ["http://localhost:5173"]))
+    r = por_defecto.get("/", headers=lectura)
+    assert r.status_code == 403 and "CORS_ORIGINS" in r.json()["detail"]
+    anadido = TestClient(HostDeConfianza(interna, ["localhost", "mi-mac.local"],
+                                         ["http://localhost:5173", "http://mi-mac.local:5174"]))
+    assert anadido.get("/", headers=lectura).status_code == 200
+
+
 def test_allowed_hosts_anade_nombres_y_no_quita_los_de_esta_maquina(tmp_path):
     # Revisión de A6: la lista sustituía a la de por defecto y, con
     # ALLOWED_HOSTS='["mi-mac.local"]', el proxy de Vite (que llama como

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db.engine import get_session
@@ -307,6 +308,22 @@ def test_una_instantanea_posterior_no_rompe_el_antiduplicado(session_factory):
     assert segunda["instantanea"]["id"] == primera["instantanea"]["id"]
 
 
+def test_una_instantanea_posterior_del_mismo_dia_no_rompe_el_antiduplicado(session_factory):
+    # Revisión 4: dentro del día se comparaba con la de `creado_en` más alto. Con
+    # una de las 16:35 (reloj adelantado, otra huella) en la base, cada análisis
+    # igual de las 14:35 en adelante congelaba otra copia inmutable.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        servicio.senal("AAPL", 0.9)
+        adelantada = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        ids = [analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=m), con_pares=False)["instantanea"]
+               for m in (0, 5, 10)]
+    assert ids[0]["nueva"] is True and ids[0]["id"] != adelantada["instantanea"]["id"]
+    assert [i["nueva"] for i in ids[1:]] == [False, False]
+    assert {i["id"] for i in ids} == {ids[0]["id"]}
+
+
 def _idea_con_efectivo_en_cad(session_factory, serie):
     from app import oportunidad
 
@@ -463,6 +480,17 @@ def test_una_posicion_unos_minutos_adelantada_existe_en_cuanto_se_anota():
 
     fecha = _fecha_de_apertura((datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat())
     assert fecha <= datetime.now(timezone.utc)
+
+
+def test_la_fecha_de_apertura_de_manana_en_utc_es_el_hoy_de_quien_esta_al_este():
+    # Revisión 4, hermano del efectivo: en Madrid de 00:00 a 01:00 su fecha de
+    # hoy daba 422 al abrir una posición y 200 al anotar el efectivo.
+    from app.routers.portfolio import _fecha_de_apertura
+
+    hoy = datetime.now(timezone.utc).date()
+    assert _fecha_de_apertura((hoy + timedelta(days=1)).isoformat()) <= datetime.now(timezone.utc)
+    with pytest.raises(ValueError, match="en UTC, es el"):
+        _fecha_de_apertura((hoy + timedelta(days=2)).isoformat())
 
 
 def test_dos_analisis_solapados_no_dejan_dos_instantaneas_iguales(session_factory):

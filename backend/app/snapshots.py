@@ -331,16 +331,19 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     symbol = limpio["symbol"]
     fecha = ahora.astimezone(timezone.utc).date().isoformat()
 
-    # La última DEL MISMO DÍA. Con la más reciente de la base, una posterior (un
-    # reloj adelantado que se corrigió, un análisis fechado) era de otro día y
-    # cada análisis igual congelaba una copia imborrable (revisión de A5); y
-    # filtrando por «ya existía en `ahora`», dos análisis solapados (el que
-    # empezó después congela antes) dejaban dos copias idénticas (revisión 3).
+    # La última DEL MISMO DÍA, en el orden en que se congelaron (`id`). Con la más
+    # reciente de la base, una posterior (un reloj adelantado que se corrigió, un
+    # análisis fechado) era de otro día y cada análisis igual congelaba una copia
+    # imborrable (revisión de A5); filtrando por «ya existía en `ahora`», dos
+    # análisis solapados (el que empezó después congela antes) dejaban dos copias
+    # idénticas (revisión 3); y por `creado_en`, una del mismo día a una hora
+    # posterior y con otra huella ganaba siempre y cada análisis igual volvía a
+    # congelar (revisión 4).
     ultimo = session.execute(
         select(DecisionSnapshot)
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"),
                DecisionSnapshot.fecha == fecha)
-        .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
+        .order_by(DecisionSnapshot.id.desc())
     ).scalars().first()
     if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
         return ultimo, False
