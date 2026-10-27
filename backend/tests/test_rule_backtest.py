@@ -200,6 +200,26 @@ def test_el_filtro_de_tendencia_se_puede_apagar_para_medirlo():
     assert con["filtro_tendencia"] is True and sin["filtro_tendencia"] is False
 
 
+def test_el_filtro_de_tendencia_es_el_del_motor_con_su_banda():
+    """Revisión 4: el backtest entraba con «precio > media de 200 sesiones» y el
+    motor exige la media + 2 %: con el precio un 1 % sobre la media, el backtest
+    abría operaciones que `decide` deja en «vigilar», y «calibrada» salía de
+    compras que la app no hace."""
+    from app.analysis.decision import BANDA_TENDENCIA_ENTRAR_PCT
+
+    universo = _universo_sintetico()
+    for i, datos_ in enumerate(universo.values()):
+        base = 50 + 2 * i
+        datos_["bars"] = [{"ts": (date(2020, 1, 1) + timedelta(days=t)).isoformat(),
+                           "close": base if t < 600 else base * 1.01} for t in range(700)]
+    fechas = rebalance_dates_mensuales(date(2021, 9, 1), date(2021, 10, 1))
+    con = run_rule_backtest(universo, fechas, exigir_tendencia=True)
+    sin = run_rule_backtest(universo, fechas, exigir_tendencia=False)
+    assert sin["n_operaciones"] > 0
+    assert con["n_operaciones"] == 0 and con["descartes"]["sin_tendencia"] > 0
+    assert con["banda_tendencia_pct"] == BANDA_TENDENCIA_ENTRAR_PCT and sin["banda_tendencia_pct"] is None
+
+
 def test_la_racha_perdedora_se_cuenta_en_orden_cronologico():
     ops = [
         {"entrada_fecha": "2021-01-01", "ganadora": False},

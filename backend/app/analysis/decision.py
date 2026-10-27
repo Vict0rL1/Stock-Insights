@@ -331,7 +331,13 @@ def decide(
             if stop_posicion is not None else
             "Vender si el precio perfora tu stop",
             f"Vender si la puntuación baja de {fmt_num(desfavorable_max, signo=True)}",
-            "Revisar si pierde la media de 200 sesiones",
+            # El umbral de la regla, con su banda: «Revisar si pierde la media»
+            # avisaba de algo que con el precio dentro de la banda ya había pasado
+            # y con otro umbral y otro verbo que los que deciden (revisión 4).
+            f"Reducir si cierra en o por debajo de "
+            f"{fmt_precio(datos.redondear_precio(_umbral_salir(sma200), hacia='abajo'))} ({_media_salir()})"
+            if not tendencia["desconocida"] else
+            "Revisar la tendencia cuando haya una media de 200 sesiones con que medirla",
         ]
         return {
             "action": accion,
@@ -395,7 +401,10 @@ def decide(
         )
         entrar = _umbral_entrar(sma200)
         disparadores = [
-            f"Comprar cuando cierre en o por encima de {fmt_precio(datos.redondear_precio(entrar))} ({_media_entrar()})"
+            # Hacia arriba: al más cercano, un cierre en la cifra escrita podía
+            # no cumplir la regla (revisión 4).
+            f"Comprar cuando cierre en o por encima de {fmt_precio(datos.redondear_precio(entrar, hacia='arriba'))} "
+            f"({_media_entrar()})"
             if entrar else
             "Comprar cuando haya una media de 200 sesiones con que medir la tendencia",
         ]
@@ -490,6 +499,11 @@ NO_CUMPLE = "no_cumple"
 DESCONOCIDO = "desconocido"
 
 
+# Las reglas cuyo valor y umbral son precios: se escriben con `fmt_precio`, no con
+# los dos decimales de la puntuación (el frontend tiene su copia en DecisionExplicada).
+REGLAS_DE_PRECIO = frozenset({"stop_perforado", "tendencia_perdida", "tendencia_a_favor"})
+
+
 def _regla(id_: str, texto: str, resultado: str, efecto: str | None = None, **datos_) -> dict:
     return {"id": id_, "regla": texto, "resultado": resultado, "efecto": efecto, "datos": datos_}
 
@@ -558,7 +572,8 @@ def _reglas_con_posicion(score, ultimo, stop, sobre_media, tendencia, desfavorab
             "tendencia_perdida",
             f"Precio ≤ media de 200 sesiones − {_banda(BANDA_TENDENCIA_SALIR_PCT)}",
             DESCONOCIDO if tendencia["desconocida"] else CUMPLE if sobre_media is False else NO_CUMPLE,
-            efecto="reducir", valor=ultimo, umbral=datos.redondear_precio(_umbral_salir(tendencia["sma200"])),
+            efecto="reducir", valor=ultimo,
+            umbral=datos.redondear_precio(_umbral_salir(tendencia["sma200"]), hacia="abajo"),
         ),
     ]
 
@@ -579,7 +594,8 @@ def _reglas_sin_posicion(score, sobre_media, tendencia, favorable_min, desfavora
             "tendencia_a_favor",
             f"Precio ≥ media de 200 sesiones + {_banda(BANDA_TENDENCIA_ENTRAR_PCT)}",
             DESCONOCIDO if tendencia["desconocida"] else CUMPLE if sobre_media else NO_CUMPLE,
-            efecto="comprar", valor=tendencia["precio"], umbral=datos.redondear_precio(_umbral_entrar(tendencia["sma200"])),
+            efecto="comprar", valor=tendencia["precio"],
+            umbral=datos.redondear_precio(_umbral_entrar(tendencia["sma200"]), hacia="arriba"),
         ),
     ]
 
@@ -595,16 +611,19 @@ def _c_score(op: str, umbral: float, score: float, id_: str) -> dict:
     }
 
 
-def _c_precio(op: str, umbral: float | None, ultimo: float, id_: str, que: str) -> dict:
+def _c_precio(op: str, umbral: float | None, ultimo: float, id_: str, que: str, hacia: str | None = None) -> dict:
+    """`hacia`: el lado al que se redondea el umbral que se escribe, el de la
+    media con su banda, para que «precio ≥ 102,01» sea cierto con 102,01."""
     if umbral is None:
         return {"regla": id_, "condicion": f"precio {op} {que}", "actual": ultimo,
                 "umbral": None, "distancia": None, "unidad": "%",
                 "nota": "desconocido: no hay media de 200 sesiones utilizable"}
+    escrito = datos.redondear_precio(umbral, hacia=hacia)
     return {
         "regla": id_,
-        "condicion": f"precio {op} {fmt_precio(datos.redondear_precio(umbral))} ({que})",
+        "condicion": f"precio {op} {fmt_precio(escrito)} ({que})",
         "actual": ultimo,
-        "umbral": datos.redondear_precio(umbral),
+        "umbral": escrito,
         "distancia": round((umbral / ultimo - 1) * 100, 2),
         "unidad": "%",
     }
@@ -624,14 +643,14 @@ def _cambiaria_con_posicion(accion, score, ultimo, stop, tendencia, desfavorable
         return [
             vender,
             {"hacia": "reducir", "requiere": "alguna",
-             "condiciones": [_c_precio("≤", salir, ultimo, "tendencia_perdida", _media_salir())]},
+             "condiciones": [_c_precio("≤", salir, ultimo, "tendencia_perdida", _media_salir(), "abajo")]},
         ]
     mantener = {
         "hacia": "mantener",
         "requiere": "todas",
         "condiciones": [_c_score(">", desfavorable_max, score, "puntuacion_desfavorable")]
         + ([_c_precio(">", stop, ultimo, "stop_perforado", "stop")] if stop is not None else [])
-        + [_c_precio(">", salir, ultimo, "tendencia_perdida", _media_salir())],
+        + [_c_precio(">", salir, ultimo, "tendencia_perdida", _media_salir(), "abajo")],
     }
     if accion == "reducir":
         return [mantener, vender]
@@ -644,7 +663,7 @@ def _cambiaria_sin_posicion(
     """Qué tendría que pasar para pasar a cada una de las otras acciones."""
     ultimo, entrar = tendencia["precio"], _umbral_entrar(tendencia["sma200"])
     comprar = [_c_score("≥", favorable_min, score, "puntuacion_favorable"),
-               _c_precio("≥", entrar, ultimo, "tendencia_a_favor", _media_entrar())]
+               _c_precio("≥", entrar, ultimo, "tendencia_a_favor", _media_entrar(), "arriba")]
     extra = []
     if resultados_en:
         extra.append({"regla": "resultados_proximos", "condicion": f"que pasen los resultados del {fmt_fecha(resultados_en)}",
@@ -668,7 +687,7 @@ def _cambiaria_sin_posicion(
         salida.append({"hacia": "comprar", "requiere": "todas", "condiciones": pendientes + extra})
     if accion == "comprar":
         salida.append({"hacia": "vigilar", "requiere": "alguna", "condiciones": [
-            _c_precio("<", entrar, ultimo, "tendencia_a_favor", _media_entrar()),
+            _c_precio("<", entrar, ultimo, "tendencia_a_favor", _media_entrar(), "arriba"),
             {"regla": "resultados_proximos", "condicion": "anuncio de resultados en los próximos 7 días",
              "actual": None, "umbral": None, "distancia": None, "unidad": None},
         ]})

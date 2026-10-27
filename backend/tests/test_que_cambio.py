@@ -264,3 +264,24 @@ def test_en_una_caida_no_dice_que_quiza_no_existe_ni_vuelve_a_preguntar(session_
     assert [t for t, _ in sv.llamadas].count("quote") == 1
     assert not any(t == "profile" for t, _ in sv.llamadas)
 
+
+
+def test_la_explicacion_escribe_los_precios_como_precios():
+    """Revisión 4: «Qué cambió» explicaba la venta de una acción de céntimos con
+    los dos decimales y el signo de la puntuación: «no cumple (+0,01 frente a
+    0,00) → cumple (0,00 frente a 0,00)», el stop a cero del fallo A1."""
+    from app.analysis.decision import decide
+
+    pos = {"cost_basis": 0.005, "quantity": 1000, "stop": 0.0045}
+    def precio(last):
+        return {"last": last, "sma200": 0.004, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "CENT", "score": 0.6}, precio(0.0051), pos)
+    ahora = decide({"symbol": "CENT", "score": 0.6}, precio(0.0044), pos)
+    d = cambios.comparar_decisiones(antes, ahora, pos, pos)
+    stop = next(e for e in d["explicacion"] if "stop" in e)
+    assert "no cumple (0,0051 frente a 0,0045) → cumple (0,0044 frente a 0,0045)" in stop
+    # Una acción de menos de 10: sin el «+» de la puntuación.
+    a = decide({"symbol": "X", "score": 0.6}, {"last": 5.10, "sma200": 5.30, "above_sma200": False, "daily_vol_pct": 1.2})
+    b = decide({"symbol": "X", "score": 0.6}, {"last": 5.60, "sma200": 5.30, "above_sma200": True, "daily_vol_pct": 1.2})
+    tendencia = next(e for e in cambios.comparar_decisiones(a, b)["explicacion"] if "media" in e)
+    assert "(5,10 frente a 5,41)" in tendencia and "+5" not in tendencia

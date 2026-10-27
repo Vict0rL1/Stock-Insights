@@ -1258,8 +1258,9 @@ export function TodayPage() {
                     <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed">
                       Ninguna empresa cumple a la vez las dos condiciones:
                       puntuar por encima de {fmtNum(data.thresholds.favorable, 2, { signo: true })}{' '}
-                      frente a sus comparables <em>y</em> cotizar sobre su media
-                      de 200 sesiones. No actuar también es una decisión.
+                      frente a sus comparables <em>y</em> cerrar por encima de su
+                      media de 200 sesiones con el margen de su banda (cada una en
+                      «Vigilar» dice a qué precio). No actuar también es una decisión.
                     </p>
                     {acciones.vigilar > 0 && (
                       <button

@@ -27,6 +27,22 @@ describe('Hoy sin candidatas', () => {
     expect(screen.getByText('Hoy no hay candidatas que dimensionar.')).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/undefined|NaN/)
   })
+
+  it('el estado vacío pide la media con su banda, como la regla', async () => {
+    // Revisión 4: decía «cotizar sobre su media de 200 sesiones» cuando la regla
+    // exige cerrar en o por encima de la media + 2 %. La cifra no viaja en la
+    // respuesta de Hoy (añadirla cambia el golden): se nombra la banda.
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const r = rutas[url]
+      return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+    }))
+    const { container } = render(<MemoryRouter><TodayPage /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /^Todas las que califican \(0\)/ }))
+    await screen.findByText(/Ninguna empresa cumple a la vez/)
+    expect(container.textContent).toContain('cerrar por encima de su media de 200 sesiones con el margen de su banda')
+    expect(container.textContent).not.toContain('cotizar sobre su media')
+  })
 })
 
 describe('Hoy en móvil', () => {

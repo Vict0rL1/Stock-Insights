@@ -474,15 +474,23 @@ cambia — no hay criterio discrecional escondido.
 | Condición | Acción |
 |---|---|
 | Puntuación ≤ −0,35 | **Evitar** — queda por detrás de sus comparables de sector |
-| Puntuación ≥ +0,35 **y** cotiza sobre su media de 200 sesiones | **Comprar** |
-| Puntuación ≥ +0,35 pero por debajo de la media de 200 | **Vigilar** — buena empresa en tendencia bajista |
+| Puntuación ≥ +0,35 **y** cierra en o por encima de su media de 200 sesiones + 2 % | **Comprar** |
+| Puntuación ≥ +0,35 pero por debajo de la media de 200 + 2 % | **Vigilar** — buena empresa sin la tendencia a favor (bajo la media o aún dentro de la banda) |
 | Entre ambos umbrales | **Sin acción** |
 
 El filtro de la media de 200 sesiones es el que evita el error caro de este
 tipo de modelo: comprar algo *barato porque sigue cayendo*. Una empresa puede
 puntuar excelente en valor precisamente porque el mercado la está descontando
 por algo que los estados financieros aún no reflejan. La regla no la descarta,
-la manda a **Vigilar** y espera a que el precio recupere la media.
+la manda a **Vigilar** y espera a que el precio supere la media con margen.
+
+La banda (`BANDA_TENDENCIA_ENTRAR_PCT` y `BANDA_TENDENCIA_SALIR_PCT` en
+`decision.py`) evita que un precio que oscila alrededor de la media cambie de
+acción cada día: para entrar hay que cerrar en o por encima de la media + 2 %, y
+para reducir, en o por debajo de la media − 1 %. Entre las dos, la acción no
+cambia por la tendencia. Los umbrales que se escriben se redondean hacia el lado
+en que la frase es cierta: «Comprar cuando cierre en o por encima de 102,01» con
+un umbral exacto de 102,00408.
 
 «Sin acción» es un estado propio y no un sinónimo de «Vigilar»: casi la mitad
 del S&P 500 cae en la franja neutral, y meterla en la lista de espera la
@@ -496,7 +504,7 @@ Portafolio):
 |---|---|
 | Puntuación ≤ −0,35 | **Vender** — la razón por la que la compraste ya no se sostiene |
 | Precio ≤ stop calculado sobre **tu precio de coste** | **Vender** |
-| Cotiza bajo su media de 200 sesiones | **Reducir** |
+| Cierra en o por debajo de su media de 200 sesiones − 1 % | **Reducir** |
 | Resto | **Mantener**, con tu P&L sobre el precio de compra |
 
 ### Los niveles: stop, objetivo y tamaño
@@ -566,9 +574,11 @@ resultado se guarda igual que desde la interfaz, así que al terminar la vista
 
 El segundo es el que valida lo que la app realmente ejecuta, y es una
 **simulación por eventos**: en cada fecha se puntúa el universo con datos
-point-in-time, se abre posición en las que cumplen las reglas, y cada operación
-se sigue sesión a sesión hasta que salta el stop, toca el objetivo o vence el
-año. Tres decisiones lo gobiernan:
+point-in-time, se abre posición en las que cumplen las reglas (la misma
+tendencia que el motor, con su banda: media + 2 %; hasta la revisión 4 entraba con
+«precio > media», y los backtests guardados antes, sin `banda_tendencia_pct`, se
+calcularon así), y cada operación se sigue sesión a sesión hasta que salta el
+stop, toca el objetivo o vence el año. Tres decisiones lo gobiernan:
 
 - **Se entra al cierre siguiente a la señal.** Comprar al precio del día en que
   se conoce la señal es comprar con información que aún no tenías. Es el error

@@ -231,10 +231,10 @@
            },
            {
             "actual": 127.0,
-            "condicion": "precio ≥ 142,49 (media 200 + 2 %)",
+            "condicion": "precio ≥ 142,50 (media 200 + 2 %)",
             "distancia": 12.2,
             "regla": "tendencia_a_favor",
-            "umbral": 142.49,
+            "umbral": 142.5,
             "unidad": "%"
            }
           ],
@@ -289,7 +289,7 @@
          },
          {
           "datos": {
-           "umbral": 142.49,
+           "umbral": 142.5,
            "valor": 127.0
           },
           "efecto": "comprar",
@@ -1031,10 +1031,10 @@
            },
            {
             "actual": 126.0,
-            "condicion": "precio ≥ 141,37 (media 200 + 2 %)",
+            "condicion": "precio ≥ 141,38 (media 200 + 2 %)",
             "distancia": 12.2,
             "regla": "tendencia_a_favor",
-            "umbral": 141.37,
+            "umbral": 141.38,
             "unidad": "%"
            }
           ],
@@ -1089,7 +1089,7 @@
          },
          {
           "datos": {
-           "umbral": 141.37,
+           "umbral": 141.38,
            "valor": 126.0
           },
           "efecto": "comprar",
@@ -1458,7 +1458,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 114,44 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 114,45 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1566,7 +1566,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 158,21 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1782,7 +1782,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 159,33 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1998,7 +1998,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 163,81 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 163,82 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2106,7 +2106,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 124,54 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 124,55 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2691,10 +2691,10 @@
            },
            {
             "actual": 127.0,
-            "condicion": "precio ≥ 142,49 (media 200 + 2 %)",
+            "condicion": "precio ≥ 142,50 (media 200 + 2 %)",
             "distancia": 12.2,
             "regla": "tendencia_a_favor",
-            "umbral": 142.49,
+            "umbral": 142.5,
             "unidad": "%"
            }
           ],
@@ -2749,7 +2749,7 @@
          },
          {
           "datos": {
-           "umbral": 142.49,
+           "umbral": 142.5,
            "valor": 127.0
           },
           "efecto": "comprar",
@@ -3091,10 +3091,10 @@
            },
            {
             "actual": 126.0,
-            "condicion": "precio ≥ 141,37 (media 200 + 2 %)",
+            "condicion": "precio ≥ 141,38 (media 200 + 2 %)",
             "distancia": 12.2,
             "regla": "tendencia_a_favor",
-            "umbral": 141.37,
+            "umbral": 141.38,
             "unidad": "%"
            }
           ],
@@ -3149,7 +3149,7 @@
          },
          {
           "datos": {
-           "umbral": 141.37,
+           "umbral": 141.38,
            "valor": 126.0
           },
           "efecto": "comprar",
@@ -3702,7 +3702,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 158,21 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4134,7 +4134,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 113,32 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 113,33 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4350,7 +4350,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 114,44 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 114,45 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4458,7 +4458,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 159,33 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4566,7 +4566,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 158,21 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4782,7 +4782,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 159,33 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4890,7 +4890,7 @@
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre en o por encima de 131,27 (media 200 + 2 %)"
+        "Comprar cuando cierre en o por encima de 131,28 (media 200 + 2 %)"
        ]
       },
       "events": [],

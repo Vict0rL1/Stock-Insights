@@ -164,16 +164,30 @@ def precio(valor: Any) -> float | None:
     return f if f is not None and f > 0 else None
 
 
-def redondear_precio(valor: Any) -> float | None:
+def redondear_precio(valor: Any, hacia: str | None = None) -> float | None:
     """Un precio o un nivel listo para servirse: dos decimales desde 1 y cuatro
     cifras significativas por debajo (`formato.decimales_precio`), o `None`.
 
     `round(x, 2)` hacía 0,0 del stop de 0,004 de una acción de céntimos, y
     0,0 del precio de 0,003: el stop no se perforaba nunca y la venta no salía
     (auditoría del 19 oct). Solo para lo que se SIRVE; lo que decide compara
-    con el valor sin redondear. Desde 1 da lo mismo que `round(x, 2)`."""
+    con el valor sin redondear. Desde 1 da lo mismo que `round(x, 2)`.
+
+    `hacia` («arriba» o «abajo») lleva al tick en esa dirección un umbral que se
+    escribe junto a «en o por encima de» o «en o por debajo de», para que lo
+    escrito sea cierto: al más cercano, el umbral de entrada de 102,00408 se
+    servía como 102,00 y un cierre de 102,00 seguía en «vigilar» (revisión 4)."""
     f = numero(valor)
-    return None if f is None else round(f, decimales_precio(f))
+    if f is None:
+        return None
+    decimales = decimales_precio(f)
+    if hacia is None:
+        return round(f, decimales)
+    escala = 10 ** decimales
+    # Sin el ruido de la coma flotante: 1,1 × 100 es 110,00000000000001, y el
+    # techo daría 1,11 de un umbral de 1,10 exacto.
+    ticks = round(f * escala, 6)
+    return (math.ceil(ticks) if hacia == "arriba" else math.floor(ticks)) / escala
 
 
 def porcentaje(valor: Any, maximo: float = 1000.0) -> float | None:

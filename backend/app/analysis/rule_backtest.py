@@ -47,7 +47,7 @@ from app.analysis.backtest import (
     momentum_12_1,
     point_in_time_period,
 )
-from app.analysis.decision import _stop_pct
+from app.analysis.decision import BANDA_TENDENCIA_ENTRAR_PCT, _stop_pct, _umbral_entrar
 from app.analysis.factors import (
     build_raw_factors,
     composite_score,
@@ -300,8 +300,12 @@ def run_rule_backtest(
             if score < favorable_min:
                 continue
             if exigir_tendencia:
-                sma = entrada["sma200"]
-                if sma is None or entrada["precio"] <= sma:
+                # El umbral del motor, con su banda (media + 2 %): con «precio >
+                # media», el backtest abría operaciones que `decide` deja en
+                # «vigilar», y «calibrada» salía de compras que la app no hace
+                # (revisión 4).
+                entrar = _umbral_entrar(entrada["sma200"])
+                if entrar is None or entrada["precio"] < entrar:
                     descartes["sin_tendencia"] += 1
                     continue
 
@@ -345,6 +349,9 @@ def _resumen(
             # La configuración describe la ejecución, no el resultado: sin ella
             # no se sabe qué se probó cuando no salió ninguna operación.
             "filtro_tendencia": exigir_tendencia,
+            # Desde la revisión 4 la entrada lleva la banda del motor; los
+            # guardados sin esta clave entraban con «precio > media».
+            "banda_tendencia_pct": BANDA_TENDENCIA_ENTRAR_PCT if exigir_tendencia else None,
             "umbral": favorable_min,
             "nota": (
                 "Ninguna operación cumplió las condiciones en el periodo. Sin "
@@ -402,6 +409,7 @@ def _resumen(
         "coste_total_por_operacion_pct": round(2 * coste_lado, 2),
         "desglose_costes": desglose_de_costes(coste_lado > COMISION_PCT + HORQUILLA_PCT + DESLIZAMIENTO_PCT),
         "filtro_tendencia": exigir_tendencia,
+        "banda_tendencia_pct": BANDA_TENDENCIA_ENTRAR_PCT if exigir_tendencia else None,
         "umbral": favorable_min,
         "descartes": descartes,
         "operaciones": operaciones[-200:],

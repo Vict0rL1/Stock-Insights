@@ -265,3 +265,70 @@ def test_vigilar_y_mantener_dicen_donde_esta_el_precio_frente_a_la_banda():
                {"cost_basis": 90.0, "quantity": 10, "stop": 80.0})
     assert m["action"] == "mantener"
     assert any("desconocida" in r for r in m["reasons"]) and not any("sobre su media" in r for r in m["reasons"])
+
+
+# --- Revisión 4: lo que se escribe del umbral tiene que ser cierto ---------------
+
+
+def test_redondear_hacia_un_lado_lleva_al_tick_sin_ruido_de_coma_flotante():
+    assert datos.redondear_precio(102.00408, hacia="arriba") == 102.01
+    assert datos.redondear_precio(98.99901, hacia="abajo") == 98.99
+    # 1,1 × 100 es 110,00000000000001: el techo ingenuo daba 1,11.
+    assert datos.redondear_precio(1.1, hacia="arriba") == 1.1
+    assert datos.redondear_precio(0.0045671, hacia="arriba") == 0.004568
+    assert datos.redondear_precio(0.0045679, hacia="abajo") == 0.004567
+    assert datos.redondear_precio(102.00408) == 102.0
+
+
+def test_el_umbral_de_entrada_se_escribe_hacia_arriba():
+    """Con la media en 100,004 el umbral es 102,00408 y se escribía 102,00: con un
+    cierre de 102,00, «vigilar» bajo «Comprar cuando cierre en o por encima de
+    102,00» y la traza «102,00 frente a 102,00 ✗ no cumple»."""
+    d = decide(señal(0.8), precio(102.0, 100.004))
+    assert d["action"] == "vigilar"
+    assert d["triggers"][0].startswith("Comprar cuando cierre en o por encima de 102,01 ")
+    regla = next(r for r in d["reglas"] if r["id"] == "tendencia_a_favor")
+    assert regla["datos"]["umbral"] == 102.01
+    comprar = next(c for c in d["cambiaria"] if c["hacia"] == "comprar")
+    assert comprar["condiciones"][0]["condicion"].startswith("precio ≥ 102,01 ")
+    # Y un cierre en la cifra escrita sí compra.
+    assert decide(señal(0.8), precio(102.01, 100.004))["action"] == "comprar"
+
+
+def test_con_posicion_el_disparador_dice_el_umbral_de_reducir():
+    """Con el precio dentro de la banda (99,5 con la media en 100) el motor dice
+    «mantener», pero el disparador pedía «Revisar si pierde la media de 200
+    sesiones»: algo que ya había pasado, sin nivel y con otro umbral."""
+    pos = {"cost_basis": 90.0, "quantity": 10, "stop": 80.0}
+    d = decide(señal(0.8), precio(99.5, 100.0), pos)
+    assert d["action"] == "mantener"
+    assert "Reducir si cierra en o por debajo de 99,00 (media 200 − 1\u00a0%)" in d["triggers"]
+    assert not any("Revisar si pierde la media" in t for t in d["triggers"])
+    # Hacia abajo: con la media en 100,0049 el umbral es 99,004851 y se escribe 99,00.
+    d = decide(señal(0.8), precio(99.5, 100.0049), pos)
+    assert "Reducir si cierra en o por debajo de 99,00 (media 200 − 1\u00a0%)" in d["triggers"]
+    reducir = next(c for c in d["cambiaria"] if c["hacia"] == "reducir")
+    assert reducir["condiciones"][0]["umbral"] == 99.0
+    sin_media = decide(señal(0.8), {"last": 100.0, "sma200": None, "above_sma200": None, "daily_vol_pct": 1.2}, pos)
+    assert any("cuando haya una media de 200 sesiones" in t for t in sin_media["triggers"])
+
+
+def test_la_ficha_decide_con_la_media_entera_y_la_sirve_redondeada():
+    """Revisión 4: el arreglo de la media entera se probaba en `_price_summary` y
+    `decide` por separado; la línea de `seccion_mercado` que se la pasa al motor
+    se podía cambiar por la redondeada (1,01) sin que fallara nada, y la ficha
+    volvía a decir «vigilar» con el cierre por encima del umbral."""
+    from datetime import timedelta
+
+    from app.analisis_empresa import seccion_mercado
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    servicio = ServicioFalso(AHORA).empresa("CENT", precio=1.0256, score=None)
+    base = (1.0054 * 200 - 1.0256) / 199
+    ayer = AHORA.date() - timedelta(days=1)
+    servicio.historias["CENT"] = [{"ts": (ayer - timedelta(days=199 - i)).isoformat(),
+                                   "close": base if i < 199 else 1.0256} for i in range(200)]
+    seccion, bloque = seccion_mercado(servicio, "CENT", AHORA)
+    assert bloque["sma200"] == pytest.approx(1.0054, abs=1e-9)
+    assert seccion["sma200"] == 1.01
+    assert decide(señal(0.8), bloque)["action"] == "comprar"

@@ -22,7 +22,9 @@ import hashlib
 import json
 
 from app import datos
-from app.formato import fmt_num, plural
+from app.analysis.decision import REGLAS_DE_PRECIO
+from app.etiquetas import etiqueta
+from app.formato import fmt_num, fmt_precio, plural
 
 # --- Umbrales de materialidad --------------------------------------------------
 #
@@ -310,10 +312,14 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
     for c in cambiaron:
         if c["antes"] is None or c["ahora"] is None:
             continue
-        def leer(x):
+        # Un precio con `fmt_precio`: con los dos decimales y el signo de la
+        # puntuación, la venta de una acción de céntimos se explicaba «no cumple
+        # (+0,01 frente a 0,00) → cumple (0,00 frente a 0,00)», el stop a cero
+        # del fallo A1 (revisión 4).
+        def leer(x, fmt=fmt_precio if c["regla"] in REGLAS_DE_PRECIO else _fmt):
             v, u = x.get("valor"), x.get("umbral")
-            num = f" ({_fmt(v)} frente a {_fmt(u)})" if v is not None and u is not None else ""
-            return f"{x['resultado'].replace('_', ' ')}{num}"
+            num = f" ({fmt(v)} frente a {fmt(u)})" if v is not None and u is not None else ""
+            return f"{etiqueta(x['resultado'])}{num}"
         explicacion.append(f"«{c['texto']}»: {leer(c['antes'])} → {leer(c['ahora'])}.")
     if not cambiaron and a_accion != b_accion:
         explicacion.append("Ninguna regla cambió de resultado: la diferencia viene de una instantánea sin traza (anterior a la traza de reglas).")
