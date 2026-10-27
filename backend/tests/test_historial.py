@@ -138,6 +138,15 @@ def test_se_usa_el_tipo_vigente_de_cada_fecha_y_no_el_actual():
     assert "tipo vigente ESE día" in r["aviso"]
 
 
+def test_un_tipo_fuera_de_banda_cuenta_como_un_dia_sin_publicar():
+    """Revisión 4: `serie_por_usd` solo mira la mediana y conserva un punto
+    suelto fuera de banda (13 por 1,30). La curva lo usaba ese día: un hundimiento
+    del −90 % inventado. Vale el tipo anterior, como un día sin publicar."""
+    fx = [(d, 13.0 if i == 100 else 1.30) for i, d in enumerate(DIAS)]
+    r = h.historial([_pos("SHOP", cantidad=10, moneda="CAD")], {"SHOP": _serie(DIAS)}, {"CAD": fx}, hoy=HOY)
+    assert {round(p["valor"]) for p in r["puntos"]} == {round(1000 / 1.30)}
+
+
 def test_sin_historico_de_tipo_la_posicion_queda_fuera_y_se_nombra():
     r = h.historial(
         [_pos("AAA"), _pos("TOYO", moneda="JPY")],

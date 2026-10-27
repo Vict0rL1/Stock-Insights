@@ -77,7 +77,7 @@ def historial(
 
     tipos = tipos or {}
     idx_precio = {s: _indice(p) for s, p in series.items() if p}
-    idx_fx = {m: _indice(t) for m, t in (tipos or {}).items() if t}
+    idx_fx = {m: _indice(t) for m, t in ((m, fx.puntos_en_banda(m, t)) for m, t in tipos.items()) if t}
 
     usables, excluidas = [], []
     for p in posiciones:

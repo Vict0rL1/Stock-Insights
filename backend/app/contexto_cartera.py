@@ -76,7 +76,7 @@ def convertir_serie(serie: list[tuple[date, float]], moneda: str | None, fx_seri
     """Cierres en moneda local → en dólares, con el tipo vigente en cada fecha."""
     if moneda == fx.BASE:
         return serie
-    tipos = fx_series.get(moneda) or []
+    tipos = fx.puntos_en_banda(moneda, fx_series.get(moneda))
     if not tipos:
         return None
     fechas, valores = [f for f, _ in sorted(tipos)], [v for _, v in sorted(tipos)]
@@ -123,18 +123,25 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
     # consumía (revisión de 2f8d84b).
     cotizaciones = {s: _cotizacion(service, s) for s in agregadas}
     crudas, fallos = _historico_largo(service, list(agregadas) + [INDICE_MERCADO], descargar)
+    # ¿Se reconstruye el pasado? Con el margen de lo que tarda el propio cálculo,
+    # para que un análisis en vivo que empezó hace unos segundos no lo parezca.
+    reconstruccion = pit.descargado_a_tiempo(datetime.now(timezone.utc), ahora) is False
     sin_peso, valoradas = [], []
     monedas = set()
     for a in agregadas.values():
         precio, moneda, estado = cotizaciones[a["symbol"]]
         sin_precio = "sin precio: fuera de los pesos (no vale cero)"
         posterior = precio is not None and pit.descargado_a_tiempo(estado.get("publicado"), ahora) is False
-        if precio is None or posterior:
+        if posterior or (precio is None and reconstruccion):
             # Sin cotización de entonces, el último cierre que ya existía: un
             # precio viejo, y se dice, como en `seccion_mercado`. Una cotización
             # posterior a la fecha es información futura (la reconstrucción del
             # 12 pesaba cada posición con el precio del 15), y que hoy no haya
             # cotización no cambia lo que valía entonces (revisión de A5).
+            # Solo al reconstruir: en vivo, sin cotización la posición queda
+            # fuera y nombrada, como en /api/portfolio. Con el cierre viejo de la
+            # caché entraba en los pesos, el coste de oportunidad y el tamaño sin
+            # que nada lo dijera, y los dos totales no cuadraban (revisión 4).
             previos = [c for d, c in crudas.get(a["symbol"]) or [] if pit.barra_disponible(d, ahora)]
             if previos:
                 precio, estado = previos[-1], {"estado": "viejo"}

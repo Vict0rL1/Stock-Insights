@@ -213,7 +213,7 @@ def _realizado_en_base(cerradas: list[dict], series: dict) -> tuple[float | None
         if moneda == fx.BASE:
             p["realized_pnl_base"] = pnl
         else:
-            serie = series.get(moneda) or []
+            serie = fx.puntos_en_banda(moneda, series.get(moneda))
             fechas, valores = [f for f, _ in serie], [v for _, v in serie]
             try:
                 t_compra = hist._vigente(fechas, valores, date.fromisoformat(p["opened_at"][:10]))
@@ -247,7 +247,7 @@ def _coste_al_tipo_de_compra(posiciones: list[dict], series: dict) -> None:
         moneda = p.get("currency")
         if moneda == fx.BASE or p.get("invested") is None or p.get("invested_base") is None:
             continue
-        serie = series.get(moneda) or []
+        serie = fx.puntos_en_banda(moneda, series.get(moneda))
         tipo = None
         try:
             abierto = date.fromisoformat(str(p.get("opened_at"))[:10])

@@ -179,6 +179,28 @@ def comprobar_banda(moneda: str, por_usd: float) -> None:
         )
 
 
+def en_banda(moneda: str, por_usd: float) -> bool:
+    """`comprobar_banda` como pregunta, para filtrar los puntos de una serie."""
+    try:
+        comprobar_banda(moneda, por_usd)
+    except SinTipo:
+        return False
+    return True
+
+
+def puntos_en_banda(moneda: str, serie: list[tuple[date, float]] | None) -> list[tuple[date, float]]:
+    """La serie sin los puntos fuera de banda, para convertir el pasado fecha a
+    fecha: un punto así cuenta como un día sin publicar y vale el anterior.
+
+    `serie_por_usd` solo mira la mediana (un valor raro suelto no es una serie
+    del revés) y conservaba el punto: la serie en dólares de una candidata en CAD
+    salía con la volatilidad cien veces mayor con un 13 por 1,30, y un punto
+    intermedio inventaba un salto del −90 % (revisión 4). El tipo de una fecha
+    concreta (`oportunidad._tipo_en`, `tipo_desde_observaciones`) no se filtra:
+    se rechaza con su motivo."""
+    return [(f, v) for f, v in serie or [] if en_banda(moneda, v)]
+
+
 def comprobar_serie(serie_id: str | None, valores: list[float | None]) -> None:
     """La serie de FRED de una moneda, dentro de su banda (ítem 1.12).
 

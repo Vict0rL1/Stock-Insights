@@ -351,6 +351,26 @@ def test_sin_cotizacion_hoy_la_reconstruccion_usa_el_cierre_de_entonces(session_
     assert p["precio"] == 40.0 and p["precio_estado"] == "viejo" and p["valor_usd"] == 400.0
 
 
+def test_en_vivo_sin_cotizacion_la_posicion_queda_fuera_y_no_entra_con_un_cierre_viejo(session_factory):
+    # Revisión 4: el respaldo al último cierre también entraba en vivo. Con XYZ
+    # sin cotización y un cierre de hace nueve días en caché, la ficha y la
+    # contribución al riesgo la pesaban a 200 (total 3000) sin decirlo, mientras
+    # /api/portfolio la dejaba fuera (total 1000): dos totales para la misma cartera.
+    from app import contexto_cartera
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("AAA", precio=100.0, score=None)
+    viejo = (ahora - timedelta(days=9)).date().isoformat()
+    servicio.cache.set("price_history_long", {"symbol": "XYZ"}, {"bars": [{"ts": viejo, "close": 200.0}]})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ")
+        ctx = contexto_cartera.construir(s, servicio)
+    xyz = next(p for p in ctx["posiciones"] if p["symbol"] == "XYZ")
+    assert ctx["total_usd"] == 1000.0
+    assert xyz["peso"] is None and "sin precio" in xyz["motivo"]
+
+
 def test_una_cotizacion_posterior_sin_cierre_anterior_lo_dice(session_factory):
     from app import contexto_cartera
 
@@ -390,6 +410,38 @@ def test_un_tipo_de_cambio_fuera_de_banda_deja_fuera_la_posicion_y_el_efectivo(s
         efectivo = efectivo_usd(s, ctx, DECISION)
     assert ctx["posiciones"][0]["peso"] is None and "leída del revés" in ctx["posiciones"][0]["motivo"]
     assert efectivo["usd"] is None and "leída del revés" in efectivo["motivo"]
+
+
+def test_un_punto_fuera_de_banda_no_convierte_la_serie_de_la_candidata(session_factory):
+    # Revisión 4: `_tipo_en` rechazaba el 13 para el efectivo, pero
+    # `convertir_serie` lo usaba para la serie en dólares de la candidata en CAD:
+    # el riesgo salía «valido» con la volatilidad de la cartera cien veces mayor.
+    # Un punto fuera de banda es como un día sin publicar: vale el anterior.
+    from app import analisis_empresa
+    from app.db.models import Instrument, Position
+    from tests.fakes_empresa import barras
+
+    def riesgo(s, ultimo):
+        servicio = ServicioFalso(AHORA).empresa("AAA", precio=100.0, score=None)
+        servicio.empresa("SHOP.TO", precio=130.0, score=0.6, moneda="CAD", periodos=financieros_base())
+        for simbolo in ("AAA", "SPY"):
+            servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(date(2026, 9, 11), n=300)})
+        servicio.macro["DEXCAUS"] = [{"ts": (date(2026, 1, 1) + timedelta(days=i)).isoformat(), "value": "1.30"}
+                                     for i in range(252)] + [{"ts": "2026-09-10", "value": ultimo}]
+        return analisis_empresa.analizar("SHOP.TO", servicio, s, ahora=DECISION, con_pares=False)["riesgo"]
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAA", name="AAA", sector="Tech", currency="USD")
+        s.add(inst)
+        s.flush()
+        s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=90.0, opened_at=AHORA - timedelta(days=60)))
+        # El efectivo en CAD trae la serie del CAD al contexto de la cartera.
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        bien, mal = riesgo(s, "1.30"), riesgo(s, "13.0")
+    assert bien["volatilidad_cartera_despues"] is not None
+    for campo in ("volatilidad_cartera_despues", "contribucion", "riesgo_por_peso"):
+        assert mal[campo] == bien[campo], campo
 
 
 def test_el_hoy_de_quien_esta_al_este_de_utc_cuenta_como_hoy(session_factory):

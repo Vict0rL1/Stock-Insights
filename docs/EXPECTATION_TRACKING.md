@@ -47,6 +47,11 @@ que llegue antes:
 - registrada **el mismo día** → no cuenta: los resultados salen antes de abrir o
   después de cerrar, y una fecha no dice cuál;
 - capturar con el evento ya conocido se **niega** (409);
+- `informacion_hasta` nunca es posterior a `registrado_en`. El calendario de
+  Finnhub se descarga durante la propia captura y llega fechado segundos después
+  de `ahora`: con el margen de lo descargado durante el cálculo
+  (`descargado_a_tiempo`, 5 minutos) se acepta y se guarda como conocido en
+  `ahora`; más allá, la captura responde 422 y no registra nada;
 - un consenso que ya trae el resultado real en el calendario no se registra;
 - el resumen que entra en un análisis a una fecha (`resumen_para_analisis`) solo lee
   las expectativas, los resultados y los puntos de la tesis registrados entonces

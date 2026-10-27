@@ -248,6 +248,66 @@ def test_capturar_antes_registrar_despues_y_leer(session_factory, servicio):
     assert impacto["recall"]["estado"] == "sin_resolver"
 
 
+def test_el_consenso_descargado_durante_la_captura_se_registra(session_factory, servicio):
+    """Revisión 4: `capturar` fija `ahora` y después descarga el calendario,
+    que el proveedor fecha con la hora de la descarga, segundos después. Sin el
+    margen común de lo descargado durante el cálculo, `_guardar` lanzaba un
+    ValueError y «Capturar expectativas» daba 500 con la caché fría. Se guarda
+    como conocido en `ahora`: nunca posterior a su propio registro."""
+    servicio.ahora = AHORA + timedelta(seconds=2)
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        cap = svc.capturar(s, servicio, e, AHORA)
+        assert {("consenso", "revenue"), ("consenso", "eps_diluted")} <= {
+            (x["fuente_tipo"], x["metrica"]) for x in cap["registradas"]}
+        consenso = s.query(Expectation).filter_by(fuente_tipo="consenso").all()
+        assert consenso and all(svc._a_instante(x.informacion_hasta) == AHORA for x in consenso)
+        # Fuera del margen sí es información posterior: no se registra.
+        servicio.ahora = AHORA + timedelta(hours=1)
+        e2 = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q4", fecha_prevista="2026-10-30", ahora=AHORA)
+        with pytest.raises(ValueError, match="posterior a su registro"):
+            svc.capturar(s, servicio, e2, AHORA)
+
+
+def test_la_ruta_de_capturar_con_el_reloj_real(session_factory):
+    """La misma captura por la API, con el reloj real: antes, 500. Y una
+    información de la fuente fuera del margen es un 422 que lo explica, no un 500."""
+    from fastapi.testclient import TestClient
+
+    from app.deps import get_service
+    from app.main import app
+
+    class AlDescargar(ServicioFalso):
+        # Como Finnhub: el calendario lleva la hora de la descarga.
+        adelanto = timedelta(0)
+
+        def get(self, tipo, **kw):
+            r = super().get(tipo, **kw)
+            if tipo == "earnings_calendar":
+                r = {**r, "as_of": (datetime.now(timezone.utc) + self.adelanto).isoformat()}
+            return r
+
+    servicio = AlDescargar(datetime.now(timezone.utc))
+    fecha = (datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat()
+    servicio.calendario = [{"symbol": "AAPL", "date": fecha, "eps_estimate": 1.2, "revenue_estimate": 115.0,
+                            "eps_actual": None, "revenue_actual": None}]
+    app.dependency_overrides[get_service] = lambda: servicio
+    try:
+        with TestClient(app) as c:
+            ids = [c.post("/api/expectativas/eventos", json={"symbol": "AAPL", "tipo": "earnings", "periodo": p,
+                                                              "fecha_prevista": fecha}).json()["id"]
+                   for p in ("2031-Q1", "2031-Q2")]
+            r = c.post(f"/api/expectativas/eventos/{ids[0]}/capturar")
+            assert r.status_code == 200, r.text
+            assert {"revenue", "eps_diluted"} <= {x["metrica"] for x in r.json()["registradas"]
+                                                  if x["fuente_tipo"] == "consenso"}
+            servicio.adelanto = timedelta(hours=1)
+            r = c.post(f"/api/expectativas/eventos/{ids[1]}/capturar")
+            assert r.status_code == 422 and "posterior a su registro" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_capturar_cuando_el_resultado_ya_se_conoce_se_niega(session_factory, servicio):
     with session_factory() as s:
         e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)

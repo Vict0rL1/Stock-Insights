@@ -11,10 +11,13 @@ Pesos y series en dólares, una sola vez, con las reglas de la cartera:
 - varios lotes del mismo símbolo = una posición (también en `/api/portfolio/riesgo`
   y, para decidir, en `posiciones_para_decidir`: cantidad sumada, coste medio
   ponderado y el stop más protector de los fijados);
-- sin precio → sin peso, fuera y nombrada (no vale cero);
+- sin precio → sin peso, fuera y nombrada (no vale cero); en vivo nunca se
+  rellena con el último cierre de la caché, igual que en `/api/portfolio`;
 - sin moneda o sin tipo de cambio → fuera y nombrada (no se supone dólar);
 - cada serie se convierte con el tipo de **su** fecha: una acción canadiense mide
-  también su riesgo de divisa.
+  también su riesgo de divisa. Un punto de la serie de tipos fuera de la banda del
+  detector cuenta como un día sin publicar (vale el anterior); el tipo de la fecha
+  de la decisión, en cambio, se rechaza con su motivo.
 
 Solo lee el histórico de la caché, salvo que se pida descargar.
 
@@ -79,7 +82,8 @@ pero el estado es `viejo` y la nota de Hoy dice su fecha. El veredicto de la fic
 «Evaluar idea» dice lo mismo (`aviso_efectivo`): con el efectivo anotado pero sin tipo a esa
 fecha no pide «Anota tu efectivo», y con un tipo viejo lo advierte. Las posiciones del capital, igual:
 las abiertas en esa fecha (también las cerradas después), al último cierre conocido si la
-cotización es posterior, y convertidas con el mismo tipo que el efectivo. De cada posición, su última
+cotización es posterior (o, al reconstruir el pasado, si hoy no hay cotización; en vivo,
+sin cotización la posición queda fuera y nombrada), y convertidas con el mismo tipo que el efectivo. De cada posición, su última
 lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
 anterior) (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».

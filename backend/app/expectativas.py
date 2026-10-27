@@ -130,8 +130,15 @@ def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str,
     if fuente_tipo not in TIPOS_DE_FUENTE:
         raise ValueError(f"fuente desconocida: {fuente_tipo}")
     info = _a_instante(x.get("informacion_hasta") or ahora)
-    if pit.disponible_en(info, ahora) is False:
+    # El consenso se descarga durante la propia captura y Finnhub lo fecha con la
+    # hora de la descarga, después de `ahora`: comparar sin el margen común de lo
+    # descargado durante el cálculo daba un 500 al pulsar «Capturar expectativas»
+    # con la caché fría (revisión 4). Dentro del margen se guarda como conocido en
+    # `ahora`: una expectativa nunca lleva información posterior a su registro.
+    if pit.descargado_a_tiempo(info, ahora) is False:
         raise ValueError("la información de la fuente no puede ser posterior a su registro")
+    if pit.disponible_en(info, ahora) is False:
+        info = _a_instante(ahora)
     fila = Expectation(
         event_id=evento.id, metrica=x["metrica"], fuente_tipo=fuente_tipo, fuente=x["fuente"][:96],
         valor=datos.numero(x.get("valor")), bajo=datos.numero(x.get("bajo")), alto=datos.numero(x.get("alto")),
