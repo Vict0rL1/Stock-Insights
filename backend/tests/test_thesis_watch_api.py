@@ -151,6 +151,19 @@ def test_se_añade_un_punto_de_invalidacion_vigilable(client):
     assert r.json()["activo"] is True
 
 
+def test_un_punto_nuevo_guarda_su_unidad_y_un_umbral_pequeno_se_comprueba(client):
+    # Revisión 3: «Deuda/capital > 0,1» creado ahora quedaba sin comprobar para
+    # siempre (un corte por valor no distinguía los puntos viejos de los nuevos).
+    c, _ = client()
+    tid = _crear_tesis(c)
+    r = c.post(f"/api/theses/{tid}/triggers", json={
+        "kind": "metrica", "descripcion": "caja neta",
+        "config": {"metrica": "debt_to_equity", "op": "gt", "umbral": 0.1},
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["config"]["unidad"] == "veces"
+
+
 def test_una_metrica_no_vigilable_se_rechaza_con_el_catalogo(client):
     c, _ = client()
     tid = _crear_tesis(c)

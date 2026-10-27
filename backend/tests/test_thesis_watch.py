@@ -301,40 +301,52 @@ def test_noticias_incompletas_no_prueban_que_ningun_titular_lo_diga():
 #
 # El formulario pedía todo en % y dividía entre 100: «ratio corriente < 1» se
 # guardaba como 0,01 y el punto no saltaba nunca. Ahora el catálogo dice la
-# unidad, y un umbral en «veces» con la conversión vieja se avisa.
+# unidad y los puntos nuevos la guardan (`config.unidad`); uno viejo en «veces»
+# se lee de las dos formas, tal cual y ×100 (revisión 3).
 
 
-def _ratio(metrica, op, umbral, valor):
-    return evaluar({"id": 1, "kind": "metrica", "descripcion": "x", "activo": True,
-                    "config": {"metrica": metrica, "op": op, "umbral": umbral}},
+def _ratio(metrica, op, umbral, valor, unidad=None):
+    config = {"metrica": metrica, "op": op, "umbral": umbral} | ({"unidad": unidad} if unidad else {})
+    return evaluar({"id": 1, "kind": "metrica", "descripcion": "x", "activo": True, "config": config},
                    {"ratios": [{"fiscal_year": 2025, metrica: valor}]})
 
 
 def test_un_ratio_se_lee_en_veces_y_no_en_porcentaje():
-    r = _ratio("current_ratio", "lt", 1.0, 0.8)
+    r = _ratio("current_ratio", "lt", 1.0, 0.8, "veces")
     assert r["salta"] is True
     assert r["detalle"].startswith("Ratio corriente = 0,80; el punto salta si ") and "%" not in r["detalle"]
     assert "aviso" not in r
 
 
-def test_un_umbral_en_veces_con_la_conversion_vieja_queda_sin_comprobar():
-    # 1 escrito en el formulario viejo se guardó como 0,01: con «<» no saltaría
-    # nunca. No es «no cruzado»: es «no se puede comprobar» (UNKNOWN nunca PASS).
+def test_un_punto_viejo_cuyas_dos_lecturas_discrepan_queda_sin_comprobar():
+    # 1 escrito en el formulario viejo se guardó como 0,01: con 0,01 no saltaría
+    # y con 1, sí. No es «no cruzado»: es «no se puede comprobar» (UNKNOWN nunca PASS).
     r = _ratio("current_ratio", "lt", 0.01, 0.8)
     assert r["salta"] is False and r["medible"] is False
-    assert "no saltaría nunca" in r["motivo"] and "si querías decir 1)" in r["motivo"]
+    assert "con 0,01 no saltaría y con 1,00, sí" in r["motivo"]
+    # «Deuda/capital > 2» guardado como 0,02, con D/E 0,5: antes salía CRUZADO.
+    assert _ratio("debt_to_equity", "gt", 0.02, 0.5)["medible"] is False
+    # Revisión 3: uno viejo de 0,15 («< 15») con cobertura 8 salía «no cruzado».
+    assert _ratio("interest_coverage", "lt", 0.15, 8.0)["medible"] is False
 
 
-def test_con_mayor_que_la_conversion_vieja_saltaria_siempre_y_se_dice():
-    # «Deuda/capital > 2» guardado como 0,02: con D/E 0,5 salía CRUZADO.
-    r = _ratio("debt_to_equity", "gt", 0.02, 0.5)
-    assert r["medible"] is False and "saltaría siempre" in r["motivo"]
-    # El borde cuenta: un «10» viejo guardado como 0,1.
-    assert _ratio("interest_coverage", "lt", 0.1, 3.0)["medible"] is False
+def test_un_punto_viejo_cruzado_con_las_dos_lecturas_esta_cruzado():
+    # Revisión 3: «cobertura < 10» guardado como 0,1, con EBIT negativo (−1,5),
+    # lo cruza leído de las dos formas; el corte por valor lo dejaba sin medir.
+    r = _ratio("interest_coverage", "lt", 0.1, -1.5)
+    assert r["medible"] is True and r["salta"] is True
+    assert _ratio("debt_to_equity", "gt", 0.02, 3.0)["salta"] is True
+
+
+def test_un_umbral_pequeno_de_un_punto_nuevo_se_lee_tal_cual():
+    # Revisión 3: «Deuda/capital > 0,1» creado con el formulario nuevo quedaba
+    # sin comprobar para siempre, y rehacerlo volvía a guardar 0,1.
+    r = _ratio("debt_to_equity", "gt", 0.1, 0.6, "veces")
+    assert r["medible"] is True and r["salta"] is True
 
 
 def test_cero_o_negativo_es_un_umbral_legitimo():
-    # «Cobertura de intereses < 0» (EBIT negativo) no es la conversión vieja.
+    # «Cobertura de intereses < 0» (EBIT negativo): sus dos lecturas coinciden.
     r = _ratio("interest_coverage", "lt", 0.0, -1.5)
     assert r["medible"] is True and r["salta"] is True
 

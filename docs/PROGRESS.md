@@ -464,8 +464,8 @@ decimal en los presets del screener; «Desempleo EE. UU.» sin partir.
 «ratio corriente < 1» se guardaba como 0,01 y el punto no saltaba nunca, un control de riesgo
 desactivado en silencio. El catálogo dice ahora la `unidad` de cada métrica (`pct` o `veces`), el
 formulario y la serie de la tarjeta la usan, el detalle sale en la unidad («21,0 % … 18,0 %», no
-«0,210 … 0,180») y un umbral en `veces` positivo hasta `UMBRAL_VECES_SOSPECHOSO` (0,1) queda sin
-comprobar, con el motivo y cómo rehacerlo (segunda revisión, abajo). Dos tests ajustados a la cifra
+«0,210 … 0,180») y los puntos viejos en `veces` se leen de las dos formas (tercera revisión,
+abajo). Dos tests ajustados a la cifra
 nueva (`test_gramatica`, `test_thesis_watch`: la frase es la misma); el de opciones busca el «%»
 con espacio duro. El recorte «Ideas nuevas al 0 %» se reconoce por una constante
 (`sizing.RECORTE_SIN_HUECO_DE_RIESGO`) y no buscando el texto «0 %» suelto. Golden idéntico.
@@ -600,6 +600,15 @@ si venían de la caché). En `construir`, las cotizaciones se piden antes que el
 sin cotización hoy se usa el cierre de entonces, el motivo dice cuándo la cotización es
 posterior, y `_tipo_en` pasa el detector de inversión (un último punto de 13 en vez de 1,30
 convertía a 10 USD sin aviso).
+
+**Los puntos viejos en «veces», sin corte por valor.** El de la segunda revisión (≤ 0,1 → sin
+comprobar) tenía tres fallos: un punto cruzado con las dos lecturas («cobertura < 10» guardado
+como 0,1, con EBIT negativo) pasaba de CRUZADO a «sin medir», fail-unsafe; un umbral nuevo y
+legítimo («Deuda/capital > 0,1») quedaba sin comprobar para siempre; y uno viejo de 0,15
+seguía «no cruzado». Ahora los puntos nuevos guardan `unidad` al crearse, y uno viejo en `veces`
+con el umbral por debajo de 1 (`LEGADO_MAX`) se lee tal cual y ×100: si coinciden, ese es el
+veredicto; si no, sin comprobar con lo que daría cada una. La nota de la tesis ya no atribuye
+todo lo no comprobado a «falta de datos». Golden idéntico (su `D/E > 2` se lee tal cual).
 
 ## Informe del repaso de seguridad (0.9)
 

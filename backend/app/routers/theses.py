@@ -406,6 +406,10 @@ def add_trigger(
             raise HTTPException(status_code=422, detail=f"Operador inválido: {config.get('op')}")
         if not isinstance(config.get("umbral"), (int, float)):
             raise HTTPException(status_code=422, detail="Falta el umbral numérico.")
+        # La unidad en que está el umbral, guardada con el punto: los de antes no
+        # la llevan y se leen de las dos formas, porque el formulario viejo
+        # dividía también los ratios entre 100 (`thesis_watch._comprobar_umbral`).
+        config = {**config, "unidad": unidad_de(config["metrica"])}
     elif not [p for p in (config.get("palabras") or []) if str(p).strip()]:
         raise HTTPException(
             status_code=422,

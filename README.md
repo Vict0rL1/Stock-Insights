@@ -819,8 +819,10 @@ la `unidad` de cada una: los márgenes, el ROE, el ROIC y los crecimientos son `
 escriben en %, «18», y se guardan como fracción, 0,18); deuda/capital, ratio corriente y
 cobertura de intereses son `veces` (un ratio corriente de 1,2 se escribe y se guarda 1,2).
 Antes el formulario lo pedía todo en % y dividía entre 100: «ratio corriente < 1» se
-guardaba como 0,01 y el punto no saltaba nunca. Un umbral en `veces` por debajo de 0,1
-lleva un aviso que lo dice.
+guardaba como 0,01 y el punto no saltaba nunca. Los puntos nuevos guardan su `unidad`. Uno
+de antes en `veces` (sin `unidad`, con el umbral por debajo de 1) se lee de las dos formas,
+tal cual y ×100: si coinciden, ese es el resultado; si no, queda **sin comprobar** y dice qué
+daría cada una, hasta que lo quites y lo crees de nuevo.
 
 ### Que un punto salte NO es una señal de venta
 
