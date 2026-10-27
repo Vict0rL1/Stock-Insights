@@ -17,6 +17,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_DIR.parent
 
 
+HOSTS_DE_ESTA_MAQUINA = ("localhost", "127.0.0.1", "[::1]")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
@@ -44,7 +47,10 @@ class Settings(BaseSettings):
     # puerto. Escuchar solo en 127.0.0.1 no basta: una web cualquiera puede
     # hacer que su dominio resuelva a 127.0.0.1 (DNS rebinding) y llamar a la
     # API con `Host: su-dominio`, y el backend la atendía (auditoría del 19 oct).
-    # En .env, como lista JSON: ALLOWED_HOSTS='["localhost", "127.0.0.1", "[::1]"]'.
+    # En .env, como lista JSON, los nombres que se AÑADEN a los de esta máquina
+    # (`HOSTS_DE_ESTA_MAQUINA` se unen siempre: el proxy de Vite llama como
+    # `localhost:8000`, y con ALLOWED_HOSTS='["mi-mac.local"]' toda la interfaz
+    # recibía un 400; revisión de A6).
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]"]
 
 

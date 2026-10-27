@@ -357,7 +357,12 @@ async function main() {
     for (const escenario of escenarios) {
       if (!ESCENARIOS[escenario]) throw new Error(`Escenario desconocido: ${escenario}`)
       console.log(`Escenario «${escenario}»`)
-      api = arrancar(python, ['-m', 'tests.fixtures.servidor_demo', '--escenario', escenario, '--puerto', String(PUERTO_API)], BACKEND)
+      // El backend solo atiende a la interfaz de esta máquina (`Origin`, revisión
+      // de A6): aquí la sirve `vite preview` en otro puerto, y sin esto cada
+      // POST de las capturas (el botón de IA, anotar efectivo) era un 403.
+      api = arrancar(python, ['-m', 'tests.fixtures.servidor_demo', '--escenario', escenario, '--puerto', String(PUERTO_API)], BACKEND, {
+        CORS_ORIGINS: JSON.stringify([WEB]),
+      })
       await hastaQueResponda(`http://127.0.0.1:${PUERTO_API}/api/meta/llm`)
       const carpeta = resolve(salida, escenario)
       mkdirSync(carpeta, { recursive: true })

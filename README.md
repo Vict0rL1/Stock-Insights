@@ -92,7 +92,16 @@ El backend escucha solo en 127.0.0.1 y, además, solo atiende a una cabecera
 `Host` de esta máquina (`localhost`, `127.0.0.1`, `[::1]`); cualquier otra es un
 400. Escuchar en local no basta: con *DNS rebinding*, una web puede hacer que su
 dominio resuelva a 127.0.0.1 y llamar a la API con su propio `Host`. Para usar
-otro nombre, `ALLOWED_HOSTS` en `.env` (lista JSON).
+otro nombre, `ALLOWED_HOSTS` en `.env` (lista JSON): lo que pongas se **añade** a
+los de esta máquina, que siguen siempre (el proxy de Vite llama como `localhost`).
+
+Tampoco atiende a otras webs abiertas en el mismo navegador: una petición cuyo
+`Origin` no es la interfaz (`CORS_ORIGINS`, el Vite de `localhost:5173`) ni el
+propio backend, o que sin `Origin` llega marcada `Sec-Fetch-Site: cross-site` o
+`same-site`, es un 403. CORS solo impide *leer* la respuesta: sin esto, un `<img>`
+de cualquier web congelaba análisis en tu historial y gastaba la cuota de los
+proveedores. `start.sh` da el backend por arrancado solo si `/api/meta/health`
+responde sin error (`curl -sf`).
 
 ### La base de datos se migra sola (desde el RC1)
 

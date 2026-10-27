@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.config import settings
+from app.config import HOSTS_DE_ESTA_MAQUINA, settings
 from app.db.engine import SessionLocal, init_db
 from app.mantenimiento import mantener
 from app.registro import configurar as configurar_registro
@@ -111,34 +111,77 @@ def nombre_de_host(cabecera: str | None) -> str | None:
     return texto.partition(":")[0] or None
 
 
-class HostDeConfianza:
-    """Rechaza con un 400 la petición cuya cabecera `Host` no es de esta máquina.
+def _puerto(direccion: str) -> str | None:
+    """«localhost:5173» → «5173»; «[::1]:8000» → «8000»; sin puerto, None."""
+    resto = direccion.rpartition("]")[2] if direccion.startswith("[") else direccion
+    _, dos_puntos, puerto = resto.rpartition(":")
+    return puerto if dos_puntos and puerto else None
 
-    Es lo que hace `TrustedHostMiddleware` de Starlette, con dos diferencias: el
-    motivo va en español y en `detail`, como cualquier error de la API, y se
-    compara sin distinguir mayúsculas (un nombre de host no las distingue). Antes
-    se aceptaba cualquier `Host` (auditoría del 19 oct).
+
+class HostDeConfianza:
+    """Solo atiende a esta máquina: por su cabecera `Host` y por su origen.
+
+    - `Host` que no es de esta máquina → 400. Es lo que hace
+      `TrustedHostMiddleware` de Starlette, con el motivo en español y en
+      `detail`, y sin distinguir mayúsculas. Antes se aceptaba cualquier `Host`
+      (auditoría del 19 oct): DNS rebinding.
+    - Petición que viene de otra web → 403. El `Host` de una web que llama a
+      `http://127.0.0.1:8000` es el nuestro, y CORS solo impide LEER la
+      respuesta, no que se ejecute: un `<img>` hacia `/api/empresa/AAPL/analisis`
+      congelaba una instantánea inmutable y gastaba cuota de los proveedores
+      (revisión de A6). Vale un `Origin` de la interfaz local (`CORS_ORIGINS`, o
+      su puerto con un nombre permitido) o del propio backend (`/docs`); sin
+      `Origin`, `Sec-Fetch-Site` de otro sitio también se rechaza (un `<img>`
+      o un formulario no siempre lo mandan).
     """
 
-    def __init__(self, app: ASGIApp, permitidos: list[str]) -> None:
+    def __init__(self, app: ASGIApp, permitidos: list[str], origenes: list[str]) -> None:
         self.app = app
         self.permitidos = {p.strip().lower() for p in permitidos}
+        self.origenes = {o.strip().lower().rstrip("/") for o in origenes}
+        self.puertos_de_la_interfaz = {_puerto(o.partition("://")[2]) for o in self.origenes} - {None}
+
+    def _origen_permitido(self, origen: str, host: str) -> bool:
+        origen = origen.strip().lower().rstrip("/")
+        if origen in self.origenes:
+            return True
+        esquema, _, direccion = origen.partition("://")
+        if esquema not in ("http", "https") or not direccion or "/" in direccion:
+            return False  # «null» (un iframe aislado, un fichero local) no es un origen de aquí
+        if direccion == host.strip().lower():
+            return True
+        return nombre_de_host(direccion) in self.permitidos and _puerto(direccion) in self.puertos_de_la_interfaz
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket"):
-            cabecera = dict(scope.get("headers") or []).get(b"host", b"").decode("latin-1")
+            cabeceras = dict(scope.get("headers") or [])
+            cabecera = cabeceras.get(b"host", b"").decode("latin-1")
+            origen = cabeceras.get(b"origin")
+            sitio = cabeceras.get(b"sec-fetch-site", b"").decode("latin-1").strip().lower()
+            respuesta = None
             if nombre_de_host(cabecera) not in self.permitidos:
                 respuesta = JSONResponse(status_code=400, content={"detail": (
                     f"Cabecera Host no permitida: «{cabecera[:80]}». El backend solo atiende a "
                     f"{', '.join(sorted(self.permitidos))}; para llamarlo con otro nombre, añádelo a "
                     "ALLOWED_HOSTS en .env.")})
+            elif origen is not None and not self._origen_permitido(origen.decode("latin-1"), cabecera):
+                respuesta = JSONResponse(status_code=403, content={"detail": (
+                    f"Petición de otra web («{origen.decode('latin-1')[:80]}»): el backend solo atiende "
+                    "a la interfaz de esta máquina.")})
+            elif origen is None and sitio in ("cross-site", "same-site"):
+                respuesta = JSONResponse(status_code=403, content={"detail": (
+                    "Petición de otra web (Sec-Fetch-Site: " + sitio + "): el backend solo atiende "
+                    "a la interfaz de esta máquina.")})
+            if respuesta is not None:
                 await respuesta(scope, receive, send)
                 return
         await self.app(scope, receive, send)
 
 
-# La última en añadirse es la de fuera: el Host se comprueba antes que nada.
-app.add_middleware(HostDeConfianza, permitidos=settings.allowed_hosts)
+# La última en añadirse es la de fuera: el Host y el origen se comprueban antes
+# que nada, también antes que CORS.
+app.add_middleware(HostDeConfianza, permitidos=[*HOSTS_DE_ESTA_MAQUINA, *settings.allowed_hosts],
+                   origenes=settings.cors_origins)
 
 app.include_router(stocks.router)
 app.include_router(market.router)

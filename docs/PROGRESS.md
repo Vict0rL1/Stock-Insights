@@ -554,6 +554,16 @@ Los dobles de los tests creaban los puntos con el reloj real y analizaban el 12 
 se les da la fecha de su tesis. **Queda, para Victor:** un punto **borrado** después no se
 puede reconstruir (no queda rastro de la baja); guardarla pide una migración (`borrado_en`).
 
+**A6.** (1) El filtro de `Host` cerraba el DNS rebinding, pero no las peticiones simples de otra
+web: con `Host: 127.0.0.1:8000`, el de verdad, un `<img>` hacia `/api/empresa/AAPL/analisis`
+congelaba una instantánea inmutable y un POST sin cuerpo gastaba cuota (CORS solo impide leer
+la respuesta). El mismo middleware rechaza con 403 un `Origin` que no es la interfaz ni el propio
+backend, y sin `Origin`, un `Sec-Fetch-Site` de otro sitio. Las capturas sirven la interfaz en
+otro puerto y se lo dicen al backend de demostración (`CORS_ORIGINS`). (2) `ALLOWED_HOSTS`
+sustituía la lista y con `["mi-mac.local"]` el proxy de Vite (que llama como `localhost`)
+recibía un 400 en todo; ahora se añade a los nombres de esta máquina. (3) `start.sh` decía
+«Todo listo» con el backend respondiendo 400 (`curl -s`); ahora `curl -sf`.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
