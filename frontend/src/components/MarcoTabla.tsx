@@ -7,7 +7,9 @@ import type { ReactNode } from 'react'
  *
  * Enfocable y con nombre: en Safari un contenedor con scroll no recibe el foco,
  * y con teclado las columnas que quedaban fuera (los otros ETF, los ejercicios
- * antiguos) no se alcanzaban (revisión del 2.12, WCAG 2.1.1).
+ * antiguos) no se alcanzaban (revisión del 2.12, WCAG 2.1.1). El anillo de foco
+ * se pinta por dentro: por fuera lo recortaba el `overflow-hidden` de la
+ * sección del ranking multifactor (revisión 3).
  */
 export function MarcoTabla({
   etiqueta,
@@ -20,7 +22,7 @@ export function MarcoTabla({
 }) {
   return (
     <div
-      className={`overflow-x-auto rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${className}`.trim()}
+      className={`overflow-x-auto rounded focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sky-500 ${className}`.trim()}
       tabIndex={0}
       role="region"
       aria-label={etiqueta}

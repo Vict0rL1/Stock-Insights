@@ -123,7 +123,7 @@ la red de seguridad tenía agujeros. Cada hallazgo, su arreglo y su commit:
 | S14 | (revisor D3, D5) Unas 30 fechas ISO en pantalla y en frases del backend; la hora de una cotización sin la zona del mercado | hecho: `fmtFecha`/`fmt_fecha` en todas; ET para la hora del dato de mercado. Multifactor no: sus «desde–hasta» son ejercicios. Guarda: patrón `fecha_iso` en los dos trinquetes (14 sitios en pantalla y 7 frases del backend) y test del rótulo ET | `1aeb8f0` |
 | — | (revisor A6) Los commits llevan `Co-Authored-By: Claude Opus 5.5`, y CLAUDE.md dice «sin identificadores de modelo en commits» | **decidido por Victor (2026-10-09)**: manda CLAUDE.md. Desde ese día los commits van sin identificador de modelo; los 147 anteriores no se reescriben (exigiría forzar `main`) | — |
 | — | (revisor B6) Las bandas de tipo de cambio no ven una inversión cerca de la paridad (EUR del revés da 1,09 por dólar, dentro de 0,5–1,8; también GBP y CHF) | **para Victor**: estrecharlas es cambiar un umbral (§3). Propuesta: banda por divisa alrededor de su rango de 30 años | — |
-| — | (revisor B5) Un instante sin zona: el backend lo escribe en UTC y el frontend en la hora del navegador | **para la Fase 2**: decidir si la pantalla rotula la hora local o escribe siempre UTC; hoy lo rotulado (replay, informe, datos de mercado) ya es explícito | — |
+| — | (revisor B5) Un instante sin zona: el backend lo escribe en UTC y el frontend en la hora del navegador | **hecho (27 oct)**: los dos gemelos escriben UTC, con hora rotulada y sin ella (`fmtFecha` usaba la zona del navegador y el mismo instante daba dos días distintos); la hora de un dato de mercado, en ET | — |
 | — | (revisor B1) La guarda AST no ve un float crudo en un subíndice o una variable local (`f"{est['sharpe']}"`), ni ESLint un `${x}` con un float | **límite conocido**: los tipos no se ven sin ejecutar; lo cubren los trinquetes de fugas (`decimal_punto`) sobre el paquete de casos extremos |  — |
 
 ## Etiquetas
@@ -633,6 +633,17 @@ real. (7) El origen: `Sec-Fetch-Site: same-origin` pasa (la interfaz en otro pue
 en todo POST), sin Fetch Metadata se mira el `Referer`, y el 403 dice cómo arreglarlo
 (`CORS_ORIGINS`). (8) La ventana de noticias de la tesis acaba en el `ahora` del análisis, no en
 el reloj de la máquina. (9) Test del filtro de puntos de `evaluar(…, ahora)`, que nada cubría.
+
+**Frontend.** (1) El cajón abierto al pasar a ≥ md (girar el móvil) dejaba todo inerte sin
+salida visible: se cierra al cruzar el punto de corte. (2) Pulsar la pantalla en la que ya estás,
+o «Atrás», dejaba el foco en BODY: vuelve a «Menú». (3) `fmtFecha` sin hora usaba la zona del
+navegador: ahora UTC, como el gemelo (caso nuevo y un test con otra zona). (4) El anillo de foco de
+`MarcoTabla` se pinta por dentro (lo recortaba el `overflow-hidden` del ranking multifactor); el
+mensaje del error también va en `MarcoTabla`, y la guarda mira los `.ts` y cualquier scroll
+horizontal. (5) La guarda de «palabra por línea» ya no salta un elemento con un icono o un hijo
+oculto. (6) La regla de ESLint del espacio duro ve también una cifra y su «%» separados por un
+salto de línea. (7) En Hoy por debajo de 640 px, el puesto global va junto al símbolo. Capturas:
+104 sin fallos.
 
 ## Informe del repaso de seguridad (0.9)
 

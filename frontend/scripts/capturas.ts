@@ -272,7 +272,12 @@ function recortes(): string[] {
  *  comparten línea, y «Margen / de la / empresa» pasaba (revisión de A7). */
 function palabraAPalabra(): string[] {
   const salida: string[] = []
-  const enBloque = (e: Element) => !getComputedStyle(e).display.startsWith('inline')
+  // Un icono (svg/img, en bloque por el preflight de Tailwind) o un hijo oculto no
+  // parten el texto del elemento: antes lo sacaban entero de la guarda (revisión 3).
+  const enBloque = (e: Element) => {
+    const d = getComputedStyle(e).display
+    return d !== 'none' && !d.startsWith('inline') && !['svg', 'img', 'picture', 'video', 'canvas'].includes(e.tagName.toLowerCase())
+  }
   for (const el of Array.from(document.body.querySelectorAll('*'))) {
     const conTexto = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())
     if (!conTexto || Array.from(el.children).some(enBloque)) continue

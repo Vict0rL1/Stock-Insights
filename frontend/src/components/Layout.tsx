@@ -84,6 +84,8 @@ export function Layout() {
   const [ruta, setRuta] = useState(pathname)
   const boton = useRef<HTMLButtonElement>(null)
   const cerrar = useRef<HTMLButtonElement>(null)
+  const cajon = useRef<HTMLElement>(null)
+  const estabaAbierto = useRef(false)
   // El foco vuelve a «Menú» DESPUÉS de cerrar: mientras el cajón está abierto la
   // cabecera es `inert` y no se puede enfocar nada dentro.
   const devolverFoco = useRef(false)
@@ -99,18 +101,36 @@ export function Layout() {
   }
   useEffect(() => {
     if (!abierto) {
-      if (devolverFoco.current) boton.current?.focus()
+      // También si el foco se quedó en el cajón ya oculto o se perdió (pulsar la
+      // pantalla en la que ya estás, «Atrás» del navegador): caía en BODY
+      // (revisión 3).
+      const activo = document.activeElement
+      const perdido = activo === document.body || (cajon.current?.contains(activo) ?? false)
+      if (estabaAbierto.current && (devolverFoco.current || perdido)) boton.current?.focus()
       devolverFoco.current = false
+      estabaAbierto.current = false
       return
     }
+    estabaAbierto.current = true
     cerrar.current?.focus()
     const alPulsar = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       devolverFoco.current = true
       setAbierto(false)
     }
+    // Al pasar a ≥ md (girar el móvil) el cajón deja de serlo: abierto, todo
+    // quedaba inerte y sin forma visible de salir (revisión 3).
+    const escritorio = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 48rem)') : null
+    const alCambiar = (e: MediaQueryListEvent) => {
+      if (e.matches) setAbierto(false)
+    }
     window.addEventListener('keydown', alPulsar)
-    return () => window.removeEventListener('keydown', alPulsar)
+    escritorio?.addEventListener('change', alCambiar)
+    if (escritorio?.matches) setAbierto(false)
+    return () => {
+      window.removeEventListener('keydown', alPulsar)
+      escritorio?.removeEventListener('change', alCambiar)
+    }
   }, [abierto])
 
   return (
@@ -138,6 +158,7 @@ export function Layout() {
         <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={cerrarYVolver} />
       )}
       <aside
+        ref={cajon}
         id="navegacion"
         aria-label="Navegación"
         role={abierto ? 'dialog' : undefined}

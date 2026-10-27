@@ -58,8 +58,11 @@ export default tseslint.config(
         },
         // Una cifra y su «%» con espacio normal se parten al final de una línea:
         // en móvil, «21» / «% supuesto» (revisión del 2.12). Espacio duro, como
-        // `fmtPct`: `\u00a0` en una cadena, `&nbsp;` en el texto de JSX.
-        ...['Literal[value=/\\d %/]', 'JSXText[value=/\\d %/]', 'TemplateElement[value.raw=/\\d %/]'].map((selector) => ({
+        // `fmtPct`: `\u00a0` en una cadena, `&nbsp;` en el texto de JSX. También
+        // con un salto de línea en medio: el JSX lo pinta como un espacio normal
+        // (revisión 3). Sin `\s`, que incluye el espacio duro.
+        ...['Literal[value=/\\d[\\x20\\t\\r\\n]+%/]', 'JSXText[value=/\\d[\\x20\\t\\r\\n]+%/]',
+          'TemplateElement[value.raw=/\\d[\\x20\\t\\r\\n]+%/]'].map((selector) => ({
           selector,
           message: 'Entre una cifra y su «%», espacio duro (\\u00a0 o &nbsp;): con un espacio normal se parten en dos líneas.',
         })),

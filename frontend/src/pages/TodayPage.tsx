@@ -712,6 +712,10 @@ function SignalRow({
           <CompanyLogo symbol={signal.symbol} size="sm" />
           <span className="min-w-0">
             <span className="font-medium text-slate-900">{signal.symbol}</span>
+            {/* Por debajo de 640 px la columna del puesto no cabe: va junto al
+                símbolo, o en las vistas filtradas (Mi cartera, Vigilar) se
+                perdía el orden global (revisión 3). */}
+            <span className="ml-1.5 text-[10px] tabular-nums text-slate-400 sm:hidden">#{signal.rank}</span>
             <span className="block truncate text-xs text-slate-400">
               {signal.context.name ?? signal.context.sector_name ?? '—'}
             </span>

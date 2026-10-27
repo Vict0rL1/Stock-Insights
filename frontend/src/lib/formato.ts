@@ -181,17 +181,20 @@ function aFecha(valor: string | Date | null | undefined): Fecha | null {
 
 /**
  * «6 oct 2026» o, con `hora`, «12 sept 2026, 10:35 ET». Un día suelto no se
- * mueve de zona. Un instante se pasa a `zona` (la del navegador si no se da) y,
- * si es la de una bolsa, se rotula. Lo que no se lee como fecha, tal cual.
+ * mueve de zona. Un instante se pasa a `zona` (UTC si no se da, como el gemelo
+ * de Python) y, si es la de una bolsa, se rotula. Lo que no se lee como fecha,
+ * tal cual.
  */
 export function fmtFecha(
   valor: string | Date | null | undefined,
   { hora = false, zona: zonaPedida }: { hora?: boolean; zona?: string } = {},
 ): string {
-  // Con hora y sin zona, UTC y rotulada, como el gemelo de Python: con la hora
-  // local del navegador y sin rótulo, la misma instantánea salía «14:35 UTC» en
-  // el Historial y «16:35» en «Qué cambió» (revisión del 2.12).
-  const zona = zonaPedida ?? (hora ? 'UTC' : undefined)
+  // Sin zona, UTC, como el gemelo de Python: con la hora local del navegador y
+  // sin rótulo, la misma instantánea salía «14:35 UTC» en el Historial y «16:35»
+  // en «Qué cambió» (revisión del 2.12); y sin hora el día también era el local,
+  // así que en Madrid las 23:30 UTC del 12 salían «13 sept» sin hora y «12 sept,
+  // 23:30 UTC» con ella (revisión 3).
+  const zona = zonaPedida ?? 'UTC'
   if (valor === null || valor === undefined || valor === '') return GUION
   const f = aFecha(valor)
   if (!f) return String(valor)

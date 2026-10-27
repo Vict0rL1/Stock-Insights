@@ -8,7 +8,9 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { MarcoTabla } from './MarcoTabla'
 
-const fuentes = import.meta.glob(['../**/*.tsx', '!../**/*.test.tsx', '!./MarcoTabla.tsx'], {
+// También los .ts: el patrón de antes era una constante en `lib/tablas.ts`
+// (`MARCO_TABLA = 'overflow-x-auto'`) y el glob solo de .tsx no la veía (revisión 3).
+const fuentes = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!./MarcoTabla.tsx'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -25,6 +27,8 @@ describe('MarcoTabla', () => {
     expect(marco.tabIndex).toBe(0)
     expect(marco.className).toMatch(/(^|\s)overflow-x-auto(\s|$)/)
     expect(marco.className).toMatch(/(^|\s)mt-4(\s|$)/)
+    // El anillo por dentro: por fuera lo recortaba un ancestro con overflow-hidden.
+    expect(marco.className).toMatch(/(^|\s)focus-visible:-outline-offset-2(\s|$)/)
   })
 
   it('es la única forma de dar scroll horizontal a una tabla', () => {
@@ -32,8 +36,7 @@ describe('MarcoTabla', () => {
     const malos: string[] = []
     for (const [ruta, texto] of Object.entries(fuentes)) {
       texto.split('\n').forEach((linea, i) => {
-        // El `<pre>` del error no es una tabla: su texto se lee entero con el lector.
-        if (linea.includes('overflow-x-auto') && !linea.includes('<pre')) malos.push(`${ruta}:${i + 1}`)
+        if (/overflow-(x-)?(auto|scroll)\b/.test(linea)) malos.push(`${ruta}:${i + 1}`)
       })
     }
     expect(malos).toEqual([])

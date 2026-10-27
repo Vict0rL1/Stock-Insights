@@ -97,6 +97,7 @@
   ],
   "fmt_fecha": [
     [["2026-10-06"], {}, "6 oct 2026"],
+    [["2026-09-12T23:30:00Z"], {}, "12 sept 2026"],
     [["2026-10-06"], {"hora": true, "zona": "America/New_York"}, "6 oct 2026"],
     [["2026-09-12T14:35:00Z"], {"hora": true, "zona": "America/New_York"}, "12 sept 2026, 10:35\u00a0ET"],
     [["2026-09-12T14:35:00+00:00"], {"zona": "Europe/Madrid"}, "12 sept 2026"],
