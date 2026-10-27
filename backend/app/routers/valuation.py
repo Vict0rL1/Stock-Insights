@@ -50,7 +50,7 @@ from app.analysis.valuation import rango_de_valor, redondear, sensibilidad_orden
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.deps import get_service
-from app.formato import fmt_num, fmt_pct, fmt_precio
+from app.formato import fmt_num, fmt_pct, fmt_valor_redondo
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import SimboloRuta, validar_simbolo
@@ -359,7 +359,7 @@ def valorar(
             "quedarse con el del medio."
             if factor and factor >= 2
             else (
-                f"El rango va de {fmt_precio(global_['bajo'])} a {fmt_precio(global_['alto'])} (factor "
+                f"El rango va de {fmt_valor_redondo(global_['bajo'])} a {fmt_valor_redondo(global_['alto'])} (factor "
                 f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
                 if factor
                 else ""

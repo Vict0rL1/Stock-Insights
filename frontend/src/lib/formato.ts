@@ -128,6 +128,14 @@ export function fmtPrecio(
   return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
 }
 
+/** Un valor por acción ya redondeado a cifras significativas (el rango del DCF):
+ *  147 → «147»; 0,00347 → «0,00347». Gemelo de `fmt_valor_redondo`. */
+export function fmtValorRedondo(valor: Num, moneda?: string | null): string {
+  if (!finito(valor)) return GUION
+  const cifra = fmtNum(valor, decimalesPrecio(valor), { ceros: false })
+  return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
+}
+
 /**
  * El valor de un `<input type="number">`: el navegador lo exige con punto
  * decimal y sin miles («12.5»), sea cual sea el idioma. No es texto para leer;

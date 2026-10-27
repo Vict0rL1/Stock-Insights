@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos } from '../EstadoDato'
@@ -28,6 +28,9 @@ function fmtValor(v: number | string | null | undefined, unidad?: string): strin
   if (typeof v === 'string') return etiqueta(v)
   if (unidad === 'fracción') return fmtPct(v, 1)
   if (unidad === 'USD') return fmtCompacto(v)
+  // Un precio, con los decimales de un precio: «Precio 0,00 → 0,00» de una
+  // acción de céntimos (revisión 3).
+  if (unidad === 'moneda' || unidad === 'USD/acción') return fmtPrecio(v)
   return fmtNum(v, 2)
 }
 

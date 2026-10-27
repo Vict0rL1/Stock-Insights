@@ -270,8 +270,8 @@ def decide(
             )
         else:
             razones.append(
-                f"Puntuación {fmt_num(score, signo=True)} y precio sobre su media de 200 "
-                "sesiones: no hay motivo para tocar la posición."
+                f"Puntuación {fmt_num(score, signo=True)} y {_frase_tendencia(sobre_media, tendencia)}: "
+                "no hay motivo para tocar la posición."
             )
 
         if pnl_pct is not None:
@@ -382,17 +382,22 @@ def decide(
         # empuja a comprar y la tendencia lo impide: vigilar es ese empate.
         por_id["puntuacion_favorable"]["papel"] = "a_favor"
         por_id["tendencia_a_favor"]["papel"] = "bloquea"
-        razones.append(
-            f"Puntuación {fmt_num(score, signo=True)}, pero cotiza bajo su media de 200 "
-            f"sesiones ({fmt_precio(sma200)}): buena empresa en tendencia bajista."
-        )
+        # El texto dice lo que dice la regla: la media MÁS la banda, y en cuál
+        # de los tres estados está. Decía «cotiza bajo su media» con el precio
+        # dentro de la banda, encima de ella, y pedía «cierre por encima de
+        # 100» cuando la regla exige 102 (revisión 3).
+        razones.append(f"Puntuación {fmt_num(score, signo=True)}, pero {_frase_tendencia(sobre_media, tendencia)}.")
         razones.append(
             "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a "
-            "que el precio recupere la media antes de entrar."
+            f"que el precio supere la {_media_entrar()} antes de entrar."
+            if not tendencia["desconocida"] else
+            "Sin tendencia medible, la regla no compra: espera a tener una media de 200 sesiones."
         )
+        entrar = _umbral_entrar(sma200)
         disparadores = [
-            f"Comprar cuando cierre por encima de {fmt_precio(sma200)}" if sma200 else
-            "Comprar cuando recupere su media de 200 sesiones",
+            f"Comprar cuando cierre en o por encima de {fmt_precio(datos.redondear_precio(entrar))} ({_media_entrar()})"
+            if entrar else
+            "Comprar cuando haya una media de 200 sesiones con que medir la tendencia",
         ]
     else:
         # Ni destaca ni preocupa. Meterla en "vigilar" diluiría la lista de
@@ -505,6 +510,24 @@ def _umbral_salir(sma200: float | None) -> float | None:
 # mano en cuatro sitios y, si la banda cambiaba, el texto seguía diciendo 2 %.
 # «que haya puntuación válido» no concordaba: cada dato con su artículo y su género.
 _VALIDO = {"precio": "un precio válido", "puntuación": "una puntuación válida"}
+
+
+def _frase_tendencia(sobre_media: bool | None, tendencia: dict) -> str:
+    """Dónde está el precio frente a la media de 200 sesiones, en los tres estados
+    de `_tendencia` más el desconocido. «Precio sobre su media» se decía también
+    dentro de la banda y sin media: un dato desconocido convertido en aprobado
+    (revisión 3)."""
+    sma200 = tendencia.get("sma200")
+    if tendencia.get("desconocida"):
+        return "la tendencia es desconocida (no hay una media de 200 sesiones utilizable)"
+    if sobre_media is True:
+        return "el precio está claramente sobre su media de 200 sesiones" + (
+            f" ({fmt_precio(sma200)})" if sma200 else "")
+    if sobre_media is False:
+        return "cotiza bajo su media de 200 sesiones" + (
+            f" ({fmt_precio(sma200)}): buena empresa en tendencia bajista" if sma200 else "")
+    return (f"cotiza cerca de su media de 200 sesiones ({fmt_precio(sma200)}), dentro de la banda en la que "
+            "la tendencia no está clara")
 
 
 def _banda(pct: float) -> str:
@@ -633,10 +656,14 @@ def _cambiaria_sin_posicion(
               "condiciones": [_c_score("≤", desfavorable_max, score, "puntuacion_desfavorable")]}
     salida = []
     if accion != "comprar":
+        # Cumplida o pendiente, con la MISMA comparación que la regla y no con la
+        # distancia redondeada: a menos de 0,005 % del umbral salía 0,0, la
+        # condición se daba por cumplida y «→ Comprar si:» quedaba vacío
+        # (revisión 3).
         pendientes = [
             c for c in comprar
             if not (c["regla"] == "puntuacion_favorable" and score >= favorable_min)
-            and not (c["regla"] == "tendencia_a_favor" and c.get("distancia") is not None and c["distancia"] <= 0)
+            and not (c["regla"] == "tendencia_a_favor" and entrar is not None and ultimo >= entrar)
         ]
         salida.append({"hacia": "comprar", "requiere": "todas", "condiciones": pendientes + extra})
     if accion == "comprar":

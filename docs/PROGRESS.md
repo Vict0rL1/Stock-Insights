@@ -610,6 +610,16 @@ con el umbral por debajo de 1 (`LEGADO_MAX`) se lee tal cual y ×100: si coincid
 veredicto; si no, sin comprobar con lo que daría cada una. La nota de la tesis ya no atribuye
 todo lo no comprobado a «falta de datos». Golden idéntico (su `D/E > 2` se lee tal cual).
 
+**La tendencia de A1, hasta el final.** El «umbral exacto» de `9bebc3d` no llegaba a producción:
+`_price_summary` servía la media de 200 sesiones redondeada (1,0054 → 1,01), y con ella decidía
+el motor; ahora el motor recibe la entera y la ficha la sirve redondeada (golden idéntico). Una
+condición a menos de 0,005 % del umbral se daba por cumplida (distancia redondeada a 0,0) y
+«→ Comprar si:» quedaba vacío: ahora se decide con la misma comparación que la regla. «Vigilar»
+decía «cotiza bajo su media» dentro de la banda, encima de ella, y pedía cerrar sobre la media sin
+la banda; «mantener» decía «precio sobre su media» sin media. Los rangos del DCF, redondeados a
+tres cifras significativas a propósito, salían con céntimos («147,00»): `fmt_valor_redondo`, gemelo
+nuevo («147», «0,00347»). «Qué cambió» escribe los precios con `fmtPrecio`.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

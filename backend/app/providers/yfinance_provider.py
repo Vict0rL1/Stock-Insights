@@ -82,8 +82,12 @@ def _price_summary(closes) -> dict | None:
     # por «sin precio» y su stop no se vigilaba (auditoría del 19 oct).
     precio = datos.redondear_precio
 
+    # Las medias, enteras como `last`: con ellas decide el motor. Redondeada a dos
+    # decimales, la de 1,0054 salía 1,01 y el umbral de entrada (media + 2 %)
+    # pasaba de 1,0255 a 1,03, lo que cambiaba comprar por vigilar (revisión 3).
+    # La pantalla las escribe con `fmtPrecio`.
     def media(n: int) -> float | None:
-        return precio(sum(valores[-n:]) / n) if len(valores) >= n else None
+        return datos.numero(sum(valores[-n:]) / n) if len(valores) >= n else None
 
     sma50, sma200 = media(50), media(200)
 

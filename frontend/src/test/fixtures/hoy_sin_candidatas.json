@@ -1238,11 +1238,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,55, pero cotiza bajo su media de 200 sesiones (158,40): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 158,40"
+        "Comprar cuando cierre en o por encima de 161,57 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1346,11 +1346,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,33, pero cotiza bajo su media de 200 sesiones (110,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 110,00"
+        "Comprar cuando cierre en o por encima de 112,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1454,11 +1454,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,21, pero cotiza bajo su media de 200 sesiones (112,20): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 112,20"
+        "Comprar cuando cierre en o por encima de 114,44 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1562,11 +1562,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,17, pero cotiza bajo su media de 200 sesiones (155,10): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 155,10"
+        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1670,11 +1670,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,13, pero cotiza bajo su media de 200 sesiones (154,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 154,00"
+        "Comprar cuando cierre en o por encima de 157,08 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1778,11 +1778,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,08, pero cotiza bajo su media de 200 sesiones (156,20): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 156,20"
+        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1886,11 +1886,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,90, pero cotiza bajo su media de 200 sesiones (159,50): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 159,50"
+        "Comprar cuando cierre en o por encima de 162,69 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -1994,11 +1994,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,86, pero cotiza bajo su media de 200 sesiones (160,60): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 160,60"
+        "Comprar cuando cierre en o por encima de 163,81 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2102,11 +2102,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,83, pero cotiza bajo su media de 200 sesiones (122,10): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 122,10"
+        "Comprar cuando cierre en o por encima de 124,54 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2210,11 +2210,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,79, pero cotiza bajo su media de 200 sesiones (118,80): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 118,80"
+        "Comprar cuando cierre en o por encima de 121,18 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2318,11 +2318,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,78, pero cotiza bajo su media de 200 sesiones (159,50): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 159,50"
+        "Comprar cuando cierre en o por encima de 162,69 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -2426,11 +2426,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +0,77, pero cotiza bajo su media de 200 sesiones (121,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 121,00"
+        "Comprar cuando cierre en o por encima de 123,42 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -3698,11 +3698,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,80, pero cotiza bajo su media de 200 sesiones (155,10): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 155,10"
+        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -3806,11 +3806,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,55, pero cotiza bajo su media de 200 sesiones (158,40): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 158,40"
+        "Comprar cuando cierre en o por encima de 161,57 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -3914,11 +3914,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,41, pero cotiza bajo su media de 200 sesiones (110,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 110,00"
+        "Comprar cuando cierre en o por encima de 112,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4022,11 +4022,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,33, pero cotiza bajo su media de 200 sesiones (110,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 110,00"
+        "Comprar cuando cierre en o por encima de 112,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4130,11 +4130,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,24, pero cotiza bajo su media de 200 sesiones (111,10): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 111,10"
+        "Comprar cuando cierre en o por encima de 113,32 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4238,11 +4238,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,23, pero cotiza bajo su media de 200 sesiones (158,40): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 158,40"
+        "Comprar cuando cierre en o por encima de 161,57 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4346,11 +4346,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,21, pero cotiza bajo su media de 200 sesiones (112,20): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 112,20"
+        "Comprar cuando cierre en o por encima de 114,44 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4454,11 +4454,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,18, pero cotiza bajo su media de 200 sesiones (156,20): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 156,20"
+        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4562,11 +4562,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,17, pero cotiza bajo su media de 200 sesiones (155,10): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 155,10"
+        "Comprar cuando cierre en o por encima de 158,20 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4670,11 +4670,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,10, pero cotiza bajo su media de 200 sesiones (154,00): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 154,00"
+        "Comprar cuando cierre en o por encima de 157,08 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4778,11 +4778,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,08, pero cotiza bajo su media de 200 sesiones (156,20): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 156,20"
+        "Comprar cuando cierre en o por encima de 159,32 (media 200 + 2 %)"
        ]
       },
       "events": [],
@@ -4886,11 +4886,11 @@
        "owned": false,
        "reasons": [
         "Puntuación +1,05, pero cotiza bajo su media de 200 sesiones (128,70): buena empresa en tendencia bajista.",
-        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio recupere la media antes de entrar."
+        "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
        ],
        "traza_en_ficha": true,
        "triggers": [
-        "Comprar cuando cierre por encima de 128,70"
+        "Comprar cuando cierre en o por encima de 131,27 (media 200 + 2 %)"
        ]
       },
       "events": [],

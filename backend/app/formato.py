@@ -141,6 +141,18 @@ def fmt_precio(valor, moneda: str | None = None, *, signo: bool = False) -> str:
     return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
 
 
+def fmt_valor_redondo(valor, moneda: str | None = None) -> str:
+    """Un valor por acción ya redondeado a cifras significativas (el rango del
+    DCF): 147 → «147»; 1470 → «1.470»; 0,00347 → «0,00347». Sin los céntimos que
+    `fmt_precio` añadiría («147,00» finge una precisión que el método no tiene)
+    y sin perder los de una acción de céntimos (con cero decimales, «0»)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    cifra = fmt_num(valor, decimales_precio(valor), ceros=False)
+    return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
+
+
 def _corto(valor: float, max_decimales: int) -> str:
     """Hasta `max_decimales`, sin ceros a la derecha: 400,0 → «400»; 1,25 → «1,25»."""
     return fmt_num(valor, max_decimales, ceros=False)

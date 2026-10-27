@@ -191,3 +191,17 @@ describe('Qué cambió: lo que no se pudo comprobar se dice como tal (revisión 
     expect(document.body.textContent).not.toMatch(/sin_comprobar/)
   })
 })
+
+describe('Qué cambió: un precio de céntimos se escribe con sus decimales (revisión 3)', () => {
+  it('«Precio 0,003 → 0,004», no «0,00 → 0,00»', async () => {
+    const rutas: Rutas = structuredClone(ACME)
+    const r = rutas['/api/empresa/ACME/analisis'].json as { cambios: { categorias: Record<string, unknown[]> } }
+    r.cambios.categorias.mercado = [
+      { clave: 'precio', etiqueta: 'Precio', antes: 0.003, ahora: 0.004, tipo: 'material', unidad: 'moneda', direccion: 'sube' },
+    ]
+    servir(rutas)
+    pintar(<QueCambioSection symbol="ACME" />)
+    expect(await screen.findByText(/0,003 → 0,004/)).toBeInTheDocument()
+  })
+})
+

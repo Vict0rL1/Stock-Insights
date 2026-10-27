@@ -182,14 +182,15 @@ def seccion_mercado(service, symbol: str, ahora: datetime) -> tuple[dict, dict]:
             "obtenido_en": (historia or {}).get("as_of"),
             "motivo": None if barras else (fallo_h or "sin histórico"),
         },
-        "sma200": (resumen or {}).get("sma200"),
+        # Servida redondeada, como cualquier nivel; el motor decide con la entera.
+        "sma200": datos.redondear_precio((resumen or {}).get("sma200")),
         "vol_diaria_pct": (resumen or {}).get("daily_vol_pct"),
         "drawdown_pct": (resumen or {}).get("drawdown_pct"),
         "cambio_pct": (quote or {}).get("change_pct"),
     }
     bloque = {
         "last": precio,
-        "sma200": seccion["sma200"],
+        "sma200": (resumen or {}).get("sma200"),
         "above_sma200": (resumen or {}).get("above_sma200"),
         "daily_vol_pct": seccion["vol_diaria_pct"],
         "drawdown_pct": seccion["drawdown_pct"],

@@ -9,7 +9,7 @@ import type {
   SupuestosEscenario,
   Valoracion,
 } from '../api/types'
-import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, valorDeCampo } from '../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo, valorDeCampo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
 import { MarcoTabla } from '../components/MarcoTabla'
 
@@ -72,7 +72,7 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
       </h2>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-2xl font-semibold tabular-nums text-slate-900">
-          {fmtPrecio(g.bajo)} – {fmtPrecio(g.alto)}
+          {fmtValorRedondo(g.bajo)} – {fmtValorRedondo(g.alto)}
         </span>
         {g.precio_actual !== null && (
           <span className="text-sm text-slate-500">
@@ -141,10 +141,10 @@ function Escenarios({
                 </span>
                 {e.rango.disponible ? (
                   <span className="tabular-nums text-slate-900">
-                    {fmtPrecio(e.rango.bajo)}{' '}
+                    {fmtValorRedondo(e.rango.bajo)}{' '}
                     <span className="text-slate-400">–</span>{' '}
-                    <span className="font-medium">{fmtPrecio(e.rango.centro)}</span>{' '}
-                    <span className="text-slate-400">–</span> {fmtPrecio(e.rango.alto)}
+                    <span className="font-medium">{fmtValorRedondo(e.rango.centro)}</span>{' '}
+                    <span className="text-slate-400">–</span> {fmtValorRedondo(e.rango.alto)}
                   </span>
                 ) : (
                   <span className="text-xs text-amber-800">sin rango calculable</span>
@@ -253,7 +253,7 @@ function SensibilidadPanel({ s }: { s: Sensibilidad }) {
               />
             </div>
             <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
-              {fmtPrecio(f.valor_abajo)} → {fmtPrecio(f.valor_arriba)}
+              {fmtValorRedondo(f.valor_abajo)} → {fmtValorRedondo(f.valor_arriba)}
             </div>
           </li>
         ))}

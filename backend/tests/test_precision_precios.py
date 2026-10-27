@@ -232,3 +232,36 @@ def test_el_prompt_del_analisis_ia_lleva_el_precio_entero():
     prompt = _narrative_prompt("CENT", {"price": 0.003, "business": {}, "growth": {}, "margins": {},
                                         "balance": {}, "valuation": {}, "catalysts": []})
     assert "Precio actual: 0,003" in prompt
+
+
+def test_la_media_de_200_sesiones_llega_entera_al_motor():
+    """Revisión 3: `_price_summary` servía la media redondeada (1,0054 → 1,01) y el
+    umbral exacto no llegaba a producción: comprar pasaba a vigilar."""
+    base = (1.0054 * 200 - 1.0256) / 199
+    resumen = _price_summary(pd.Series([base] * 199 + [1.0256], dtype="float64"))
+    assert resumen["sma200"] == pytest.approx(1.0054, abs=1e-9)
+    assert decide(señal(0.8), resumen)["action"] == "comprar"
+
+
+def test_a_un_paso_del_umbral_la_condicion_sigue_pendiente():
+    """Revisión 3: a menos de 0,005 % del umbral la distancia redondeada salía 0,0,
+    la condición se daba por cumplida y «→ Comprar si:» quedaba vacío."""
+    d = decide(señal(0.8), precio(1.0255, 1.0054))
+    assert d["action"] == "vigilar"
+    comprar = next(c for c in d["cambiaria"] if c["hacia"] == "comprar")
+    assert [c["regla"] for c in comprar["condiciones"]] == ["tendencia_a_favor"]
+
+
+def test_vigilar_y_mantener_dicen_donde_esta_el_precio_frente_a_la_banda():
+    """Revisión 3: dentro de la banda decía «cotiza bajo su media» estando encima y
+    pedía «cierre por encima de 100,00» cuando la regla exige 102,00; «mantener»
+    decía «precio sobre su media» sin media."""
+    d = decide(señal(0.8), precio(101.5, 100.0))
+    assert d["action"] == "vigilar"
+    assert not any("bajo su media" in r for r in d["reasons"])
+    assert any("dentro de la banda" in r for r in d["reasons"])
+    assert d["triggers"][0].startswith("Comprar cuando cierre en o por encima de 102,00")
+    m = decide(señal(0.8), {"last": 100.0, "sma200": None, "above_sma200": None, "daily_vol_pct": 1.2},
+               {"cost_basis": 90.0, "quantity": 10, "stop": 80.0})
+    assert m["action"] == "mantener"
+    assert any("desconocida" in r for r in m["reasons"]) and not any("sobre su media" in r for r in m["reasons"])
