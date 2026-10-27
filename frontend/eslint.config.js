@@ -101,6 +101,13 @@ export default tseslint.config(
           selector: 'CatchClause[param=null]',
           message: 'Un catch sin el error lo traga: nómbralo y enséñalo, o justifica por qué no hace falta.',
         },
+        // Un valor por acción con fmtNum tiene dos decimales fijos: el valor
+        // estimado de 0,004 de una acción de céntimos salía «0,00» junto a su
+        // precio de 0,003 (revisión 4, hermano de A1).
+        {
+          selector: "CallExpression[callee.name='fmtNum'] > MemberExpression.arguments[property.name=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion)$/]",
+          message: 'Un valor por acción se escribe con fmtPrecio (o fmtValorRedondo si llega redondeado a cifras significativas).',
+        },
       ],
     },
   },

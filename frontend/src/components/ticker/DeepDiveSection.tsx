@@ -7,7 +7,7 @@ import type {
   MultipleStats,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
 import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
@@ -324,7 +324,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                     {etiqueta(kind, { mayuscula: true })}
                   </div>
                   <div className="text-xl font-semibold tabular-nums">
-                    {fmtNum(sc.value_per_share)}
+                    {fmtPrecio(sc.value_per_share)}
                   </div>
                   <div className="text-xs text-slate-500">
                     {vs !== null && `${fmtPct(vs)} vs. precio · `}terminal{' '}

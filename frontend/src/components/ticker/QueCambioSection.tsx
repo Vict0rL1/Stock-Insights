@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos } from '../EstadoDato'
@@ -21,19 +22,6 @@ const FACTOR: Record<string, string> = {
   desconocido: 'text-amber-800',
 }
 
-function fmtValor(v: number | string | null | undefined, unidad?: string): string {
-  if (v === null || v === undefined) return 'desconocido'
-  // Un valor de texto es un código (el estado de la tesis: «intacta →
-  // sin_comprobar» salía en crudo; revisión de M1).
-  if (typeof v === 'string') return etiqueta(v)
-  if (unidad === 'fracción') return fmtPct(v, 1)
-  if (unidad === 'USD') return fmtCompacto(v)
-  // Un precio, con los decimales de un precio: «Precio 0,00 → 0,00» de una
-  // acción de céntimos (revisión 3).
-  if (unidad === 'moneda' || unidad === 'USD/acción') return fmtPrecio(v)
-  return fmtNum(v, 2)
-}
-
 function Cambio({ c }: { c: CambioMetrica }) {
   const tono =
     c.tipo === 'dato_perdido' ? 'text-amber-800' : c.direccion === 'baja' ? 'text-red-700' : c.direccion === 'sube' ? 'text-emerald-700' : 'text-slate-700'
@@ -43,7 +31,7 @@ function Cambio({ c }: { c: CambioMetrica }) {
       {/* `ml-auto`: al bajar de línea (rótulo largo en móvil) el valor seguía a
           la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
       <span className={`ml-auto tabular-nums ${tono}`}>
-        {fmtValor(c.antes, c.unidad)} → {fmtValor(c.ahora, c.unidad)}
+        {fmtMetrica(c.antes, c.unidad)} → {fmtMetrica(c.ahora, c.unidad)}
         {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
         )}

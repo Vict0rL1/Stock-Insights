@@ -4,7 +4,7 @@ import { api, ApiError } from '../api/client'
 import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
@@ -108,7 +108,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
                     {fmtPrecio(s.price_at_creation)}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.value_mid !== null ? fmtNum(s.value_mid) : '—'}
+                    {s.value_mid !== null ? fmtPrecio(s.value_mid) : '—'}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
                     {fmtPrecio(s.current_price)}
@@ -342,7 +342,7 @@ export function ThesesPage() {
                         >
                           <span className="text-slate-700">
                             <b>{etiqueta(s.kind, { mayuscula: true })}</b>
-                            {s.value_mid !== null && ` · valor estimado ${fmtNum(s.value_mid)}`}
+                            {s.value_mid !== null && ` · valor estimado ${fmtPrecio(s.value_mid)}`}
                             {s.price_at_creation !== null &&
                               ` · precio entonces ${fmtPrecio(s.price_at_creation)}`}
                             <span className="ml-2 text-xs text-slate-400">hace {s.days_elapsed} d</span>

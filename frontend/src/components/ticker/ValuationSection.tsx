@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/formato'
+import { fmtCompacto, fmtPct, fmtPrecio, fmtValorRedondo, valorDeCampo } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
@@ -254,7 +254,7 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                   <div className="text-xs text-slate-500">{etiqueta(name, { mayuscula: true })}</div>
                   <div className="text-2xl font-semibold tabular-nums text-slate-900">
                     {sc.value_per_share !== null
-                      ? fmtNum(sc.value_per_share)
+                      ? fmtPrecio(sc.value_per_share)
                       : fmtCompacto(sc.equity_value)}
                   </div>
                   <div className="text-xs text-slate-500">
@@ -293,7 +293,9 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                         <td className="p-1 text-slate-400">{fmtPct(row.discount_rate, 0)}</td>
                         {row.values.map((v, i) => (
                           <td key={i} className="p-1 text-right text-slate-700">
-                            {v !== null ? fmtNum(v, 0) : '·'}
+                            {/* Sin decimales, cualquier acción por debajo de 0,50 salía
+                                «0» en todas las celdas (revisión 4). */}
+                            {v !== null ? fmtValorRedondo(v) : '·'}
                           </td>
                         ))}
                       </tr>

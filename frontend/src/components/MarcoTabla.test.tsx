@@ -26,9 +26,26 @@ describe('MarcoTabla', () => {
     const marco = screen.getByRole('region', { name: 'Comparador de ETFs' })
     expect(marco.tabIndex).toBe(0)
     expect(marco.className).toMatch(/(^|\s)overflow-x-auto(\s|$)/)
-    expect(marco.className).toMatch(/(^|\s)mt-4(\s|$)/)
-    // El anillo por dentro: por fuera lo recortaba un ancestro con overflow-hidden.
-    expect(marco.className).toMatch(/(^|\s)focus-visible:-outline-offset-2(\s|$)/)
+    expect(marco.parentElement?.className).toMatch(/(^|\s)mt-4(\s|$)/)
+  })
+
+  it('el anillo de foco va por dentro y por encima de la columna fija', () => {
+    // Por fuera lo recortaba un ancestro con overflow-hidden (revisión 3); como
+    // contorno por dentro lo tapaban las celdas `sticky z-10 bg-white` de la
+    // columna fija, que se pintan después (revisión 4).
+    render(
+      <MarcoTabla etiqueta="Estados financieros">
+        <table />
+      </MarcoTabla>,
+    )
+    const marco = screen.getByRole('region', { name: 'Estados financieros' })
+    expect(marco.className).toMatch(/(^|\s)peer(\s|$)/)
+    const anillo = marco.nextElementSibling as HTMLElement
+    expect(anillo.getAttribute('aria-hidden')).toBe('true')
+    for (const clase of ['absolute', 'inset-0', 'z-20', 'ring-inset', 'pointer-events-none', 'peer-focus-visible:block']) {
+      expect(anillo.className.split(/\s+/)).toContain(clase)
+    }
+    expect(marco.parentElement?.className.split(/\s+/)).toContain('isolate')
   })
 
   it('es la única forma de dar scroll horizontal a una tabla', () => {

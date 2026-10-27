@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { ReplayDecision } from '../../api/types'
 import { etiqueta, etiquetaOrigen } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
+import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
@@ -98,7 +99,7 @@ function Replay({ r }: { r: ReplayDecision }) {
               {Object.entries((s.fundamentales as { metricas: Record<string, { valor: number | null; unidad?: string }> }).metricas).map(([k, m]) => (
                 <li key={k} className="flex justify-between">
                   <span>{etiqueta(k, { mayuscula: true })}</span>
-                  <span className="tabular-nums">{m.valor == null ? 'desconocido' : m.unidad === 'fracción' ? fmtPct(m.valor, 1) : Math.abs(m.valor) > 1e5 ? fmtCompacto(m.valor) : fmtNum(m.valor, 2)}</span>
+                  <span className="tabular-nums">{fmtMetrica(m.valor, m.unidad)}</span>
                 </li>
               ))}
             </ul>
