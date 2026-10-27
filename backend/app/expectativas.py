@@ -277,6 +277,8 @@ def _reglas_de_tesis(session: Session, symbol: str, trimestres: list[dict], ahor
             continue
         for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id,
                                                              ThesisTrigger.activo.is_(True))).scalars():
+            if pit.disponible_en(t.created_at, ahora) is not True:
+                continue
             cfg = t.config or {}
             if t.kind != "metrica" or cfg.get("metrica") not in METRICAS_TESIS_TRIMESTRALES or cfg.get("op") not in INVERSO:
                 continue
@@ -406,17 +408,29 @@ def _direccion_del_guidance(session: Session, evento: CatalystEvent, ahora: date
 # --- Evaluar y calibrar -------------------------------------------------------------------
 
 
-def evaluar(session: Session, evento: CatalystEvent) -> dict:
+def _sabido(fila_en, ahora: datetime | None) -> bool:
+    """¿Estaba registrado en `ahora`? Sin `ahora` (la lectura de hoy), todo.
+    Lo que no se puede probar no cuenta, como el efectivo (auditoría, A4)."""
+    return ahora is None or pit.disponible_en(fila_en, ahora) is True
+
+
+def evaluar(session: Session, evento: CatalystEvent, ahora: datetime | None = None) -> dict:
+    """El evento frente a sus expectativas. Con `ahora`, solo lo registrado
+    entonces: el resumen de un análisis del 1 de noviembre leía el guidance
+    anotado el 5 y contaba expectativas del 10 (revisión de A4)."""
     inst = session.execute(select(Instrument).where(Instrument.symbol == evento.symbol)).scalar_one_or_none()
     disparadores = []
     if inst is not None:
         for tesis in session.execute(select(Thesis).where(Thesis.instrument_id == inst.id)).scalars():
+            if not _sabido(tesis.created_at, ahora):
+                continue
             disparadores += [{"id": t.id, "descripcion": t.descripcion}
-                             for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()]
+                             for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()
+                             if _sabido(t.created_at, ahora)]
     return ev.evaluar_evento(
         serializar_evento(evento),
-        [serializar_expectativa(x) for x in _expectativas(session, evento.id)],
-        [serializar_real(r) for r in _reales(session, evento.id)],
+        [serializar_expectativa(x) for x in _expectativas(session, evento.id) if _sabido(x.registrado_en, ahora)],
+        [serializar_real(r) for r in _reales(session, evento.id) if _sabido(r.registrado_en, ahora)],
         disparadores,
     )
 
@@ -456,9 +470,9 @@ def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dic
     for e in eventos:
         if pit.disponible_en(e.creado_en, ahora) is False:
             continue
-        reales = [r for r in _reales(session, e.id) if pit.disponible_en(r.registrado_en, ahora) is not False]
+        reales = [r for r in _reales(session, e.id) if _sabido(r.registrado_en, ahora)]
         if reales and ultimo is None:
-            lectura = evaluar(session, e)
+            lectura = evaluar(session, e, ahora)
             consenso = next((c for c in lectura["por_fuente"].get("consenso") or [] if c["metrica"] == "revenue"), None)
             ultimo = {
                 "evento": serializar_evento(e),
@@ -469,7 +483,8 @@ def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dic
                 "sorpresa_ingresos": (consenso or {}).get("sorpresa"),
             }
         elif not reales and proximo is None:
-            proximo = {"evento": serializar_evento(e), "expectativas": len(_expectativas(session, e.id))}
+            proximo = {"evento": serializar_evento(e),
+                       "expectativas": sum(1 for x in _expectativas(session, e.id) if _sabido(x.registrado_en, ahora))}
     if ultimo is None and proximo is None:
         return {"estado": "sin_eventos", "huella": None}
     return {"estado": "valido", "ultimo": ultimo, "proximo": proximo,

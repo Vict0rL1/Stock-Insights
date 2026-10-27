@@ -232,9 +232,12 @@ def tesis_con_punto(session, symbol: str, umbral: float = 0.18) -> None:
                created_at=AHORA - timedelta(days=60), updated_at=AHORA - timedelta(days=60))
     session.add(t)
     session.flush()
+    # Con la tesis: un punto añadido después no existía en el análisis de AHORA.
     session.add(ThesisTrigger(thesis_id=t.id, kind="metrica", descripcion=f"margen operativo < {umbral:.0%}",
-                              config={"metrica": "operating_margin", "op": "lt", "umbral": umbral}))
-    session.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+                              config={"metrica": "operating_margin", "op": "lt", "umbral": umbral},
+                              created_at=t.created_at))
+    session.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                              created_at=t.created_at))
     session.commit()
 
 

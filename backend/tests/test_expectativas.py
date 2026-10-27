@@ -215,8 +215,9 @@ def _tesis(s):
     s.add(t)
     s.commit()
     s.add(ThesisTrigger(thesis_id=t.id, kind="metrica", descripcion="margen operativo < 18 %",
-                        config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}))
-    s.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+                        config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}, created_at=t.created_at))
+    s.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                        created_at=t.created_at))
     s.commit()
 
 
@@ -406,3 +407,43 @@ def test_la_escala_sin_referencia_o_con_perdidas_no_se_juzga():
     assert ev.comprobar_escala({"metrica": "revenue", "valor": 0.0}, qs)["estado"] == "dudosa"
     # Céntimos frente a dólares en el BPA: ×100.
     assert ev.comprobar_escala({"metrica": "eps_diluted", "valor": 112.0}, qs)["estado"] == "dudosa"
+
+
+def test_el_resumen_del_analisis_solo_lee_lo_registrado_entonces(session_factory, servicio):
+    """Revisión de A4 (la misma clase, otra tabla): `evaluar` volvía a leer todas
+    las filas, así que el análisis del 3 de noviembre veía el guidance anotado
+    el 5 y contaba las expectativas del evento siguiente anotadas el 10."""
+    with session_factory() as s:
+        _tesis(s)
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        svc.capturar(s, servicio, e, AHORA)
+        servicio.financials["AAPL"]["quarters"].append(
+            trimestre(2026, 3, "2026-10-30", revenue=118.0, operating_income=118.0 * 0.185,
+                      gross_profit=118.0 * 0.45, eps_diluted=1.25))
+        servicio.ahora = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        svc.registrar_reales(s, servicio, e, servicio.ahora)
+        s.add(EventActual(event_id=e.id, metrica="guidance", fuente="10-Q", publicado="2026-11-05",
+                          registrado_en=datetime(2026, 11, 5, tzinfo=timezone.utc), detalle={"direccion": "baja"}))
+        siguiente = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q4", fecha_prevista="2027-01-30", ahora=AHORA)
+        s.add(Expectation(event_id=siguiente.id, metrica="revenue", fuente_tipo="usuario", fuente="yo", valor=120.0,
+                          informacion_hasta=datetime(2026, 11, 10, tzinfo=timezone.utc),
+                          registrado_en=datetime(2026, 11, 10, tzinfo=timezone.utc)))
+        s.commit()
+        entonces = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 3, tzinfo=timezone.utc))
+        luego = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 11, tzinfo=timezone.utc))
+    assert entonces["ultimo"]["guidance"] is None and entonces["proximo"]["expectativas"] == 0
+    assert luego["ultimo"]["guidance"] == "baja" and luego["proximo"]["expectativas"] == 1
+
+
+def test_un_punto_de_la_tesis_anadido_despues_no_fija_una_expectativa_de_antes(session_factory, servicio):
+    with session_factory() as s:
+        _tesis(s)
+        tesis = s.query(Thesis).one()
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen bruto < 40 %",
+                            config={"metrica": "gross_margin", "op": "lt", "umbral": 0.40},
+                            created_at=AHORA + timedelta(days=10)))
+        s.commit()
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        cap = svc.capturar(s, servicio, e, AHORA)
+    reglas = {x["metrica"] for x in cap["registradas"] if x["fuente_tipo"] == "reglas"}
+    assert "operating_margin" in reglas and "gross_margin" not in reglas

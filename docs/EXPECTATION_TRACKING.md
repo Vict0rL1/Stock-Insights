@@ -47,7 +47,11 @@ que llegue antes:
 - registrada **el mismo día** → no cuenta: los resultados salen antes de abrir o
   después de cerrar, y una fecha no dice cuál;
 - capturar con el evento ya conocido se **niega** (409);
-- un consenso que ya trae el resultado real en el calendario no se registra.
+- un consenso que ya trae el resultado real en el calendario no se registra;
+- el resumen que entra en un análisis a una fecha (`resumen_para_analisis`) solo lee
+  las expectativas, los resultados y los puntos de la tesis registrados entonces
+  (`evaluar(..., ahora)`); un punto de la tesis añadido después tampoco fija una
+  expectativa de «reglas» antes de existir.
 
 ## Resultados reales
 

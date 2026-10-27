@@ -545,6 +545,15 @@ milisegundos después del `ahora` con que empezó, y `seccion_mercado` los tirab
 sin señal). `pit.descargado_a_tiempo` les da un margen de 5 minutos (`MARGEN_DE_DESCARGA`); a una
 reconstrucción del pasado no le cambia nada. Golden idéntico.
 
+**A4, en otras tablas.** Los puntos de una tesis se cargaban sin mirar su `created_at` (y añadir
+uno no toca `updated_at`): uno añadido el 15 de octubre cruzaba en la reconstrucción del 12 una
+tesis que entonces no tenía puntos; y `resumen_para_analisis` filtraba los resultados para
+saber si el evento estaba resuelto pero luego `evaluar` releía todo (el guidance anotado
+después, las expectativas del evento siguiente). Ahora todo pasa por la fecha de registro.
+Los dobles de los tests creaban los puntos con el reloj real y analizaban el 12 de septiembre:
+se les da la fecha de su tesis. **Queda, para Victor:** un punto **borrado** después no se
+puede reconstruir (no queda rastro de la baja); guardarla pide una migración (`borrado_en`).
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |

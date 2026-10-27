@@ -392,9 +392,13 @@ def seccion_tesis(
         # guardó en ningún sitio. No se enseña el de hoy como si fuera aquel.
         return {"estado": DESCONOCIDO, "id": tesis.id,
                 "motivo": "la tesis se modificó después de este momento; su contenido de entonces no se conserva"}
-    disparadores = session.execute(
-        select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)
-    ).scalars().all()
+    # Solo los puntos que ya existían: añadir uno no toca `updated_at`, y uno del
+    # 15 de octubre con la palabra «demanda» cruzaba en la reconstrucción del 12
+    # una tesis que entonces no tenía puntos (revisión de A4, la misma clase).
+    disparadores = [
+        d for d in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()
+        if pit.disponible_en(d.created_at, ahora) is True
+    ]
     periodos = fund.get("_periodos") or []
     vigilancia = thesis_watch.vigilar(
         [

@@ -85,7 +85,8 @@ def test_cambiar_la_tesis_actual_no_modifica_la_instantanea(session_factory, ser
         s.add(tesis)
         s.commit()
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen",
-                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}))
+                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18},
+                            created_at=tesis.created_at))
         s.commit()
         snap, _ = _congelar(s, servicio)
         congelada = sn.reproducir(snap)["secciones"]["tesis"]
@@ -93,7 +94,7 @@ def test_cambiar_la_tesis_actual_no_modifica_la_instantanea(session_factory, ser
         tesis.title, tesis.body_md = "Otra cosa", "Ya no creo en servicios."
         tesis.updated_at = AHORA + timedelta(days=2)
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="x",
-                            config={"palabras": ["recall"]}))
+                            config={"palabras": ["recall"]}, created_at=AHORA + timedelta(days=2)))
         s.commit()
         despues = sn.reproducir(s.get(DecisionSnapshot, snap.id))["secciones"]["tesis"]
     assert despues == congelada
@@ -122,7 +123,7 @@ def test_con_las_noticias_caidas_la_tesis_no_se_congela_intacta(session_factory,
         s.add(tesis)
         s.commit()
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall",
-                            config={"palabras": ["recall"]}))
+                            config={"palabras": ["recall"]}, created_at=tesis.created_at))
         s.commit()
         snap, r = _congelar(s, servicio)
         congelada = sn.reproducir(snap)["secciones"]["tesis"]
@@ -140,7 +141,8 @@ def _tesis_con_recall(s):
                    created_at=hace, updated_at=hace)
     s.add(tesis)
     s.commit()
-    s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+    s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                        created_at=hace))
     s.commit()
 
 
@@ -437,3 +439,30 @@ def test_en_vivo_la_barra_de_hoy_descargada_antes_si_entra(session_factory, serv
         a = analisis_empresa.analizar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=5), con_pares=False)
     # El histórico se obtuvo a las 14:35 (`as_of`) y se analiza a las 14:40.
     assert a["mercado"]["historico"]["hasta"] == AHORA.date().isoformat()
+
+
+def test_un_punto_anadido_despues_no_cruza_la_tesis_de_entonces(session_factory):
+    """Revisión de A4 (la misma clase): añadir un punto no toca `updated_at`, y uno
+    añadido el 15 de octubre cruzaba en la reconstrucción del 12 de septiembre
+    una tesis que entonces no tenía puntos. (Un punto de métrica y no de
+    noticias: la ventana de noticias de `thesis_watch` va con el reloj real.)"""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        # Margen operativo del 20 %: un punto «< 50 %» salta.
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen operativo < 50 %",
+                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.5},
+                            created_at=AHORA + timedelta(days=33)))
+        s.commit()
+        fund = {"_periodos": financieros_base()}
+        entonces = seccion_tesis(s, inst, fund, [], AHORA)
+        luego = seccion_tesis(s, inst, fund, [], AHORA + timedelta(days=34))
+    assert entonces["estado"] == "sin_puntos"
+    assert luego["estado"] == "puntos_cruzados"
