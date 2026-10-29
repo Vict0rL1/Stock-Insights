@@ -304,8 +304,27 @@ def test_la_ruta_de_capturar_con_el_reloj_real(session_factory):
             servicio.adelanto = timedelta(hours=1)
             r = c.post(f"/api/expectativas/eventos/{ids[1]}/capturar")
             assert r.status_code == 422 and "posterior a su registro" in r.json()["detail"]
+            # Y la otra ruta que captura (revisión 5: su 422 no tenía test).
+            r = c.post("/api/expectativas/AAPL/proximos-resultados")
+            assert r.status_code == 422 and "posterior a su registro" in r.json()["detail"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_una_anotacion_a_mano_no_recibe_el_margen_ni_una_fecha_inventada(session_factory):
+    """Revisión 5: el margen de lo descargado durante la captura se aplicaba
+    también a lo anotado a mano, y una fecha ilegible («31/12/2026») se leía como
+    «ahora»: las dos se guardaban como sabidas en el registro, en una fila
+    inmutable. Antes de la revisión 4 eran un 422, y vuelven a serlo."""
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        base = {"metrica": "revenue", "valor": 115.0, "fuente": "mi estimación"}
+        with pytest.raises(ValueError, match="ilegible"):
+            svc.registrar_manual(s, e, {**base, "informacion_hasta": "31/12/2026"}, AHORA)
+        with pytest.raises(ValueError, match="posterior a su registro"):
+            svc.registrar_manual(s, e, {**base, "informacion_hasta": (AHORA + timedelta(minutes=4)).isoformat()}, AHORA)
+        assert s.query(Expectation).count() == 0
+        assert svc.registrar_manual(s, e, {**base, "informacion_hasta": "2026-09-30"}, AHORA) is True
 
 
 def test_capturar_cuando_el_resultado_ya_se_conoce_se_niega(session_factory, servicio):
@@ -436,7 +455,9 @@ def test_un_consenso_en_otra_escala_no_se_registra_y_se_dice(session_factory, se
         cap = svc.capturar(s, servicio, e, AHORA)
         consenso = {x.metrica: x for x in s.query(Expectation).filter_by(fuente_tipo="consenso")}
     assert "revenue" not in consenso
-    assert any("revenue con escala dudosa" in m and "(1.027 veces, fuera de 0,2–5)" in m for m in cap["sin_fuente"])
+    # Con etiquetas y la fecha para una persona (revisión 5: «revenue» y «2026-06-30»).
+    assert any("ingresos con escala dudosa" in m and "(1.027 veces, fuera de 0,2–5)" in m
+               and "cerrado el 30 jun 2026" in m for m in cap["sin_fuente"])
     # El BPA, en su escala, entra con la comprobación a la vista.
     assert consenso["eps_diluted"].detalle["escala"]["estado"] == "ok"
     assert consenso["eps_diluted"].detalle["escala"]["periodo_referencia"] == "2026-06-30"
@@ -453,7 +474,7 @@ def test_un_guidance_en_otra_escala_que_los_trimestres_no_entra(session_factory,
         e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
         cap = svc.capturar(s, servicio, e, AHORA)
         assert s.query(Expectation).filter_by(fuente_tipo="guidance").count() == 0
-    assert any(m.startswith("guidance: revenue con escala dudosa") for m in cap["sin_fuente"])
+    assert any(m.startswith("guidance de la dirección: ingresos con escala dudosa") for m in cap["sin_fuente"])
 
 
 def test_la_escala_sin_referencia_o_con_perdidas_no_se_juzga():

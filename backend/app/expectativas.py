@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app.analysis import expectativas as ev
+from app.etiquetas import etiqueta
 from app.db.models import (
     TIPOS_DE_EVENTO,
     TIPOS_DE_FUENTE,
@@ -57,10 +58,13 @@ def _iso(d) -> str | None:
 
 
 def _a_instante(valor) -> datetime:
-    """Una marca de la fuente a datetime UTC. Un día solo, a su comienzo."""
+    """Una marca de la fuente a datetime UTC. Un día solo, a su comienzo.
+
+    Lo que no se puede fechar es un error, no «ahora»: «31/12/2026» se guardaba
+    como el momento del registro en una fila inmutable (revisión 5)."""
     m = pit.marca(valor)
     if m is None:
-        return datetime.now(timezone.utc)
+        raise ValueError(f"fecha de la información ilegible: {valor!r} (usa AAAA-MM-DD o ISO con hora)")
     momento, instante = m
     return momento if instante else datetime(momento.year, momento.month, momento.day, tzinfo=timezone.utc)
 
@@ -125,8 +129,11 @@ def resultado_conocido(session: Session, evento: CatalystEvent, ahora: datetime)
     return None if v["valida"] else v["motivo"]
 
 
-def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str, ahora: datetime) -> bool:
-    """Una expectativa nueva. False si ya estaba (misma métrica, fuente y tipo)."""
+def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str, ahora: datetime,
+             *, descargado: bool = False) -> bool:
+    """Una expectativa nueva. False si ya estaba (misma métrica, fuente y tipo).
+
+    `descargado`: la fuente se pidió durante la propia captura (el calendario)."""
     if fuente_tipo not in TIPOS_DE_FUENTE:
         raise ValueError(f"fuente desconocida: {fuente_tipo}")
     info = _a_instante(x.get("informacion_hasta") or ahora)
@@ -135,7 +142,10 @@ def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str,
     # descargado durante el cálculo daba un 500 al pulsar «Capturar expectativas»
     # con la caché fría (revisión 4). Dentro del margen se guarda como conocido en
     # `ahora`: una expectativa nunca lleva información posterior a su registro.
-    if pit.descargado_a_tiempo(info, ahora) is False:
+    # Solo para lo descargado: una anotación a mano unos minutos en el futuro
+    # sigue siendo un error (revisión 5).
+    a_tiempo = pit.descargado_a_tiempo(info, ahora) if descargado else pit.disponible_en(info, ahora)
+    if a_tiempo is False:
         raise ValueError("la información de la fuente no puede ser posterior a su registro")
     if pit.disponible_en(info, ahora) is False:
         info = _a_instante(ahora)
@@ -210,10 +220,12 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
             # consenso en miles se leería como una sorpresa del 99 %.
             escala = ev.comprobar_escala(x, trimestres)
             if escala["estado"] == "dudosa":
-                sin.append(f"{tipo}: {x['metrica']} con escala dudosa, no se registra: {escala['motivo']}")
+                # Con su etiqueta: «eps_diluted» salía en crudo en «Sin fuente» (revisión 5).
+                sin.append(f"{etiqueta(tipo)}: {etiqueta(x['metrica'])} con escala dudosa, no se registra: "
+                           f"{escala['motivo']}")
                 return
             x = {**x, "detalle": {**(x.get("detalle") or {}), "escala": escala}}
-        if _guardar(session, evento, x, tipo, ahora):
+        if _guardar(session, evento, x, tipo, ahora, descargado=True):
             registradas.append({"metrica": x["metrica"], "fuente_tipo": tipo, "fuente": x["fuente"]})
         else:
             ya += 1

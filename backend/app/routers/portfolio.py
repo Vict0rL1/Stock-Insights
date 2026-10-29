@@ -525,8 +525,10 @@ def _fecha_de_apertura(valor: str | None) -> datetime | None:
         )
     # El margen es por el reloj de quien llama: guardada unos minutos en el
     # futuro, la posición no existía para el análisis ni para el riesgo durante
-    # esos minutos (revisión 3, hermano del efectivo).
-    return min(fecha, ahora)
+    # esos minutos (revisión 3, hermano del efectivo). En UTC antes de guardar:
+    # SQLite pierde la zona y una hora con +02:00 se releía dos horas en el
+    # futuro, fuera del análisis y del antiduplicado (revisión 5).
+    return min(fecha.astimezone(timezone.utc), ahora)
 
 
 class PositionCreate(BaseModel):

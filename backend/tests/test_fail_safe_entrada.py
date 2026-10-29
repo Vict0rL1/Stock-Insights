@@ -113,6 +113,23 @@ def test_una_fecha_sin_zona_se_guarda_como_utc(api):
     assert r.status_code == 200, r.text
 
 
+def test_una_hora_con_otra_zona_se_guarda_en_utc(api):
+    # Revisión 5: «21:45+02:00» se guardaba como 21:45 sin zona y se servía como
+    # 21:45 UTC, dos horas en el futuro: la posición quedaba fuera del análisis
+    # y el doble clic pasaba el antiduplicado.
+    from datetime import timedelta
+
+    c, factory = api
+    hace_un_minuto = datetime.now(timezone.utc) - timedelta(minutes=1)
+    local = hace_un_minuto.astimezone(timezone(timedelta(hours=2))).isoformat()
+    cuerpo = {"symbol": "AAPL", "quantity": 10, "cost_basis": 100.0, "opened_at": local}
+    r = c.post("/api/portfolio/positions", json=cuerpo)
+    assert r.status_code == 200, r.text
+    servida = datetime.fromisoformat(c.get("/api/portfolio").json()["positions"][0]["opened_at"])
+    assert abs(servida - hace_un_minuto) < timedelta(seconds=1)
+    assert c.post("/api/portfolio/positions", json=cuerpo).status_code == 409
+
+
 # --- Duplicados ----------------------------------------------------------
 
 
