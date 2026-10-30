@@ -440,6 +440,10 @@ def seccion_tesis(
                 "config": d.get("config"), "salta": bool(d.get("salta")),
                 "medible": bool(d.get("medible")), "valor": d.get("valor"),
                 "umbral": d.get("umbral"), "detalle": d.get("detalle") or d.get("motivo"),
+                # La duda de un punto sin unidad guardada: solo la enseñaba
+                # Vigilancia, y la ficha, «Qué cambió» y lo congelado decían solo
+                # la centésima (revisión 5).
+                **({"aviso": d["aviso"]} if d.get("aviso") else {}),
             }
             for d in vigilancia["disparadores"]
         ],

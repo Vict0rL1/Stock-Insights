@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_antiguedad, fmt_num, fmt_pct, fmt_valor_redondo, plural
+from app.formato import fmt_antiguedad, fmt_num, fmt_pct, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -74,6 +74,31 @@ EN_PORCENTAJE = frozenset({"operating_margin", "net_margin", "gross_margin", "fc
 # una cifra que nadie vigila, y con D/E 0,6 un punto CRUZADO quedaba sin comprobar
 # (revisión 4). Un 0,02 sigue siendo dudoso: puede ser 0,02 o 2.
 TOPE_LEGADO = {"debt_to_equity": 10.0, "current_ratio": 10.0, "interest_coverage": 30.0}
+
+
+def escribir_cifras(metrica: str | None, valor: float, *umbrales: float, ceros: bool = True) -> list[str]:
+    """`valor` y sus umbrales en la unidad de la métrica, con los decimales justos
+    para que ninguna cifra cambie de lado: cada umbral se escribe entero y el
+    valor nunca se escribe igual que un umbral distinto ni como cero sin serlo.
+    Con dos decimales fijos, una cobertura de 2,997 frente a «< 3» decía
+    «Cobertura de intereses = 3,00: … con 3,00, sí», y un ratio corriente de
+    0,996 «= 1,00; salta si cae por debajo de 1,00» (revisión 5). Con los
+    decimales de siempre (uno en %, dos en «veces») basta casi siempre, y
+    entonces se escribe como siempre."""
+    en_pct = unidad_de(metrica) == "pct"
+    escala, base = (100, 1) if en_pct else (1, 2)
+    for decimales in range(base, base + 7):
+        def r(v, d=decimales):
+            return round(v * escala, d)
+        if any(round(u * escala, 9) != r(u) for u in umbrales):
+            continue
+        if any(r(valor) == r(u) and valor != u for u in umbrales) or (valor != 0 and r(valor) == 0):
+            continue
+        break
+    con_ceros = ceros and decimales == base
+    if en_pct:
+        return [fmt_pct(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
+    return [fmt_num(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
 
 
 def unidad_de(clave: str | None) -> str:
@@ -121,16 +146,8 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
             ),
         }
     texto_op, prueba = OPERADORES[op]
-    en_pct = unidad_de(config.get("metrica")) == "pct"
-
-    def cifra(v: float) -> str:
-        return fmt_pct(v, 1) if en_pct else fmt_num(v, 2)
-
-    def cifra_umbral(v: float) -> str:
-        # Un umbral en «veces» con más de dos decimales se escribe entero: con
-        # dos fijos, 0,015 salía «0,02» y 0,005, «0,01» (revisión 4).
-        return cifra(v) if en_pct or round(v, 2) == v else fmt_valor_redondo(v)
-
+    metrica = config.get("metrica")
+    en_pct = unidad_de(metrica) == "pct"
     salta = prueba(valor, umbral)
     aviso = None
     # ×100 redondeado: en coma flotante 0,07 × 100 es 7,000000000000001, y con
@@ -149,30 +166,32 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
         # Aquí, con todas las cifras enteras: con dos decimales el motivo decía
         # «Deuda / capital = 0,01: con 0,01 saltaría» (revisión 4).
         otra = prueba(valor, escrito)
+        v_txt, u_txt, e_txt = escribir_cifras(metrica, valor, umbral, escrito, ceros=False)
         lecturas = (f"Punto guardado sin unidad, y el formulario viejo guardaba los ratios divididos entre 100: "
-                    f"el umbral guardado, {fmt_valor_redondo(umbral)}, puede ser {fmt_valor_redondo(escrito)} "
-                    "escrito por ti.")
+                    f"el umbral guardado, {u_txt}, puede ser {e_txt} escrito por ti.")
         if otra != salta:
             return {
                 "salta": False,
                 "medible": False,
                 "motivo": (
-                    f"{lecturas} {etiqueta} = {fmt_valor_redondo(valor)}: con {fmt_valor_redondo(umbral)} "
-                    f"{'saltaría' if salta else 'no saltaría'} y con {fmt_valor_redondo(escrito)}, "
-                    f"{'sí' if otra else 'no'}. Queda sin comprobar hasta que lo quites y lo crees de nuevo."
+                    f"{lecturas} {etiqueta} = {v_txt}: con {u_txt} {'saltaría' if salta else 'no saltaría'} "
+                    f"y con {e_txt}, {'sí' if otra else 'no'}. Queda sin comprobar hasta que lo quites y lo "
+                    "crees de nuevo."
                 ),
             }
         if escrito != umbral:
             aviso = (f"{lecturas} Con las dos lecturas {'salta' if salta else 'no salta'}; para quitar la duda, "
                      "quítalo y créalo de nuevo.")
 
+    # El umbral entero (0,015, no «0,02»; revisión 4) y el valor de su lado.
+    v_txt, u_txt = escribir_cifras(metrica, valor, umbral)
     resultado = {
         "salta": salta,
         "medible": True,
         "valor": round(valor, 4),
         "umbral": umbral,
         "detalle": (
-            f"{etiqueta} = {cifra(valor)}; el punto salta si {texto_op} {cifra_umbral(umbral)}."
+            f"{etiqueta} = {v_txt}; el punto salta si {texto_op} {u_txt}."
             + ("" if salta else " Todavía no lo cruza.")
         ),
     }
@@ -407,7 +426,10 @@ def instantanea(
             else None
         ),
         "disparadores_saltando": [
-            {"descripcion": d.get("descripcion"), "detalle": d.get("detalle")}
+            # Con su aviso: la duda de un punto sin unidad se perdía al congelar
+            # (revisión 5).
+            {"descripcion": d.get("descripcion"), "detalle": d.get("detalle"),
+             **({"aviso": d["aviso"]} if d.get("aviso") else {})}
             for d in vigilancia.get("disparadores", [])
             if d.get("salta")
         ],

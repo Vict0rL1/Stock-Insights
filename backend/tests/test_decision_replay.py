@@ -528,3 +528,29 @@ def test_la_ventana_de_noticias_de_la_tesis_acaba_en_el_ahora_del_analisis(sessi
                      "published_at": (AHORA - timedelta(days=1)).isoformat()}]
         r = seccion_tesis(s, inst, {}, noticias, AHORA)
     assert r["estado"] == "puntos_cruzados"
+
+
+def test_la_ficha_lleva_el_aviso_de_un_punto_sin_unidad(session_factory):
+    """Revisión 5: `seccion_tesis` copiaba solo algunos campos de cada punto, y el
+    aviso de la doble lectura de un punto sin unidad no llegaba ni a la ficha ni
+    a la instantánea: solo a Vigilancia."""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Deuda", body_md="Poca deuda.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        # Guardado 0,0001 por el formulario viejo («D/E > 0,01»): con cualquier D/E
+        # razonable salta con las dos lecturas, y hay que decir la duda.
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="D/E alto",
+                            config={"metrica": "debt_to_equity", "op": "gt", "umbral": 0.0001},
+                            created_at=tesis.created_at))
+        s.commit()
+        periodos = [{**p, "equity": 1000.0} for p in financieros_base()]  # D/E 0,3
+        r = seccion_tesis(s, inst, {"_periodos": periodos}, [], AHORA)
+    punto = r["disparadores"][0]
+    assert punto["salta"] is True and "puede ser 0,01 escrito por ti" in punto["aviso"]

@@ -1521,6 +1521,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"
@@ -5860,6 +5861,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"
@@ -7107,6 +7109,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"

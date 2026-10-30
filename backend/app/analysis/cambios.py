@@ -23,6 +23,7 @@ import json
 
 from app import datos
 from app.analysis.decision import REGLAS_DE_PRECIO
+from app.analysis.thesis_watch import escribir_cifras
 from app.etiquetas import etiqueta
 from app.formato import fmt_num, fmt_precio, plural
 
@@ -237,8 +238,9 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
         if p is None:
             salida["nuevos_riesgos"].append({"punto": texto, "motivo": "punto de invalidación nuevo"})
             continue
+        aviso = f" {d['aviso']}" if d.get("aviso") else ""
         if d.get("salta") and not p.get("salta"):
-            salida["invalidaciones"].append({"punto": texto, "detalle": d.get("detalle")})
+            salida["invalidaciones"].append({"punto": texto, "detalle": f"{d.get('detalle')}{aviso}"})
         elif p.get("salta") and not d.get("salta") and d.get("medible"):
             salida["confirmados"].append({"punto": texto, "detalle": "vuelve a cumplirse: " + str(d.get("detalle"))})
         elif p.get("medible") and not d.get("medible"):
@@ -252,14 +254,19 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
             va, vb, u = datos.numero(p.get("valor")), datos.numero(d.get("valor")), datos.numero(d.get("umbral"))
             if va is not None and vb is not None and u is not None:
                 dist_antes, dist_ahora = abs(va - u), abs(vb - u)
+                # En la unidad del punto: «0,213 → 0,190, umbral 0,180» junto a
+                # «< 18 %», el fallo que Vigilancia ya no tenía (revisión 5).
+                metrica = (d.get("config") or {}).get("metrica")
+                a_txt, u_txt = escribir_cifras(metrica, va, u)
+                b_txt, _ = escribir_cifras(metrica, vb, u)
                 if dist_antes - dist_ahora >= 0.01:
                     salida["deteriorados"].append(
                         {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
-                         "detalle": f"se acerca a su umbral ({fmt_num(va, 3)} → {fmt_num(vb, 3)}, umbral {fmt_num(u, 3)})"})
+                         "detalle": f"se acerca a su umbral ({a_txt} → {b_txt}, umbral {u_txt}){aviso}"})
                 elif dist_ahora - dist_antes >= 0.01:
                     salida["confirmados"].append(
                         {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
-                         "detalle": f"se aleja de su umbral ({fmt_num(va, 3)} → {fmt_num(vb, 3)})"})
+                         "detalle": f"se aleja de su umbral ({a_txt} → {b_txt}){aviso}"})
     destino = {"invalidado": "invalidaciones", "debilitado": "deteriorados", "confirmado": "confirmados"}
     for i in impacto_evento or []:
         if i.get("estado") in destino:

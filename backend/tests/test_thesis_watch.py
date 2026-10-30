@@ -365,6 +365,12 @@ def test_un_umbral_que_x100_no_cabe_en_la_metrica_se_lee_tal_cual():
     r = _ratio("debt_to_equity", "gt", 0.5, 0.6)
     assert r["medible"] is True and r["salta"] is True and "aviso" not in r
     assert _ratio("current_ratio", "lt", 0.8, 0.7)["salta"] is True
+    # Valores que separan las dos lecturas, para que el tope de cada métrica
+    # quede fijado (revisión 5: con 0,7 las dos coincidían y cualquier tope
+    # pasaba). Con un tope de 100, los dos quedarían sin comprobar.
+    for metrica, umbral in (("current_ratio", 0.8), ("interest_coverage", 0.5)):
+        r = _ratio(metrica, "lt", umbral, 1.5 if metrica == "current_ratio" else 8.0)
+        assert r["medible"] is True and r["salta"] is False, metrica
     # Un 0,02 sí sigue siendo dudoso (0,02 o 2), y una cobertura de 0,15 (15).
     assert _ratio("debt_to_equity", "gt", 0.02, 0.5)["medible"] is False
     assert _ratio("interest_coverage", "lt", 0.15, 8.0)["medible"] is False
@@ -409,3 +415,47 @@ def test_la_nota_no_da_por_no_cruzado_lo_que_no_se_pudo_comprobar():
     dos = _resumen(0, 2, 3)
     assert dos.startswith("El único punto comprobado no se ha cruzado. 2 no se pudieron comprobar")
     assert _resumen(0, 1, 3).startswith("Ninguno de los 2 puntos comprobados se ha cruzado. 1 no se pudo")
+
+
+def test_ninguna_cifra_cambia_de_lado_al_escribirla():
+    # Revisión 5: con dos decimales, una cobertura de 2,997 frente a «< 3»
+    # (guardado 0,03) decía «= 3: con 0,03 no saltaría y con 3, sí», y un ratio
+    # corriente de 0,996 «= 1,00; salta si cae por debajo de 1,00».
+    r = _ratio("interest_coverage", "lt", 0.03, 2.997)
+    assert r["medible"] is False and "Cobertura de intereses = 2,997: con 0,03 no saltaría y con 3, sí" in r["motivo"]
+    r = _ratio("current_ratio", "lt", 1.0, 0.996, "veces")
+    assert r["salta"] is True and r["detalle"].startswith("Ratio corriente = 0,996; el punto salta si cae por debajo de 1.")
+    r = _ratio("debt_to_equity", "gt", 1.005, 1.008, "veces")
+    assert "Deuda / capital = 1,008; el punto salta si sube por encima de 1,005." in r["detalle"]
+    # Lejos del umbral, como siempre: dos decimales con ceros.
+    assert _ratio("current_ratio", "lt", 1.0, 0.8, "veces")["detalle"].startswith("Ratio corriente = 0,80; ")
+
+
+def test_el_aviso_de_un_punto_sin_unidad_llega_a_la_ficha_y_a_que_cambio():
+    # Revisión 5: `seccion_tesis` copiaba solo algunos campos y el aviso se
+    # quedaba en Vigilancia; «Qué cambió» y lo congelado decían solo la centésima.
+    from app.analysis import cambios
+    from app.analysis.thesis_watch import instantanea
+
+    d = _ratio("debt_to_equity", "gt", 0.001, 0.3)
+    assert d["salta"] is True and "puede ser 0,1 escrito por ti" in d["aviso"]
+    ahora = {"id": 1, "disparadores": [{"id": 1, "descripcion": "D/E alto", "config": {"metrica": "debt_to_equity"}, **d}]}
+    antes = {"id": 1, "disparadores": [{"id": 1, "descripcion": "D/E alto", "salta": False, "medible": True,
+                                         "valor": 0.0005, "umbral": 0.001}]}
+    inval = cambios.comparar_tesis(antes, ahora)["invalidaciones"][0]["detalle"]
+    assert "puede ser 0,1 escrito por ti" in inval
+    congelado = instantanea(10.0, {"disparadores": ahora["disparadores"], "total": 1}, None)
+    assert "puede ser 0,1 escrito por ti" in congelado["disparadores_saltando"][0]["aviso"]
+
+
+def test_que_cambio_escribe_un_margen_en_porcentaje():
+    # Revisión 5: «se acerca a su umbral (0,213 → 0,190, umbral 0,180)» junto a «< 18 %».
+    from app.analysis import cambios
+
+    def tesis(v):
+        return {"id": 1, "disparadores": [{"id": 1, "descripcion": "margen < 18 %", "salta": False, "medible": True,
+                                            "valor": v, "umbral": 0.18,
+                                            "config": {"metrica": "operating_margin", "op": "lt", "umbral": 0.18}}]}
+    det = cambios.comparar_tesis(tesis(0.213), tesis(0.19))["deteriorados"][0]["detalle"]
+    assert det == "se acerca a su umbral (21,3\u00a0% → 19,0\u00a0%, umbral 18,0\u00a0%)"
+
