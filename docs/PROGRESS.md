@@ -685,6 +685,43 @@ ESLint contra `fmtNum` sobre un valor por acción. El anillo de `MarcoTabla` es 
 encima de la columna fija (la tapaba en tres tablas); medido en Chromium con Tab, en reposo y
 desplazada. Capturas: 104 sin fallos.
 
+### Quinta revisión (de la cuarta, workflow, 28-30 oct)
+
+Seis revisores sobre `5f6ddd3`…`f0d5757` y las tres lentes: 28 confirmados, 1 descartado. Cada
+arreglo con un test que falla sin él; golden idéntico; capturas 104 sin fallos.
+
+**Expectativas, apertura y FX.** Lo anotado a mano ya no recibe el margen de lo descargado ni
+una fecha ilegible leída como «ahora» (422); el motivo de «escala dudosa» con fecha para una
+persona y etiqueta; la fecha de apertura con otra zona se guarda en UTC; tests del filtro de
+tipos fuera de banda en el P&L realizado y el coste, y del 422 de «próximos resultados».
+
+**Tesis.** `escribir_cifras`: valor y umbrales con los decimales justos para que ninguna cifra
+cambie de lado (2,997 frente a «< 3» decía «= 3»), y lejos del umbral los de siempre; el aviso de
+la doble lectura llega a la ficha, a lo congelado y a «Qué cambió»; los deteriorados en la unidad
+del punto (% para un margen); tests que fijan los topes de ratio corriente y cobertura.
+
+**Decisión.** Umbrales de la banda sin ruido de coma flotante (14 × 1,02 ≠ 14,28) y redondeo hacia
+un lado en decimal; el stop hacia abajo y «en o por debajo de» en todos sus textos; sin cifra de
+la media, el disparador ya no escribe «—»; la distancia contra el umbral escrito; el estado vacío
+de Hoy admite las «Vigilar» aplazadas; los ETF usan `decision._tendencia` (con la banda).
+
+**Instantáneas y origen.** El antiduplicado coincide con la última por `id` o por `creado_en`;
+README y `.env.example` dicen que Vite necesita `server.allowedHosts` para un nombre de
+`ALLOWED_HOSTS`.
+
+**Frontend.** BPA y precios de céntimos con `fmtPrecio` en estados financieros, Expectativas
+(`fmtMetrica`), 52 semanas, calendario e informe profundo y cambio del día; ESLint más amplio; la
+matriz del DCF con `fmt_cifras` (gemelo nuevo, tres cifras significativas); el anillo de
+`MarcoTabla` como outline (con colores forzados el ring desaparecía).
+
+**Pendiente de Victor (alta).** Con una posición abierta sin valorar (sin cotización en vivo, o
+con su tipo de cambio rechazado), la ficha suma todo el efectivo a la parte valorada: con XYZ
+(~100.000 USD) sin precio y 1.000 de efectivo, «Hay efectivo (100 %)… no hace falta vender nada»
+y el riesgo «sin cartera». Hoy no lo hace desde M3. El arreglo (no sumar el efectivo, veredicto
+INDETERMINADO que nombra las posiciones, riesgo desconocido) está escrito y probado, pero cambia el
+golden de `analisis` (caso `fx_invertido`: el efectivo pasa de `valido` a `desconocido`), así que
+espera su visto bueno para regenerarlo.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -703,8 +740,9 @@ desplazada. Capturas: 104 sin fallos.
 
 Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
 arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
-adversarial arregladas (la última, 22 hallazgos, en `5f6ddd3`…`f0d5757`). Lo siguiente es 2.2
-(`AvisoAgrupado`).
+adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
+`2536bc3`…`f8a7a7d`, salvo el efectivo con posiciones sin valorar, que cambia el golden). Lo
+siguiente es 2.2 (`AvisoAgrupado`).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
 cambio (`fx.tipo_desde_observaciones` mide la frescura con `date.today()`); las bandas de FX cerca
@@ -718,4 +756,6 @@ viejo sin borrarlo (un PATCH que conserve `created_at`; hoy rehacerlo lo saca de
 reconstrucciones anteriores); volver a ejecutar el backtest de reglas, porque los guardados sin
 `banda_tendencia_pct` entraron con «precio > media» y siguen dando «calibrada» (¿invalidarlos, como
 los anteriores al RC1?); y, si se quiere la cifra de la banda en el estado vacío de Hoy, servirla
-en `thresholds` (cambia el golden de `hoy`).
+en `thresholds` (cambia el golden de `hoy`). De la quinta: el arreglo del efectivo con posiciones
+sin valorar (golden de `analisis`); los ETF ahora con la banda del motor (antes «precio > media»);
+y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra).
