@@ -339,14 +339,19 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     # idénticas (revisión 3); y por `creado_en`, una del mismo día a una hora
     # posterior y con otra huella ganaba siempre y cada análisis igual volvía a
     # congelar (revisión 4).
-    ultimo = session.execute(
+    # Y también la última por `creado_en`: con dos análisis solapados de huellas
+    # distintas, el que empezó antes congela después, y un tercero igual al que
+    # empezó después (el dato vigente) se comparaba solo con el viejo y dejaba
+    # una copia idéntica (revisión 5). Vale cualquiera de las dos que coincida.
+    del_dia = (
         select(DecisionSnapshot)
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"),
                DecisionSnapshot.fecha == fecha)
-        .order_by(DecisionSnapshot.id.desc())
-    ).scalars().first()
-    if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
-        return ultimo, False
+    )
+    for orden in ((DecisionSnapshot.id.desc(),), (DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())):
+        ultimo = session.execute(del_dia.order_by(*orden)).scalars().first()
+        if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
+            return ultimo, False
 
     # Lo que llegara fechado después de la decisión se anota al congelar: la
     # instantánea guarda lo que el sistema vio, pero el replay no lo enseñará

@@ -130,9 +130,9 @@ class HostDeConfianza:
       respuesta, no que se ejecute: un `<img>` hacia `/api/empresa/AAPL/analisis`
       congelaba una instantánea inmutable y gastaba cuota de los proveedores
       (revisión de A6). Vale `Sec-Fetch-Site: same-origin`, que pone el
-      navegador y ninguna página puede falsificar (la interfaz por el proxy de
-      Vite en cualquier puerto: `npm run preview`, o el 5174 con el 5173
-      ocupado, recibían 403 en todo POST; revisión 3); vale un `Origin` de la
+      navegador y ninguna página puede falsificar (la interfaz como localhost
+      por el proxy de Vite en cualquier puerto: `npm run preview`, o el 5174 con
+      el 5173 ocupado, recibían 403 en todo POST; revisión 3); vale un `Origin` de la
       interfaz local (`CORS_ORIGINS`, o su puerto con un nombre permitido) o del
       propio backend (`/docs`). Sin `Origin`, un `Sec-Fetch-Site` de otro sitio
       se rechaza, y sin ninguno de los dos (un nombre de ALLOWED_HOSTS en http no

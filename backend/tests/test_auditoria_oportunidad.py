@@ -324,6 +324,20 @@ def test_una_instantanea_posterior_del_mismo_dia_no_rompe_el_antiduplicado(sessi
     assert {i["id"] for i in ids} == {ids[0]["id"]}
 
 
+def test_dos_solapados_con_huellas_distintas_no_dejan_una_copia_del_vigente(session_factory):
+    # Revisión 5: B (dato nuevo) empieza en T+20 s y congela primero; A (dato
+    # viejo) empezó en T y congela después. Comparando solo con la última por
+    # `id` (A), un tercer análisis igual que B congelaba una copia idéntica.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        b = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=20), con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        c = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=60), con_pares=False)
+    assert c["instantanea"]["nueva"] is False and c["instantanea"]["id"] == b["instantanea"]["id"]
+
+
 def _idea_con_efectivo_en_cad(session_factory, serie):
     from app import oportunidad
 

@@ -101,10 +101,13 @@ propio backend, o que sin `Origin` llega marcada `Sec-Fetch-Site: cross-site` o
 `same-site` (o, sin ninguna de las dos, con un `Referer` de otra web), es un 403.
 `Sec-Fetch-Site: same-origin`, que pone el navegador, siempre pasa: abierta como
 `localhost`, `127.0.0.1` o `[::1]`, la interfaz por el proxy de Vite funciona en
-cualquier puerto. Con un nombre de `ALLOWED_HOSTS` por http el navegador no manda
-Fetch Metadata y se miran el `Origin` o el `Referer`: valen los puertos de
-`CORS_ORIGINS` (el 5173 de Vite por defecto); con Vite en otro puerto, añade ese
-origen a `CORS_ORIGINS`, o hasta las lecturas dan 403. CORS solo impide *leer* la respuesta:
+cualquier puerto. Para abrirla con un nombre de `ALLOWED_HOSTS`, Vite también tiene
+que aceptarlo: por defecto solo escucha en `localhost` y rechaza otro `Host` antes de
+llegar al proxy («Blocked request»), así que hace falta `server.allowedHosts` (y
+`server.host` si el nombre no resuelve a 127.0.0.1) en `frontend/vite.config.ts`. Por
+http, con ese nombre el navegador no manda Fetch Metadata y se miran el `Origin` o el
+`Referer`: valen los puertos de `CORS_ORIGINS` (el 5173 de Vite por defecto); con Vite
+en otro puerto, añade ese origen a `CORS_ORIGINS`, o hasta las lecturas dan 403. CORS solo impide *leer* la respuesta:
 sin esto, un `<img>` de cualquier web congelaba análisis en tu historial y gastaba
 la cuota de los proveedores. Límite: a un nombre de `ALLOWED_HOSTS` en http el
 navegador no le manda Fetch Metadata, y una petición sin `Origin` ni `Referer` pasa;
