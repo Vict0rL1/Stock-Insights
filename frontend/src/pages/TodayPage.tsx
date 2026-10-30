@@ -1256,11 +1256,13 @@ export function TodayPage() {
                       Hoy no hay ninguna compra en {data.market_name}.
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                      Ninguna empresa cumple a la vez las dos condiciones:
-                      puntuar por encima de {fmtNum(data.thresholds.favorable, 2, { signo: true })}{' '}
-                      frente a sus comparables <em>y</em> cerrar por encima de su
-                      media de 200 sesiones con el margen de su banda (cada una en
-                      «Vigilar» dice a qué precio). No actuar también es una decisión.
+                      Ninguna empresa está hoy en «Comprar»: o no cumple a la vez
+                      las dos condiciones (puntuar por encima de{' '}
+                      {fmtNum(data.thresholds.favorable, 2, { signo: true })} frente a
+                      sus comparables <em>y</em> cerrar por encima de su media de 200
+                      sesiones con el margen de su banda) o se aplaza (resultados en
+                      los próximos días, precio viejo). Cada una en «Vigilar» dice
+                      qué espera. No actuar también es una decisión.
                     </p>
                     {acciones.vigilar > 0 && (
                       <button

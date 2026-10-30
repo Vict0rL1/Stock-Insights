@@ -1068,7 +1068,7 @@
       ],
       "triggers": [
        "Comprar entre 101,92 y 106,08",
-       "Salir si cierra bajo 95,68 (-8,0 %)",
+       "Salir si cierra en o por debajo de 95,68 (-8,0 %)",
        "Tomar beneficios en 120,64 (+16,0 %)"
       ]
      },
@@ -4639,7 +4639,7 @@
       ],
       "triggers": [
        "Comprar entre 101,92 y 106,08",
-       "Salir si cierra bajo 95,68 (-8,0 %)",
+       "Salir si cierra en o por debajo de 95,68 (-8,0 %)",
        "Tomar beneficios en 120,64 (+16,0 %)"
       ]
      },

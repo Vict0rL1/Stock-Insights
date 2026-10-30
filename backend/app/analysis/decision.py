@@ -261,7 +261,7 @@ def decide(
                 respecto_coste = "sin coste utilizable con el que compararlo"
             razones.append(
                 f"El precio ({fmt_precio(ultimo)}) perforó el stop de la posición "
-                f"({fmt_precio(datos.redondear_precio(stop_posicion))}), {respecto_coste}."
+                f"({fmt_precio(datos.redondear_precio(stop_posicion, hacia='abajo'))}), {respecto_coste}."
             )
         elif decisiva and decisiva["id"] == "tendencia_perdida":
             razones.append(
@@ -315,7 +315,10 @@ def decide(
             niveles_posicion = {
                 "entrada_desde": None,
                 "entrada_hasta": None,
-                "stop": datos.redondear_precio(stop_posicion),
+                # Hacia abajo, como el umbral de reducir: la regla vende en o por
+                # debajo del stop exacto, y al más cercano un stop de 92,006 se
+                # servía 92,01 y un cierre de 92,01 no vendía (revisión 5).
+                "stop": datos.redondear_precio(stop_posicion, hacia="abajo"),
                 "stop_pct": round((stop_posicion / ultimo - 1) * 100, 1),
                 "objetivo": datos.redondear_precio(objetivo),
                 "objetivo_pct": round((objetivo / ultimo - 1) * 100, 1) if objetivo else None,
@@ -327,16 +330,21 @@ def decide(
             # El texto escribe el stop SERVIDO (`levels.stop`), no el entero: con
             # 2,675, la tarjeta decía «Stop 2,67» y el disparador «2,68», porque
             # `round()` y el formateador redondean distinto (revisión de A1).
-            f"Vender si cierra por debajo de {fmt_precio(datos.redondear_precio(stop_posicion))}"
+            # «En o por debajo», como la regla (≤): con «por debajo de 95,00» un
+            # cierre de 95,00 vendía sin que el texto lo dijera (revisión 5).
+            f"Vender si cierra en o por debajo de {fmt_precio(datos.redondear_precio(stop_posicion, hacia='abajo'))}"
             if stop_posicion is not None else
             "Vender si el precio perfora tu stop",
             f"Vender si la puntuación baja de {fmt_num(desfavorable_max, signo=True)}",
             # El umbral de la regla, con su banda: «Revisar si pierde la media»
             # avisaba de algo que con el precio dentro de la banda ya había pasado
             # y con otro umbral y otro verbo que los que deciden (revisión 4).
+            # Por el umbral, no por la bandera: sin media pero con el booleano del
+            # proveedor, la tendencia no es «desconocida» y salía «… de — (media
+            # 200 − 1 %)» (revisión 5).
             f"Reducir si cierra en o por debajo de "
             f"{fmt_precio(datos.redondear_precio(_umbral_salir(sma200), hacia='abajo'))} ({_media_salir()})"
-            if not tendencia["desconocida"] else
+            if _umbral_salir(sma200) else
             "Revisar la tendencia cuando haya una media de 200 sesiones con que medirla",
         ]
         return {
@@ -378,7 +386,8 @@ def decide(
         )
         disparadores = [
             f"Comprar entre {fmt_precio(niveles['entrada_desde'])} y {fmt_precio(niveles['entrada_hasta'])}",
-            f"Salir si cierra bajo {fmt_precio(niveles['stop'])} ({fmt_pct(-niveles['stop_pct'], en_puntos=True)})",
+            f"Salir si cierra en o por debajo de {fmt_precio(niveles['stop'])} "
+            f"({fmt_pct(-niveles['stop_pct'], en_puntos=True)})",
             f"Tomar beneficios en {fmt_precio(niveles['objetivo'])} "
             f"({fmt_pct(niveles['objetivo_pct'], signo=True, en_puntos=True)})",
         ]
@@ -512,12 +521,17 @@ def _regla(id_: str, texto: str, resultado: str, efecto: str | None = None, **da
 # el que se sirve va redondeado. Redondeado aquí, con la media en 1,0054 el
 # umbral era 1,03 en vez de 1,0255: la traza daba la tendencia por cumplida con
 # 1,0256 y «Qué la cambiaría» pedía además «precio ≥ 1,03» (revisión de A1).
+#
+# Sin el ruido de la coma flotante, eso sí (nueve decimales, muy por debajo de
+# cualquier tick): 14 × 1,02 es 14,280000000000001 y un cierre de 14,28, justo
+# en la media + 2 %, no compraba; 12 × 0,99 es 11,879999999999999 y un cierre
+# de 11,88 no reducía (revisión 5). La regla y lo que se escribe usan el mismo.
 def _umbral_entrar(sma200: float | None) -> float | None:
-    return sma200 * (1 + BANDA_TENDENCIA_ENTRAR_PCT / 100) if sma200 else None
+    return round(sma200 * (1 + BANDA_TENDENCIA_ENTRAR_PCT / 100), 9) if sma200 is not None else None
 
 
 def _umbral_salir(sma200: float | None) -> float | None:
-    return sma200 * (1 - BANDA_TENDENCIA_SALIR_PCT / 100) if sma200 else None
+    return round(sma200 * (1 - BANDA_TENDENCIA_SALIR_PCT / 100), 9) if sma200 is not None else None
 
 
 # Los rótulos salen de las constantes: antes «media 200 + 2 %» estaba escrito a
@@ -566,7 +580,7 @@ def _reglas_con_posicion(score, ultimo, stop, sobre_media, tendencia, desfavorab
         _regla(
             "stop_perforado", "Precio en o bajo el stop de la posición",
             DESCONOCIDO if stop is None else CUMPLE if ultimo <= stop else NO_CUMPLE,
-            efecto="vender", valor=ultimo, umbral=datos.redondear_precio(stop),
+            efecto="vender", valor=ultimo, umbral=datos.redondear_precio(stop, hacia="abajo"),
         ),
         _regla(
             "tendencia_perdida",
@@ -624,7 +638,10 @@ def _c_precio(op: str, umbral: float | None, ultimo: float, id_: str, que: str, 
         "condicion": f"precio {op} {fmt_precio(escrito)} ({que})",
         "actual": ultimo,
         "umbral": escrito,
-        "distancia": round((umbral / ultimo - 1) * 100, 2),
+        # Contra lo escrito: medida contra el exacto, «precio ≥ 102,01 (ahora
+        # 102,00)» decía «falta 0,00 %» (revisión 5). Cumplida o pendiente lo
+        # sigue diciendo la comparación exacta.
+        "distancia": round((escrito / ultimo - 1) * 100, 2),
         "unidad": "%",
     }
 
@@ -637,7 +654,7 @@ def _cambiaria_con_posicion(accion, score, ultimo, stop, tendencia, desfavorable
         "hacia": "vender",
         "requiere": "alguna",
         "condiciones": [_c_score("≤", desfavorable_max, score, "puntuacion_desfavorable")]
-        + ([_c_precio("≤", stop, ultimo, "stop_perforado", "stop")] if stop is not None else []),
+        + ([_c_precio("≤", stop, ultimo, "stop_perforado", "stop", "abajo")] if stop is not None else []),
     }
     if accion == "mantener":
         return [
@@ -649,7 +666,7 @@ def _cambiaria_con_posicion(accion, score, ultimo, stop, tendencia, desfavorable
         "hacia": "mantener",
         "requiere": "todas",
         "condiciones": [_c_score(">", desfavorable_max, score, "puntuacion_desfavorable")]
-        + ([_c_precio(">", stop, ultimo, "stop_perforado", "stop")] if stop is not None else [])
+        + ([_c_precio(">", stop, ultimo, "stop_perforado", "stop", "abajo")] if stop is not None else [])
         + [_c_precio(">", salir, ultimo, "tendencia_perdida", _media_salir(), "abajo")],
     }
     if accion == "reducir":
@@ -776,8 +793,8 @@ def _tendencia(
         # calculó a partir de esa misma media, así que tampoco vale. Aceptarlo
         # sería creerle a la conclusión después de rechazar la premisa.
         return crudo if not corrupta else None
-    if ultimo >= sma200 * (1 + BANDA_TENDENCIA_ENTRAR_PCT / 100):
+    if ultimo >= _umbral_entrar(sma200):
         return True
-    if ultimo <= sma200 * (1 - BANDA_TENDENCIA_SALIR_PCT / 100):
+    if ultimo <= _umbral_salir(sma200):
         return False
     return None

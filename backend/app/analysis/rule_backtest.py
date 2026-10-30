@@ -5,7 +5,8 @@ El backtest de `backtest.py` responde a una pregunta distinta y más estrecha:
 **modelo de factores**, y está bien resuelta.
 
 Pero eso no es lo que ejecuta la app. La app aplica reglas: entra solo si además
-el precio está sobre su media de 200 sesiones, pone un stop dimensionado por
+el precio está en o por encima de su media de 200 sesiones + 2 % (la banda del
+motor, `decision._umbral_entrar`), pone un stop dimensionado por
 volatilidad, un objetivo al doble, y sale por lo que llegue antes. Ninguna de
 esas piezas aparecía en el backtest anterior, así que **el sistema que de verdad
 se usa nunca se había medido**.

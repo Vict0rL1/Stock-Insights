@@ -49,7 +49,7 @@ def test_el_caso_de_la_auditoria_vende_con_el_stop_perforado():
     # El stop está POR ENCIMA del precio: la distancia es positiva, no «−100 %».
     assert d["levels"]["stop"] == 0.004
     assert d["levels"]["stop_pct"] == pytest.approx(33.3)
-    assert "Vender si cierra por debajo de 0,004" in d["triggers"]
+    assert "Vender si cierra en o por debajo de 0,004" in d["triggers"]
     assert any("(0,003) perforó el stop de la posición (0,004)" in r for r in d["reasons"])
     distancias = [c["distancia"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"] == "stop_perforado"]
     assert distancias and all(x == pytest.approx(33.33) for x in distancias)
@@ -154,7 +154,7 @@ def test_el_stop_servido_y_el_escrito_son_el_mismo():
     d = decide(señal(0.8), precio(3.10, 2.0), {"cost_basis": 3.0, "stop": 2.675})
     servido = d["levels"]["stop"]
     escrito = fmt_precio(servido)
-    assert f"Vender si cierra por debajo de {escrito}" in d["triggers"]
+    assert f"Vender si cierra en o por debajo de {escrito}" in d["triggers"]
     condiciones = [c["condicion"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"] == "stop_perforado"]
     assert condiciones and all(f"precio > {escrito} (stop)" in c or f"precio ≤ {escrito} (stop)" in c for c in condiciones)
 
@@ -332,3 +332,54 @@ def test_la_ficha_decide_con_la_media_entera_y_la_sirve_redondeada():
     assert bloque["sma200"] == pytest.approx(1.0054, abs=1e-9)
     assert seccion["sma200"] == 1.01
     assert decide(señal(0.8), bloque)["action"] == "comprar"
+
+
+# --- Revisión 5: el redondeo hacia un lado, sin ruido, también en el stop --------
+
+
+def test_un_cierre_justo_en_la_media_mas_la_banda_compra_y_se_escribe_bien():
+    """14 × 1,02 es 14,280000000000001 en coma flotante: un cierre de 14,28 no
+    compraba y la pantalla pedía «en o por encima de 14,28»."""
+    assert decide(señal(0.8), precio(14.28, 14.0))["action"] == "comprar"
+    vigilar = decide(señal(0.8), precio(14.27, 14.0))
+    assert vigilar["action"] == "vigilar"
+    assert vigilar["triggers"][0].startswith("Comprar cuando cierre en o por encima de 14,28 ")
+    pos = {"cost_basis": 10.0, "quantity": 10, "stop": 5.0}
+    assert decide(señal(0.8), precio(11.88, 12.0), pos)["action"] == "reducir"
+    # Sin multiplicar en coma flotante: el ruido del umbral cuenta, el del redondeo no.
+    assert datos.redondear_precio(14.280000000000001, hacia="arriba") == 14.29
+    assert datos.redondear_precio(1.1, hacia="arriba") == 1.1
+
+
+def test_el_stop_se_escribe_hacia_abajo_y_en_o_por_debajo():
+    """Stop 92,006 servido 92,01: con un cierre de 92,01, «mantener» bajo «precio
+    ≤ 92,01 (stop)» y la traza «92,01 frente a 92,01 ✗». Y «Vender si cierra por
+    debajo de 95,00» con la regla vendiendo a 95,00."""
+    d = decide(señal(0.8), precio(92.01, 80.0), {"cost_basis": 100.0, "stop": 92.006})
+    assert d["action"] == "mantener"
+    assert d["levels"]["stop"] == 92.0
+    assert next(r for r in d["reglas"] if r["id"] == "stop_perforado")["datos"]["umbral"] == 92.0
+    vender = next(g for g in d["cambiaria"] if g["hacia"] == "vender")
+    assert any(c["condicion"] == "precio ≤ 92,00 (stop)" for c in vender["condiciones"])
+    en_el_stop = decide(señal(0.8), precio(95.0, 80.0), {"cost_basis": 100.0, "stop": 95.0})
+    assert en_el_stop["action"] == "vender"
+    assert "Vender si cierra en o por debajo de 95,00" in en_el_stop["triggers"]
+    compra = decide(señal(0.8), precio(110.0, 100.0))
+    assert any(t.startswith("Salir si cierra en o por debajo de ") for t in compra["triggers"])
+
+
+def test_sin_cifra_de_la_media_el_disparador_no_escribe_un_guion():
+    pos = {"cost_basis": 90.0, "quantity": 10, "stop": 50.0}
+    for bloque in ({"last": 100.0, "sma200": None, "above_sma200": False, "daily_vol_pct": 1.2},
+                   {"last": 100.0, "sma200": 0.0, "above_sma200": True, "daily_vol_pct": 1.2}):
+        d = decide(señal(0.8), bloque, pos)
+        assert not any("—" in t for t in d["triggers"]), d["triggers"]
+
+
+def test_la_distancia_se_mide_contra_el_umbral_escrito():
+    """«precio ≥ 102,01 (ahora 102,00; falta 0,00 %)»: la distancia salía del exacto."""
+    d = decide(señal(0.8), precio(102.0, 100.004))
+    comprar = next(g for g in d["cambiaria"] if g["hacia"] == "comprar")
+    c = next(c for c in comprar["condiciones"] if c["regla"] == "tendencia_a_favor")
+    assert c["umbral"] == 102.01 and c["distancia"] == 0.01
+

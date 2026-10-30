@@ -1363,7 +1363,8 @@ def run_rules_backtest(
 
     `/backtest` valida el **modelo de factores**: si la puntuación ordena mejor
     que la mediana. Este endpoint valida el **sistema que se ejecuta**: entrar
-    solo por encima de la media de 200 sesiones, con stop por volatilidad,
+    solo en o por encima de la media de 200 sesiones + 2 % (la banda del motor),
+    con stop por volatilidad,
     objetivo al doble y salida por lo que llegue antes — neto de costes.
 
     Son preguntas distintas y una puede salir bien con la otra mal.

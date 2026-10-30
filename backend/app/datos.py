@@ -38,6 +38,7 @@ comparación. Un `if not precio` no protege de ninguno de los dos.
 from __future__ import annotations
 
 import math
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -183,11 +184,13 @@ def redondear_precio(valor: Any, hacia: str | None = None) -> float | None:
     decimales = decimales_precio(f)
     if hacia is None:
         return round(f, decimales)
-    escala = 10 ** decimales
-    # Sin el ruido de la coma flotante: 1,1 × 100 es 110,00000000000001, y el
-    # techo daría 1,11 de un umbral de 1,10 exacto.
-    ticks = round(f * escala, 6)
-    return (math.ceil(ticks) if hacia == "arriba" else math.floor(ticks)) / escala
+    # En decimal, desde la representación más corta del número, sin multiplicar
+    # en coma flotante: 1,1 × 100 es 110,00000000000001 y el techo daba 1,11; y
+    # podar ese ruido redondeando a seis decimales podaba también el del propio
+    # umbral, que la regla sí compara (14,280000000000001 se escribía 14,28 y un
+    # cierre de 14,28 no compraba; revisión 5).
+    paso = Decimal(1).scaleb(-decimales)
+    return float(Decimal(repr(f)).quantize(paso, rounding=ROUND_CEILING if hacia == "arriba" else ROUND_FLOOR))
 
 
 def porcentaje(valor: Any, maximo: float = 1000.0) -> float | None:

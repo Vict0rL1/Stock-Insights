@@ -1187,7 +1187,7 @@
            {
             "actual": 144.0,
             "condicion": "precio < 132,20 (media 200 + 2 %)",
-            "distancia": -8.2,
+            "distancia": -8.19,
             "regla": "tendencia_a_favor",
             "umbral": 132.2,
             "unidad": "%"
@@ -1308,7 +1308,7 @@
         ],
         "triggers": [
          "Comprar entre 141,12 y 146,88",
-         "Salir si cierra bajo 125,57 (-12,8 %)",
+         "Salir si cierra en o por debajo de 125,57 (-12,8 %)",
          "Tomar beneficios en 180,86 (+25,6 %)"
         ]
        },
@@ -1538,7 +1538,7 @@
         ],
         "triggers": [
          "Comprar entre 98,00 y 102,00",
-         "Salir si cierra bajo 83,50 (-16,5 %)",
+         "Salir si cierra en o por debajo de 83,50 (-16,5 %)",
          "Tomar beneficios en 133,00 (+33,0 %)"
         ]
        },
@@ -1768,7 +1768,7 @@
         ],
         "triggers": [
          "Comprar entre 99,96 y 104,04",
-         "Salir si cierra bajo 88,94 (-12,8 %)",
+         "Salir si cierra en o por debajo de 88,94 (-12,8 %)",
          "Tomar beneficios en 128,11 (+25,6 %)"
         ]
        },
@@ -1998,7 +1998,7 @@
         ],
         "triggers": [
          "Comprar entre 139,16 y 144,84",
-         "Salir si cierra bajo 128,94 (-9,2 %)",
+         "Salir si cierra en o por debajo de 128,94 (-9,2 %)",
          "Tomar beneficios en 168,13 (+18,4 %)"
         ]
        },
@@ -2228,7 +2228,7 @@
         ],
         "triggers": [
          "Comprar entre 138,18 y 143,82",
-         "Salir si cierra bajo 112,52 (-20,2 %)",
+         "Salir si cierra en o por debajo de 112,52 (-20,2 %)",
          "Tomar beneficios en 197,96 (+40,4 %)"
         ]
        },
@@ -2390,7 +2390,7 @@
           {
            "actual": 144.0,
            "condicion": "precio < 132,20 (media 200 + 2 %)",
-           "distancia": -8.2,
+           "distancia": -8.19,
            "regla": "tendencia_a_favor",
            "umbral": 132.2,
            "unidad": "%"
@@ -2511,7 +2511,7 @@
        ],
        "triggers": [
         "Comprar entre 141,12 y 146,88",
-        "Salir si cierra bajo 125,57 (-12,8 %)",
+        "Salir si cierra en o por debajo de 125,57 (-12,8 %)",
         "Tomar beneficios en 180,86 (+25,6 %)"
        ]
       },
@@ -2727,7 +2727,7 @@
        ],
        "triggers": [
         "Comprar entre 98,00 y 102,00",
-        "Salir si cierra bajo 83,50 (-16,5 %)",
+        "Salir si cierra en o por debajo de 83,50 (-16,5 %)",
         "Tomar beneficios en 133,00 (+33,0 %)"
        ]
       },
@@ -2943,7 +2943,7 @@
        ],
        "triggers": [
         "Comprar entre 99,96 y 104,04",
-        "Salir si cierra bajo 88,94 (-12,8 %)",
+        "Salir si cierra en o por debajo de 88,94 (-12,8 %)",
         "Tomar beneficios en 128,11 (+25,6 %)"
        ]
       },
@@ -3159,7 +3159,7 @@
        ],
        "triggers": [
         "Comprar entre 138,18 y 143,82",
-        "Salir si cierra bajo 112,52 (-20,2 %)",
+        "Salir si cierra en o por debajo de 112,52 (-20,2 %)",
         "Tomar beneficios en 197,96 (+40,4 %)"
        ]
       },
@@ -3375,7 +3375,7 @@
        ],
        "triggers": [
         "Comprar entre 139,16 y 144,84",
-        "Salir si cierra bajo 128,94 (-9,2 %)",
+        "Salir si cierra en o por debajo de 128,94 (-9,2 %)",
         "Tomar beneficios en 168,13 (+18,4 %)"
        ]
       },
@@ -3485,7 +3485,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 137,20 y 142,80",
-        "Salir si cierra bajo 127,12 (-9,2 %)",
+        "Salir si cierra en o por debajo de 127,12 (-9,2 %)",
         "Tomar beneficios en 165,76 (+18,4 %)"
        ]
       },
@@ -3595,7 +3595,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 142,10 y 147,90",
-        "Salir si cierra bajo 121,07 (-16,5 %)",
+        "Salir si cierra en o por debajo de 121,07 (-16,5 %)",
         "Tomar beneficios en 192,85 (+33,0 %)"
        ]
       },
@@ -3705,7 +3705,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 143,08 y 148,92",
-        "Salir si cierra bajo 132,57 (-9,2 %)",
+        "Salir si cierra en o por debajo de 132,57 (-9,2 %)",
         "Tomar beneficios en 172,86 (+18,4 %)"
        ]
       },
@@ -3815,7 +3815,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 108,78 y 113,22",
-        "Salir si cierra bajo 100,79 (-9,2 %)",
+        "Salir si cierra en o por debajo de 100,79 (-9,2 %)",
         "Tomar beneficios en 131,42 (+18,4 %)"
        ]
       },
@@ -3925,7 +3925,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 105,84 y 110,16",
-        "Salir si cierra bajo 86,18 (-20,2 %)",
+        "Salir si cierra en o por debajo de 86,18 (-20,2 %)",
         "Tomar beneficios en 151,63 (+40,4 %)"
        ]
       },
@@ -4035,7 +4035,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 142,10 y 147,90",
-        "Salir si cierra bajo 131,66 (-9,2 %)",
+        "Salir si cierra en o por debajo de 131,66 (-9,2 %)",
         "Tomar beneficios en 171,68 (+18,4 %)"
        ]
       },
@@ -4145,7 +4145,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 107,80 y 112,20",
-        "Salir si cierra bajo 91,85 (-16,5 %)",
+        "Salir si cierra en o por debajo de 91,85 (-16,5 %)",
         "Tomar beneficios en 146,30 (+33,0 %)"
        ]
       },
@@ -4255,7 +4255,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 145,04 y 150,96",
-        "Salir si cierra bajo 129,06 (-12,8 %)",
+        "Salir si cierra en o por debajo de 129,06 (-12,8 %)",
         "Tomar beneficios en 185,89 (+25,6 %)"
        ]
       },
@@ -4365,7 +4365,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 110,74 y 115,26",
-        "Salir si cierra bajo 98,54 (-12,8 %)",
+        "Salir si cierra en o por debajo de 98,54 (-12,8 %)",
         "Tomar beneficios en 141,93 (+25,6 %)"
        ]
       },
@@ -4475,7 +4475,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 101,92 y 106,08",
-        "Salir si cierra bajo 82,99 (-20,2 %)",
+        "Salir si cierra en o por debajo de 82,99 (-20,2 %)",
         "Tomar beneficios en 146,02 (+40,4 %)"
        ]
       },
@@ -4585,7 +4585,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 143,08 y 148,92",
-        "Salir si cierra bajo 132,57 (-9,2 %)",
+        "Salir si cierra en o por debajo de 132,57 (-9,2 %)",
         "Tomar beneficios en 172,86 (+18,4 %)"
        ]
       },
@@ -4695,7 +4695,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 143,08 y 148,92",
-        "Salir si cierra bajo 116,51 (-20,2 %)",
+        "Salir si cierra en o por debajo de 116,51 (-20,2 %)",
         "Tomar beneficios en 204,98 (+40,4 %)"
        ]
       },
@@ -6034,7 +6034,7 @@
         ],
         "triggers": [
          "Comprar entre 138,18 y 143,82",
-         "Salir si cierra bajo 117,73 (-16,5 %)",
+         "Salir si cierra en o por debajo de 117,73 (-16,5 %)",
          "Tomar beneficios en 187,53 (+33,0 %)"
         ]
        },
@@ -6143,7 +6143,7 @@
            {
             "actual": 144.0,
             "condicion": "precio < 132,20 (media 200 + 2 %)",
-            "distancia": -8.2,
+            "distancia": -8.19,
             "regla": "tendencia_a_favor",
             "umbral": 132.2,
             "unidad": "%"
@@ -6264,7 +6264,7 @@
         ],
         "triggers": [
          "Comprar entre 141,12 y 146,88",
-         "Salir si cierra bajo 125,57 (-12,8 %)",
+         "Salir si cierra en o por debajo de 125,57 (-12,8 %)",
          "Tomar beneficios en 180,86 (+25,6 %)"
         ]
        },
@@ -6494,7 +6494,7 @@
         ],
         "triggers": [
          "Comprar entre 98,00 y 102,00",
-         "Salir si cierra bajo 90,80 (-9,2 %)",
+         "Salir si cierra en o por debajo de 90,80 (-9,2 %)",
          "Tomar beneficios en 118,40 (+18,4 %)"
         ]
        },
@@ -6724,7 +6724,7 @@
         ],
         "triggers": [
          "Comprar entre 98,00 y 102,00",
-         "Salir si cierra bajo 83,50 (-16,5 %)",
+         "Salir si cierra en o por debajo de 83,50 (-16,5 %)",
          "Tomar beneficios en 133,00 (+33,0 %)"
         ]
        },
@@ -6833,7 +6833,7 @@
            {
             "actual": 144.0,
             "condicion": "precio < 132,20 (media 200 + 2 %)",
-            "distancia": -8.2,
+            "distancia": -8.19,
             "regla": "tendencia_a_favor",
             "umbral": 132.2,
             "unidad": "%"
@@ -6954,7 +6954,7 @@
         ],
         "triggers": [
          "Comprar entre 141,12 y 146,88",
-         "Salir si cierra bajo 130,75 (-9,2 %)",
+         "Salir si cierra en o por debajo de 130,75 (-9,2 %)",
          "Tomar beneficios en 170,50 (+18,4 %)"
         ]
        },
@@ -7238,7 +7238,7 @@
        ],
        "triggers": [
         "Comprar entre 138,18 y 143,82",
-        "Salir si cierra bajo 117,73 (-16,5 %)",
+        "Salir si cierra en o por debajo de 117,73 (-16,5 %)",
         "Tomar beneficios en 187,53 (+33,0 %)"
        ]
       },
@@ -7333,7 +7333,7 @@
           {
            "actual": 144.0,
            "condicion": "precio < 132,20 (media 200 + 2 %)",
-           "distancia": -8.2,
+           "distancia": -8.19,
            "regla": "tendencia_a_favor",
            "umbral": 132.2,
            "unidad": "%"
@@ -7454,7 +7454,7 @@
        ],
        "triggers": [
         "Comprar entre 141,12 y 146,88",
-        "Salir si cierra bajo 125,57 (-12,8 %)",
+        "Salir si cierra en o por debajo de 125,57 (-12,8 %)",
         "Tomar beneficios en 180,86 (+25,6 %)"
        ]
       },
@@ -7670,7 +7670,7 @@
        ],
        "triggers": [
         "Comprar entre 98,00 y 102,00",
-        "Salir si cierra bajo 90,80 (-9,2 %)",
+        "Salir si cierra en o por debajo de 90,80 (-9,2 %)",
         "Tomar beneficios en 118,40 (+18,4 %)"
        ]
       },
@@ -7886,7 +7886,7 @@
        ],
        "triggers": [
         "Comprar entre 98,00 y 102,00",
-        "Salir si cierra bajo 83,50 (-16,5 %)",
+        "Salir si cierra en o por debajo de 83,50 (-16,5 %)",
         "Tomar beneficios en 133,00 (+33,0 %)"
        ]
       },
@@ -7981,7 +7981,7 @@
           {
            "actual": 144.0,
            "condicion": "precio < 132,20 (media 200 + 2 %)",
-           "distancia": -8.2,
+           "distancia": -8.19,
            "regla": "tendencia_a_favor",
            "umbral": 132.2,
            "unidad": "%"
@@ -8102,7 +8102,7 @@
        ],
        "triggers": [
         "Comprar entre 141,12 y 146,88",
-        "Salir si cierra bajo 130,75 (-9,2 %)",
+        "Salir si cierra en o por debajo de 130,75 (-9,2 %)",
         "Tomar beneficios en 170,50 (+18,4 %)"
        ]
       },
@@ -8212,7 +8212,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 98,98 y 103,02",
-        "Salir si cierra bajo 84,33 (-16,5 %)",
+        "Salir si cierra en o por debajo de 84,33 (-16,5 %)",
         "Tomar beneficios en 134,33 (+33,0 %)"
        ]
       },
@@ -8322,7 +8322,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 99,96 y 104,04",
-        "Salir si cierra bajo 88,94 (-12,8 %)",
+        "Salir si cierra en o por debajo de 88,94 (-12,8 %)",
         "Tomar beneficios en 128,11 (+25,6 %)"
        ]
       },
@@ -8432,7 +8432,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 139,16 y 144,84",
-        "Salir si cierra bajo 118,57 (-16,5 %)",
+        "Salir si cierra en o por debajo de 118,57 (-16,5 %)",
         "Tomar beneficios en 188,86 (+33,0 %)"
        ]
       },
@@ -8542,7 +8542,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 138,18 y 143,82",
-        "Salir si cierra bajo 117,73 (-16,5 %)",
+        "Salir si cierra en o por debajo de 117,73 (-16,5 %)",
         "Tomar beneficios en 187,53 (+33,0 %)"
        ]
       },
@@ -8652,7 +8652,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 137,20 y 142,80",
-        "Salir si cierra bajo 116,90 (-16,5 %)",
+        "Salir si cierra en o por debajo de 116,90 (-16,5 %)",
         "Tomar beneficios en 186,20 (+33,0 %)"
        ]
       },
@@ -8762,7 +8762,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 139,16 y 144,84",
-        "Salir si cierra bajo 128,94 (-9,2 %)",
+        "Salir si cierra en o por debajo de 128,94 (-9,2 %)",
         "Tomar beneficios en 168,13 (+18,4 %)"
        ]
       },
@@ -8872,7 +8872,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 114,66 y 119,34",
-        "Salir si cierra bajo 97,69 (-16,5 %)",
+        "Salir si cierra en o por debajo de 97,69 (-16,5 %)",
         "Tomar beneficios en 155,61 (+33,0 %)"
        ]
       },
@@ -8982,7 +8982,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 138,18 y 143,82",
-        "Salir si cierra bajo 112,52 (-20,2 %)",
+        "Salir si cierra en o por debajo de 112,52 (-20,2 %)",
         "Tomar beneficios en 197,96 (+40,4 %)"
        ]
       },
@@ -9092,7 +9092,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 146,02 y 151,98",
-        "Salir si cierra bajo 129,93 (-12,8 %)",
+        "Salir si cierra en o por debajo de 129,93 (-12,8 %)",
         "Tomar beneficios en 187,14 (+25,6 %)"
        ]
       },
@@ -9202,7 +9202,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 137,20 y 142,80",
-        "Salir si cierra bajo 127,12 (-9,2 %)",
+        "Salir si cierra en o por debajo de 127,12 (-9,2 %)",
         "Tomar beneficios en 165,76 (+18,4 %)"
        ]
       },
@@ -9312,7 +9312,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 98,00 y 102,00",
-        "Salir si cierra bajo 90,80 (-9,2 %)",
+        "Salir si cierra en o por debajo de 90,80 (-9,2 %)",
         "Tomar beneficios en 118,40 (+18,4 %)"
        ]
       },
@@ -9422,7 +9422,7 @@
        "traza_en_ficha": true,
        "triggers": [
         "Comprar entre 142,10 y 147,90",
-        "Salir si cierra bajo 121,07 (-16,5 %)",
+        "Salir si cierra en o por debajo de 121,07 (-16,5 %)",
         "Tomar beneficios en 192,85 (+33,0 %)"
        ]
       },

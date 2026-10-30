@@ -1032,7 +1032,7 @@
            {
             "actual": 126.0,
             "condicion": "precio ≥ 141,38 (media 200 + 2 %)",
-            "distancia": 12.2,
+            "distancia": 12.21,
             "regla": "tendencia_a_favor",
             "umbral": 141.38,
             "unidad": "%"
@@ -3092,7 +3092,7 @@
            {
             "actual": 126.0,
             "condicion": "precio ≥ 141,38 (media 200 + 2 %)",
-            "distancia": 12.2,
+            "distancia": 12.21,
             "regla": "tendencia_a_favor",
             "umbral": 141.38,
             "unidad": "%"

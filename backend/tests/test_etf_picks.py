@@ -14,7 +14,9 @@ def etf(symbol="VOO", expense_ratio=0.0003, aum=5e11, name="Vanguard S&P 500"):
 
 
 def precio(above=True):
-    return {"last": 100.0, "sma200": 90.0, "above_sma200": above}
+    # Coherente con sus cifras: desde la revisión 5 la tendencia sale del precio
+    # y la media (con la banda del motor), no del booleano.
+    return {"last": 100.0, "sma200": 90.0 if above else 110.0, "above_sma200": above}
 
 
 def test_el_coste_manda_porque_es_lo_unico_garantizado():
@@ -44,6 +46,14 @@ def test_un_etf_diminuto_se_evita_aunque_sea_barato():
 def test_barato_y_grande_pero_en_tendencia_bajista_se_vigila():
     r = evaluar_etf(etf(), precio(above=False))
     assert r["action"] == "vigilar"
+
+
+def test_dentro_de_la_banda_no_se_compra_como_las_acciones():
+    # Revisión 5: con «precio > media», un ETF un 0,5 % sobre su media se compraba
+    # mientras `decide` lo dejaba en «vigilar» con el mismo precio.
+    r = evaluar_etf(etf(), {"last": 100.5, "sma200": 100.0, "above_sma200": True})
+    assert r["action"] == "vigilar"
+    assert any("dentro de la banda" in x for x in r["reasons"])
 
 
 def test_barato_grande_y_en_tendencia_se_compra():

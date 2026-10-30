@@ -39,8 +39,12 @@ describe('Hoy sin candidatas', () => {
     }))
     const { container } = render(<MemoryRouter><TodayPage /></MemoryRouter>)
     fireEvent.click(await screen.findByRole('button', { name: /^Todas las que califican \(0\)/ }))
-    await screen.findByText(/Ninguna empresa cumple a la vez/)
+    await screen.findByText(/Ninguna empresa está hoy en «Comprar»/)
     expect(container.textContent).toContain('cerrar por encima de su media de 200 sesiones con el margen de su banda')
+    // Revisión 5: una «Vigilar» aplazada por resultados cumple las dos y no
+    // espera ningún precio; el texto no puede decir lo contrario.
+    expect(container.textContent).toContain('o se aplaza (resultados en los próximos días, precio viejo)')
+    expect(container.textContent).not.toContain('dice a qué precio')
     expect(container.textContent).not.toContain('cotizar sobre su media')
   })
 })
