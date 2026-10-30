@@ -20,7 +20,7 @@ from app.analysis.fundamentals import (
     total_debt,
 )
 from app.analysis.health import health_snapshot
-from app.formato import fmt_num, fmt_pct, plural
+from app.formato import fmt_num, fmt_pct, fmt_precio, plural
 
 
 def _trend(values: list[float | None]) -> str | None:
@@ -400,8 +400,9 @@ def catalysts_section(
                 "type": "Resultados",
                 "when": event.get("date"),
                 "detail": (
+                    # El BPA con los decimales de un precio: 0,0042 salía «0,00» (revisión 5).
                     f"Publicación de resultados"
-                    + (f" · BPA estimado {fmt_num(event['eps_estimate'])}" if event.get("eps_estimate") is not None else "")
+                    + (f" · BPA estimado {fmt_precio(event['eps_estimate'])}" if event.get("eps_estimate") is not None else "")
                 ),
                 "source": "calendario",
             }

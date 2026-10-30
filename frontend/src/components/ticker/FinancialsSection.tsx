@@ -1,17 +1,21 @@
 import { api } from '../../api/client'
 import type { Financials, PeersResponse } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtNum, fmtPct } from '../../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../../lib/formato'
 import { Ausencia, ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
 import { COLUMNA_FIJA } from '../../lib/tablas'
 import { MarcoTabla } from '../MarcoTabla'
 
-const METRIC_ROWS: { key: string; label: string; kind: 'big' | 'ratio' | 'pct' }[] = [
+// «precio»: un valor por acción, con los decimales de un precio. El BPA de
+// 0,0042 salía «0,00» aquí y «0,0042» en el replay (revisión 5).
+type Kind = 'big' | 'ratio' | 'pct' | 'precio'
+
+const METRIC_ROWS: { key: string; label: string; kind: Kind }[] = [
   { key: 'revenue', label: 'Ingresos', kind: 'big' },
   { key: 'net_income', label: 'Beneficio neto', kind: 'big' },
-  { key: 'eps_diluted', label: 'BPA diluido', kind: 'ratio' },
+  { key: 'eps_diluted', label: 'BPA diluido', kind: 'precio' },
   { key: 'fcf', label: 'Free cash flow', kind: 'big' },
   { key: 'gross_margin', label: 'Margen bruto', kind: 'pct' },
   { key: 'operating_margin', label: 'Margen operativo', kind: 'pct' },
@@ -27,9 +31,10 @@ const PCT_KEYS = new Set([
   'roe', 'operating_margin', 'net_margin', 'dividend_yield', 'revenue_growth_5y',
 ])
 
-function fmtCell(value: number | null | undefined, kind: 'big' | 'ratio' | 'pct') {
+function fmtCell(value: number | null | undefined, kind: Kind) {
   if (kind === 'pct') return fmtPct(value)
   if (kind === 'big') return fmtCompacto(value)
+  if (kind === 'precio') return fmtPrecio(value)
   return fmtNum(value)
 }
 

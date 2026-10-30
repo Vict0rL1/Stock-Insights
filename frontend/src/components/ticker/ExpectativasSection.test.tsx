@@ -47,6 +47,21 @@ describe('resultados frente a expectativas', () => {
     expect(screen.queryByText(/Cargando/)).toBeNull()
   })
 
+  it('un BPA de céntimos se escribe como un precio, no «0,00»', async () => {
+    // Revisión 5: una tercera copia del formateador de métricas escribía el BPA
+    // esperado de 0,0042 y el real de 0,0038 como «0,00 0,00».
+    const evento = structuredClone(ACME['/api/expectativas/eventos/1'].json) as {
+      por_fuente: Record<string, { metrica: string; esperado: { valor: number | null }; real: number | null }[]>
+    }
+    const bpa = evento.por_fuente.consenso.find((c) => c.metrica === 'eps_diluted')!
+    bpa.esperado.valor = 0.0042
+    bpa.real = 0.0038
+    servir({ ...ACME, '/api/expectativas/eventos/1': { status: 200, json: evento } })
+    render(<ExpectativasSection symbol="ACME" />)
+    expect(await screen.findByText('0,0042')).toBeInTheDocument()
+    expect(screen.getAllByText('0,0038').length).toBeGreaterThan(0)
+  })
+
   it('tras «Capturar expectativas» la lectura sigue a la vista mientras recarga', async () => {
     // Revisión del 2.1: la recarga pasaba por «cargando» y la lectura, la
     // lista y la calibración desaparecían; la página saltaba.

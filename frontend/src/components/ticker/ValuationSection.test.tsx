@@ -47,3 +47,27 @@ describe('DCF sin crecimiento histórico', () => {
     expect(screen.queryByText(/Sin crecimiento histórico/)).toBeNull()
   })
 })
+
+describe('el resultado del DCF', () => {
+  it('escribe los valores por acción como precios y la matriz con tres cifras significativas', async () => {
+    // Revisión 4: con fmtNum, el valor por acción de 0,004 salía «0,00» y la
+    // matriz era «0» en todas las celdas. Revisión 5: con los decimales de un
+    // precio la matriz decía «170,63», una precisión que el método no tiene.
+    const resultado = {
+      symbol: 'ACME', current_price: 0.003, computed_by: 'app',
+      scenarios: Object.fromEntries(['bear', 'base', 'bull'].map((n) => [n, {
+        value_per_share: 0.004, equity_value: 1e6, terminal_weight: 0.6, enterprise_value: 1e6,
+      }])),
+      sensitivity: { growth_rates: [0.06, 0.08], rows: [{ discount_rate: 0.09, values: [170.63, 0.05328] }] },
+    }
+    vi.stubGlobal('fetch', vi.fn(async (_e: RequestInfo | URL, init?: RequestInit) =>
+      new Response(JSON.stringify(init?.method === 'POST' ? resultado : DEFAULTS), { status: 200 })))
+    render(<ValuationSection symbol="ACME" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Calcular rango de valor' }))
+    expect(await screen.findByText('171')).toBeInTheDocument()
+    expect(screen.getByText('0,0533')).toBeInTheDocument()
+    expect(screen.queryByText('170,63')).toBeNull()
+    expect(screen.getAllByText('0,004')).toHaveLength(3)
+  })
+})
+

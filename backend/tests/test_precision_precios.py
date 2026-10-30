@@ -383,3 +383,11 @@ def test_la_distancia_se_mide_contra_el_umbral_escrito():
     c = next(c for c in comprar["condiciones"] if c["regla"] == "tendencia_a_favor")
     assert c["umbral"] == 102.01 and c["distancia"] == 0.01
 
+
+
+def test_el_bpa_estimado_del_calendario_lleva_los_decimales_de_un_precio():
+    # Revisión 5: «Publicación de resultados · BPA estimado 0,00» con 0,0042.
+    from app.analysis.deep_dive import catalysts_section
+
+    c = catalysts_section([{"date": "2026-10-30", "eps_estimate": 0.0042}], [], [])
+    assert c[0]["detail"] == "Publicación de resultados · BPA estimado 0,0042"

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtPct, fmtPrecio, fmtValorRedondo, valorDeCampo } from '../../lib/formato'
+import { fmtCifras, fmtCompacto, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
@@ -294,8 +294,10 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                         {row.values.map((v, i) => (
                           <td key={i} className="p-1 text-right text-slate-700">
                             {/* Sin decimales, cualquier acción por debajo de 0,50 salía
-                                «0» en todas las celdas (revisión 4). */}
-                            {v !== null ? fmtValorRedondo(v) : '·'}
+                                «0» en todas las celdas (revisión 4); con los de un precio,
+                                «170,63», una precisión que el método no tiene y que no
+                                cabía a 390 px (revisión 5). Tres cifras significativas. */}
+                            {v !== null ? fmtCifras(v) : '·'}
                           </td>
                         ))}
                       </tr>

@@ -15,7 +15,9 @@ import type { ReactNode } from 'react'
  * columna fija (`COLUMNA_FIJA`, `sticky z-10 bg-white`), que se pintan después:
  * en los fundamentales, el comparador de ETFs y la matriz de correlaciones
  * faltaba todo el lado izquierdo (revisión 4). `isolate` deja su `z-20` dentro
- * del marco: no se pinta sobre la cabecera de la página al desplazarla.
+ * del marco: no se pinta sobre la cabecera de la página al desplazarla. Es un
+ * `outline` y no un `ring` (box-shadow): con colores forzados (alto contraste
+ * de Windows) la sombra desaparece y no quedaba ningún foco (revisión 5).
  */
 export function MarcoTabla({
   etiqueta,
@@ -38,7 +40,7 @@ export function MarcoTabla({
       </div>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-20 hidden rounded-[inherit] ring-2 ring-inset ring-sky-500 peer-focus-visible:block"
+        className="pointer-events-none absolute inset-0 z-20 hidden rounded-[inherit] outline outline-2 -outline-offset-2 outline-sky-500 peer-focus-visible:block"
       />
     </div>
   )

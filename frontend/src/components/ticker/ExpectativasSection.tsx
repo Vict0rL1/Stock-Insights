@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { CalibracionExpectativas, LecturaEvento } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { TABLA_COMPACTA } from '../../lib/tablas'
@@ -32,11 +33,11 @@ const CLASIFICACION: Record<string, string> = {
   desconocido: 'bg-amber-100 text-amber-800',
 }
 
+// La misma forma que «Qué cambió» y el replay (`fmtMetrica`): con su copia
+// propia, el BPA esperado de 0,0042 y el real de 0,0038 salían «0,00 0,00» con
+// una sorpresa del −10 % entre ellos (revisión 5).
 function cifra(v: number | null | undefined, unidad: string | null): string {
-  if (v === null || v === undefined) return '—'
-  if (unidad === 'fracción') return fmtPct(v, 1)
-  if (unidad === 'USD') return fmtCompacto(v)
-  return fmtNum(v, 2)
+  return fmtMetrica(v, unidad, { ausente: '—' })
 }
 
 function Evento({ id, alCambiar }: { id: number; alCambiar: () => void }) {

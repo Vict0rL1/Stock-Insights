@@ -207,8 +207,9 @@ export function TickerPage() {
                             </span>
                           </span>
                           <span className={`text-lg font-medium tabular-nums ${colorCambio}`}>
-                            {q.change !== null && q.change > 0 ? '+' : ''}
-                            {fmtNum(q.change)} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
+                            {/* Con los decimales de un precio: una acción de 0,003 que
+                                sube 0,0004 salía «+0,00» (revisión 5). */}
+                            {fmtPrecio(q.change, undefined, { signo: true })} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
                           </span>
                         </>
                       )

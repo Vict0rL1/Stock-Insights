@@ -136,6 +136,16 @@ export function fmtValorRedondo(valor: Num, moneda?: string | null): string {
   return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
 }
 
+/** Un valor calculado con supuestos, con `cifras` cifras significativas y sin
+ *  decimales desde las centenas: 170,63 → «171»; 0,05328 → «0,0533». Gemelo de
+ *  `fmt_cifras` (la matriz de sensibilidad del DCF; revisión 5). */
+export function fmtCifras(valor: Num, cifras = 3): string {
+  if (!finito(valor)) return GUION
+  if (valor === 0) return fmtNum(0, 0)
+  const exponente = Number(Math.abs(valor).toExponential().split('e')[1])
+  return fmtNum(valor, Math.max(0, cifras - 1 - exponente), { ceros: false })
+}
+
 /**
  * El valor de un `<input type="number">`: el navegador lo exige con punto
  * decimal y sin miles («12.5»), sea cual sea el idioma. No es texto para leer;

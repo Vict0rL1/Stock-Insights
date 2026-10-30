@@ -15,4 +15,9 @@ describe('fmtMetrica', () => {
     expect(fmtMetrica(null, 'USD')).toBe('desconocido')
     expect(fmtMetrica(1.234)).toBe('1,23')
   })
+
+  it('lo ausente se dice con el texto que pida cada tabla', () => {
+    expect(fmtMetrica(null, 'USD/acción', { ausente: '—' })).toBe('—')
+    expect(fmtMetrica(undefined)).toBe('desconocido')
+  })
 })

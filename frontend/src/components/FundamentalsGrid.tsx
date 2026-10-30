@@ -1,9 +1,11 @@
 import type { Fundamentals } from '../api/types'
-import { fmtCompacto, fmtNum, fmtPct } from '../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import type { CargaConReintento } from '../lib/useDato'
 import { BloqueDatos, EstadoDato } from './EstadoDato'
 
-type Kind = 'ratio' | 'pct' | 'big'
+// «precio»: un precio o un nivel, con los decimales de un precio. El máximo de
+// 52 semanas de una acción de céntimos salía «0,00» (revisión 5).
+type Kind = 'ratio' | 'pct' | 'big' | 'precio'
 
 const ROWS: { key: string; label: string; kind: Kind }[] = [
   { key: 'market_cap', label: 'Capitalización', kind: 'big' },
@@ -20,13 +22,14 @@ const ROWS: { key: string; label: string; kind: Kind }[] = [
   { key: 'eps_growth_5y', label: 'Crec. BPA 5A (anualizado)', kind: 'pct' },
   { key: 'revenue_growth_5y', label: 'Crec. ingresos 5A (anualizado)', kind: 'pct' },
   { key: 'beta', label: 'Beta', kind: 'ratio' },
-  { key: 'week52_high', label: 'Máximo 52 semanas', kind: 'ratio' },
-  { key: 'week52_low', label: 'Mínimo 52 semanas', kind: 'ratio' },
+  { key: 'week52_high', label: 'Máximo 52 semanas', kind: 'precio' },
+  { key: 'week52_low', label: 'Mínimo 52 semanas', kind: 'precio' },
 ]
 
 function fmt(value: number | null, kind: Kind): string {
   if (kind === 'pct') return fmtPct(value)
   if (kind === 'big') return fmtCompacto(value)
+  if (kind === 'precio') return fmtPrecio(value)
   return fmtNum(value)
 }
 

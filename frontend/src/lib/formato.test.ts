@@ -16,6 +16,7 @@ const FUNCIONES: Record<string, (args: unknown[], op: Record<string, unknown>) =
   fmt_dinero: ([v, m, d], op) => formato.fmtDinero(cifra(v), m as string | null, d as number | undefined, op),
   fmt_precio: ([v, m], op) => formato.fmtPrecio(cifra(v), m as string | undefined, op),
   fmt_valor_redondo: ([v], op) => formato.fmtValorRedondo(cifra(v), op.moneda as string | undefined),
+  fmt_cifras: ([v], op) => formato.fmtCifras(cifra(v), op.cifras as number | undefined),
   fmt_compacto: ([v, m]) => formato.fmtCompacto(cifra(v), m as string | undefined),
   fmt_fecha: ([v], op) => formato.fmtFecha(v as string | null, op),
   plural: ([n, s, p]) => formato.plural(n as number, s as string, p as string),

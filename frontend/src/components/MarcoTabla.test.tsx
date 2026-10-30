@@ -42,7 +42,8 @@ describe('MarcoTabla', () => {
     expect(marco.className).toMatch(/(^|\s)peer(\s|$)/)
     const anillo = marco.nextElementSibling as HTMLElement
     expect(anillo.getAttribute('aria-hidden')).toBe('true')
-    for (const clase of ['absolute', 'inset-0', 'z-20', 'ring-inset', 'pointer-events-none', 'peer-focus-visible:block']) {
+    // Un outline, no un ring: con colores forzados el box-shadow desaparece (revisión 5).
+    for (const clase of ['absolute', 'inset-0', 'z-20', 'outline', '-outline-offset-2', 'pointer-events-none', 'peer-focus-visible:block']) {
       expect(anillo.className.split(/\s+/)).toContain(clase)
     }
     expect(marco.parentElement?.className.split(/\s+/)).toContain('isolate')

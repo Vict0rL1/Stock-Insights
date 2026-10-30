@@ -153,6 +153,22 @@ def fmt_valor_redondo(valor, moneda: str | None = None) -> str:
     return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
 
 
+def fmt_cifras(valor, cifras: int = 3) -> str:
+    """Un valor calculado con supuestos, con `cifras` cifras significativas y sin
+    decimales desde las centenas: 170,63 → «171»; 17,063 → «17,1»; 0,05328 →
+    «0,0533»; 1706,3 → «1.706». Para la matriz de sensibilidad del DCF, que
+    llega sin redondear: con dos decimales «170,63» fingía una precisión que el
+    método no tiene, y con cero una acción de 0,40 era «0» en todas las celdas
+    (revisión 5)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    if valor == 0:
+        return fmt_num(0, 0)
+    exponente = Decimal(repr(abs(valor))).adjusted()
+    return fmt_num(valor, max(0, cifras - 1 - exponente), ceros=False)
+
+
 def _corto(valor: float, max_decimales: int) -> str:
     """Hasta `max_decimales`, sin ceros a la derecha: 400,0 → «400»; 1,25 → «1,25»."""
     return fmt_num(valor, max_decimales, ceros=False)

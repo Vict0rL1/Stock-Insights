@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
-import { fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import { useDato } from '../lib/useDato'
 import type { SectorEntry } from '../api/types'
 
@@ -196,7 +196,7 @@ export function DashboardPage() {
                     </Link>
                     <span className="text-xs text-slate-500">
                       {fmtFecha(ev.date)}
-                      {ev.eps_estimate !== null ? ` · BPA est. ${fmtNum(ev.eps_estimate)}` : ''}
+                      {ev.eps_estimate !== null ? ` · BPA est. ${fmtPrecio(ev.eps_estimate)}` : ''}
                     </span>
                   </li>
                 ))}
