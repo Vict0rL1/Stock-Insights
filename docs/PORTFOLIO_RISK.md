@@ -83,7 +83,10 @@ pero el estado es `viejo` y la nota de Hoy dice su fecha. El veredicto de la fic
 fecha no pide «Anota tu efectivo», y con un tipo viejo lo advierte. Las posiciones del capital, igual:
 las abiertas en esa fecha (también las cerradas después), al último cierre conocido si la
 cotización es posterior (o, al reconstruir el pasado, si hoy no hay cotización; en vivo,
-sin cotización la posición queda fuera y nombrada), y convertidas con el mismo tipo que el efectivo. De cada posición, su última
+sin cotización la posición queda fuera y nombrada), y convertidas con el mismo tipo que el efectivo.
+Con alguna posición abierta sin valorar, el efectivo anotado **no se suma** (como en Hoy, base
+`invertido_parcial`): el veredicto es `INDETERMINADO` y nombra las posiciones que faltan, y el
+riesgo, si ninguna se pudo valorar, es desconocido y no «sin cartera». De cada posición, su última
 lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
 anterior) (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».

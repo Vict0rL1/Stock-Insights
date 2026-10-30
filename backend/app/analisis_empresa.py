@@ -617,6 +617,13 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
     if ctx is None:
         return {"estado": ERROR, "motivo": "no se pudo leer la cartera", "huella": None}
     if not any(p.get("peso") for p in ctx["posiciones"]):
+        fuera = [p for p in ctx["posiciones"] if p["symbol"] != symbol]
+        if fuera:
+            # Hay posiciones, pero ninguna valorada: el riesgo es desconocido, no
+            # «no hay cartera» (revisión 5).
+            nombres = "; ".join(f"{p['symbol']}, {p.get('motivo')}" for p in fuera[:5])
+            return {"estado": DESCONOCIDO, "en_cartera": False, "huella": "desconocido",
+                    "motivo": f"ninguna posición abierta se pudo valorar ({nombres})"}
         return {"estado": "sin_cartera", "huella": None,
                 "nota": "No hay posiciones valoradas: no hay riesgo de cartera que medir."}
 

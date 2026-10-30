@@ -28,7 +28,7 @@ from app.analysis import fx, portfolio_risk
 from app.analysis.rule_backtest import costes_por_lado
 from app.analysis.sizing import MAX_POR_POSICION_PCT, dimensionar
 from app.db.models import CashBalance, DecisionSnapshot
-from app.formato import fmt_fecha
+from app.formato import fmt_fecha, plural
 
 
 def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]:
@@ -197,6 +197,20 @@ def evaluar(
     symbol = analisis["symbol"]
     decision = analisis.get("decision") or {}
     efectivo = efectivo_usd(session, ctx, ahora)
+    # Con posiciones abiertas sin valorar (sin precio, sin moneda o sin tipo),
+    # el efectivo no se suma, como en Hoy (`signals._cartera_actual`, base
+    # «invertido_parcial»): sumarlo a una parte de la cartera inventa una
+    # liquidez que no existe y afloja los topes. Con una posición de 100.000 USD
+    # sin cotización y 1.000 de efectivo, la ficha decía «Hay efectivo (100 %)»
+    # y no nombraba la posición (revisión 5).
+    fuera = [x for x in ctx.get("sin_peso") or [] if x["symbol"] != symbol]
+    parcial = bool(fuera) and efectivo["usd"] is not None
+    if parcial:
+        nombres = "; ".join(f"{x['symbol']}, {x['motivo']}" for x in fuera[:5])
+        efectivo = {**efectivo, "usd": None, "estado": "desconocido", "motivo": (
+            f"el efectivo anotado no se suma: {len(fuera)} "
+            f"{plural(len(fuera), 'posición abierta no se pudo valorar', 'posiciones abiertas no se pudieron valorar')} "
+            f"({nombres}), y sumarlo a una parte de la cartera inventaría una liquidez que no existe")}
     invertido = ctx.get("total_usd") or 0.0
     capital = invertido + (efectivo["usd"] or 0.0)
 
@@ -230,7 +244,7 @@ def evaluar(
                       "peso_pct": (p["peso_capital"] if efectivo["usd"] is not None else p["peso"]) * 100,
                       "vol_anual_pct": _pct((por_contrib.get(p["symbol"]) or {}).get("volatilidad"))}
                      for p in posiciones],
-            base_cartera="capital" if efectivo["usd"] is not None else "invertido",
+            base_cartera="capital" if efectivo["usd"] is not None else "invertido_parcial" if parcial else "invertido",
         )
         tamano = (sizing["pesos"].get(symbol) or 0.0) / 100
 

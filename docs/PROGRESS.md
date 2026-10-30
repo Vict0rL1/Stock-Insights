@@ -714,13 +714,13 @@ README y `.env.example` dicen que Vite necesita `server.allowedHosts` para un no
 matriz del DCF con `fmt_cifras` (gemelo nuevo, tres cifras significativas); el anillo de
 `MarcoTabla` como outline (con colores forzados el ring desaparecía).
 
-**Pendiente de Victor (alta).** Con una posición abierta sin valorar (sin cotización en vivo, o
-con su tipo de cambio rechazado), la ficha suma todo el efectivo a la parte valorada: con XYZ
-(~100.000 USD) sin precio y 1.000 de efectivo, «Hay efectivo (100 %)… no hace falta vender nada»
-y el riesgo «sin cartera». Hoy no lo hace desde M3. El arreglo (no sumar el efectivo, veredicto
-INDETERMINADO que nombra las posiciones, riesgo desconocido) está escrito y probado, pero cambia el
-golden de `analisis` (caso `fx_invertido`: el efectivo pasa de `valido` a `desconocido`), así que
-espera su visto bueno para regenerarlo.
+**El efectivo con posiciones sin valorar (alta, con el visto bueno de Victor al golden).** Con
+una posición abierta sin valorar (sin cotización en vivo, o con su tipo de cambio rechazado), la
+ficha sumaba todo el efectivo a la parte valorada: con XYZ (~100.000 USD) sin precio y 1.000 de
+efectivo, «Hay efectivo (100 %)… no hace falta vender nada» y el riesgo «sin cartera». Hoy no lo
+hacía desde M3. Ahora no se suma (base `invertido_parcial`), el veredicto es INDETERMINADO y nombra
+las posiciones, y el riesgo es desconocido. El golden de `analisis` cambia solo en `fx_invertido`
+(COMPRAR_CON_EFECTIVO → INDETERMINADO), regenerado con su visto bueno.
 
 ## Informe del repaso de seguridad (0.9)
 
@@ -741,8 +741,8 @@ espera su visto bueno para regenerarlo.
 Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
 arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
-`2536bc3`…`f8a7a7d`, salvo el efectivo con posiciones sin valorar, que cambia el golden). Lo
-siguiente es 2.2 (`AvisoAgrupado`).
+`2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
+`analisis` con el visto bueno de Victor). Lo siguiente es 2.2 (`AvisoAgrupado`).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
 cambio (`fx.tipo_desde_observaciones` mide la frescura con `date.today()`); las bandas de FX cerca
@@ -756,6 +756,5 @@ viejo sin borrarlo (un PATCH que conserve `created_at`; hoy rehacerlo lo saca de
 reconstrucciones anteriores); volver a ejecutar el backtest de reglas, porque los guardados sin
 `banda_tendencia_pct` entraron con «precio > media» y siguen dando «calibrada» (¿invalidarlos, como
 los anteriores al RC1?); y, si se quiere la cifra de la banda en el estado vacío de Hoy, servirla
-en `thresholds` (cambia el golden de `hoy`). De la quinta: el arreglo del efectivo con posiciones
-sin valorar (golden de `analisis`); los ETF ahora con la banda del motor (antes «precio > media»);
+en `thresholds` (cambia el golden de `hoy`). De la quinta: los ETF ahora con la banda del motor (antes «precio > media»);
 y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra).

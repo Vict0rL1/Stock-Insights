@@ -402,6 +402,29 @@ def test_en_vivo_sin_cotizacion_la_posicion_queda_fuera_y_no_entra_con_un_cierre
     assert xyz["peso"] is None and "sin precio" in xyz["motivo"]
 
 
+def test_con_una_posicion_sin_valorar_la_ficha_no_suma_el_efectivo_ni_calla(session_factory):
+    # Revisión 5: desde que en vivo la posición sin cotización queda fuera, la
+    # ficha sumaba los 1.000 USD de efectivo a una cartera vacía: «Hay efectivo
+    # (100,0 %) … no hace falta vender nada», riesgo «sin_cartera», y XYZ (unos
+    # 100.000 USD) no salía en ningún sitio. Hoy ya no lo suma desde M3.
+    from app import analisis_empresa
+    from app.analysis.coste_de_oportunidad import COMPRAR_CON_EFECTIVO, INDETERMINADO
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    assert a["decision"]["action"] == "comprar"
+    veredicto = a["coste_oportunidad"]["veredicto"]
+    assert veredicto["accion"] != COMPRAR_CON_EFECTIVO
+    assert veredicto["accion"] == INDETERMINADO and "XYZ" in veredicto["motivo"]
+    assert a["riesgo"]["estado"] == "desconocido" and "XYZ" in a["riesgo"]["motivo"]
+
+
 def test_una_cotizacion_posterior_sin_cierre_anterior_lo_dice(session_factory):
     from app import contexto_cartera
 

@@ -817,6 +817,79 @@
        "tesis": "sin_tesis",
        "valoracion": "cara"
       },
+      "candidatos_a_revisar": [
+       {
+        "accion": null,
+        "atractivo": {
+         "desconocidos": [
+          "senal",
+          "tesis",
+          "valoracion",
+          "confianza"
+         ],
+         "desglose": [
+          {
+           "criterio": "senal",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "tesis",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "valoracion",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "confianza",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          }
+         ],
+         "puntos": 0
+        },
+        "confianza": null,
+        "contribucion_riesgo": 1.0,
+        "correlacion_con_candidata": 0.004,
+        "coste_del_cambio": {
+         "impuestos": "desconocidos",
+         "impuestos_pct": null,
+         "nota": "sin impuestos (desconocidos): el coste real es MAYOR",
+         "plusvalia_no_realizada": 0.0345,
+         "total_conocido_pct": 0.3,
+         "transaccion_pct": 0.3
+        },
+        "dias_en_cartera": 200,
+        "elegible": false,
+        "lectura_de": null,
+        "mejora": 0,
+        "mejora_requerida": 5,
+        "motivo": "casi todo desconocido: no se puede comparar con honestidad; no tiene ninguna lectura congelada: analízala primero",
+        "peso": 1.0,
+        "prioridad": {
+         "desglose": [
+          {
+           "criterio": "rebalanceo",
+           "nota": "por encima del tope por posición más la banda: recortar el exceso",
+           "puntos": 1,
+           "valor": 1.0
+          }
+         ],
+         "puntos": 1
+        },
+        "riesgo_por_peso": 1.0,
+        "symbol": "KO",
+        "tesis": null,
+        "valoracion": null
+       }
+      ],
       "efectivo": {
        "detalle": [
         {
@@ -826,11 +899,12 @@
          "usd": 1500.0
         }
        ],
-       "estado": "valido",
-       "usd": 1500.0
+       "estado": "desconocido",
+       "motivo": "el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe",
+       "usd": null
       },
       "generado_por": "app",
-      "huella": "COMPRAR_CON_EFECTIVO:None",
+      "huella": "INDETERMINADO:None",
       "impuestos": {
        "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero",
        "tipo": null
@@ -930,13 +1004,13 @@
        "todos_los_limites_aplicados": true
       },
       "tamano": {
-       "efectivo_disponible": 0.0769,
-       "financiacion_necesaria": 0.0,
+       "efectivo_disponible": null,
        "maximo_permitido": 0.0625
       },
       "veredicto": {
-       "accion": "COMPRAR_CON_EFECTIVO",
-       "motivo": "Hay efectivo (7,7 %) para el tamaño permitido (6,3 %): no hace falta vender nada."
+       "accion": "INDETERMINADO",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero.",
+       "si_no_hubiera_efectivo": null
       }
      },
      "decision": {
@@ -4388,6 +4462,79 @@
        "tesis": "sin_tesis",
        "valoracion": "cara"
       },
+      "candidatos_a_revisar": [
+       {
+        "accion": null,
+        "atractivo": {
+         "desconocidos": [
+          "senal",
+          "tesis",
+          "valoracion",
+          "confianza"
+         ],
+         "desglose": [
+          {
+           "criterio": "senal",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "tesis",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "valoracion",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          },
+          {
+           "criterio": "confianza",
+           "nota": "desconocido: no suma ni resta",
+           "puntos": 0,
+           "valor": null
+          }
+         ],
+         "puntos": 0
+        },
+        "confianza": null,
+        "contribucion_riesgo": 1.0,
+        "correlacion_con_candidata": 0.004,
+        "coste_del_cambio": {
+         "impuestos": "desconocidos",
+         "impuestos_pct": null,
+         "nota": "sin impuestos (desconocidos): el coste real es MAYOR",
+         "plusvalia_no_realizada": 0.0345,
+         "total_conocido_pct": 0.3,
+         "transaccion_pct": 0.3
+        },
+        "dias_en_cartera": 200,
+        "elegible": false,
+        "lectura_de": null,
+        "mejora": 0,
+        "mejora_requerida": 5,
+        "motivo": "casi todo desconocido: no se puede comparar con honestidad; no tiene ninguna lectura congelada: analízala primero",
+        "peso": 1.0,
+        "prioridad": {
+         "desglose": [
+          {
+           "criterio": "rebalanceo",
+           "nota": "por encima del tope por posición más la banda: recortar el exceso",
+           "puntos": 1,
+           "valor": 1.0
+          }
+         ],
+         "puntos": 1
+        },
+        "riesgo_por_peso": 1.0,
+        "symbol": "KO",
+        "tesis": null,
+        "valoracion": null
+       }
+      ],
       "efectivo": {
        "detalle": [
         {
@@ -4397,11 +4544,12 @@
          "usd": 1500.0
         }
        ],
-       "estado": "valido",
-       "usd": 1500.0
+       "estado": "desconocido",
+       "motivo": "el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe",
+       "usd": null
       },
       "generado_por": "app",
-      "huella": "COMPRAR_CON_EFECTIVO:None",
+      "huella": "INDETERMINADO:None",
       "impuestos": {
        "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero",
        "tipo": null
@@ -4501,13 +4649,13 @@
        "todos_los_limites_aplicados": true
       },
       "tamano": {
-       "efectivo_disponible": 0.0769,
-       "financiacion_necesaria": 0.0,
+       "efectivo_disponible": null,
        "maximo_permitido": 0.0625
       },
       "veredicto": {
-       "accion": "COMPRAR_CON_EFECTIVO",
-       "motivo": "Hay efectivo (7,7 %) para el tamaño permitido (6,3 %): no hace falta vender nada."
+       "accion": "INDETERMINADO",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero.",
+       "si_no_hubiera_efectivo": null
       }
      },
      "decision": {
