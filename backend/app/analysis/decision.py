@@ -234,7 +234,10 @@ def decide(
         if stop_fijado is not None:
             stop_posicion = stop_fijado
         else:
-            stop_posicion = coste * (1 - niveles["stop_pct"] / 100) if coste else None
+            # En la rejilla de precios, como lo calcula la cartera (portfolio.py) y lo
+            # guardaría «Fijar stop»: sin ella, 60 × 0,835 era 50,099999999999994,
+            # se escribía 50,09 hacia abajo y la cartera decía 50,10 (revisión 6).
+            stop_posicion = datos.redondear_precio(coste * (1 - niveles["stop_pct"] / 100)) if coste else None
 
         # Las reglas, en su orden de prioridad. La acción SALE de esta lista:
         # la primera que se cumple decide. Antes la traza no existía y el «por

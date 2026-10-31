@@ -602,7 +602,14 @@ def create_position(
 
     # El stop se fija AHORA, con la volatilidad de hoy, y no se vuelve a
     # recalcular: recalcularlo cada día lo alejaba justo en las caídas.
+    # Un stop tecleado, en la rejilla de precios y hacia arriba (nunca más lejos
+    # de lo que se tecleó): fuera de ella, 51.000,109 se servía 51.000,10 y un
+    # cierre de 51.000,105 «perforaba» un stop escrito por debajo (revisión 6).
+    # Si al subirlo llegara al coste, se queda como se tecleó.
     stop = body.stop
+    if stop is not None:
+        en_rejilla = datos.redondear_precio(stop, hacia="arriba")
+        stop = en_rejilla if en_rejilla < body.cost_basis else stop
     if stop is None and body.cost_basis > 0:
         clase = "cripto" if instrument.symbol.endswith("-USD") else "accion"
         vol = _volatilidad_de(service, instrument.symbol)
@@ -651,7 +658,8 @@ def fijar_stop(position_id: int, body: StopUpdate, session: Session = Depends(ge
                 "la posición deja de hacerlo. Si la tesis cambió, cierra la posición."
             ),
         )
-    anterior, position.stop = actual, body.stop
+    # En la rejilla y hacia arriba, como al abrir (revisión 6).
+    anterior, position.stop = actual, datos.redondear_precio(body.stop, hacia="arriba")
     session.commit()
     return {"id": position.id, "stop": position.stop, "anterior": anterior}
 

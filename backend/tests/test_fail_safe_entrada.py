@@ -272,6 +272,19 @@ def test_se_puede_fijar_el_stop_de_una_posicion_antigua(api):
         assert s.get(Position, pid).stop == 90.0
 
 
+def test_un_stop_tecleado_va_a_la_rejilla_hacia_arriba(api):
+    # Revisión 6: fuera de la rejilla, 51.000,109 se servía 51.000,10 y un cierre
+    # por encima del stop escrito «lo perforaba». Hacia arriba: nunca más lejos.
+    c, factory = api
+    r = c.post("/api/portfolio/positions",
+               json={"symbol": "AAPL", "quantity": 1, "cost_basis": 60000.0, "stop": 51000.109})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    with factory() as s:
+        assert s.get(Position, pid).stop == 51000.11
+    assert c.post(f"/api/portfolio/positions/{pid}/stop", json={"stop": 52000.101}).json()["stop"] == 52000.11
+
+
 def test_un_stop_se_puede_subir(api):
     c, factory = api
     pid = _posicion_sin_stop(factory)

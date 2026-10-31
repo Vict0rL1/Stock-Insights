@@ -391,3 +391,14 @@ def test_el_bpa_estimado_del_calendario_lleva_los_decimales_de_un_precio():
 
     c = catalysts_section([{"date": "2026-10-30", "eps_estimate": 0.0042}], [], [])
     assert c[0]["detail"] == "Publicación de resultados · BPA estimado 0,0042"
+
+
+def test_el_stop_recalculado_va_en_la_rejilla_como_en_la_cartera():
+    """Revisión 6: sin stop guardado, 60 × (1 − 0,165) es 50,099999999999994; se
+    escribía 50,09 hacia abajo (la cartera decía 50,10) y un cierre de 50,10
+    salía «mantener»."""
+    pos = {"cost_basis": 60.0, "quantity": 10}
+    d = decide(señal(0.8), {"last": 50.10, "sma200": 40.0, "above_sma200": True, "daily_vol_pct": None}, pos)
+    assert d["levels"]["stop"] == 50.1
+    assert d["action"] == "vender"
+    assert "Vender si cierra en o por debajo de 50,10" in d["triggers"]
