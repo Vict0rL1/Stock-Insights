@@ -241,7 +241,9 @@ BASE_CARTERA = {
         "este barrido puede valorar, sin sumar el efectivo anotado: hay posiciones "
         "fuera del barrido, y sumar todo el efectivo a una parte de la cartera daría "
         "una liquidez que no tienes. Ojo: los topes por sector y correlación no ven "
-        "las posiciones que faltan, así que el tamaño es una cota superior."
+        "las posiciones que faltan (eso los afloja en su sector) y las valoradas pesan "
+        "de más (eso los aprieta en el resto), así que el tamaño puede quedarse corto "
+        "o pasarse."
     ),
 }
 

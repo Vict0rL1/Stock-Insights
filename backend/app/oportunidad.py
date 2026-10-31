@@ -28,6 +28,7 @@ from app.analysis import fx, portfolio_risk
 from app.analysis.rule_backtest import costes_por_lado
 from app.analysis.sizing import MAX_POR_POSICION_PCT, dimensionar
 from app.db.models import CashBalance, DecisionSnapshot
+from app.etiquetas import etiqueta
 from app.formato import fmt_fecha, plural
 
 
@@ -285,17 +286,36 @@ def evaluar(
     )
     resultado["efectivo"] = efectivo
     resultado["sizing"] = {k: (sizing or {}).get(k) for k in ("controles", "recortes", "todos_los_limites_aplicados")}
-    if fuera:
-        # Las posiciones sin valorar se nombran siempre, haya efectivo o no: sin
-        # efectivo anotado el veredicto solo pedía «Anota tu efectivo», y con un
-        # tipo de cambio rechazado un «no cabe» pasaba a un 6,3 % sin decir por
-        # qué (revisión 6). Como el `aviso_cartera` de Hoy.
-        aviso = (f"{len(fuera)} {plural(len(fuera), 'posición abierta no entra', 'posiciones abiertas no entran')} "
-                 f"en los topes por sector y correlación porque no se pudo valorar ({nombres}): el tamaño es una "
-                 "cota superior y tu concentración real es mayor.")
-        resultado["sizing"]["aviso_cartera"] = aviso
+    sin_aplicar = [c for c in (sizing or {}).get("controles") or [] if not c.get("aplicado") and c.get("motivo")]
+    if sin_aplicar:
+        # Un tope que no se pudo aplicar llega a la ficha, como en el panel de Hoy:
+        # con una posición sin histórico, la correlación quedaba sin comprobar y
+        # el veredicto decía «Hay efectivo… no hace falta vender nada» sin más
+        # (revisión 7; RC1: «un límite no aplicado se ve en pantalla»).
+        topes = " ".join(f"Tope por {etiqueta(c['limite'])} sin aplicar del todo: {c['motivo']}" for c in sin_aplicar)
         resultado["veredicto"] = {**resultado["veredicto"],
-                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {aviso}".strip()}
+                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {topes}".strip()}
+    if fuera and sizing is not None:
+        # Las posiciones sin valorar se nombran haya efectivo o no: sin efectivo
+        # anotado el veredicto solo pedía «Anota tu efectivo», y con un tipo de
+        # cambio rechazado un «no cabe» pasaba a un 6,3 % sin decir por qué
+        # (revisión 6). Como el `aviso_cartera` de Hoy. Solo si hubo tamaño (una
+        # «evitar» hablaba de un tamaño que no se calculó) y sin dirección: las
+        # que faltan aflojan los topes de su sector, y las valoradas, que pesan
+        # de más sobre una cartera incompleta, aprietan los del resto; el tamaño
+        # puede quedarse corto o pasarse (revisión 7).
+        cuantas = plural(len(fuera), "posición abierta sin valorar", "posiciones abiertas sin valorar")
+        efecto = ("no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una "
+                  "cartera incompleta: el tamaño puede quedarse corto o pasarse.") if len(fuera) == 1 else (
+                  "no cuentan en los topes por sector y correlación, y las valoradas pesan de más sobre una "
+                  "cartera incompleta: el tamaño puede quedarse corto o pasarse.")
+        aviso = f"{len(fuera)} {cuantas} ({nombres}) {efecto}"
+        resultado["sizing"]["aviso_cartera"] = aviso
+        # Con el efectivo ya desconocido por ellas, su lista ya está en el motivo:
+        # no se repite (revisión 7).
+        en_veredicto = (f"Esas {cuantas} {efecto}" if len(fuera) > 1 else f"Esa {cuantas} {efecto}") if parcial else aviso
+        resultado["veredicto"] = {**resultado["veredicto"],
+                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {en_veredicto}".strip()}
     resultado["impuestos"] = ({"tipo": tipo_impositivo} if tipo_impositivo is not None
                               else {"tipo": None, "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero"})
     resultado["huella"] = f"{resultado['veredicto']['accion']}:{resultado['veredicto'].get('revisar')}"

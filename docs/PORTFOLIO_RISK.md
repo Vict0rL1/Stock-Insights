@@ -86,8 +86,8 @@ cotización es posterior (o, al reconstruir el pasado, si hoy no hay cotización
 sin cotización la posición queda fuera y nombrada), y convertidas con el mismo tipo que el efectivo.
 Con alguna posición abierta sin valorar, el efectivo anotado **no se suma** (como en Hoy, base
 `invertido_parcial`), el veredicto nombra siempre las posiciones que faltan (con efectivo anotado
-o sin él) y avisa de que los topes por sector y correlación no las cuentan: el tamaño es una
-cota superior. El riesgo se mide sobre la parte valorada y lo dice (`aviso`); si ninguna se
+o sin él, una vez y solo si hubo tamaño) y avisa de que los topes por sector y correlación no
+las cuentan mientras las valoradas pesan de más: el tamaño puede quedarse corto o pasarse. El riesgo se mide sobre la parte valorada y lo dice (`aviso`); si ninguna se
 pudo valorar, o la propia empresa está sin valorar, es desconocido y no «sin cartera». De cada posición, su última
 lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
 anterior) (acción, tesis, valoración, confianza): no se reanaliza la

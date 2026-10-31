@@ -607,14 +607,19 @@ def serie_en_dolares(service, symbol: str, moneda: str | None, ctx: dict, ahora:
     return contexto_cartera.convertir_serie(serie, moneda, (ctx or {}).get("fx_series") or {}) if serie else None
 
 
-def _aviso_parcial(fuera: list[dict]) -> dict:
-    """Con posiciones sin valorar, el riesgo se mide sobre la parte valorada: se
-    dice cuáles faltan. Con XYZ (~100.000 USD) sin precio y AAPL (10.000) sí, la
-    ficha decía «pesa el 100 % y aporta el 100 % del riesgo» (revisión 6)."""
+def _aviso_parcial(desconocidas: list[dict], symbol: str) -> dict:
+    """El riesgo se mide sobre las posiciones con precio e histórico: se dice
+    cuáles faltan. Con XYZ (~100.000 USD) sin precio y AAPL (10.000) sí, la
+    ficha decía «pesa el 100 % y aporta el 100 % del riesgo» (revisión 6); y
+    con XYZ con precio pero sin histórico en caché, igual, porque solo se
+    miraban las sin precio (revisión 7). Salen de las `desconocidas` del propio
+    cálculo y de las sin precio del contexto, cada una con su motivo."""
+    vistas: set[str] = set()
+    fuera = [d for d in desconocidas if d["symbol"] != symbol and not (d["symbol"] in vistas or vistas.add(d["symbol"]))]
     if not fuera:
         return {}
-    nombres = "; ".join(f"{p['symbol']}, {p.get('motivo')}" for p in fuera[:5])
-    return {"aviso": (f"Medido sobre la parte valorada de la cartera: {len(fuera)} "
+    nombres = "; ".join(f"{d['symbol']}, {d.get('motivo')}" for d in fuera[:5])
+    return {"aviso": (f"Medido solo sobre las posiciones con precio e histórico: {len(fuera)} "
                       f"{plural(len(fuera), 'posición abierta no cuenta', 'posiciones abiertas no cuentan')} "
                       f"({nombres}).")}
 
@@ -653,7 +658,7 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
             motivo = next((d["motivo"] for d in total.get("desconocidas") or [] if d["symbol"] == symbol), None)
             return {"estado": DESCONOCIDO, "en_cartera": True, "motivo": motivo, "huella": "desconocido"}
         return {
-            **_aviso_parcial(fuera),
+            **_aviso_parcial([*fuera, *(total.get("desconocidas") or [])], symbol),
             "estado": VALIDO, "en_cartera": True, "peso": propia["peso"], "contribucion": propia["contribucion"],
             "volatilidad": propia["volatilidad"], "correlacion_con_cartera": propia["correlacion_con_cartera"],
             "beta_mercado": propia["beta_mercado"], "cluster_nivel": propia["cluster_nivel"],
@@ -674,7 +679,7 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
     if not hipotesis.get("disponible"):
         return {"estado": DESCONOCIDO, "en_cartera": False, "motivo": hipotesis.get("motivo"), "huella": "desconocido"}
     return {
-        **_aviso_parcial(fuera),
+        **_aviso_parcial([*fuera, *(hipotesis.get("desconocidas") or [])], symbol),
         "estado": VALIDO, "en_cartera": False, "peso_supuesto": peso,
         "contribucion": hipotesis["contribucion_del_candidato"],
         "correlacion_con_cartera": hipotesis["correlacion_con_cartera"],

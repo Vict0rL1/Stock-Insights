@@ -355,6 +355,19 @@ def test_una_adelantada_del_mismo_dia_no_se_traga_un_cambio_material(session_fac
     assert z["instantanea"]["id"] not in (x["instantanea"]["id"], y["instantanea"]["id"])
 
 
+def test_una_adelantada_congelada_la_ultima_tampoco_se_traga_la_decision(session_factory):
+    # Revisión 7: con el orden más natural (reloj bien, adelantado, corregido) la
+    # adelantada era la última por `id` y seguía ganando.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        y = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        x = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        z = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=10), con_pares=False)
+    assert z["instantanea"]["nueva"] is True
+    assert z["instantanea"]["id"] not in (x["instantanea"]["id"], y["instantanea"]["id"])
+
+
 def _idea_con_efectivo_en_cad(session_factory, serie):
     from app import oportunidad
 
@@ -462,6 +475,51 @@ def test_sin_efectivo_anotado_las_posiciones_sin_valorar_tambien_se_nombran(sess
     co = a["coste_oportunidad"]
     assert "XYZ" in co["veredicto"]["motivo"] and "XYZ" in co["sizing"]["aviso_cartera"]
     assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
+
+
+def test_el_aviso_de_cartera_parcial_no_afirma_una_direccion_ni_se_repite(session_factory):
+    # Revisión 7: decía siempre «cota superior» (con la que falta en otro sector,
+    # el tamaño se quedaba corto), lo añadía a una «evitar» sin tamaño y, con
+    # efectivo anotado, nombraba dos veces la misma lista.
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+
+    def ficha(s, score):
+        servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=score, periodos=financieros_base())
+        return analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]
+
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        compra, evitar = ficha(s, 0.6), ficha(s, -0.6)
+    motivo = compra["veredicto"]["motivo"]
+    assert motivo.count("XYZ") == 1 and "puede quedarse corto o pasarse" in motivo and "cota superior" not in motivo
+    assert "tamaño" not in evitar["veredicto"]["motivo"] and "aviso_cartera" not in (evitar.get("sizing") or {})
+
+
+def test_el_riesgo_nombra_tambien_las_posiciones_sin_historico(session_factory):
+    # Revisión 7: XYZ con precio pero sin histórico en caché tenía peso, el aviso
+    # solo miraba las sin precio y la ficha la contaba como volatilidad cero.
+    from app import analisis_empresa
+    from tests.fakes_empresa import barras
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    servicio.empresa("AAA", precio=100.0, score=None)
+    servicio.empresa("XYZ", precio=100.0, score=None)
+    ayer = ahora.date() - timedelta(days=1)
+    for simbolo in ("AAA", "SPY", "CCC"):
+        servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(ayer, n=300)})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ", cantidad=1000)
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
+    # Y el tope de correlación sin comprobar llega al veredicto (revisión 7).
+    assert "Tope por correlación sin aplicar del todo" in a["coste_oportunidad"]["veredicto"]["motivo"]
 
 
 def test_la_propia_empresa_sin_valorar_tiene_el_riesgo_desconocido():
