@@ -722,6 +722,28 @@ hacía desde M3. Ahora no se suma (base `invertido_parcial`), el veredicto es IN
 las posiciones, y el riesgo es desconocido. El golden de `analisis` cambia solo en `fx_invertido`
 (COMPRAR_CON_EFECTIVO → INDETERMINADO), regenerado con su visto bueno.
 
+### Sexta revisión (de la quinta, workflow, 31 oct)
+
+Siete revisores sobre `2536bc3`…`b47bed2` y las tres lentes: 20 confirmados, 0 descartados. Cada
+arreglo con un test que falla sin él; golden idéntico; capturas 104 sin fallos.
+
+**Cifras frente al umbral.** `fmt_frente` / `fmtFrente` (gemelos con casos comunes) deciden los
+decimales con lo que de verdad se escribe (con `round()`, 0,995 «era» 0,99 y salía «1,00» frente a
+«< 1»); los usan la tesis, la serie de Vigilancia y el impacto en la tesis de Expectativas.
+
+**Expectativas.** Sorpresa absoluta en la unidad de la fila y con signo; «parcial: sin resultado
+para» con etiquetas; las horas con otra zona, en UTC; el 409 de un evento ya conocido con la fecha
+para una persona; «escala dudosa» con cifras significativas («0 veces»).
+
+**Decisión y cartera.** El stop recalculado y el tecleado, en la rejilla de precios (el tecleado,
+hacia arriba); el cambio del día con los decimales del precio (ruido de float32 de Yahoo). Las
+posiciones sin valorar se nombran siempre (veredicto, `aviso_cartera` y riesgo, que se mide sobre
+la parte valorada y lo dice); la propia empresa sin valorar tiene el riesgo desconocido.
+
+**Instantáneas.** El antiduplicado por `creado_en` solo mira las que ya existían en `ahora`: una
+adelantada del mismo día se tragaba un cambio material. El aviso de un punto sin unidad se pinta
+en el replay y en el registro de decisiones.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -742,7 +764,8 @@ Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revision
 arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
-`analisis` con el visto bueno de Victor). Lo siguiente es 2.2 (`AvisoAgrupado`).
+`analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`). Lo siguiente es 2.2
+(`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
 cambio (`fx.tipo_desde_observaciones` mide la frescura con `date.today()`); las bandas de FX cerca
