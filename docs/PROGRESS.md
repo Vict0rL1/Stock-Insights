@@ -744,6 +744,20 @@ la parte valorada y lo dice); la propia empresa sin valorar tiene el riesgo desc
 adelantada del mismo día se tragaba un cambio material. El aviso de un punto sin unidad se pinta
 en el replay y en el registro de decisiones.
 
+### Séptima revisión (de la sexta, workflow, 1 nov)
+
+Cuatro revisores sobre `da9be69`…`2c5c6b1` y las tres lentes: 14 confirmados, 0 descartados; 13
+arreglados en `a19d927` y `8621dc7` (golden idéntico, capturas 104 sin fallos). La puntuación se
+escribe de su lado del umbral en el motor, «Qué cambió» y la traza (`fmt_frente` con signo); una
+sola volatilidad para el stop (`vol_diaria_pct`) en la cartera, Hoy y la ficha; el antiduplicado
+ignora las instantáneas futuras también por `id`; la serie de un punto de tesis no cambia de lado
+al redondearla; la calidad de beneficios escribe cada valor de su lado de los umbrales; el aviso
+de cartera parcial ya no afirma una dirección, no sale sin tamaño ni repite la lista; el riesgo
+nombra también las posiciones sin histórico; y un tope sin aplicar llega al veredicto de la ficha.
+Queda para Victor el decimocuarto: los stops guardados antes fuera de la rejilla (abiertas entre
+el 30 sep y el 20 oct) siguen fuera; se arreglan leyéndolos en la rejilla o con una migración que
+los normalice, y las dos cosas cambian lo que se compara.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -764,7 +778,8 @@ Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revision
 arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
-`analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`). Lo siguiente es 2.2
+`analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
+14, en `a19d927` y `8621dc7`). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
