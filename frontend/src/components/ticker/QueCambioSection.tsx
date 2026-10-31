@@ -65,6 +65,8 @@ export function RiesgoResumen({ r }: { r: RiesgoEnCartera }) {
         Correlación con la cartera {fmtNum(r.correlacion_con_cartera ?? null, 2)} · clúster {r.cluster_nivel ?? '—'} ·
         riesgo por unidad de peso {fmtNum(r.riesgo_por_peso ?? null, 2)}
       </p>
+      {/* Con posiciones sin valorar, «pesa el 100 %» no era verdad (revisión 6). */}
+      {r.aviso && <p className="mt-1 text-amber-800">{r.aviso}</p>}
     </div>
   )
 }

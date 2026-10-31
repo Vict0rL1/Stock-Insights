@@ -442,6 +442,38 @@ def test_con_una_posicion_sin_valorar_la_ficha_no_suma_el_efectivo_ni_calla(sess
     assert a["riesgo"]["estado"] == "desconocido" and "XYZ" in a["riesgo"]["motivo"]
 
 
+def test_sin_efectivo_anotado_las_posiciones_sin_valorar_tambien_se_nombran(session_factory):
+    # Revisión 6: el aviso solo salía con efectivo convertible; sin anotar, el
+    # veredicto pedía «Anota tu efectivo» y XYZ no aparecía en ningún sitio, y el
+    # riesgo, medido sobre la parte valorada, decía «pesa el 100 %» sin avisar.
+    from app import analisis_empresa
+    from tests.fakes_empresa import barras
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    servicio.empresa("AAA", precio=100.0, score=None)
+    ayer = ahora.date() - timedelta(days=1)
+    for simbolo in ("AAA", "SPY", "CCC"):
+        servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(ayer, n=300)})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ", cantidad=1000)
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    co = a["coste_oportunidad"]
+    assert "XYZ" in co["veredicto"]["motivo"] and "XYZ" in co["sizing"]["aviso_cartera"]
+    assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
+
+
+def test_la_propia_empresa_sin_valorar_tiene_el_riesgo_desconocido():
+    # Revisión 6: si era la única posición, salía «sin cartera».
+    from app.analisis_empresa import seccion_riesgo
+
+    ctx = {"posiciones": [{"symbol": "CCC", "peso": None, "motivo": "sin tipo de cambio para CAD"}],
+           "series": {}, "mercado": None, "sin_peso": [{"symbol": "CCC", "motivo": "sin tipo de cambio para CAD"}]}
+    r = seccion_riesgo(None, None, "CCC", {}, {}, AHORA, ctx, None)
+    assert r["estado"] == "desconocido" and r["en_cartera"] is True and "CAD" in r["motivo"]
+
+
 def test_una_cotizacion_posterior_sin_cierre_anterior_lo_dice(session_factory):
     from app import contexto_cartera
 

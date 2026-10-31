@@ -961,6 +961,7 @@
        "tenencia_minima_dias": 30
       },
       "sizing": {
+       "aviso_cartera": "1 posición abierta no entra en los topes por sector y correlación porque no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD): el tamaño es una cota superior y tu concentración real es mayor.",
        "controles": [
         {
          "aplicado": true,
@@ -1009,7 +1010,7 @@
       },
       "veredicto": {
        "accion": "INDETERMINADO",
-       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero.",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero. 1 posición abierta no entra en los topes por sector y correlación porque no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD): el tamaño es una cota superior y tu concentración real es mayor.",
        "si_no_hubiera_efectivo": null
       }
      },
@@ -1651,6 +1652,7 @@
      "posicion": null,
      "resultados_proximos": null,
      "riesgo": {
+      "aviso": "Medido sobre la parte valorada de la cartera: 1 posición abierta no cuenta (SHOP.TO, sin tipo de cambio para CAD).",
       "cluster_nivel": "bajo",
       "contribucion": 2.7e-05,
       "correlacion_con_cartera": 0.0078,
@@ -4606,6 +4608,7 @@
        "tenencia_minima_dias": 30
       },
       "sizing": {
+       "aviso_cartera": "1 posición abierta no entra en los topes por sector y correlación porque no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD): el tamaño es una cota superior y tu concentración real es mayor.",
        "controles": [
         {
          "aplicado": true,
@@ -4654,7 +4657,7 @@
       },
       "veredicto": {
        "accion": "INDETERMINADO",
-       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero.",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero. 1 posición abierta no entra en los topes por sector y correlación porque no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD): el tamaño es una cota superior y tu concentración real es mayor.",
        "si_no_hubiera_efectivo": null
       }
      },
@@ -5173,6 +5176,7 @@
      },
      "posicion": null,
      "riesgo": {
+      "aviso": "Medido sobre la parte valorada de la cartera: 1 posición abierta no cuenta (SHOP.TO, sin tipo de cambio para CAD).",
       "cluster_nivel": "bajo",
       "contribucion": 2.7e-05,
       "correlacion_con_cartera": 0.0078,

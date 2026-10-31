@@ -204,9 +204,9 @@ def evaluar(
     # sin cotización y 1.000 de efectivo, la ficha decía «Hay efectivo (100 %)»
     # y no nombraba la posición (revisión 5).
     fuera = [x for x in ctx.get("sin_peso") or [] if x["symbol"] != symbol]
+    nombres = "; ".join(f"{x['symbol']}, {x['motivo']}" for x in fuera[:5])
     parcial = bool(fuera) and efectivo["usd"] is not None
     if parcial:
-        nombres = "; ".join(f"{x['symbol']}, {x['motivo']}" for x in fuera[:5])
         efectivo = {**efectivo, "usd": None, "estado": "desconocido", "motivo": (
             f"el efectivo anotado no se suma: {len(fuera)} "
             f"{plural(len(fuera), 'posición abierta no se pudo valorar', 'posiciones abiertas no se pudieron valorar')} "
@@ -217,7 +217,9 @@ def evaluar(
     posiciones = [p for p in ctx["posiciones"] if p.get("peso") is not None and p["symbol"] != symbol]
     # Con el efectivo conocido, los pesos son sobre el capital TOTAL. Sin él,
     # sobre lo invertido: pesos más altos, topes más estrictos — el error va
-    # hacia el lado prudente y se dice.
+    # hacia el lado prudente y se dice. Salvo con posiciones sin valorar: esas
+    # no cuentan en los topes por sector y correlación, que se aflojan, y el
+    # veredicto lo dice más abajo (revisión 6).
     for p in posiciones:
         p["peso_capital"] = p["valor_usd"] / capital if capital else None
 
@@ -283,6 +285,17 @@ def evaluar(
     )
     resultado["efectivo"] = efectivo
     resultado["sizing"] = {k: (sizing or {}).get(k) for k in ("controles", "recortes", "todos_los_limites_aplicados")}
+    if fuera:
+        # Las posiciones sin valorar se nombran siempre, haya efectivo o no: sin
+        # efectivo anotado el veredicto solo pedía «Anota tu efectivo», y con un
+        # tipo de cambio rechazado un «no cabe» pasaba a un 6,3 % sin decir por
+        # qué (revisión 6). Como el `aviso_cartera` de Hoy.
+        aviso = (f"{len(fuera)} {plural(len(fuera), 'posición abierta no entra', 'posiciones abiertas no entran')} "
+                 f"en los topes por sector y correlación porque no se pudo valorar ({nombres}): el tamaño es una "
+                 "cota superior y tu concentración real es mayor.")
+        resultado["sizing"]["aviso_cartera"] = aviso
+        resultado["veredicto"] = {**resultado["veredicto"],
+                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {aviso}".strip()}
     resultado["impuestos"] = ({"tipo": tipo_impositivo} if tipo_impositivo is not None
                               else {"tipo": None, "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero"})
     resultado["huella"] = f"{resultado['veredicto']['accion']}:{resultado['veredicto'].get('revisar')}"

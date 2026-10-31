@@ -2078,6 +2078,8 @@ export interface RiesgoEnCartera {
   volatilidad_cartera_despues?: number
   motivo?: string
   nota?: string
+  /** Con posiciones sin valorar: el riesgo se mide sobre la parte valorada. */
+  aviso?: string
 }
 
 export interface EvidenciaCalidad {

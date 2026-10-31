@@ -240,8 +240,8 @@ BASE_CARTERA = {
         "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
         "este barrido puede valorar, sin sumar el efectivo anotado: hay posiciones "
         "fuera del barrido, y sumar todo el efectivo a una parte de la cartera daría "
-        "una liquidez que no tienes. Los topes aprietan antes de lo debido, que es el "
-        "lado prudente."
+        "una liquidez que no tienes. Ojo: los topes por sector y correlación no ven "
+        "las posiciones que faltan, así que el tamaño es una cota superior."
     ),
 }
 
