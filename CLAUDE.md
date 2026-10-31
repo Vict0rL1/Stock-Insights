@@ -36,7 +36,7 @@ código nuevo, comentarios, mensajes de error, textos de UI, docs y commits.
 - **Fechas con zona, siempre.** UTC en el backend; SQLite pierde la zona al
   guardar, así que se sirve con `snapshots.iso_utc`.
 - **Cifras para una persona:** solo con `app/formato.py` / `src/lib/formato.ts`
-  (`fmt_num`, `fmt_pct`, `fmt_dinero`, `fmt_precio`, `fmt_valor_redondo`, `fmt_cifras`, `fmt_compacto`, `fmt_fecha`, `fmt_antiguedad`),
+  (`fmt_num`, `fmt_pct`, `fmt_dinero`, `fmt_precio`, `fmt_valor_redondo`, `fmt_cifras`, `fmt_frente`, `fmt_compacto`, `fmt_fecha`, `fmt_antiguedad`),
   gemelos probados contra la misma tabla (`formato.casos.json`). Nada de `{x:.1f}`
   ni `toFixed`: un test y ESLint lo impiden. Con varias monedas, cada importe lleva
   su código. Un precio por acción o un nivel, con `fmt_precio` (y `datos.redondear_precio` si se

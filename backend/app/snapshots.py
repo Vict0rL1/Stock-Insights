@@ -348,8 +348,15 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"),
                DecisionSnapshot.fecha == fecha)
     )
-    for orden in ((DecisionSnapshot.id.desc(),), (DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())):
-        ultimo = session.execute(del_dia.order_by(*orden)).scalars().first()
+    # La de `creado_en`, solo entre las que ya existían en `ahora` (con el margen
+    # de un solape): una adelantada horas por un reloj que se corrigió se
+    # tragaba un cambio material y la ficha decía «sin cambios» con una hora
+    # futura (revisión 6).
+    por_id = session.execute(del_dia.order_by(DecisionSnapshot.id.desc())).scalars().first()
+    por_hora = next((s for s in session.execute(
+        del_dia.order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())).scalars()
+        if pit.descargado_a_tiempo(s.creado_en, ahora) is not False), None)
+    for ultimo in (por_id, por_hora):
         if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
             return ultimo, False
 

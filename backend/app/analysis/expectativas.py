@@ -30,7 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app.etiquetas import etiqueta
-from app.formato import fmt_fecha, fmt_num
+from app.formato import fmt_cifras, fmt_fecha, fmt_num
 
 # --- Métricas y tolerancias ----------------------------------------------------
 #
@@ -143,8 +143,11 @@ def validez_temporal(exp: dict, corte: str | None) -> dict:
     if conocido is False:
         return {"valida": True}
     if conocido is None:
-        return {"valida": False, "motivo": f"registrada el mismo día del evento ({corte}) o sin fecha: no se puede probar que fuera antes"}
-    return {"valida": False, "motivo": f"registrada después de conocerse el resultado ({corte})"}
+        return {"valida": False, "motivo": f"registrada el mismo día del evento ({fmt_fecha(corte)}) o sin fecha: "
+                                          "no se puede probar que fuera antes"}
+    # La fecha para una persona: este motivo llega a la pantalla en el 409 de
+    # «Capturar expectativas» (revisión 6).
+    return {"valida": False, "motivo": f"registrada después de conocerse el resultado ({fmt_fecha(corte)})"}
 
 
 def evaluar_evento(evento: dict, expectativas: list[dict], reales: list[dict], tesis: list[dict] | None = None) -> dict:
@@ -425,8 +428,11 @@ def comprobar_escala(x: dict, trimestres: list[dict]) -> dict:
     r = {"estado": estado, "cifra": cifra, "referencia": v, "periodo_referencia": q.get("end_date"),
          "ratio": round(ratio, 4), "banda": list(banda)}
     if estado == "dudosa":
-        r["motivo"] = (f"{fmt_num(cifra, 4, ceros=False)} frente a {fmt_num(v, 4, ceros=False)} del trimestre "
-                       f"cerrado el {fmt_fecha(q.get('end_date'))} ({fmt_num(ratio, 0 if abs(ratio) >= 100 else 2, ceros=False)} veces, fuera de "
+        # Con cifras significativas: con decimales fijos, el error de escala más
+        # típico (millones o miles de millones perdidos) decía «0 veces», y un BPA
+        # de 0,00004, «0» (revisión 6).
+        r["motivo"] = (f"{fmt_cifras(cifra, 4)} frente a {fmt_cifras(v, 4)} del trimestre "
+                       f"cerrado el {fmt_fecha(q.get('end_date'))} ({fmt_cifras(ratio)} veces, fuera de "
                        f"{fmt_num(banda[0], 2, ceros=False)}–{fmt_num(banda[1], 2, ceros=False)}): parece otra escala")
     return r
 

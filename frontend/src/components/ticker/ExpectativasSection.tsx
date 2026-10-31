@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { CalibracionExpectativas, LecturaEvento } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
@@ -84,7 +84,8 @@ function LecturaDeEvento({
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${CLASIFICACION[l.clasificacion]}`}>
           {etiqueta(l.clasificacion).toUpperCase()}
         </span>
-        {l.parcial && <span className="text-xs text-amber-800">parcial: sin resultado para {l.sin_resultado.join(', ')}</span>}
+        {/* Con etiquetas: «eps_diluted, revenue» salía en crudo (revisión 6). */}
+        {l.parcial && <span className="text-xs text-amber-800">parcial: sin resultado para {l.sin_resultado.map((m) => etiqueta(m)).join(', ')}</span>}
         {l.guidance && <span className="text-xs text-slate-600">guidance: {l.guidance}</span>}
         <button type="button" className="ml-auto rounded-md border border-slate-300 px-2 py-1 text-xs"
           onClick={() => accion(api.capturarExpectativas(id))}>Capturar expectativas</button>
@@ -118,7 +119,10 @@ function LecturaDeEvento({
                   </td>
                   <td className="text-right text-slate-800">{cifra(c.real, c.unidad)}</td>
                   <td className="text-right text-slate-600">
-                    {c.sorpresa == null ? '—' : c.tipo_sorpresa === 'relativa' ? fmtPct(c.sorpresa, 1) : c.unidad === 'fracción' ? `${fmtNum(c.sorpresa * 100, 1)} pp` : fmtNum(c.sorpresa, 2)}
+                    {/* La sorpresa absoluta (referencia no positiva), en la unidad de la fila: con
+                        dos decimales, un BPA de céntimos con pérdidas salía «0,00» junto a
+                        «supera», y un beneficio negativo «2.000.000,00» junto a «M» (revisión 6). */}
+                    {c.sorpresa == null ? '—' : c.tipo_sorpresa === 'relativa' ? fmtPct(c.sorpresa, 1) : c.unidad === 'fracción' ? `${fmtNum(c.sorpresa * 100, 1)} pp` : fmtMetrica(c.sorpresa, c.unidad, { ausente: '—', signo: true })}
                   </td>
                   <td className={`text-right font-medium ${LECTURA[c.lectura]}`}>{etiqueta(c.lectura)}</td>
                 </tr>
@@ -134,7 +138,9 @@ function LecturaDeEvento({
           <ul>
             {l.impacto_en_tesis.map((i, k) => (
               <li key={k} className={i.estado === 'invalidado' ? 'text-red-700' : i.estado === 'debilitado' ? 'text-amber-800' : i.estado === 'confirmado' ? 'text-emerald-700' : 'text-slate-500'}>
-                {etiqueta(i.estado, { mayuscula: true })}: {i.punto}{i.real != null ? ` (real ${fmtPct(i.real, 1)}, umbral ${fmtPct(i.umbral ?? null, 1)})` : ''}{i.motivo ? ` — ${i.motivo}` : ''}
+                {etiqueta(i.estado, { mayuscula: true })}: {i.punto}{/* De su lado del umbral: con un decimal fijo, un invalidado salía «real
+                    18,0 %, umbral 18,0 %» con el margen en 17,96 % (revisión 6). */}
+                {i.real != null ? ` (real ${fmtFrente(i.real, i.umbral ?? null, { pct: true })}, umbral ${fmtFrente(i.umbral ?? null, i.umbral ?? null, { pct: true })})` : ''}{i.motivo ? ` — ${i.motivo}` : ''}
               </li>
             ))}
           </ul>

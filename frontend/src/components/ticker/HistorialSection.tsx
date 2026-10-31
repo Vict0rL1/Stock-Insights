@@ -119,8 +119,13 @@ function Replay({ r }: { r: ReplayDecision }) {
               {(s.tesis as { titulo?: string }).titulo ?? 'sin tesis'} · estado {etiqueta((s.tesis as { estado: string }).estado)}
             </p>
             <ul className="mt-1 text-[11px] text-slate-500">
-              {((s.tesis as { disparadores?: { id: number; descripcion: string; salta: boolean; medible: boolean }[] }).disparadores ?? []).map((t) => (
-                <li key={t.id}>{t.salta ? '✗ cruzado' : t.medible ? '✓' : '?'} {t.descripcion}</li>
+              {((s.tesis as { disparadores?: { id: number; descripcion: string; salta: boolean; medible: boolean; aviso?: string }[] }).disparadores ?? []).map((t) => (
+                <li key={t.id}>
+                  {t.salta ? '✗ cruzado' : t.medible ? '✓' : '?'} {t.descripcion}
+                  {/* La duda de un punto sin unidad guardada viajaba congelada y
+                      no la pintaba nadie (revisión 6). */}
+                  {t.aviso && <span className="block text-amber-800">{t.aviso}</span>}
+                </li>
               ))}
             </ul>
           </Bloque>

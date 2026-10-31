@@ -187,3 +187,43 @@ describe('Vigilancia (revisión del 2.1)', () => {
     expect((cuerpos[0] as { config: { umbral: number } }).config.umbral).toBeCloseTo(1.2, 10)
   })
 })
+
+describe('la serie de un punto, de su lado del umbral', () => {
+  it('un ratio corriente de 0,996 que cruza «< 1» no se escribe «1,00»', async () => {
+    // Revisión 6: el detalle decía 0,996 y la serie de debajo, «→ 1,00».
+    const vigilancia = structuredClone(VIGILANCIA)
+    vigilancia.tesis[0].vigilancia.disparadores[0] = {
+      ...vigilancia.tesis[0].vigilancia.disparadores[0],
+      config: { metrica: 'current_ratio', op: 'lt', umbral: 1 },
+      salta: true, umbral: 1, serie: [1.1, 1.05, 0.996],
+      detalle: 'Ratio corriente = 0,996; el punto salta si cae por debajo de 1.',
+    }
+    servir({
+      ...BASE,
+      '/api/theses/vigilancia': { status: 200, json: vigilancia },
+      '/api/theses/vigilancia/metricas': {
+        status: 200,
+        json: { metricas: [{ clave: 'current_ratio', etiqueta: 'Ratio corriente', alto_mejor: true, unidad: 'veces' }],
+                crecimientos: [], operadores: [], nota: '' },
+      },
+    })
+    pintar()
+    expect(await screen.findByText(/Últimos ejercicios: 1,10 → 1,05 → 0,996/)).toBeInTheDocument()
+  })
+})
+
+describe('el aviso de un punto sin unidad, congelado con la decisión', () => {
+  it('se pinta en el registro de decisiones', async () => {
+    // Revisión 6: viajaba en `contexto.disparadores_saltando` y no lo pintaba nadie.
+    const decisiones = structuredClone(DECISIONES)
+    decisiones.decisiones[0].contexto = {
+      precio: 55, tesis: null, disparadores_totales: 1, capturado_en: '2026-02-01T15:00:00+00:00',
+      disparadores_saltando: [{ descripcion: 'D/E alto', aviso: 'Punto guardado sin unidad: puede ser 0,1 escrito por ti.' }],
+      disparadores_sin_comprobar: [],
+    } as never
+    servir({ ...BASE, '/api/theses/decisiones': { status: 200, json: decisiones } })
+    pintar()
+    expect(await screen.findByText('Punto guardado sin unidad: puede ser 0,1 escrito por ti.')).toBeInTheDocument()
+  })
+})
+

@@ -104,10 +104,11 @@ export default tseslint.config(
         // Un valor por acción con fmtNum tiene dos decimales fijos: el valor
         // estimado de 0,004 de una acción de céntimos salía «0,00» junto a su
         // precio de 0,003 (revisión 4, hermano de A1). En cualquier parte de los
-        // argumentos (`sc?.value_per_share`, `p['value_mid']`) y también el BPA,
-        // el máximo de 52 semanas y el cambio del día (revisión 5).
+        // argumentos (`sc?.value_per_share`, `p['value_mid']`) y también el BPA y
+        // el máximo de 52 semanas (revisión 5). El cambio del día no: es una
+        // diferencia y va con los decimales del precio, no los suyos (revisión 6).
         {
-          selector: "CallExpression[callee.name='fmtNum'] MemberExpression:matches([property.name=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low|change)$/], [property.value=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low|change)$/])",
+          selector: "CallExpression[callee.name='fmtNum'] MemberExpression:matches([property.name=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low)$/], [property.value=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low)$/])",
           message: 'Un valor por acción se escribe con fmtPrecio (o fmtValorRedondo si llega redondeado a cifras significativas, fmtCifras si es un cálculo con supuestos).',
         },
       ],

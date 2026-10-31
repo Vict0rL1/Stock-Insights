@@ -62,6 +62,28 @@ describe('resultados frente a expectativas', () => {
     expect(screen.getAllByText('0,0038').length).toBeGreaterThan(0)
   })
 
+  it('las cifras de un evento, cada una en su forma y de su lado', async () => {
+    // Revisión 6: códigos en crudo en «parcial: sin resultado para…», un
+    // invalidado «real 18,0 %, umbral 18,0 %» y una sorpresa absoluta «0,00».
+    const evento = structuredClone(ACME['/api/expectativas/eventos/1'].json) as {
+      parcial: boolean; sin_resultado: string[]
+      impacto_en_tesis: { real?: number; umbral?: number }[]
+      por_fuente: Record<string, { metrica: string; esperado: { valor: number | null }; real: number | null;
+        sorpresa: number | null; tipo_sorpresa: string; lectura: string }[]>
+    }
+    evento.parcial = true
+    evento.sin_resultado = ['eps_diluted', 'revenue']
+    evento.impacto_en_tesis[0].real = 0.1796
+    const bpa = evento.por_fuente.consenso.find((c) => c.metrica === 'eps_diluted')!
+    Object.assign(bpa, { esperado: { ...bpa.esperado, valor: -0.0042 }, real: -0.0038, sorpresa: 0.0004,
+                         tipo_sorpresa: 'absoluta (referencia no positiva)', lectura: 'supera' })
+    servir({ ...ACME, '/api/expectativas/eventos/1': { status: 200, json: evento } })
+    const { container } = render(<ExpectativasSection symbol="ACME" />)
+    expect(await screen.findByText(/parcial: sin resultado para BPA diluido, ingresos/)).toBeInTheDocument()
+    expect(container.textContent).toContain('real 17,96\u00a0%, umbral 18,0\u00a0%')
+    expect(screen.getByText('+0,0004')).toBeInTheDocument()
+  })
+
   it('tras «Capturar expectativas» la lectura sigue a la vista mientras recarga', async () => {
     // Revisión del 2.1: la recarga pasaba por «cargando» y la lectura, la
     // lista y la calibración desaparecían; la página saltaba.

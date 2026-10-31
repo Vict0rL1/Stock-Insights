@@ -66,7 +66,10 @@ def _a_instante(valor) -> datetime:
     if m is None:
         raise ValueError(f"fecha de la información ilegible: {valor!r} (usa AAAA-MM-DD o ISO con hora)")
     momento, instante = m
-    return momento if instante else datetime(momento.year, momento.month, momento.day, tzinfo=timezone.utc)
+    # En UTC antes de guardar: SQLite pierde la zona, y «14:04+02:00» se releía
+    # como las 14:04 UTC, dos horas después de su registro (revisión 6).
+    return momento.astimezone(timezone.utc) if instante else datetime(momento.year, momento.month, momento.day,
+                                                                       tzinfo=timezone.utc)
 
 
 def serializar_evento(e: CatalystEvent) -> dict:

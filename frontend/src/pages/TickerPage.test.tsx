@@ -125,6 +125,22 @@ describe('ficha de una empresa', () => {
     expect(screen.getByRole('button', { name: 'Decisiones y replay' })).toBeInTheDocument()
   })
 
+  it('el cambio del día lleva los decimales del precio, no los suyos', async () => {
+    // Revisión 6: con fmtPrecio el cambio tomaba sus propios decimales y el ruido
+    // de float32 de Yahoo salía «+0,06999» sobre un precio de 172,87.
+    servir({
+      '/api/stocks/RUIDO/quote': ok({ ...cotizacion('RUIDO', 0.0699920654296875), price: 172.8699951171875, change_pct: 0.04 }),
+      '/api/stocks/RUIDO/profile': ok(perfil('RUIDO', 'Ruido Corp')),
+      '/api/stocks/RUIDO/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/RUIDO/history?range=1Y': falla(404, 'sin histórico'),
+      '/api/stocks/RUIDO/financials': ok(financieros('RUIDO')),
+      '/api/stocks/RUIDO/peers': falla(404, 'sin pares'),
+    })
+    abrir('RUIDO')
+    expect(await screen.findByText(/^\+0,07 \(/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/0,06999/)
+  })
+
   it('una cotización que no carga se dice como fallo, con su motivo, y se puede reintentar', async () => {
     const rutas: Record<string, Respuesta> = {
       '/api/stocks/ACME/quote': falla(502, 'el proveedor no respondió'),

@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_antiguedad, fmt_num, fmt_pct, plural
+from app.formato import decimales_frente, fmt_antiguedad, fmt_num, fmt_pct, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -86,16 +86,8 @@ def escribir_cifras(metrica: str | None, valor: float, *umbrales: float, ceros: 
     decimales de siempre (uno en %, dos en «veces») basta casi siempre, y
     entonces se escribe como siempre."""
     en_pct = unidad_de(metrica) == "pct"
-    escala, base = (100, 1) if en_pct else (1, 2)
-    for decimales in range(base, base + 7):
-        def r(v, d=decimales):
-            return round(v * escala, d)
-        if any(round(u * escala, 9) != r(u) for u in umbrales):
-            continue
-        if any(r(valor) == r(u) and valor != u for u in umbrales) or (valor != 0 and r(valor) == 0):
-            continue
-        break
-    con_ceros = ceros and decimales == base
+    decimales = decimales_frente(valor, umbrales, en_pct)
+    con_ceros = ceros and decimales == (1 if en_pct else 2)
     if en_pct:
         return [fmt_pct(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
     return [fmt_num(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]

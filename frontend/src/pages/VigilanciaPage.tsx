@@ -9,7 +9,7 @@ import type {
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
@@ -29,8 +29,13 @@ const TONO_ACCION: Record<string, string> = {
  *  cruzado, y NO SE PUDO MEDIR. Pintar el tercero como el segundo convertiría
  *  un fallo de datos en tranquilidad. */
 function Disparador({ d, accion, unidad }: { d: DisparadorVigilado; accion?: ReactNode; unidad?: UnidadMetrica }) {
-  // La serie, en la unidad de la métrica: un margen en %, un ratio en veces.
-  const cifra = (v: number) => (unidad === 'pct' ? fmtPct(v, 1) : unidad === 'veces' ? fmtNum(v, 2) : fmtNum(v, 3))
+  // La serie, en la unidad de la métrica (un margen en %, un ratio en veces) y
+  // de su lado del umbral: con decimales fijos, un ratio corriente de 0,996 que
+  // cruzaba «< 1» se escribía «1,00» debajo del detalle que decía 0,996 (revisión 6).
+  const cifra = (v: number) =>
+    unidad === 'pct' || unidad === 'veces'
+      ? fmtFrente(v, d.umbral ?? null, { pct: unidad === 'pct' })
+      : fmtNum(v, 3)
   const estado = !d.medible ? 'sin_medir' : d.salta ? 'salta' : 'ok'
   const borde =
     estado === 'salta'
@@ -382,6 +387,8 @@ function Decision({ d }: { d: DecisionRegistrada }) {
           {ctx.disparadores_saltando.map((x, i) => (
             <p key={i} className="text-[11px] leading-relaxed text-amber-800">
               Al decidir ya estaba cruzado: «{x.descripcion}»
+              {/* La duda de un punto sin unidad guardada, congelada con la decisión (revisión 6). */}
+              {x.aviso && <span className="block">{x.aviso}</span>}
             </p>
           ))}
           {/* No comprobado no es «no cruzado»: se dice aparte. */}

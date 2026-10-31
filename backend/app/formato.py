@@ -153,6 +153,42 @@ def fmt_valor_redondo(valor, moneda: str | None = None) -> str:
     return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
 
 
+def decimales_frente(valor: float, umbrales, pct: bool = False) -> int:
+    """Los decimales con que `valor` no cambia de lado frente a sus umbrales: cada
+    umbral escrito entero, el valor nunca escrito igual que un umbral distinto ni
+    como cero sin serlo. Se compara lo que de verdad se escribe (el redondeo del
+    formateador, no `round()`): con `round`, 0,995 «era» 0,99 y se escribía
+    «1,00» frente a «< 1» (revisión 6). Con los de siempre (uno en %, dos en
+    «veces») basta casi siempre."""
+    def escribir(v, d):
+        return fmt_pct(v, d, ceros=False) if pct else fmt_num(v, d, ceros=False)
+
+    base = 1 if pct else 2
+    for decimales in range(base, base + 7):
+        if any(escribir(u, decimales) != escribir(u, 9) for u in umbrales):
+            continue
+        if any(valor != u and escribir(valor, decimales) == escribir(u, decimales) for u in umbrales):
+            continue
+        if valor != 0 and escribir(valor, decimales) == escribir(0, decimales):
+            continue
+        return decimales
+    return base + 6
+
+
+def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True) -> str:
+    """Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996
+    frente a «< 1» → «0,996», no «1,00»; 0,1796 frente a «≥ 18 %» → «17,96 %»
+    (revisión 6). Lejos del umbral, como siempre: 0,8 → «0,80»; 0,23 → «23,0 %»."""
+    valor, umbral = _cifra(valor), _cifra(umbral)
+    if valor is None:
+        return GUION
+    if umbral is None:
+        return fmt_pct(valor, 1) if pct else fmt_num(valor, 2)
+    decimales = decimales_frente(valor, [umbral], pct)
+    con_ceros = ceros and decimales == (1 if pct else 2)
+    return fmt_pct(valor, decimales, ceros=con_ceros) if pct else fmt_num(valor, decimales, ceros=con_ceros)
+
+
 def fmt_cifras(valor, cifras: int = 3) -> str:
     """Un valor calculado con supuestos, con `cifras` cifras significativas y sin
     decimales desde las centenas: 170,63 → «171»; 17,063 → «17,1»; 0,05328 →

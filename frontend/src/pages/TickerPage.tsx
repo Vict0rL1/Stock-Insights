@@ -16,7 +16,7 @@ import { QueCambioSection } from '../components/ticker/QueCambioSection'
 import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { CalidadSection } from '../components/ticker/CalidadSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
-import { fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { decimalesPrecio, fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 // Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
 // fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
 // otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1).
@@ -207,9 +207,11 @@ export function TickerPage() {
                             </span>
                           </span>
                           <span className={`text-lg font-medium tabular-nums ${colorCambio}`}>
-                            {/* Con los decimales de un precio: una acción de 0,003 que
-                                sube 0,0004 salía «+0,00» (revisión 5). */}
-                            {fmtPrecio(q.change, undefined, { signo: true })} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
+                            {/* Con los decimales del PRECIO, no los del propio cambio: una
+                                acción de 0,003 que sube 0,0004 salía «+0,00» (revisión 5), y
+                                con los suyos el ruido de float32 de Yahoo salía «+0,06999»
+                                sobre 172,87 (revisión 6). */}
+                            {fmtNum(q.change, q.price != null ? decimalesPrecio(q.price) : 2, { signo: true, ceros: q.price == null || decimalesPrecio(q.price) === 2 })} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
                           </span>
                         </>
                       )

@@ -459,3 +459,13 @@ def test_que_cambio_escribe_un_margen_en_porcentaje():
     det = cambios.comparar_tesis(tesis(0.213), tesis(0.19))["deteriorados"][0]["detalle"]
     assert det == "se acerca a su umbral (21,3\u00a0% → 19,0\u00a0%, umbral 18,0\u00a0%)"
 
+
+
+def test_en_la_mitad_exacta_la_cifra_tampoco_cambia_de_lado():
+    # Revisión 6: se decidía con `round()` (0,995 «era» 0,99) y se escribía con
+    # el redondeo del formateador (0,995 → «1,00»): «= 1,00; salta si cae por
+    # debajo de 1,00». Ahora se decide con lo que de verdad se escribe.
+    r = _ratio("current_ratio", "lt", 1.0, 0.995, "veces")
+    assert r["salta"] is True and r["detalle"].startswith("Ratio corriente = 0,995;")
+    m = _ratio("operating_margin", "lt", 0.18, 0.1795)
+    assert m["detalle"].startswith("Margen operativo = 17,95 %;")

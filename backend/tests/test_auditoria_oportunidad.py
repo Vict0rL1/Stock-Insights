@@ -338,6 +338,23 @@ def test_dos_solapados_con_huellas_distintas_no_dejan_una_copia_del_vigente(sess
     assert c["instantanea"]["nueva"] is False and c["instantanea"]["id"] == b["instantanea"]["id"]
 
 
+def test_una_adelantada_del_mismo_dia_no_se_traga_un_cambio_material(session_factory):
+    # Revisión 6: X adelantada (16:35, señal 0,9), Y a las 14:35 (0,6) y a las
+    # 14:45 vuelve el 0,9: la última por `creado_en` era X, futura, coincidía, y
+    # la decisión de las 14:45 no se congelaba.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        servicio.senal("AAPL", 0.9)
+        x = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        y = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        z = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=10), con_pares=False)
+    assert y["instantanea"]["nueva"] is True
+    assert z["instantanea"]["nueva"] is True
+    assert z["instantanea"]["id"] not in (x["instantanea"]["id"], y["instantanea"]["id"])
+
+
 def _idea_con_efectivo_en_cad(session_factory, serie):
     from app import oportunidad
 

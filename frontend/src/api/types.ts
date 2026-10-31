@@ -1642,7 +1642,7 @@ export interface DecisionRegistrada {
   contexto: {
     precio: number | null
     tesis: { id: number; titulo: string; creada: string } | null
-    disparadores_saltando: { descripcion: string; detalle?: string }[]
+    disparadores_saltando: { descripcion: string; detalle?: string; aviso?: string }[]
     /** Desde el 9-oct-2026; las decisiones anteriores no lo traen. */
     disparadores_sin_comprobar?: { descripcion: string; motivo?: string | null }[]
     disparadores_totales: number

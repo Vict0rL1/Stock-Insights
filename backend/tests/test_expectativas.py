@@ -551,3 +551,36 @@ def test_un_punto_de_la_tesis_anadido_despues_no_fija_una_expectativa_de_antes(s
         cap = svc.capturar(s, servicio, e, AHORA)
     reglas = {x["metrica"] for x in cap["registradas"] if x["fuente_tipo"] == "reglas"}
     assert "operating_margin" in reglas and "gross_margin" not in reglas
+
+
+# --- Revisión 6 -------------------------------------------------------------------
+
+
+def test_una_hora_con_otra_zona_se_guarda_en_utc(session_factory):
+    """«14:04+02:00» se guardaba como las 14:04 sin zona y se releía dos horas
+    después de su propio registro, en una fila inmutable."""
+    from datetime import timezone as tz
+
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        hora = (AHORA - timedelta(minutes=1)).astimezone(tz(timedelta(hours=2))).isoformat()
+        svc.registrar_manual(s, e, {"metrica": "revenue", "valor": 115.0, "fuente": "mi estimación",
+                                    "informacion_hasta": hora}, AHORA)
+        fila = s.query(Expectation).one()
+        assert svc._a_instante(fila.informacion_hasta) == AHORA - timedelta(minutes=1)
+
+
+def test_el_motivo_de_un_evento_conocido_lleva_la_fecha_para_una_persona():
+    # Revisión 6: el 409 de «Capturar expectativas» decía «(2026-08-01)».
+    v = ev.validez_temporal({"registrado_en": "2026-08-05T10:00:00+00:00"}, "2026-08-01")
+    assert v["valida"] is False and "(1 ago 2026)" in v["motivo"] and "2026-08-01" not in v["motivo"]
+
+
+def test_una_escala_mucho_menor_no_se_escribe_como_cero_veces():
+    # Revisión 6: un guidance de 115 frente a 94.930 millones decía «(0 veces, …)».
+    r = ev.comprobar_escala({"metrica": "revenue", "valor": 115.0},
+                            [{"revenue": 94_930_000_000.0, "end_date": "2026-06-30"}])
+    assert r["estado"] == "dudosa"
+    assert "(0 veces" not in r["motivo"] and "94.930.000.000" in r["motivo"]
+    bpa = ev.comprobar_escala({"metrica": "eps_diluted", "valor": 0.00004}, [{"eps_diluted": 1.52, "end_date": "2026-06-30"}])
+    assert bpa["motivo"].startswith("0,00004 frente a 1,52")

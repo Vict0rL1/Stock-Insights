@@ -136,6 +136,34 @@ export function fmtValorRedondo(valor: Num, moneda?: string | null): string {
   return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
 }
 
+/** Los decimales con que `valor` no cambia de lado frente a sus umbrales.
+ *  Gemelo de `decimales_frente`: compara lo que de verdad se escribe. */
+export function decimalesFrente(valor: number, umbrales: number[], pct = false): number {
+  const escribir = (v: number, d: number) => (pct ? fmtPct(v, d, { ceros: false }) : fmtNum(v, d, { ceros: false }))
+  const base = pct ? 1 : 2
+  for (let d = base; d < base + 7; d++) {
+    if (umbrales.some((u) => escribir(u, d) !== escribir(u, 9))) continue
+    if (umbrales.some((u) => valor !== u && escribir(valor, d) === escribir(u, d))) continue
+    if (valor !== 0 && escribir(valor, d) === escribir(0, d)) continue
+    return d
+  }
+  return base + 6
+}
+
+/** Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996 frente
+ *  a «< 1» → «0,996», no «1,00» (revisión 6). Gemelo de `fmt_frente`. */
+export function fmtFrente(
+  valor: Num,
+  umbral: Num,
+  { pct = false, ceros = true }: { pct?: boolean; ceros?: boolean } = {},
+): string {
+  if (!finito(valor)) return GUION
+  if (!finito(umbral)) return pct ? fmtPct(valor, 1) : fmtNum(valor, 2)
+  const d = decimalesFrente(valor, [umbral], pct)
+  const conCeros = ceros && d === (pct ? 1 : 2)
+  return pct ? fmtPct(valor, d, { ceros: conCeros }) : fmtNum(valor, d, { ceros: conCeros })
+}
+
 /** Un valor calculado con supuestos, con `cifras` cifras significativas y sin
  *  decimales desde las centenas: 170,63 → «171»; 0,05328 → «0,0533». Gemelo de
  *  `fmt_cifras` (la matriz de sensibilidad del DCF; revisión 5). */
