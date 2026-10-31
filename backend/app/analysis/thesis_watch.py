@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from app import datos
 from app.formato import decimales_frente, fmt_antiguedad, fmt_num, fmt_pct, plural
 
 OPERADORES = {
@@ -91,6 +92,16 @@ def escribir_cifras(metrica: str | None, valor: float, *umbrales: float, ceros: 
     if en_pct:
         return [fmt_pct(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
     return [fmt_num(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
+
+
+def _de_su_lado(v: float, umbral: float | None) -> float:
+    """`v` a cuatro decimales, salvo que el redondeo lo deje en el umbral o al otro
+    lado: 0,99996 frente a «< 1» se servía 1,0 y la serie de Vigilancia escribía
+    «→ 1,00» bajo un detalle que decía 0,99996 (revisión 7). Entonces, entero."""
+    r = round(v, 4)
+    if umbral is None or v == umbral:
+        return r
+    return r if (r < umbral) == (v < umbral) and r != umbral else v
 
 
 def unidad_de(clave: str | None) -> str:
@@ -180,7 +191,7 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
     resultado = {
         "salta": salta,
         "medible": True,
-        "valor": round(valor, 4),
+        "valor": _de_su_lado(valor, umbral),
         "umbral": umbral,
         "detalle": (
             f"{etiqueta} = {v_txt}; el punto salta si {texto_op} {u_txt}."
@@ -205,7 +216,8 @@ def evaluar_metrica(config: dict, ratios: list[dict]) -> dict:
     # de caídas no es lo mismo que cruzarlo tras un año malo aislado.
     serie = [r.get(clave) for r in ratios[-4:] if r.get(clave) is not None]
     if len(serie) >= 3:
-        resultado["serie"] = [round(v, 4) for v in serie]
+        umbral = datos.numero(config.get("umbral"))
+        resultado["serie"] = [_de_su_lado(v, umbral) for v in serie]
         resultado["tendencia"] = (
             "bajando" if serie[-1] < serie[0] else "subiendo" if serie[-1] > serie[0] else "plana"
         )

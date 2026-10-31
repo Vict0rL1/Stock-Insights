@@ -469,3 +469,13 @@ def test_en_la_mitad_exacta_la_cifra_tampoco_cambia_de_lado():
     assert r["salta"] is True and r["detalle"].startswith("Ratio corriente = 0,995;")
     m = _ratio("operating_margin", "lt", 0.18, 0.1795)
     assert m["detalle"].startswith("Margen operativo = 17,95 %;")
+
+
+def test_la_serie_y_el_valor_servidos_no_cambian_de_lado_al_redondearlos():
+    # Revisión 7: la serie se servía a cuatro decimales y 0,99996 frente a «< 1»
+    # llegaba como 1,0: la tarjeta escribía «→ 1,00» bajo «= 0,99996».
+    config = {"metrica": "current_ratio", "op": "lt", "umbral": 1.0, "unidad": "veces"}
+    ratios = [{"fiscal_year": 2023 + i, "current_ratio": v} for i, v in enumerate([1.1, 1.05, 0.99996])]
+    r = evaluar({"id": 1, "kind": "metrica", "descripcion": "x", "activo": True, "config": config}, {"ratios": ratios})
+    assert r["salta"] is True and r["serie"][-1] < 1 and r["valor"] < 1
+    assert r["serie"][:2] == [1.1, 1.05]

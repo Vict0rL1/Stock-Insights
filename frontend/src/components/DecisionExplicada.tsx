@@ -1,6 +1,6 @@
 import type { AlternativaDecision, Decision, ReglaTraza } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { ESPACIO_DURO, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { ESPACIO_DURO, fmtFrente, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
 
 // Todo lo que se pinta aquí sale de la traza del motor de reglas: qué regla se
 // evaluó, con qué valor, contra qué umbral y qué papel tuvo. No hay texto
@@ -26,9 +26,11 @@ const RESULTADO: Record<string, { texto: string; tono: string }> = {
 // traza, que ES la explicación (revisión de A1).
 const REGLAS_DE_PRECIO = new Set(['stop_perforado', 'tendencia_perdida', 'tendencia_a_favor'])
 
-function valor(v: unknown, esPrecio = false): string {
+function valor(v: unknown, esPrecio = false, umbral?: unknown): string {
   if (v === null || v === undefined) return '—'
-  if (typeof v === 'number') return esPrecio ? fmtPrecio(v) : fmtNum(v, 2)
+  // Una puntuación, de su lado de su umbral: con dos decimales, 0,3496 frente a
+  // 0,35 salía «0,35 frente a 0,35 ✗ no cumple» (revisión 7).
+  if (typeof v === 'number') return esPrecio ? fmtPrecio(v) : typeof umbral === 'number' ? fmtFrente(v, umbral) : fmtNum(v, 2)
   return etiqueta(String(v))
 }
 
@@ -51,8 +53,8 @@ export function PorQue({ reglas }: { reglas: ReglaTraza[] }) {
             <span className="text-slate-700">{r.regla}</span>
             {tieneCifras && (
               <span className="tabular-nums text-slate-500">
-                ({valor(r.datos.valor, REGLAS_DE_PRECIO.has(r.id))} frente a{' '}
-                {valor(r.datos.umbral, REGLAS_DE_PRECIO.has(r.id))})
+                ({valor(r.datos.valor, REGLAS_DE_PRECIO.has(r.id), r.datos.umbral)} frente a{' '}
+                {valor(r.datos.umbral, REGLAS_DE_PRECIO.has(r.id), r.datos.umbral)})
               </span>
             )}
             <span className={`font-medium ${res.tono}`}>{res.texto}</span>
@@ -83,10 +85,10 @@ export function QueLaCambiaria({ cambiaria }: { cambiaria: AlternativaDecision[]
                 · {c.condicion}
                 {c.distancia !== null && c.distancia !== undefined && (
                   <span className="ml-1 tabular-nums text-slate-400">
-                    (ahora {valor(c.actual, c.unidad === '%')}; falta{' '}
+                    (ahora {valor(c.actual, c.unidad === '%', c.umbral)}; falta{' '}
                     {c.unidad === '%'
                       ? fmtPct(c.distancia, 2, { enPuntos: true, signo: true })
-                      : fmtNum(c.distancia, 2, { signo: true }) + (c.unidad ? `${ESPACIO_DURO}${c.unidad}` : '')})
+                      : fmtFrente(c.distancia, 0, { signo: true }) + (c.unidad ? `${ESPACIO_DURO}${c.unidad}` : '')})
                   </span>
                 )}
                 {c.nota && <span className="ml-1 text-amber-800">{c.nota}</span>}

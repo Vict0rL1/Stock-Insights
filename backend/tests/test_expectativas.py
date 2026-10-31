@@ -584,3 +584,12 @@ def test_una_escala_mucho_menor_no_se_escribe_como_cero_veces():
     assert "(0 veces" not in r["motivo"] and "94.930.000.000" in r["motivo"]
     bpa = ev.comprobar_escala({"metrica": "eps_diluted", "valor": 0.00004}, [{"eps_diluted": 1.52, "end_date": "2026-06-30"}])
     assert bpa["motivo"].startswith("0,00004 frente a 1,52")
+
+
+def test_la_proporcion_junto_al_borde_de_la_banda_no_se_escribe_igual_que_el():
+    # Revisión 7: «(0,02 veces, fuera de 0,02–50)» con 0,03 frente a 1,5015.
+    r = ev.comprobar_escala({"metrica": "eps_diluted", "valor": 0.03}, [{"eps_diluted": 1.5015, "end_date": "2026-06-30"}])
+    assert r["estado"] == "dudosa" and "(0,02 veces" not in r["motivo"] and "(0,01998 veces" in r["motivo"]
+    # Y lejos del borde, tres cifras significativas, nunca «0 veces».
+    lejos = ev.comprobar_escala({"metrica": "revenue", "valor": 115.0}, [{"revenue": 94_930_000_000.0, "end_date": "2026-06-30"}])
+    assert "(0 veces" not in lejos["motivo"] and "(0,00000000121 veces" in lejos["motivo"]

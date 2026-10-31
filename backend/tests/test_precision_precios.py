@@ -402,3 +402,20 @@ def test_el_stop_recalculado_va_en_la_rejilla_como_en_la_cartera():
     assert d["levels"]["stop"] == 50.1
     assert d["action"] == "vender"
     assert "Vender si cierra en o por debajo de 50,10" in d["triggers"]
+
+
+def test_la_cartera_y_la_ficha_miden_la_misma_volatilidad():
+    """Revisión 7: la cartera tomaba 64 cierres sin redondear y la ficha 63
+    redondeados: el stop recalculado de una posición salía 54,60 en una y 54,54
+    en la otra. Ahora las dos usan `vol_diaria_pct`."""
+    import math as m
+
+    from app.routers.portfolio import _volatilidad_de
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    cierres = [100 + 5 * m.sin(i / 3) + (i % 7) * 0.3 for i in range(252)]
+    servicio = ServicioFalso(AHORA)
+    servicio.cache.set("price_history", {"symbol": "VOL", "interval": "1day", "outputsize": 252},
+                       {"bars": [{"close": c} for c in cierres]})
+    ficha = _price_summary(pd.Series(cierres, dtype="float64"))["daily_vol_pct"]
+    assert _volatilidad_de(servicio, "VOL") == ficha

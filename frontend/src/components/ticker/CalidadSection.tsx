@@ -1,7 +1,7 @@
 import { api } from '../../api/client'
 import type { CalidadBeneficios, EvidenciaCalidad, Linaje } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { decimalesFrente, fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { TABLA_COMPACTA } from '../../lib/tablas'
@@ -41,6 +41,7 @@ function Entrada({ nombre, e }: { nombre: string; e: Linaje }) {
 
 function Fila({ e }: { e: EvidenciaCalidad }) {
   const esFraccion = !['conversion_caja'].includes(e.categoria)
+  const umbrales = Object.values(e.umbral ?? {}).filter((u): u is number => typeof u === 'number')
   return (
     <details className="group border-b border-slate-100 py-2 last:border-0">
       {/* Con `display:flex` el `summary` pierde su triángulo, y en móvil no hay
@@ -50,7 +51,9 @@ function Fila({ e }: { e: EvidenciaCalidad }) {
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ESTADO[e.estado]}`}>{e.estado.toUpperCase()}</span>
         <span className="font-medium text-slate-800">{etiqueta(e.categoria, { mayuscula: true })}</span>
         <span className="tabular-nums text-slate-600">
-          {e.valor === null ? '—' : esFraccion ? fmtPct(e.valor, 1) : `${fmtNum(e.valor, 2)}×`}
+          {/* De su lado de los umbrales de la regla: con decimales fijos, 0,996
+              frente a «≥ 1 bueno» salía «NORMAL · 1,00×» (revisión 7). */}
+          {e.valor === null ? '—' : esFraccion ? fmtPct(e.valor, decimalesFrente(e.valor, umbrales, true)) : `${fmtNum(e.valor, decimalesFrente(e.valor, umbrales))}×`}
         </span>
         <span className="text-slate-400">{e.periodo ? `ejercicio ${e.periodo}` : ''}</span>
         {e.persistente && <span className="rounded bg-red-100 px-1 text-[10px] text-red-800">persistente</span>}

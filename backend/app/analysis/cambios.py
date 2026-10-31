@@ -25,7 +25,7 @@ from app import datos
 from app.analysis.decision import REGLAS_DE_PRECIO
 from app.analysis.thesis_watch import escribir_cifras
 from app.etiquetas import etiqueta
-from app.formato import fmt_num, fmt_precio, plural
+from app.formato import fmt_frente, fmt_num, fmt_precio, plural
 
 # --- Umbrales de materialidad --------------------------------------------------
 #
@@ -323,10 +323,19 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
         # puntuación, la venta de una acción de céntimos se explicaba «no cumple
         # (+0,01 frente a 0,00) → cumple (0,00 frente a 0,00)», el stop a cero
         # del fallo A1 (revisión 4).
-        def leer(x, fmt=fmt_precio if c["regla"] in REGLAS_DE_PRECIO else _fmt):
+        # La puntuación, de su lado del umbral: con dos decimales, 0,3504 → 0,3496
+        # se explicaba «cumple (+0,35 frente a +0,35) → no cumple (+0,35 frente a
+        # +0,35)» (revisión 7).
+        def leer(x, precio=c["regla"] in REGLAS_DE_PRECIO):
             v, u = x.get("valor"), x.get("umbral")
-            num = f" ({fmt(v)} frente a {fmt(u)})" if v is not None and u is not None else ""
-            return f"{etiqueta(x['resultado'])}{num}"
+            if v is None or u is None:
+                return etiqueta(x["resultado"])
+            if precio:
+                return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
+            if isinstance(v, (int, float)) and isinstance(u, (int, float)):
+                return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, u, signo=True)} frente a "
+                        f"{fmt_frente(u, u, signo=True)})")
+            return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
         explicacion.append(f"«{c['texto']}»: {leer(c['antes'])} → {leer(c['ahora'])}.")
     if not cambiaron and a_accion != b_accion:
         explicacion.append("Ninguna regla cambió de resultado: la diferencia viene de una instantánea sin traza (anterior a la traza de reglas).")

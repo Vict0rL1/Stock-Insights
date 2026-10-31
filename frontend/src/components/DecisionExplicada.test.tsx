@@ -50,6 +50,16 @@ describe('los precios de la traza, con sus cifras (revisión de A1)', () => {
     expect(container.textContent).toContain('(0,80 frente a -0,35)')
   })
 
+  it('la puntuación junto a su umbral no se escribe igual que él (revisión 7)', () => {
+    const reglas = [
+      { id: 'puntuacion_favorable', regla: 'Puntuación ≥ +0,35', resultado: 'no_cumple', efecto: 'comprar', papel: 'bloquea',
+        datos: { valor: 0.3496, umbral: 0.35 } },
+    ] as unknown as ReglaTraza[]
+    expect(render(<PorQue reglas={reglas} />).container.textContent).toContain('(0,3496 frente a 0,35)')
+    expect(texto({ actual: 0.3496, umbral: 0.35, distancia: 0.0004, unidad: 'puntos' }))
+      .toBe(`(ahora 0,3496; falta +0,0004${NBSP}puntos)`)
+  })
+
   it('«¿Qué la cambiaría?» escribe el precio de ahora como precio', () => {
     expect(texto({ actual: 0.003, distancia: 33.33, unidad: '%' })).toBe(`(ahora 0,003; falta +33,33${NBSP}%)`)
   })

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import datos, vigilancia
 from app import punto_en_el_tiempo as pit
 from app.analysis import alertas, fx, historial as hist, portfolio_risk
-from app.analysis.decision import _stop_pct
+from app.analysis.decision import _stop_pct, vol_diaria_pct
 from app.analysis.risk_budget import presupuesto_de_riesgo
 from app.analysis.sizing import con_caida_esperada, peor_ventana
 from app.analysis.portfolio import (
@@ -87,17 +87,7 @@ def _volatilidad_de(service: MarketDataService, symbol: str) -> float | None:
         "price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252}
     )
     bars = (history or {}).get("bars") or []
-    cierres = [b["close"] for b in bars[-64:] if b.get("close")]
-    if len(cierres) < 21:
-        return None
-    retornos = [
-        cierres[i] / cierres[i - 1] - 1 for i in range(1, len(cierres)) if cierres[i - 1]
-    ]
-    if len(retornos) < 20:
-        return None
-    medio = sum(retornos) / len(retornos)
-    varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-    return (varianza ** 0.5) * 100
+    return vol_diaria_pct([b["close"] for b in bars if b.get("close")])
 
 
 def _series_cacheadas(

@@ -155,13 +155,13 @@ export function decimalesFrente(valor: number, umbrales: number[], pct = false):
 export function fmtFrente(
   valor: Num,
   umbral: Num,
-  { pct = false, ceros = true }: { pct?: boolean; ceros?: boolean } = {},
+  { pct = false, ceros = true, signo = false }: { pct?: boolean; ceros?: boolean; signo?: boolean } = {},
 ): string {
   if (!finito(valor)) return GUION
-  if (!finito(umbral)) return pct ? fmtPct(valor, 1) : fmtNum(valor, 2)
+  if (!finito(umbral)) return pct ? fmtPct(valor, 1, { signo }) : fmtNum(valor, 2, { signo })
   const d = decimalesFrente(valor, [umbral], pct)
   const conCeros = ceros && d === (pct ? 1 : 2)
-  return pct ? fmtPct(valor, d, { ceros: conCeros }) : fmtNum(valor, d, { ceros: conCeros })
+  return pct ? fmtPct(valor, d, { ceros: conCeros, signo }) : fmtNum(valor, d, { ceros: conCeros, signo })
 }
 
 /** Un valor calculado con supuestos, con `cifras` cifras significativas y sin

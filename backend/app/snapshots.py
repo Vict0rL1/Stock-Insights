@@ -352,10 +352,14 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     # de un solape): una adelantada horas por un reloj que se corrigió se
     # tragaba un cambio material y la ficha decía «sin cambios» con una hora
     # futura (revisión 6).
-    por_id = session.execute(del_dia.order_by(DecisionSnapshot.id.desc())).scalars().first()
-    por_hora = next((s for s in session.execute(
-        del_dia.order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())).scalars()
-        if pit.descargado_a_tiempo(s.creado_en, ahora) is not False), None)
+    # Y la de `id`, igual: si la adelantada se congeló la última (reloj bien,
+    # adelantado y corregido), era la última por `id` y seguía ganando (revisión 7).
+    def ya_existia(orden):
+        return next((s for s in session.execute(del_dia.order_by(*orden)).scalars()
+                     if pit.descargado_a_tiempo(s.creado_en, ahora) is not False), None)
+
+    por_id = ya_existia((DecisionSnapshot.id.desc(),))
+    por_hora = ya_existia((DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc()))
     for ultimo in (por_id, por_hora):
         if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
             return ultimo, False

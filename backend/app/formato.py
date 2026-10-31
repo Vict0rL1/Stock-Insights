@@ -175,7 +175,7 @@ def decimales_frente(valor: float, umbrales, pct: bool = False) -> int:
     return base + 6
 
 
-def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True) -> str:
+def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True, signo: bool = False) -> str:
     """Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996
     frente a «< 1» → «0,996», no «1,00»; 0,1796 frente a «≥ 18 %» → «17,96 %»
     (revisión 6). Lejos del umbral, como siempre: 0,8 → «0,80»; 0,23 → «23,0 %»."""
@@ -183,10 +183,12 @@ def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True) -> str:
     if valor is None:
         return GUION
     if umbral is None:
-        return fmt_pct(valor, 1) if pct else fmt_num(valor, 2)
+        return fmt_pct(valor, 1, signo=signo) if pct else fmt_num(valor, 2, signo=signo)
     decimales = decimales_frente(valor, [umbral], pct)
     con_ceros = ceros and decimales == (1 if pct else 2)
-    return fmt_pct(valor, decimales, ceros=con_ceros) if pct else fmt_num(valor, decimales, ceros=con_ceros)
+    if pct:
+        return fmt_pct(valor, decimales, ceros=con_ceros, signo=signo)
+    return fmt_num(valor, decimales, ceros=con_ceros, signo=signo)
 
 
 def fmt_cifras(valor, cifras: int = 3) -> str:

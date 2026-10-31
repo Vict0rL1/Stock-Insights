@@ -285,3 +285,20 @@ def test_la_explicacion_escribe_los_precios_como_precios():
     b = decide({"symbol": "X", "score": 0.6}, {"last": 5.60, "sma200": 5.30, "above_sma200": True, "daily_vol_pct": 1.2})
     tendencia = next(e for e in cambios.comparar_decisiones(a, b)["explicacion"] if "media" in e)
     assert "(5,10 frente a 5,41)" in tendencia and "+5" not in tendencia
+
+
+def test_la_puntuacion_junto_a_su_umbral_no_se_escribe_igual_que_el():
+    """Revisión 7: con 0,3504 → 0,3496 se explicaba «cumple (+0,35 frente a +0,35)
+    → no cumple (+0,35 frente a +0,35)», y la traza «falta 0,00 puntos»."""
+    from app.analysis.decision import decide
+
+    def precio():
+        return {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "X", "score": 0.3504}, precio())
+    ahora = decide({"symbol": "X", "score": 0.3496}, precio())
+    explicacion = " ".join(cambios.comparar_decisiones(antes, ahora)["explicacion"])
+    assert "(+0,3504 frente a +0,35) → no cumple (+0,3496 frente a +0,35)" in explicacion
+    assert any("+0,3496" in r for r in ahora["reasons"])
+    comprar = next(g for g in ahora["cambiaria"] if g["hacia"] == "comprar")
+    c = next(c for c in comprar["condiciones"] if c["regla"] == "puntuacion_favorable")
+    assert c["actual"] == 0.3496 and c["distancia"] > 0

@@ -30,7 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app.etiquetas import etiqueta
-from app.formato import fmt_cifras, fmt_fecha, fmt_num
+from app.formato import fmt_cifras, fmt_fecha, fmt_frente, fmt_num
 
 # --- Métricas y tolerancias ----------------------------------------------------
 #
@@ -400,6 +400,15 @@ def valor_en_unidad(valor, unidad: str | None, metrica: str) -> float | None:
 ESCALA_PLAUSIBLE = {"revenue": (0.2, 5.0), "eps_diluted": (0.02, 50.0)}
 
 
+def _proporcion(ratio: float, banda: tuple[float, float]) -> str:
+    """La proporción con tres cifras significativas («0,0000012 veces», no «0»), y
+    frente al límite que incumple si con ellas se escribiría igual que él: un
+    0,01998 decía «0,02 veces, fuera de 0,02–50» (revisión 7)."""
+    limite = banda[0] if ratio < banda[0] else banda[1]
+    texto = fmt_cifras(ratio)
+    return fmt_frente(ratio, limite, ceros=False) if texto == fmt_num(limite, 2, ceros=False) else texto
+
+
 def comprobar_escala(x: dict, trimestres: list[dict]) -> dict:
     """¿Está la cifra en la escala de lo último publicado? → `ok`, `dudosa` o
     `sin_referencia` (sin trimestre comparable, o un BPA con signo que no se
@@ -432,7 +441,7 @@ def comprobar_escala(x: dict, trimestres: list[dict]) -> dict:
         # típico (millones o miles de millones perdidos) decía «0 veces», y un BPA
         # de 0,00004, «0» (revisión 6).
         r["motivo"] = (f"{fmt_cifras(cifra, 4)} frente a {fmt_cifras(v, 4)} del trimestre "
-                       f"cerrado el {fmt_fecha(q.get('end_date'))} ({fmt_cifras(ratio)} veces, fuera de "
+                       f"cerrado el {fmt_fecha(q.get('end_date'))} ({_proporcion(ratio, banda)} veces, fuera de "
                        f"{fmt_num(banda[0], 2, ceros=False)}–{fmt_num(banda[1], 2, ceros=False)}): parece otra escala")
     return r
 

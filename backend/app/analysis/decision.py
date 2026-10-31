@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 
 from app import datos
-from app.formato import fmt_fecha, fmt_num, fmt_pct, fmt_precio
+from app.formato import decimales_frente, fmt_fecha, fmt_num, fmt_pct, fmt_precio
 
 # --- Parámetros del sistema. Están aquí, juntos y con nombre, para que se
 # puedan discutir y ajustar sin bucear por el código. ---
@@ -76,6 +76,21 @@ ACCIONES = {
     "ninguna": "Sin acción",
     "sin_datos": "Sin datos",
 }
+
+
+def vol_diaria_pct(cierres: list[float]) -> float | None:
+    """Volatilidad diaria (%) de los últimos ~3 meses: es lo que dimensiona el
+    stop. Una sola versión para Hoy, la ficha y la cartera: con 63 cierres
+    redondeada en un sitio y 64 sin redondear en el otro, el stop recalculado de
+    una posición salía 54,54 en la ficha y 54,60 en la cartera, y un cierre entre
+    los dos «reducía» en una y había perforado el stop en la otra (revisión 7)."""
+    ventana = [c for c in cierres if c][-63:]
+    retornos = [ventana[i] / ventana[i - 1] - 1 for i in range(1, len(ventana))]
+    if len(retornos) < 20:
+        return None
+    medio = sum(retornos) / len(retornos)
+    varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
+    return round(math.sqrt(varianza) * 100, 3)
 
 
 def _stop_pct(vol_diaria_pct: float | None, clase: str = "accion") -> float:
@@ -226,10 +241,11 @@ def decide(
         # «mantener». Abrir con un stop sobre el coste sí se rechaza, en la
         # entrada: el día de la compra no protege de nada.
         #
-        # Se compara con el stop SIN redondear. Redondeado a dos decimales, el
-        # stop de 0,004 de una acción de céntimos era 0,0: con el precio en
-        # 0,003 la regla preguntaba «0,003 ≤ 0» y la venta no salía nunca
-        # (auditoría del 19 oct). Solo lo que se sirve se redondea, al final.
+        # El stop guardado se compara tal cual; el recalculado, en la rejilla de
+        # `redondear_precio`, como en la cartera (revisión 6). Nunca a dos
+        # decimales fijos: así el stop de 0,004 de una acción de céntimos era
+        # 0,0, la regla preguntaba «0,003 ≤ 0» y la venta no salía nunca
+        # (auditoría del 19 oct). Lo que se sirve va hacia abajo, al final.
         stop_fijado = datos.precio(position.get("stop"))
         if stop_fijado is not None:
             stop_posicion = stop_fijado
@@ -252,7 +268,7 @@ def decide(
 
         if decisiva and decisiva["id"] == "puntuacion_desfavorable":
             razones.append(
-                f"La puntuación cayó a {fmt_num(score, signo=True)}: la razón por la que se "
+                f"La puntuación cayó a {_puntuacion(score, desfavorable_max)}: la razón por la que se "
                 "compró ya no se sostiene frente a sus comparables."
             )
         elif decisiva and decisiva["id"] == "stop_perforado":
@@ -273,7 +289,7 @@ def decide(
             )
         else:
             razones.append(
-                f"Puntuación {fmt_num(score, signo=True)} y {_frase_tendencia(sobre_media, tendencia)}: "
+                f"Puntuación {_puntuacion(score, desfavorable_max)} y {_frase_tendencia(sobre_media, tendencia)}: "
                 "no hay motivo para tocar la posición."
             )
 
@@ -373,7 +389,7 @@ def decide(
         accion = "evitar"
         por_id["puntuacion_desfavorable"]["papel"] = "decide"
         razones.append(
-            f"Puntuación {fmt_num(score, signo=True)}: queda por detrás de sus comparables de "
+            f"Puntuación {_puntuacion(score, desfavorable_max)}: queda por detrás de sus comparables de "
             "sector en valor, calidad y momentum."
         )
     elif por_id["puntuacion_favorable"]["resultado"] == CUMPLE and por_id["tendencia_a_favor"]["resultado"] == CUMPLE:
@@ -381,7 +397,7 @@ def decide(
         por_id["puntuacion_favorable"]["papel"] = "decide"
         por_id["tendencia_a_favor"]["papel"] = "decide"
         razones.append(
-            f"Puntuación {fmt_num(score, signo=True)} — mejor que sus comparables de sector."
+            f"Puntuación {_puntuacion(score, favorable_min)} — mejor que sus comparables de sector."
         )
         razones.append(
             f"Cotiza sobre su media de 200 sesiones ({fmt_precio(sma200)}): la tendencia "
@@ -404,7 +420,7 @@ def decide(
         # de los tres estados está. Decía «cotiza bajo su media» con el precio
         # dentro de la banda, encima de ella, y pedía «cierre por encima de
         # 100» cuando la regla exige 102 (revisión 3).
-        razones.append(f"Puntuación {fmt_num(score, signo=True)}, pero {_frase_tendencia(sobre_media, tendencia)}.")
+        razones.append(f"Puntuación {_puntuacion(score, favorable_min)}, pero {_frase_tendencia(sobre_media, tendencia)}.")
         razones.append(
             "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a "
             f"que el precio supere la {_media_entrar()} antes de entrar."
@@ -427,7 +443,7 @@ def decide(
         accion = "ninguna"
         por_id["puntuacion_favorable"]["papel"] = "bloquea"
         razones.append(
-            f"Puntuación {fmt_num(score, signo=True)}: ni destaca ni preocupa frente a sus "
+            f"Puntuación {_puntuacion(score, favorable_min, desfavorable_max)}: ni destaca ni preocupa frente a sus "
             "comparables. No hay motivo para actuar."
         )
         disparadores = [f"Revisar si supera {fmt_num(favorable_min, signo=True)}"]
@@ -617,13 +633,25 @@ def _reglas_sin_posicion(score, sobre_media, tendencia, favorable_min, desfavora
     ]
 
 
+def _puntuacion(score: float, *umbrales: float) -> str:
+    """La puntuación de su lado de los umbrales: con dos decimales, 0,3496 frente
+    a «≥ +0,35» se escribía «+0,35» y la traza decía «0,35 frente a 0,35 ✗»
+    (revisión 7). Lejos de ellos, con los dos de siempre."""
+    return fmt_num(score, decimales_frente(score, umbrales), signo=True)
+
+
 def _c_score(op: str, umbral: float, score: float, id_: str) -> dict:
+    # A tres decimales, salvo que el redondeo la deje en el umbral: «ahora 0,35;
+    # falta 0,00 puntos» con una condición pendiente (revisión 7).
+    actual, distancia = round(score, 3), round(umbral - score, 3)
+    if score != umbral and (actual == umbral or distancia == 0):
+        actual, distancia = score, umbral - score
     return {
         "regla": id_,
         "condicion": f"puntuación {op} {fmt_num(umbral, signo=True)}",
-        "actual": round(score, 3),
+        "actual": actual,
         "umbral": umbral,
-        "distancia": round(umbral - score, 3),
+        "distancia": distancia,
         "unidad": "puntos",
     }
 

@@ -11,6 +11,7 @@ import logging
 import math
 
 from app import datos
+from app.analysis.decision import vol_diaria_pct
 from app.providers.base import (
     BASIC_FUNDAMENTAL_KEYS,
     DataNotFoundError,
@@ -93,17 +94,7 @@ def _price_summary(closes) -> dict | None:
 
     # Volatilidad diaria de los últimos ~3 meses: es lo que dimensiona el stop.
     # Un stop igual para una utility y para una biotech no protege de nada.
-    ventana = valores[-63:]
-    retornos = [
-        ventana[i] / ventana[i - 1] - 1
-        for i in range(1, len(ventana))
-        if ventana[i - 1]
-    ]
-    vol_diaria = None
-    if len(retornos) >= 20:
-        medio = sum(retornos) / len(retornos)
-        varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-        vol_diaria = round(math.sqrt(varianza) * 100, 3)
+    vol_diaria = vol_diaria_pct(valores)
 
     return {
         # El cierre tal cual, sin redondear: es lo que el motor compara con el
