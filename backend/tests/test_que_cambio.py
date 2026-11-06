@@ -302,3 +302,37 @@ def test_la_puntuacion_junto_a_su_umbral_no_se_escribe_igual_que_el():
     comprar = next(g for g in ahora["cambiaria"] if g["hacia"] == "comprar")
     c = next(c for c in comprar["condiciones"] if c["regla"] == "puntuacion_favorable")
     assert c["actual"] == 0.3496 and c["distancia"] > 0
+
+
+def test_la_puntuacion_se_sirve_frente_a_los_dos_umbrales():
+    """Revisión 8: `_c_score` solo miraba su umbral. Con -0,3496, la condición de
+    comprar (≥ +0,35) servía -0,35 y la de evitar (≤ -0,35), justo debajo, -0,3496;
+    la cifra de una línea cumpliría la regla que la otra daba por no cumplida."""
+    from app.analysis.decision import decide
+
+    precio = {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    for score in (-0.3496, 0.3496):
+        d = decide({"symbol": "X", "score": score}, precio)
+        actuales = {c["actual"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")}
+        assert actuales == {score}
+    # Lejos de los dos, se sigue sirviendo a tres decimales.
+    d = decide({"symbol": "X", "score": 0.12345}, precio)
+    assert {c["actual"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")} == {0.123}
+
+
+def test_una_condicion_de_precio_pendiente_no_dice_falta_cero():
+    """Revisión 8: con dos decimales, en una acción de más de 200 un céntimo es
+    menos de 0,005 %: «precio ≥ 510,00 (ahora 509,99; falta 0,00 %)». Y la
+    confianza lo repetía: «(a 0 puntos)» con una puntuación a 0,0004."""
+    from app.analysis.decision import decide
+
+    d = decide({"symbol": "X", "score": 0.6}, {"last": 509.99, "sma200": 500.0, "above_sma200": True, "daily_vol_pct": 1.2})
+    comprar = next(g for g in d["cambiaria"] if g["hacia"] == "comprar")
+    c = next(c for c in comprar["condiciones"] if c["regla"] == "tendencia_a_favor")
+    assert c["umbral"] == 510.0 and 0 < c["distancia"] < 0.005
+
+    borde = decide({"symbol": "X", "score": 0.3496}, {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2})
+    base = {"faltan": [], "mercado": {"precio": {"estado": "valido", "valor": 1.0}, "historico": {"sesiones": 260}},
+            "fundamentales": {"ejercicios_disponibles": 5}, "valoracion": {}, "decision": borde}
+    estabilidad = next(f for f in confianza.evaluar(base, AHORA)["factores"] if f["id"] == "estabilidad")
+    assert "(a 0,0004 puntos)" in estabilidad["detalle"] and "(a 0 puntos)" not in estabilidad["detalle"]

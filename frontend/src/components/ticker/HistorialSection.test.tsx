@@ -3,9 +3,9 @@
  * comprobadas» vendía como garantía lo que no se había comprobado. UNKNOWN no
  * se convierte en PASS, tampoco en una frase.
  */
-import { render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import { Anticipacion } from './HistorialSection'
+import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Anticipacion, HistorialSection } from './HistorialSection'
 
 const REGLA = 'cada dato estaba disponible antes del momento de la decisión'
 
@@ -29,5 +29,28 @@ describe('protección contra información posterior en el replay', () => {
     const t = texto(4, ['consenso'])
     expect(t).not.toMatch(/Sin información posterior/)
     expect(t).toMatch(/Sin fecha verificable, no se pudo comprobar: consenso\./)
+  })
+})
+
+describe('historial de decisiones', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('la puntuación de cada fila no se escribe igual que un umbral (revisión 8)', async () => {
+    // Dos instantáneas con 0,3504 (comprar) y 0,3496 (sin acción) salían
+    // «Comprar 0,35» y «Sin acción 0,35»: una acción distinta con la misma cifra.
+    const fila = (id: number, accion: string, score: number) => ({
+      id, fecha: '2026-09-12', creado_en: `2026-09-12T1${id}:00:00+00:00`, origen: 'analisis:14:35:00',
+      accion, precio: 110, moneda: 'USD', score, reglas_version: 'v1', replay: true,
+    })
+    const respuesta = {
+      symbol: 'ACME', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
+      decisiones: [fila(1, 'comprar', 0.3504), fila(2, 'ninguna', 0.3496), fila(3, 'ninguna', 0.12)],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 })))
+    render(<HistorialSection symbol="ACME" />)
+    expect(await screen.findByText('+0,3504')).toBeInTheDocument()
+    expect(screen.getByText('+0,3496')).toBeInTheDocument()
+    expect(screen.getByText('+0,12')).toBeInTheDocument()
+    expect(screen.queryByText('0,35')).toBeNull()
   })
 })

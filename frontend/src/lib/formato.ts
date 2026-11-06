@@ -151,15 +151,18 @@ export function decimalesFrente(valor: number, umbrales: number[], pct = false):
 }
 
 /** Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996 frente
- *  a «< 1» → «0,996», no «1,00» (revisión 6). Gemelo de `fmt_frente`. */
+ *  a «< 1» → «0,996», no «1,00» (revisión 6). Con una lista, frente a todos: la
+ *  puntuación -0,3496 salía «-0,35» junto a «≥ +0,35» y «-0,3496» junto a
+ *  «≤ -0,35» (revisión 8). Gemelo de `fmt_frente`. */
 export function fmtFrente(
   valor: Num,
-  umbral: Num,
+  umbral: Num | Num[],
   { pct = false, ceros = true, signo = false }: { pct?: boolean; ceros?: boolean; signo?: boolean } = {},
 ): string {
   if (!finito(valor)) return GUION
-  if (!finito(umbral)) return pct ? fmtPct(valor, 1, { signo }) : fmtNum(valor, 2, { signo })
-  const d = decimalesFrente(valor, [umbral], pct)
+  const umbrales = (Array.isArray(umbral) ? umbral : [umbral]).filter(finito)
+  if (!umbrales.length) return pct ? fmtPct(valor, 1, { signo }) : fmtNum(valor, 2, { signo })
+  const d = decimalesFrente(valor, umbrales, pct)
   const conCeros = ceros && d === (pct ? 1 : 2)
   return pct ? fmtPct(valor, d, { ceros: conCeros, signo }) : fmtNum(valor, d, { ceros: conCeros, signo })
 }

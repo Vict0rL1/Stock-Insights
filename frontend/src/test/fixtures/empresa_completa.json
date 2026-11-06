@@ -2336,7 +2336,11 @@
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",
-    "symbol": "ACME"
+    "symbol": "ACME",
+    "thresholds": {
+     "desfavorable": -0.35,
+     "favorable": 0.35
+    }
    },
    "status": 200
   },
@@ -3177,7 +3181,12 @@
      "tipos_usados": {}
     },
     "estres": {
+     "aviso_sin_historico": "Mide solo el 0,0 % del dinero: KO no tiene histórico en caché (o menos de 60 sesiones) y queda fuera. El resto se repondera como si fuera toda la cartera: la caída es la de esa parte, no la tuya.",
+     "cobertura_peso": 0.0,
      "nota": "Sin cartera o sin histórico.",
+     "sin_historico": [
+      "KO"
+     ],
      "suficiente": false
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",
@@ -3241,6 +3250,7 @@
       ],
       "stop": 50.0,
       "stop_fijado_al_abrir": true,
+      "stop_por_clase": false,
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
       "unrealized_pnl": 600.0

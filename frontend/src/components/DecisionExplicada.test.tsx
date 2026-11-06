@@ -60,6 +60,36 @@ describe('los precios de la traza, con sus cifras (revisión de A1)', () => {
       .toBe(`(ahora 0,3496; falta +0,0004${NBSP}puntos)`)
   })
 
+  it('la puntuación, frente a TODOS los umbrales con que se compara (revisión 8)', () => {
+    // Frente solo al suyo, -0,3496 salía «-0,35» en la línea de comprar y
+    // «-0,3496» en la de evitar, dos líneas más abajo.
+    const reglas = [
+      { id: 'puntuacion_desfavorable', regla: 'Puntuación ≤ -0,35', resultado: 'no_cumple', efecto: 'evitar', papel: 'evaluada',
+        datos: { valor: -0.3496, umbral: -0.35 } },
+      { id: 'puntuacion_favorable', regla: 'Puntuación ≥ +0,35', resultado: 'no_cumple', efecto: 'comprar', papel: 'bloquea',
+        datos: { valor: -0.3496, umbral: 0.35 } },
+    ] as unknown as ReglaTraza[]
+    const traza = render(<PorQue reglas={reglas} />).container.textContent ?? ''
+    expect(traza).toContain('(-0,3496 frente a 0,35)')
+    expect(traza).toContain('(-0,3496 frente a -0,35)')
+    const { container } = render(
+      <QueLaCambiaria
+        cambiaria={[
+          { hacia: 'comprar', requiere: 'todas', condiciones: [
+            { regla: 'puntuacion_favorable', condicion: 'puntuación ≥ +0,35', actual: -0.3496, umbral: 0.35, distancia: 0.6996, unidad: 'puntos' }] },
+          { hacia: 'evitar', requiere: 'todas', condiciones: [
+            { regla: 'puntuacion_desfavorable', condicion: 'puntuación ≤ -0,35', actual: -0.3496, umbral: -0.35, distancia: -0.0004, unidad: 'puntos' }] },
+        ]}
+      />,
+    )
+    expect(container.textContent).not.toContain('ahora -0,35;')
+  })
+
+  it('una distancia de precio pendiente no se escribe como cero (revisión 8)', () => {
+    // 509,99 frente a «≥ 510,00»: con dos decimales fijos, «falta +0,00 %».
+    expect(texto({ actual: 509.99, umbral: 510, distancia: 0.00196, unidad: '%' })).toBe(`(ahora 509,99; falta +0,002${NBSP}%)`)
+  })
+
   it('«¿Qué la cambiaría?» escribe el precio de ahora como precio', () => {
     expect(texto({ actual: 0.003, distancia: 33.33, unidad: '%' })).toBe(`(ahora 0,003; falta +33,33${NBSP}%)`)
   })

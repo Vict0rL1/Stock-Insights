@@ -23,7 +23,7 @@ from app.db.engine import get_session
 from app.db.models import Alert, Position
 from app.deps import get_service
 from app.main import app
-from app.providers.base import iso_utc
+from app.providers.base import DataNotFoundError, iso_utc
 
 
 def _crudo(c, ruta, cuerpo: str):
@@ -40,6 +40,10 @@ class Servicio:
                     "sector": "Tech", "currency": "USD"}
         if data_type == "quote":
             return {**common, "symbol": kw["symbol"], "price": 100.0, "currency": "USD"}
+        if data_type == "price_history":
+            # Abrir una posición descarga el histórico una vez para medir su stop
+            # (revisión 8); aquí no lo hay, y el stop cae al punto medio de la clase.
+            raise DataNotFoundError("sin histórico")
         raise AssertionError(data_type)
 
 
@@ -191,6 +195,14 @@ def test_abrir_una_posicion_fija_su_stop(api):
     with factory() as s:
         p = s.query(Position).one()
     assert p.stop is not None and 0 < p.stop < 150.0
+
+
+def test_un_stop_sin_historico_que_medir_se_dice(api):
+    """Revisión 8: sin histórico (ni descargándolo) el stop guardado es el punto
+    medio de su clase, no uno medido; la respuesta lo dice."""
+    c, _ = api
+    r = c.post("/api/portfolio/positions", json={"symbol": "AAPL", "quantity": 10, "cost_basis": 150.0})
+    assert r.status_code == 200 and r.json()["stop_por_clase"] is True
 
 
 def test_el_stop_se_puede_dar_a_mano(api):

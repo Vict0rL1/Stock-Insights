@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app import analisis_empresa
 from app import snapshots as sn
 from app.analysis import cambios as diff
+from app.analysis.signal import FAVORABLE_MIN, UNFAVORABLE_MAX
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import DecisionSnapshot
@@ -199,5 +200,9 @@ def historial(symbol: SimboloRuta, limite: int = Query(50, ge=1, le=500), sessio
             }
             for s in filas
         ],
+        # Los de la lista diaria y la ficha: con ellos se escribe la puntuación de
+        # cada fila sin dejarla en un umbral (0,3496 → «0,35» junto a una fila de
+        # «Comprar» con 0,3504; revisión 8).
+        "thresholds": {"favorable": FAVORABLE_MIN, "desfavorable": UNFAVORABLE_MAX},
         "reglas_version_actual": sn.version_de_reglas(),
     }

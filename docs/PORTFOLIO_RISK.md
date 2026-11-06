@@ -87,7 +87,13 @@ sin cotización la posición queda fuera y nombrada), y convertidas con el mismo
 Con alguna posición abierta sin valorar, el efectivo anotado **no se suma** (como en Hoy, base
 `invertido_parcial`), el veredicto nombra siempre las posiciones que faltan (con efectivo anotado
 o sin él, una vez y solo si hubo tamaño) y avisa de que los topes por sector y correlación no
-las cuentan mientras las valoradas pesan de más: el tamaño puede quedarse corto o pasarse. El riesgo se mide sobre la parte valorada y lo dice (`aviso`); si ninguna se
+las cuentan mientras las valoradas pesan de más: el tamaño puede quedarse corto o pasarse. Sin
+ninguna valorada no hay nada que pese de más y el tamaño es una cota superior. Es la misma frase
+que el `aviso_cartera` de Hoy (`sizing.aviso_cartera_parcial`). Un tope de correlación o de
+volatilidad que no se pudo aplicar llega también al veredicto de la ficha («Tope por
+correlación. …», como en el panel de Hoy); sin ninguna pareja que comprobar (la cartera vacía o
+nada valorado) no hay aviso. El riesgo se mide solo sobre las posiciones con precio e histórico y
+nombra las que faltan, cada una con su motivo (`aviso`); si ninguna se
 pudo valorar, o la propia empresa está sin valorar, es desconocido y no «sin cartera». De cada posición, su última
 lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
 anterior) (acción, tesis, valoración, confianza): no se reanaliza la

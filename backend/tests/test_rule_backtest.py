@@ -356,3 +356,22 @@ def test_sin_operaciones_de_un_lado_no_hay_media_de_ese_lado():
     r = _resumen(perdedoras, [0.5] * 5, {}, 0.1, True, 0.35)
     assert r["media_ganadora_pct"] is None
     assert r["media_perdedora_pct"] == -5.0
+
+
+def test_el_backtest_mide_la_volatilidad_del_stop_como_en_vivo():
+    """Revisión 8: el backtest tenía su propia volatilidad (64 cierres sin
+    redondear, mínimo 63) y su docstring decía que era la de en vivo. El stop
+    simulado salía distinto del real en más de la mitad de las fechas, y entre
+    21 y 62 cierres usaba el punto medio de la clase cuando en vivo ya se mide."""
+    import math as m
+    from datetime import date, timedelta
+
+    from app.analysis import rule_backtest as rb
+    from app.analysis.decision import vol_diaria_pct
+
+    inicio = date(2025, 1, 1)
+    serie = [(inicio + timedelta(days=i), 100 + 5 * m.sin(i / 3) + (i % 7) * 0.3) for i in range(120)]
+    for n in (30, 64, 120):
+        as_of = serie[n - 1][0]
+        assert rb._vol_diaria_pct(serie, as_of) == vol_diaria_pct([c for _, c in serie[:n]])
+    assert rb._vol_diaria_pct(serie, serie[29][0]) is not None

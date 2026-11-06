@@ -28,7 +28,7 @@ from app.analysis.backtest import (
 from app.analysis import experiments
 from app.analysis.rule_backtest import rebalance_dates_mensuales, run_rule_backtest
 from app.analysis.shortlist import construir_lista_corta
-from app.analysis.sizing import dimensionar
+from app.analysis.sizing import aviso_cartera_parcial, dimensionar
 from app.analysis.factors import (
     DEFAULT_WEIGHTS,
     build_raw_factors,
@@ -360,13 +360,12 @@ def _cartera_actual(
     capital = total + efectivo_usd if base == "capital" and efectivo_usd is not None else total
     aviso = None
     if sin_valorar:
+        # La misma frase que la ficha: aquí decía «Tu concentración real es mayor»
+        # al lado de la nota «el tamaño puede quedarse corto o pasarse», y sin
+        # ninguna valorada no hay nada que pese de más (revisión 8).
         muestra = ", ".join(sorted(sin_valorar)[:5])
-        aviso = (
-            f"{len(sin_valorar)} {plural(len(sin_valorar), 'posición abierta no entra', 'posiciones abiertas no entran')} "
-            f"en los topes por sector y correlación ({muestra}): este barrido no "
-            f"{plural(len(sin_valorar), 'la cubre o no tiene', 'las cubre o no tienen')} precio. "
-            "Tu concentración real es mayor que la que se ve "
-            "aquí."
+        aviso = aviso_cartera_parcial(
+            len(sin_valorar), f"{muestra}: fuera de este barrido o sin precio", hay_valoradas=bool(total)
         )
     if not total:
         return [], aviso, base

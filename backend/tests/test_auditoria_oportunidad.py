@@ -487,6 +487,7 @@ def test_el_aviso_de_cartera_parcial_no_afirma_una_direccion_ni_se_repite(sessio
 
     def ficha(s, score):
         servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=score, periodos=financieros_base())
+        servicio.empresa("AAA", precio=100.0, score=None)
         return analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]
 
     with session_factory() as s:
@@ -494,7 +495,12 @@ def test_el_aviso_de_cartera_parcial_no_afirma_una_direccion_ni_se_repite(sessio
         s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
                           registrado_en=ahora - timedelta(hours=1)))
         s.commit()
+        # Sin ninguna valorada no hay nada que pese de más: los topes no ven nada
+        # y el tamaño sí es una cota superior (revisión 8).
+        sola = ficha(s, 0.6)["veredicto"]["motivo"]
+        _posicion(s, "AAA")
         compra, evitar = ficha(s, 0.6), ficha(s, -0.6)
+    assert "cota superior" in sola and "pesan de más" not in sola
     motivo = compra["veredicto"]["motivo"]
     assert motivo.count("XYZ") == 1 and "puede quedarse corto o pasarse" in motivo and "cota superior" not in motivo
     assert "tamaño" not in evitar["veredicto"]["motivo"] and "aviso_cartera" not in (evitar.get("sizing") or {})
@@ -519,7 +525,7 @@ def test_el_riesgo_nombra_tambien_las_posiciones_sin_historico(session_factory):
         a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
     assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
     # Y el tope de correlación sin comprobar llega al veredicto (revisión 7).
-    assert "Tope por correlación sin aplicar del todo" in a["coste_oportunidad"]["veredicto"]["motivo"]
+    assert "Tope por correlación. Solo se pudieron medir" in a["coste_oportunidad"]["veredicto"]["motivo"]
 
 
 def test_la_propia_empresa_sin_valorar_tiene_el_riesgo_desconocido():
@@ -646,4 +652,21 @@ def test_dos_analisis_solapados_no_dejan_dos_instantaneas_iguales(session_factor
         primera = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
     assert segunda["instantanea"]["nueva"] is True
     assert primera["instantanea"]["nueva"] is False and primera["instantanea"]["id"] == segunda["instantanea"]["id"]
+
+
+def test_con_la_cartera_vacia_no_hay_parejas_que_comprobar(session_factory):
+    """Revisión 8: sin posiciones, `dimensionar` solo ve la candidata (0 parejas
+    posibles) y el veredicto de toda compra avisaba de «Solo se pudieron medir 0
+    de 0 parejas: el tope por correlación NO se ha comprobado del todo»."""
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        c = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]
+    assert c["veredicto"]["accion"] is not None
+    assert "0 de 0" not in c["veredicto"]["motivo"] and "Tope por" not in c["veredicto"]["motivo"]
 

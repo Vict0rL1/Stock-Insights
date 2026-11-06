@@ -130,3 +130,19 @@ def test_sin_historico_en_cache_se_dice_en_vez_de_enseñar_un_retorno_pelado(cli
     assert r["estres"]["suficiente"] is False
     assert r["summary"]["max_drawdown_esperado_pct"] is None
     assert "no se puede interpretar" in r["summary"]["aviso_cobertura"]
+
+
+def test_el_estres_nombra_lo_que_deja_fuera_y_cuanto_dinero_mide(client):
+    """Revisión 8: `peor_ventana` repondera sobre las que tienen serie y la
+    respuesta no decía qué faltaba: con media cartera sin histórico, la «peor
+    caída» era la de la otra mitad, presentada como la de toda."""
+    estres = client(simbolos_con_historico=("AAPL",)).get("/api/portfolio").json()["estres"]
+    assert estres["sin_historico"] == ["MSFT"]
+    assert estres["cobertura_peso"] == 0.5
+    assert "MSFT" in estres["aviso_sin_historico"] and "50,0 %" in estres["aviso_sin_historico"]
+
+
+def test_con_todo_el_historico_no_hay_aviso_de_cobertura(client):
+    estres = client().get("/api/portfolio").json()["estres"]
+    assert estres["sin_historico"] == [] and estres["aviso_sin_historico"] is None
+    assert estres["cobertura_peso"] == 1.0

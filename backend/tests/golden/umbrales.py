@@ -282,7 +282,6 @@ EXENTOS: dict[str, str] = {
         "a comparar con la cartera; el paquete de extremos aún no tiene ese caso"),
     "app.analysis.rule_backtest.MAX_SESIONES": _BACKTEST,
     "app.analysis.rule_backtest.SESIONES_SMA": _BACKTEST,
-    "app.analysis.rule_backtest.MIN_BARRAS_VOL": _BACKTEST,
     "app.analysis.rule_backtest.MIN_OPERACIONES_VENTANA": _BACKTEST,
     "app.analysis.rule_backtest.MIN_PARA_FORMA": _BACKTEST,
     "app.analysis.rule_backtest.ANCHOS_BONITOS": _BACKTEST,

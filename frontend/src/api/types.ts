@@ -400,6 +400,8 @@ export interface PortfolioPosition {
   stop?: number | null
   /** true = fijado al abrir; false = recalculado (posición anterior al RC1). */
   stop_fijado_al_abrir?: boolean
+  /** Recalculado sin histórico: el punto medio de su clase, no un stop medido. */
+  stop_por_clase?: boolean
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -462,6 +464,11 @@ export interface Estres {
   cobertura?: string
   años_cubiertos?: number
   aviso_cobertura?: string
+  /** Fracción del dinero que entra en el estrés (0–1); el resto no tiene histórico. */
+  cobertura_peso?: number | null
+  /** Las posiciones que se quedan fuera, por nombre. */
+  sin_historico?: string[]
+  aviso_sin_historico?: string | null
 }
 
 export interface Portfolio {
@@ -820,6 +827,9 @@ export interface ControlDeRiesgo {
   limite: 'posición' | 'sector' | 'correlación' | 'volatilidad'
   aplicado: boolean
   motivo: string | null
+  /** Solo el de correlación. 0: una sola idea y nada en cartera, no hay nada que comprobar. */
+  parejas_medidas?: number
+  parejas_posibles?: number
 }
 
 export interface Shortlist {
@@ -2078,7 +2088,8 @@ export interface RiesgoEnCartera {
   volatilidad_cartera_despues?: number
   motivo?: string
   nota?: string
-  /** Con posiciones sin valorar: el riesgo se mide sobre la parte valorada. */
+  /** Con posiciones sin precio o sin histórico: el riesgo se mide solo sobre las
+   *  que tienen las dos cosas, y esto nombra las que faltan con su motivo. */
   aviso?: string
 }
 

@@ -796,6 +796,12 @@ Y si el histórico común no llega a la ventana pedida, la peor ventana sale
 semanas viajaba rotulado como «peor 12 meses», y un número mal rotulado es peor
 que ninguno porque se compara con otros que sí significan lo que dicen.
 
+Las posiciones sin histórico en caché (o con menos de 60 sesiones) no entran, y
+el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
+(`estres.cobertura_peso`) y cuáles se quedan fuera (`sin_historico`, con su
+aviso en el panel), como el estrés de crisis. Antes se quitaban en silencio y la
+caída de un 9 % de la cartera pasaba por la de toda.
+
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
 llamaba ningún endpoint**. Hoy `/api/portfolio` las sirve y el portafolio las

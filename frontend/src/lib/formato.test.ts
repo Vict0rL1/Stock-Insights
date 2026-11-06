@@ -18,7 +18,7 @@ const FUNCIONES: Record<string, (args: unknown[], op: Record<string, unknown>) =
   fmt_valor_redondo: ([v], op) => formato.fmtValorRedondo(cifra(v), op.moneda as string | undefined),
   fmt_cifras: ([v], op) => formato.fmtCifras(cifra(v), op.cifras as number | undefined),
   fmt_frente: ([v, u], op) =>
-    formato.fmtFrente(cifra(v), cifra(u), { pct: op.pct as boolean | undefined, signo: op.signo as boolean | undefined }),
+    formato.fmtFrente(cifra(v), Array.isArray(u) ? u.map(cifra) : cifra(u), { pct: op.pct as boolean | undefined, signo: op.signo as boolean | undefined }),
   fmt_compacto: ([v, m]) => formato.fmtCompacto(cifra(v), m as string | undefined),
   fmt_fecha: ([v], op) => formato.fmtFecha(v as string | null, op),
   plural: ([n, s, p]) => formato.plural(n as number, s as string, p as string),

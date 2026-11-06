@@ -35,6 +35,18 @@ type Tab = 'portafolio' | 'watchlist' | 'alertas'
  *  lo que vio, porque un «peor caso» de cinco años tranquilos no es el peor
  *  caso: es el peor de lo que dio tiempo a pasar.
  */
+/** Las posiciones que el estrés no ve, por nombre y con la parte del dinero que
+ *  sí mide: se reponderaba el resto en silencio y la caída de un 9 % de la
+ *  cartera pasaba por la de toda (revisión 8). */
+function SinHistorico({ estres }: { estres: Estres }) {
+  if (!estres.aviso_sin_historico) return null
+  return (
+    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+      {estres.aviso_sin_historico}
+    </p>
+  )
+}
+
 function EstresPanel({ estres }: { estres: Estres }) {
   if (!estres.suficiente) {
     return (
@@ -45,6 +57,7 @@ function EstresPanel({ estres }: { estres: Estres }) {
         <p className="mt-1 text-xs text-slate-500">
           {estres.nota ?? 'Histórico insuficiente para estresar esta cartera.'}
         </p>
+        <SinHistorico estres={estres} />
       </section>
     )
   }
@@ -97,6 +110,7 @@ function EstresPanel({ estres }: { estres: Estres }) {
           <dd className="text-[11px] text-slate-400">{estres.cobertura}</dd>
         </div>
       </dl>
+      <SinHistorico estres={estres} />
       {estres.aviso_cobertura && (
         <p
           className={`mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed ${
@@ -674,7 +688,11 @@ function PortfolioTab() {
                                 {p.stop_fijado_al_abrir === false && (
                                   <button
                                     onClick={() => fijarStop(p.id, p.stop)}
-                                    title="Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo."
+                                    title={
+                                      p.stop_por_clase
+                                        ? 'Su stop se recalcula y ahora mismo no hay histórico para medir la volatilidad: es el punto medio de su clase, no uno medido. Mejor fijarlo con el histórico a mano.'
+                                        : 'Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo.'
+                                    }
                                     className="mr-3 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
                                   >
                                     Fijar stop

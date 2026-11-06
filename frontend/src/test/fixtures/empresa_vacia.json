@@ -1587,7 +1587,11 @@
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",
-    "symbol": "VACIA"
+    "symbol": "VACIA",
+    "thresholds": {
+     "desfavorable": -0.35,
+     "favorable": 0.35
+    }
    },
    "status": 200
   },
@@ -1629,7 +1633,10 @@
      "tipos_usados": {}
     },
     "estres": {
+     "aviso_sin_historico": null,
+     "cobertura_peso": null,
      "nota": "Sin cartera o sin histórico.",
+     "sin_historico": [],
      "suficiente": false
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",

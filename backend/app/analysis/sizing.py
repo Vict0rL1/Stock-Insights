@@ -210,10 +210,37 @@ def volatilidad_cartera(
 # --- El dimensionador ---------------------------------------------------------
 
 
-def _frase_base(base_cartera: str, detalle_base: str | None) -> str:
-    """La frase de BASE_CARTERA, con el detalle dentro antes del punto final."""
+def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False) -> str:
+    """La frase de BASE_CARTERA, con el detalle dentro antes del punto final.
+    Sin ninguna posición valorada, la de cartera parcial no puede hablar de «las
+    valoradas que pesan de más» (revisión 8)."""
+    if base_cartera == "invertido_parcial" and cartera_vacia:
+        base_cartera = "invertido_parcial_sin_valoradas"
     frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
     return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
+
+
+def efecto_cartera_parcial(n: int, hay_valoradas: bool) -> str:
+    """Qué hacen al tamaño `n` posiciones abiertas sin valorar. Una sola frase
+    para Hoy y la ficha: Hoy seguía con «Tu concentración real es mayor» al lado
+    de la nota «puede quedarse corto o pasarse», y la ficha ya no lo decía
+    (revisión 8). Con valoradas, las que faltan aflojan los topes de su sector y
+    las valoradas, que pesan de más, aprietan los del resto (revisión 7). Sin
+    ninguna, los topes no ven nada de lo que ya tienes: solo pueden quedarse
+    flojos, y el tamaño es una cota superior."""
+    no_cuenta = "no cuenta" if n == 1 else "no cuentan"
+    if not hay_valoradas:
+        return (f"{no_cuenta} en los topes por sector y correlación, y no hay ninguna posición valorada: "
+                "los topes no ven nada de lo que ya tienes, así que el tamaño es una cota superior.")
+    return (f"{no_cuenta} en los topes por sector y correlación, y las valoradas pesan de más sobre una "
+            "cartera incompleta: el tamaño puede quedarse corto o pasarse.")
+
+
+def aviso_cartera_parcial(n: int, cuales: str, hay_valoradas: bool) -> str:
+    """El aviso entero, el mismo en Hoy y en la ficha: cuántas, cuáles (`cuales`,
+    ya escrito, con su motivo) y qué hacen al tamaño."""
+    cuantas = plural(n, "posición abierta sin valorar", "posiciones abiertas sin valorar")
+    return f"{n} {cuantas} ({cuales}) {efecto_cartera_parcial(n, hay_valoradas)}"
 
 # Sobre qué se miden los pesos de lo que ya tienes, dicho en la nota del tamaño.
 BASE_CARTERA = {
@@ -244,6 +271,12 @@ BASE_CARTERA = {
         "las posiciones que faltan (eso los afloja en su sector) y las valoradas pesan "
         "de más (eso los aprieta en el resto), así que el tamaño puede quedarse corto "
         "o pasarse."
+    ),
+    "invertido_parcial_sin_valoradas": (
+        "el peso de lo que ya tienes no se puede medir: ninguna posición abierta se "
+        "pudo valorar, y el efectivo anotado no se suma a una cartera que no se ve. "
+        "Ojo: los topes por sector y correlación no ven nada de lo que ya tienes, así "
+        "que el tamaño es una cota superior."
     ),
 }
 
@@ -571,7 +604,7 @@ def dimensionar(
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y " + _frase_base(base_cartera, detalle_base)
+            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera)
         ),
     }
 

@@ -178,13 +178,20 @@ def decimales_frente(valor: float, umbrales, pct: bool = False) -> int:
 def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True, signo: bool = False) -> str:
     """Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996
     frente a «< 1» → «0,996», no «1,00»; 0,1796 frente a «≥ 18 %» → «17,96 %»
-    (revisión 6). Lejos del umbral, como siempre: 0,8 → «0,80»; 0,23 → «23,0 %»."""
-    valor, umbral = _cifra(valor), _cifra(umbral)
+    (revisión 6). Lejos del umbral, como siempre: 0,8 → «0,80»; 0,23 → «23,0 %».
+
+    `umbral` puede ser una lista: la misma cifra comparada con varios umbrales
+    se escribe frente a todos. Frente solo al suyo, la puntuación -0,3496 salía
+    «-0,35» en la regla de comprar (≥ +0,35) y «-0,3496» en la de evitar
+    (≤ -0,35), dos líneas más abajo (revisión 8)."""
+    valor = _cifra(valor)
+    lista = umbral if isinstance(umbral, (list, tuple)) else [umbral]
+    umbrales = [u for u in (_cifra(u) for u in lista) if u is not None]
     if valor is None:
         return GUION
-    if umbral is None:
+    if not umbrales:
         return fmt_pct(valor, 1, signo=signo) if pct else fmt_num(valor, 2, signo=signo)
-    decimales = decimales_frente(valor, [umbral], pct)
+    decimales = decimales_frente(valor, umbrales, pct)
     con_ceros = ceros and decimales == (1 if pct else 2)
     if pct:
         return fmt_pct(valor, decimales, ceros=con_ceros, signo=signo)

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { ReplayDecision } from '../../api/types'
+import type { Decision, ReplayDecision } from '../../api/types'
 import { etiqueta, etiquetaOrigen } from '../../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
 import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
@@ -54,6 +54,12 @@ export function Anticipacion({ p }: { p: NonNullable<ReplayDecision['proteccion_
 
 function Replay({ r }: { r: ReplayDecision }) {
   const s = r.secciones
+  // La puntuación, frente a los umbrales de las reglas de esa decisión: con dos
+  // decimales, «Puntuación 0,35» junto a una traza que ya dice 0,3496 (revisión 8).
+  const umbrales = ((s.decision as Decision | undefined)?.reglas ?? [])
+    .filter((x) => x.id.startsWith('puntuacion'))
+    .map((x) => x.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
   const precio = (s.mercado as ReplayDecision['secciones']['mercado'])?.precio
   return (
     <div className="space-y-3">
@@ -89,7 +95,7 @@ function Replay({ r }: { r: ReplayDecision }) {
         {s.senal && (
           <Bloque titulo="Señal">
             <p className="text-xs text-slate-700">
-              Puntuación {fmtNum((s.senal as { score: number | null }).score, 2)} · {(s.senal as { origen?: string }).origen ?? ''}
+              Puntuación {fmtFrente((s.senal as { score: number | null }).score, umbrales, { signo: true })} · {(s.senal as { origen?: string }).origen ?? ''}
             </p>
           </Bloque>
         )}
@@ -169,7 +175,12 @@ function Replay({ r }: { r: ReplayDecision }) {
 }
 
 export function HistorialSection({ symbol }: { symbol: string }) {
-  const filas = useDato(() => api.historialEmpresa(symbol).then((r) => r.decisiones), symbol)
+  // Con los umbrales de la puntuación: «Comprar 0,35» y «Sin acción 0,35» eran
+  // 0,3504 y 0,3496 (revisión 8).
+  const filas = useDato(
+    () => api.historialEmpresa(symbol).then((r) => ({ lista: r.decisiones, umbrales: [r.thresholds.favorable, r.thresholds.desfavorable] })),
+    symbol,
+  )
   const [replay, setReplay] = useState<ReplayDecision | null>(null)
   // El fallo de un replay es del replay: antes ocupaba el sitio de toda la
   // sección y el historial desaparecía por no poder abrir una fila (ítem 2.1).
@@ -200,10 +211,10 @@ export function HistorialSection({ symbol }: { symbol: string }) {
           <BloqueDatos
             carga={filas}
             que="el historial de decisiones"
-            vacio={(d) => d.length === 0}
+            vacio={(d) => d.lista.length === 0}
             mensajeVacio="Todavía no hay decisiones congeladas de esta empresa. Abre «Qué cambió» para crear la primera."
           >
-            {(lista) => (
+            {({ lista, umbrales }) => (
               <MarcoTabla etiqueta="Historial de decisiones">
                 <table className={`${TABLA_COMPACTA} text-xs`}>
                   <thead className="text-[10px] uppercase tracking-wide text-slate-400">
@@ -216,7 +227,7 @@ export function HistorialSection({ symbol }: { symbol: string }) {
                         <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
                         <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
                         <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
-                        <td className="text-right tabular-nums">{fmtNum(f.score, 2)}</td>
+                        <td className="text-right tabular-nums">{fmtFrente(f.score, umbrales, { signo: true })}</td>
                         <td className="text-right">
                           <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
                             Replay

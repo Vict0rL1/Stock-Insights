@@ -48,7 +48,7 @@ from app.analysis.backtest import (
     momentum_12_1,
     point_in_time_period,
 )
-from app.analysis.decision import BANDA_TENDENCIA_ENTRAR_PCT, _stop_pct, _umbral_entrar
+from app.analysis.decision import BANDA_TENDENCIA_ENTRAR_PCT, _stop_pct, _umbral_entrar, vol_diaria_pct
 from app.analysis.factors import (
     build_raw_factors,
     composite_score,
@@ -76,7 +76,6 @@ DIVISA_PCT = 1.50         # conversión CAD→USD en un bróker canadiense típi
 
 MAX_SESIONES = 252    # un año: si no salta stop ni objetivo, se cierra y se cuenta
 SESIONES_SMA = 200
-MIN_BARRAS_VOL = 63
 
 
 def costes_por_lado(con_divisa: bool = True) -> float:
@@ -123,20 +122,11 @@ def _sma(serie: list[tuple[date, float]], as_of: date, n: int) -> float | None:
 
 
 def _vol_diaria_pct(serie: list[tuple[date, float]], as_of: date) -> float | None:
-    """Volatilidad diaria point-in-time: la misma que dimensiona el stop en vivo."""
-    previos = [c for d, c in serie if d <= as_of][-(MIN_BARRAS_VOL + 1):]
-    if len(previos) < MIN_BARRAS_VOL:
-        return None
-    retornos = [
-        previos[i] / previos[i - 1] - 1
-        for i in range(1, len(previos))
-        if previos[i - 1]
-    ]
-    if len(retornos) < 20:
-        return None
-    medio = sum(retornos) / len(retornos)
-    varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-    return (varianza ** 0.5) * 100
+    """Volatilidad diaria point-in-time: la misma que dimensiona el stop en vivo,
+    sobre los cierres hasta `as_of`. Era otra medida (64 cierres sin redondear,
+    mínimo 63) y el stop simulado salía distinto del de en vivo en más de la mitad
+    de las fechas (revisión 8)."""
+    return vol_diaria_pct([c for d, c in serie if d <= as_of])
 
 
 def simular_operacion(

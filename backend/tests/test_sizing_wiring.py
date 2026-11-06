@@ -130,7 +130,8 @@ def test_una_posicion_que_este_barrido_no_cubre_se_declara():
     )
     assert [p["symbol"] for p in cartera] == ["A"]
     assert "BTC-USD" in aviso
-    assert "concentración real es mayor" in aviso
+    # La misma frase que la ficha, sin dirección (revisión 8).
+    assert "puede quedarse corto o pasarse" in aviso and "concentración real es mayor" not in aviso
 
 
 def test_el_sector_que_ya_tienes_recorta_las_ideas_nuevas_del_mismo_sector():

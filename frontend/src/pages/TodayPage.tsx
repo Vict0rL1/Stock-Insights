@@ -13,7 +13,7 @@ import type {
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { coord } from '../lib/svg'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
@@ -517,7 +517,10 @@ function puntos(v: number | null | undefined): string {
 
 function SizingPanel({ sizing }: { sizing: Sizing }) {
   const enLibro = Object.entries(sizing.cartera_actual ?? {})
-  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado)
+  // Sin ninguna pareja posible (una idea y nada en cartera) no hay nada que
+  // comprobar: «Solo se pudieron medir 0 de 0 parejas» era una falsa alarma
+  // (revisión 8; igual que en el veredicto de la ficha).
+  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado && c.parejas_posibles !== 0)
   // Un límite que no se pudo aplicar SIEMPRE se enseña, aunque no haya
   // recortado nada. Antes el panel se ocultaba sin recortes, y «no recortó
   // porque no pudo mirar» era indistinguible de «no hacía falta recortar».
@@ -689,10 +692,13 @@ function ListHeader() {
 
 function SignalRow({
   signal,
+  umbrales,
   expanded,
   onToggle,
 }: {
   signal: DailySignal
+  /** Los de la puntuación: con dos decimales, 0,3496 era «+0,35 · Sin acción» (revisión 8). */
+  umbrales: number[]
   expanded: boolean
   onToggle: () => void
 }) {
@@ -769,8 +775,7 @@ function SignalRow({
               positive ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
-            {signal.score > 0 ? '+' : ''}
-            {fmtNum(signal.score, 2)}
+            {fmtFrente(signal.score, umbrales, { signo: true })}
           </span>
           <span className="w-20 text-right">
             <ActionChip decision={signal.decision} />
@@ -1285,6 +1290,7 @@ export function TodayPage() {
                     <SignalRow
                       key={signal.symbol}
                       signal={signal}
+                      umbrales={data?.thresholds ? [data.thresholds.favorable, data.thresholds.desfavorable] : []}
                       expanded={expanded === signal.symbol}
                       onToggle={() =>
                         setExpanded(expanded === signal.symbol ? null : signal.symbol)

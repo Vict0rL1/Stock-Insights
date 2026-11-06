@@ -184,7 +184,12 @@ export const api = {
       120_000,
     ),
   historialEmpresa: (symbol: string) =>
-    fetchJson<{ symbol: string; decisiones: DecisionHistorica[]; reglas_version_actual: string }>(
+    fetchJson<{
+      symbol: string
+      decisiones: DecisionHistorica[]
+      thresholds: { favorable: number; desfavorable: number }
+      reglas_version_actual: string
+    }>(
       `/api/empresa/${encodeURIComponent(symbol)}/historial`,
     ),
   replay: (id: number) => fetchJson<ReplayDecision>(`/api/snapshots/${id}/replay`),

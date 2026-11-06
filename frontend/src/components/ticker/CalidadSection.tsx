@@ -1,7 +1,7 @@
 import { api } from '../../api/client'
 import type { CalidadBeneficios, EvidenciaCalidad, Linaje } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { decimalesFrente, fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { decimalesFrente, fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { TABLA_COMPACTA } from '../../lib/tablas'
@@ -55,6 +55,13 @@ function Fila({ e }: { e: EvidenciaCalidad }) {
               frente a «≥ 1 bueno» salía «NORMAL · 1,00×» (revisión 7). */}
           {e.valor === null ? '—' : esFraccion ? fmtPct(e.valor, decimalesFrente(e.valor, umbrales, true)) : `${fmtNum(e.valor, decimalesFrente(e.valor, umbrales))}×`}
         </span>
+        {/* El FCF también puede dar el AVISO (< 0,6), y su cifra no salía en la
+            fila: «AVISO · 0,996×» sin causa a la vista (revisión 8). */}
+        {e.categoria === 'conversion_caja' && typeof e.fcf_sobre_beneficio === 'number' && (
+          <span className="tabular-nums text-slate-500">
+            · FCF/beneficio {fmtFrente(e.fcf_sobre_beneficio, typeof e.umbral?.fcf_debil === 'number' ? [e.umbral.fcf_debil] : [])}×
+          </span>
+        )}
         <span className="text-slate-400">{e.periodo ? `ejercicio ${e.periodo}` : ''}</span>
         {e.persistente && <span className="rounded bg-red-100 px-1 text-[10px] text-red-800">persistente</span>}
       </summary>
@@ -84,6 +91,24 @@ export function CalidadSection({ symbol }: { symbol: string }) {
       {(datos) => <Calidad datos={datos} />}
     </BloqueDatos>
   )
+}
+
+// De qué regla salen los umbrales de cada columna de «Evolución». Los valores
+// vienen de la evidencia, no de aquí: con decimales fijos, la fila del mismo
+// ejercicio decía «1,00×» bajo un «0,996×» y «0,60×» con un AVISO por < 0,6
+// (revisión 8).
+const UMBRALES_DE_COLUMNA: Record<string, [categoria: string, claves: string[]]> = {
+  cfo_sobre_beneficio: ['conversion_caja', ['bueno', 'aviso']],
+  fcf_sobre_beneficio: ['conversion_caja', ['fcf_debil']],
+  sbc_sobre_ingresos: ['sbc', ['normal', 'aviso']],
+  brecha_cobros: ['cuentas_por_cobrar', ['normal', 'aviso']],
+  brecha_inventario: ['inventario', ['normal', 'aviso']],
+}
+
+function umbralesDeColumna(evidencias: EvidenciaCalidad[], columna: string): number[] {
+  const [categoria, claves] = UMBRALES_DE_COLUMNA[columna] ?? ['', []]
+  const umbral = evidencias.find((e) => e.categoria === categoria)?.umbral ?? {}
+  return claves.map((k) => umbral[k]).filter((u): u is number => typeof u === 'number')
 }
 
 function Calidad({ datos }: { datos: CalidadBeneficios }) {
@@ -140,7 +165,13 @@ function Calidad({ datos }: { datos: CalidadBeneficios }) {
                           const v = f[c] as number | null | undefined
                           return (
                             <td key={c} className="text-slate-600">
-                              {v == null ? '—' : c === 'dias_de_cobro' ? fmtNum(v, 0) : c.includes('beneficio') ? `${fmtNum(v, 2)}×` : fmtPct(v, 1)}
+                              {v == null
+                                ? '—'
+                                : c === 'dias_de_cobro'
+                                  ? fmtNum(v, 0)
+                                  : c.includes('beneficio')
+                                    ? `${fmtFrente(v, umbralesDeColumna(datos.evidencias, c))}×`
+                                    : fmtFrente(v, umbralesDeColumna(datos.evidencias, c), { pct: true })}
                             </td>
                           )
                         })}

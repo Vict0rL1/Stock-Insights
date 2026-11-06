@@ -419,3 +419,35 @@ def test_la_cartera_y_la_ficha_miden_la_misma_volatilidad():
                        {"bars": [{"close": c} for c in cierres]})
     ficha = _price_summary(pd.Series(cierres, dtype="float64"))["daily_vol_pct"]
     assert _volatilidad_de(servicio, "VOL") == ficha
+
+
+def test_la_volatilidad_del_stop_no_caduca_con_la_cache(session_factory):
+    """Revisión 8: la cartera solo leía la caché vigente; pasadas las 6 h del
+    histórico, `_volatilidad_de` daba None y el stop caía al punto medio de la
+    clase (83,5 frente al 75,0 de la ficha), congelado al abrir y sin poder
+    bajarlo. Al listar vale la copia vencida; al abrir, se descarga."""
+    import math as m
+    from datetime import datetime, timedelta, timezone
+
+    from app.analysis.decision import vol_diaria_pct
+    from app.cache.cache import CacheStore
+    from app.routers.portfolio import _volatilidad_de
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    cierres = [100 + 5 * m.sin(i / 3) + (i % 7) * 0.3 for i in range(252)]
+    params = {"symbol": "VOL", "interval": "1day", "outputsize": 252}
+    reloj = {"ahora": datetime(2026, 9, 12, 14, 35, tzinfo=timezone.utc)}
+    cache = CacheStore(session_factory, now=lambda: reloj["ahora"])
+    cache.set("price_history", params, {"bars": [{"close": c} for c in cierres]})
+    reloj["ahora"] += timedelta(hours=7)  # caducada (6 h), aún rescatable
+    assert cache.get("price_history", params) is None
+
+    servicio = ServicioFalso(AHORA)
+    servicio.cache = cache
+    assert _volatilidad_de(servicio, "VOL") == vol_diaria_pct(cierres)
+
+    # Al abrir, sin nada en caché, se descarga una vez en vez de rellenar.
+    abrir = ServicioFalso(AHORA)
+    abrir.historias["VOL"] = [{"ts": f"2026-01-{1 + i % 28:02d}", "close": c} for i, c in enumerate(cierres)]
+    assert _volatilidad_de(abrir, "VOL") is None
+    assert _volatilidad_de(abrir, "VOL", descargar=True) == vol_diaria_pct(cierres)

@@ -758,6 +758,25 @@ Queda para Victor el decimocuarto: los stops guardados antes fuera de la rejilla
 el 30 sep y el 20 oct) siguen fuera; se arreglan leyéndolos en la rejilla o con una migración que
 los normalice, y las dos cosas cambian lo que se compara.
 
+### Octava revisión (de la séptima, workflow, 6 nov)
+
+Cuatro revisores sobre `a19d927`…`4e25934` y las tres lentes: 17 confirmados (12 distintos), 0
+descartados; los 12 arreglados en este commit (golden idéntico, capturas 104 sin fallos). La
+puntuación se escribe frente a TODOS sus umbrales (`fmt_frente` acepta una lista) en la traza, «¿Qué
+la cambiaría?», el historial, el replay y la fila de Hoy (`/historial` sirve los `thresholds`); una
+distancia pendiente no se escribe como cero (precio en %, y la estabilidad de la confianza); la tabla
+«Evolución» de la calidad de beneficios, frente a los umbrales de su regla, y el FCF/beneficio a la
+vista cuando da el aviso; la volatilidad del stop de la cartera ya no caduca con la caché (al listar,
+la copia vencida; al abrir, una descarga) y `stop_por_clase` dice cuándo es el punto medio de la clase;
+el backtest de reglas mide la volatilidad con `vol_diaria_pct`; el aviso de cartera parcial es la misma
+frase en Hoy y en la ficha (`sizing.aviso_cartera_parcial`), con su variante sin ninguna valorada;
+sin parejas posibles no se avisa de «0 de 0» en la ficha ni en Hoy; y el estrés de Cartera dice qué
+parte del dinero mide y qué posiciones deja fuera (sumando los lotes del mismo símbolo).
+Queda para Victor: en `sizing` el control de correlación sigue con `aplicado: false` cuando no hay
+ninguna pareja posible (se filtra al enseñarlo; cambiarlo allí cambia el golden de `sizing`), y los
+backtests de reglas guardados se midieron con la volatilidad vieja (entre 0,1 puntos de stop y el punto
+medio de la clase con 21–62 cierres): volver a ejecutarlos, junto con lo ya pendiente de la banda.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -779,7 +798,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
@@ -795,4 +814,7 @@ reconstrucciones anteriores); volver a ejecutar el backtest de reglas, porque lo
 `banda_tendencia_pct` entraron con «precio > media» y siguen dando «calibrada» (¿invalidarlos, como
 los anteriores al RC1?); y, si se quiere la cifra de la banda en el estado vacío de Hoy, servirla
 en `thresholds` (cambia el golden de `hoy`). De la quinta: los ETF ahora con la banda del motor (antes «precio > media»);
-y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra).
+y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra). De
+la séptima: los stops guardados fuera de la rejilla. De la octava: el control de correlación con
+0 parejas posibles sigue `aplicado: false` en `sizing` (cambiarlo cambia el golden de `sizing`), y
+los backtests de reglas guardados se midieron además con la volatilidad vieja.

@@ -327,7 +327,7 @@ describe('ficha de una empresa', () => {
       '/api/stocks/VIEJA/history?range=1Y': falla(404, 'sin histórico'),
       '/api/stocks/VIEJA/financials': falla(404, 'edgar: VIEJA no está registrado en la SEC'),
       '/api/empresa/VIEJA/historial': ok({
-        symbol: 'VIEJA', reglas_version_actual: 'v1',
+        symbol: 'VIEJA', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
         decisiones: [{ id: 4, fecha: '2026-03-02', creado_en: '2026-03-02T15:00:00+00:00', origen: 'hoy:us_sp500',
                        accion: 'comprar', precio: 20, score: 0.5 }],
       }),
@@ -351,7 +351,7 @@ describe('ficha de una empresa', () => {
     servir(rutas)
     abrir('VIEJA')
     const fallo = await screen.findByText('No se pudieron cargar las decisiones guardadas: database is locked')
-    rutas['/api/empresa/VIEJA/historial'] = ok({ symbol: 'VIEJA', reglas_version_actual: 'v1', decisiones: [
+    rutas['/api/empresa/VIEJA/historial'] = ok({ symbol: 'VIEJA', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 }, decisiones: [
       { id: 4, fecha: '2026-03-02', creado_en: '2026-03-02T15:00:00+00:00', origen: 'hoy:us_sp500', accion: 'comprar', precio: 20, score: 0.5 },
     ] })
     fireEvent.click(within(fallo.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: 'Reintentar' }))

@@ -35,7 +35,7 @@ from app.db.models import (
     WatchlistItem,
 )
 from app.deps import get_service
-from app.formato import decimales_precio, fmt_dinero, fmt_fecha, fmt_num
+from app.formato import decimales_precio, fmt_dinero, fmt_fecha, fmt_frente, fmt_num, plural
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import Simbolo, validar_simbolo
@@ -73,19 +73,35 @@ def get_or_create_instrument(session: Session, symbol: str, service=None) -> Ins
 
 
 
-def _volatilidad_de(service: MarketDataService, symbol: str) -> float | None:
-    """Volatilidad diaria desde el histórico ya cacheado. Nunca descarga nada.
+def _volatilidad_de(service: MarketDataService, symbol: str, *, descargar: bool = False) -> float | None:
+    """Volatilidad diaria del stop, del mismo histórico que la ficha.
 
-    Si no está en caché se devuelve None y el stop cae al valor medio de su
-    clase: preferible a gastar una llamada por posición cada vez que se abre
-    el portafolio.
+    Al listar no descarga nada (sería una llamada por posición cada vez que se
+    abre la cartera): la caché vigente o, si caducó, la vencida dentro de su
+    margen de rescate. Para 63 sesiones unas horas no cambian nada, y con solo
+    la vigente, pasadas las 6 h del histórico el stop caía al punto medio de la
+    clase: 83,5 en la cartera y 75,0 en la ficha con la misma posición
+    (revisión 8). Al ABRIR una posición sí descarga, una vez: ese stop se
+    congela y después no se puede bajar.
+
+    None si no hay histórico: el stop cae entonces al punto medio de su clase, y
+    quien llama lo dice (`stop_por_clase`).
     """
-    cache = getattr(service, "cache", None)
-    if cache is None:
-        return None
-    history = cache.get(
-        "price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252}
-    )
+    params = {"symbol": symbol, "interval": "1day", "outputsize": 252}
+    history = None
+    if descargar:
+        try:
+            history = service.get("price_history", **params)
+        except (DataNotFoundError, AllProvidersFailedError):
+            history = None
+    else:
+        cache = getattr(service, "cache", None)
+        if cache is None:
+            return None
+        history = cache.get("price_history", params)
+        vencido = getattr(cache, "get_vencido", None)
+        if history is None and vencido is not None:
+            history = vencido("price_history", params)
     bars = (history or {}).get("bars") or []
     return vol_diaria_pct([b["close"] for b in bars if b.get("close")])
 
@@ -120,6 +136,30 @@ def _series_cacheadas(
         if len(puntos) >= 60:
             salida[symbol] = puntos
     return salida
+
+
+def _cobertura_estres(pesos: dict[str, float], series: dict[str, list]) -> dict:
+    """Qué parte del dinero entra en el estrés y qué posiciones se quedan fuera.
+
+    `peor_ventana` repondera sobre las que tienen serie: con XYZ (el 91 % del
+    dinero) sin histórico en caché, la «peor caída» era la de AAA sola y la
+    respuesta no nombraba a XYZ (revisión 8). El estrés de crisis ya decía qué
+    fracción cubre y qué falta; este también.
+    """
+    total = sum(pesos.values())
+    fuera = sorted(s for s in pesos if s not in series)
+    if not total:
+        return {"cobertura_peso": None, "sin_historico": fuera, "aviso_sin_historico": None}
+    cubierto = sum(v for s, v in pesos.items() if s in series) / total
+    aviso = None
+    if fuera:
+        aviso = (
+            f"Mide solo el {fmt_frente(cubierto, 1, pct=True)} del dinero: {', '.join(fuera[:5])} "
+            f"{plural(len(fuera), 'no tiene', 'no tienen')} histórico en caché (o menos de 60 sesiones) y "
+            f"{plural(len(fuera), 'queda', 'quedan')} fuera. El resto se repondera como si fuera toda la "
+            "cartera: la caída es la de esa parte, no la tuya."
+        )
+    return {"cobertura_peso": round(cubierto, 4), "sin_historico": fuera, "aviso_sin_historico": aviso}
 
 
 PUNTOS_SPARK = 32
@@ -600,9 +640,11 @@ def create_position(
     if stop is not None:
         en_rejilla = datos.redondear_precio(stop, hacia="arriba")
         stop = en_rejilla if en_rejilla < body.cost_basis else stop
+    stop_por_clase = False
     if stop is None and body.cost_basis > 0:
         clase = "cripto" if instrument.symbol.endswith("-USD") else "accion"
-        vol = _volatilidad_de(service, instrument.symbol)
+        vol = _volatilidad_de(service, instrument.symbol, descargar=True)
+        stop_por_clase = vol is None
         # Con `round(…, 4)`, el stop de una posición a 0,00005 se guardaba como
         # 0,0: «sin stop», y se volvía a calcular cada día (auditoría del 19 oct).
         stop = datos.redondear_precio(body.cost_basis * (1 - _stop_pct(vol, clase) / 100))
@@ -616,7 +658,10 @@ def create_position(
     session.add(position)
     thesis_id = _guardar_tesis(session, instrument.id, body.tesis)
     session.commit()
-    return {"id": position.id, "symbol": instrument.symbol, "thesis_id": thesis_id}
+    return {"id": position.id, "symbol": instrument.symbol, "thesis_id": thesis_id,
+            # Sin histórico ni descargándolo: el stop guardado es el punto medio
+            # de su clase, no uno medido (revisión 8).
+            "stop_por_clase": stop_por_clase}
 
 
 class StopUpdate(BaseModel):
@@ -717,6 +762,7 @@ def get_portfolio(
         # El stop FIJADO al abrir manda. Solo las posiciones anteriores a ese
         # cambio (sin stop guardado) lo recalculan, y se marca.
         stop_fijado = datos.precio(position.stop)
+        vol = None
         if stop_fijado is not None:
             stop = stop_fijado
         else:
@@ -732,6 +778,9 @@ def get_portfolio(
                 "opened_at": _utc_iso(position.opened_at),
                 "stop": stop,
                 "stop_fijado_al_abrir": stop_fijado is not None,
+                # Recalculado sin histórico: el punto medio de su clase, no un
+                # stop medido. Fijarlo así sería congelar un supuesto (revisión 8).
+                "stop_por_clase": stop_fijado is None and vol is None,
                 "price": price,
                 "precio_estado": estado_precio["estado"] if price is not None else "desconocido",
                 "precio_antiguedad_segundos": estado_precio["antiguedad_segundos"],
@@ -781,10 +830,14 @@ def get_portfolio(
     # disponible. No son escenarios inventados: son los pesos que tienes hoy
     # aplicados al pasado que hay guardado, con sus fechas y con el aviso de qué
     # crisis quedan fuera de la cobertura.
-    estres = peor_ventana(
-        {p["symbol"]: p["market_value"] for p in convertidas if p.get("market_value")},
-        _series_cacheadas(service, [p["symbol"] for p in convertidas]),
-    )
+    # Por símbolo y sumando sus lotes: con el diccionario por comprensión, el
+    # último lote pisaba a los anteriores.
+    pesos_estres: dict[str, float] = {}
+    for p in convertidas:
+        if p.get("market_value"):
+            pesos_estres[p["symbol"]] = pesos_estres.get(p["symbol"], 0.0) + p["market_value"]
+    series_estres = _series_cacheadas(service, list(pesos_estres))
+    estres = {**peor_ventana(pesos_estres, series_estres), **_cobertura_estres(pesos_estres, series_estres)}
     return {
         "positions": [
             {**p, "market_value_base": p.get("market_value_base"),
