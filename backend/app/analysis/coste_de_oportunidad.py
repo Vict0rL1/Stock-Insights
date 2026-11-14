@@ -290,11 +290,13 @@ def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None,
     if necesidad is None:
         return {
             "accion": INDETERMINADO,
+            # «La lista de abajo», solo si hay lista: sin posiciones que revisar la
+            # tabla ni se pinta (revisión 9).
             "motivo": (f"Efectivo desconocido ({aviso_efectivo}): no se puede saber si comprar esta idea exige "
-                       "vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero."
-                       if aviso_efectivo else
+                       "vender algo." if aviso_efectivo else
                        "Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
-                       "Anota tu efectivo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero."),
+                       "Anota tu efectivo.")
+                      + (" Si no tuvieras nada, la lista de abajo dice qué se revisaría primero." if revisables else ""),
             "si_no_hubiera_efectivo": superan[0]["symbol"] if superan else None,
         }
     if superan:

@@ -12,7 +12,7 @@ import type {
 } from '../api/types'
 import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
 import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
@@ -45,7 +45,13 @@ function ContributionBar({ value }: { value: number }) {
   )
 }
 
-function SignalCard({ signal }: { signal: QuantSignal }) {
+// La puntuación junto a su etiqueta, frente a las fronteras de esa etiqueta: con
+// dos decimales, 0,3496 salía «+0,35 neutral» y 0,3504 «+0,35 favorable»
+// (revisión 9).
+const puntuacion = (score: number | null, umbrales: number[] = []) =>
+  score === null ? '—' : fmtFrente(score, umbrales, { signo: true })
+
+function SignalCard({ signal, umbrales }: { signal: QuantSignal; umbrales?: number[] }) {
   const [explanation, setExplanation] = useState<SignalExplanation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -89,7 +95,7 @@ function SignalCard({ signal }: { signal: QuantSignal }) {
 
         <div className="text-right">
           <div className="text-2xl font-semibold tabular-nums text-slate-900">
-            {signal.score !== null ? (signal.score > 0 ? '+' : '') + fmtNum(signal.score) : '—'}
+            {puntuacion(signal.score, umbrales)}
           </div>
           <div className="text-[10px] text-slate-400">
             z-score vs. universo · cobertura {fmtPct(signal.coverage, 0)}
@@ -420,7 +426,7 @@ function ScanMode() {
 
           <ul className="space-y-3">
             {result.top.map((signal) => (
-              <SignalCard key={signal.symbol} signal={signal} />
+              <SignalCard key={signal.symbol} signal={signal} umbrales={result.label_thresholds} />
             ))}
           </ul>
 
@@ -447,7 +453,7 @@ function ScanMode() {
                       {row.label}
                     </span>
                     <span className="w-12 text-right tabular-nums text-slate-600">
-                      {row.score !== null ? (row.score > 0 ? '+' : '') + fmtNum(row.score) : '—'}
+                      {puntuacion(row.score, result.label_thresholds)}
                     </span>
                   </span>
                 </li>
@@ -758,7 +764,7 @@ function ManualMode() {
           </div>
           <ul className="space-y-3">
             {result.signals.map((signal) => (
-              <SignalCard key={signal.symbol} signal={signal} />
+              <SignalCard key={signal.symbol} signal={signal} umbrales={result.label_thresholds} />
             ))}
           </ul>
           <p className="text-xs text-slate-400">{result.note}</p>

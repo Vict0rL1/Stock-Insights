@@ -38,6 +38,7 @@ from app.analysis.factors import (
 )
 from app.analysis.signal import (
     FAVORABLE_MIN,
+    LABEL_THRESHOLDS,
     UNFAVORABLE_MAX,
     build_signal,
     calibrate,
@@ -194,7 +195,7 @@ def _lista_corta_dimensionada(
         for s in corta["ideas"]
     ]
     candidatas = [c for c in candidatas if c["peso_bruto_pct"]]
-    cartera, aviso_cartera, base = _cartera_actual(ranked, posiciones or {}, efectivo_usd)
+    cartera, aviso_cartera, base = _cartera_actual(ranked, posiciones or {}, efectivo_usd, con_tamano=bool(candidatas))
     from app.oportunidad import SIN_ANOTAR
 
     sin_cambio = None
@@ -210,6 +211,7 @@ def _lista_corta_dimensionada(
         cartera=cartera,
         base_cartera=base,
         detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else sin_cambio,
+        parcial=aviso_cartera is not None,
     )
     corta["sizing"]["base_cartera"] = base
     corta["sizing"]["efectivo"] = (
@@ -307,7 +309,7 @@ def _detalle_efectivo(detalle: list[dict] | None) -> str | None:
 
 
 def _cartera_actual(
-    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None
+    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None, *, con_tamano: bool = True
 ) -> tuple[list[dict], str | None, str]:
     """Las posiciones abiertas, con peso y sector, para que los topes las cuenten.
 
@@ -365,7 +367,8 @@ def _cartera_actual(
         # ninguna valorada no hay nada que pese de más (revisión 8).
         muestra = ", ".join(sorted(sin_valorar)[:5])
         aviso = aviso_cartera_parcial(
-            len(sin_valorar), f"{muestra}: fuera de este barrido o sin precio", hay_valoradas=bool(total)
+            len(sin_valorar), f"{muestra}: fuera de este barrido o sin precio", hay_valoradas=bool(total),
+            con_tamano=con_tamano,
         )
     if not total:
         return [], aviso, base
@@ -876,6 +879,10 @@ def score_universe(
 
     return {
         "signals": rank_universe(signals),
+        # Las fronteras de la etiqueta («favorable», «neutral»…): con ellas se
+        # escribe la puntuación sin dejarla en una (0,3496 salía «+0,35 neutral» y
+        # 0,3504 «+0,35 favorable»; revisión 9).
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "unavailable": unavailable,
         "calibrated": calibration is not None,
         "weights": DEFAULT_WEIGHTS,
@@ -981,6 +988,7 @@ def scan_universe(
             {"symbol": s["symbol"], "score": s["score"], "label": s["label"], "rank": s.get("rank")}
             for s in ranked
         ],
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "scored": len(raw_by_symbol),
         "requested": len(symbols),
         "unavailable": unavailable,

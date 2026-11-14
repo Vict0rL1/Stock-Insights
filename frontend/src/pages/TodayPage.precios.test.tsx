@@ -8,7 +8,8 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
-import { TodayPage } from './TodayPage'
+import type { Decision } from '../api/types'
+import { TodayPage, textoDistanciaAlStop } from './TodayPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Idea = { symbol: string; decision: { levels: Record<string, number | null> }; price: { last: number } }
@@ -34,5 +35,13 @@ describe('Hoy con una acción de céntimos', () => {
     expect(screen.getByText('0,002616')).toBeInTheDocument()
     expect(screen.getByText('0,003')).toBeInTheDocument()
     expect(screen.queryByText('0,00–0,00')).toBeNull()
+  })
+
+  it('la distancia al stop no se escribe como cero si no lo es (revisión 9)', () => {
+    // Con el stop a un 0,04 % del precio, el plan decía «Stop … 0,0 %».
+    const d = (stop_pct: number, owned: boolean) => ({ owned, levels: { stop_pct } }) as unknown as Decision
+    expect(textoDistanciaAlStop(d(0.04, false))).toBe('-0,04\u00a0%')
+    expect(textoDistanciaAlStop(d(-0.04, true))).toBe('-0,04\u00a0%')
+    expect(textoDistanciaAlStop(d(12.8, false))).toBe('-12,8\u00a0%')
   })
 })

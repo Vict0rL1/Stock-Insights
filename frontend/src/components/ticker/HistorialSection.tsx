@@ -227,7 +227,9 @@ export function HistorialSection({ symbol }: { symbol: string }) {
                         <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
                         <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
                         <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
-                        <td className="text-right tabular-nums">{fmtFrente(f.score, umbrales, { signo: true })}</td>
+                        <td className="text-right tabular-nums">
+                          {fmtFrente(f.score, f.umbrales_puntuacion?.length ? f.umbrales_puntuacion : umbrales, { signo: true })}
+                        </td>
                         <td className="text-right">
                           <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
                             Replay

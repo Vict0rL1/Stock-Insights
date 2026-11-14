@@ -222,9 +222,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.297,
+            "distancia": 1.296689575216,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -236,9 +236,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.597,
+            "distancia": 0.596689575216,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -414,9 +414,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.267,
+            "distancia": 1.267441856845,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -428,9 +428,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.567,
+            "distancia": 0.567441856845,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -606,9 +606,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.242,
+            "distancia": 1.242055206442,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -620,9 +620,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.542,
+            "distancia": 0.542055206442,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -798,9 +798,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.203,
+            "distancia": 1.202805966538,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -812,9 +812,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.503,
+            "distancia": 0.502805966538,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -990,9 +990,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.776,
+            "actual": -0.7760302104807789,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.126,
+            "distancia": 1.126030210481,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1004,9 +1004,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.776,
+            "actual": -0.7760302104807789,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.426,
+            "distancia": 0.426030210481,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1207,9 +1207,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.551,
+            "actual": 1.5512903459198673,
             "condicion": "puntuación < +0,35",
-            "distancia": -1.201,
+            "distancia": -1.20129034592,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1221,9 +1221,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.551,
+            "actual": 1.5512903459198673,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.901,
+            "distancia": -1.90129034592,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1437,9 +1437,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.326,
+            "actual": 1.3261211040596683,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.976,
+            "distancia": -0.97612110406,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1451,9 +1451,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.326,
+            "actual": 1.3261211040596683,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.676,
+            "distancia": -1.67612110406,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1667,9 +1667,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.206,
+            "actual": 1.2062066035394732,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.856,
+            "distancia": -0.856206603539,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1681,9 +1681,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.206,
+            "actual": 1.2062066035394732,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.556,
+            "distancia": -1.556206603539,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1897,9 +1897,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.081,
+            "actual": 1.080632714060608,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.731,
+            "distancia": -0.730632714061,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1911,9 +1911,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.081,
+            "actual": 1.080632714060608,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.431,
+            "distancia": -1.430632714061,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -2127,9 +2127,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.168,
+            "actual": 1.1680705745892297,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.818,
+            "distancia": -0.818070574589,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -2141,9 +2141,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.168,
+            "actual": 1.1680705745892297,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.518,
+            "distancia": -1.518070574589,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -2410,9 +2410,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.551,
+           "actual": 1.5512903459198673,
            "condicion": "puntuación < +0,35",
-           "distancia": -1.201,
+           "distancia": -1.20129034592,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -2424,9 +2424,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.551,
+           "actual": 1.5512903459198673,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.901,
+           "distancia": -1.90129034592,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -2626,9 +2626,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.326,
+           "actual": 1.3261211040596683,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.976,
+           "distancia": -0.97612110406,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -2640,9 +2640,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.326,
+           "actual": 1.3261211040596683,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.676,
+           "distancia": -1.67612110406,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -2842,9 +2842,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.206,
+           "actual": 1.2062066035394732,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.856,
+           "distancia": -0.856206603539,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -2856,9 +2856,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.206,
+           "actual": 1.2062066035394732,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.556,
+           "distancia": -1.556206603539,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -3058,9 +3058,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.168,
+           "actual": 1.1680705745892297,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.818,
+           "distancia": -0.818070574589,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -3072,9 +3072,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.168,
+           "actual": 1.1680705745892297,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.518,
+           "distancia": -1.518070574589,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -3274,9 +3274,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.081,
+           "actual": 1.080632714060608,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.731,
+           "distancia": -0.730632714061,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -3288,9 +3288,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.081,
+           "actual": 1.080632714060608,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.431,
+           "distancia": -1.430632714061,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -4948,9 +4948,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.297,
+            "distancia": 1.296689575216,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -4962,9 +4962,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.597,
+            "distancia": 0.596689575216,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -5140,9 +5140,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.267,
+            "distancia": 1.267441856845,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -5154,9 +5154,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.567,
+            "distancia": 0.567441856845,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -5332,9 +5332,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.903,
+            "actual": -0.9032968669537688,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.253,
+            "distancia": 1.253296866954,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -5346,9 +5346,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.903,
+            "actual": -0.9032968669537688,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.553,
+            "distancia": 0.553296866954,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -5524,9 +5524,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.242,
+            "distancia": 1.242055206442,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -5538,9 +5538,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.542,
+            "distancia": 0.542055206442,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -5716,9 +5716,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.203,
+            "distancia": 1.202805966538,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -5730,9 +5730,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.503,
+            "distancia": 0.502805966538,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -5933,9 +5933,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.797,
+            "actual": 1.7970248313283603,
             "condicion": "puntuación < +0,35",
-            "distancia": -1.447,
+            "distancia": -1.447024831328,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -5947,9 +5947,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.797,
+            "actual": 1.7970248313283603,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -2.147,
+            "distancia": -2.147024831328,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -6163,9 +6163,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.551,
+            "actual": 1.5512903459198673,
             "condicion": "puntuación < +0,35",
-            "distancia": -1.201,
+            "distancia": -1.20129034592,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -6177,9 +6177,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.551,
+            "actual": 1.5512903459198673,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.901,
+            "distancia": -1.90129034592,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -6393,9 +6393,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.409,
+            "actual": 1.4086905728699048,
             "condicion": "puntuación < +0,35",
-            "distancia": -1.059,
+            "distancia": -1.05869057287,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -6407,9 +6407,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.409,
+            "actual": 1.4086905728699048,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.759,
+            "distancia": -1.75869057287,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -6623,9 +6623,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.326,
+            "actual": 1.3261211040596683,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.976,
+            "distancia": -0.97612110406,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -6637,9 +6637,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.326,
+            "actual": 1.3261211040596683,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.676,
+            "distancia": -1.67612110406,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -6853,9 +6853,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.228,
+            "actual": 1.2281948465620554,
             "condicion": "puntuación < +0,35",
-            "distancia": -0.878,
+            "distancia": -0.878194846562,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -6867,9 +6867,9 @@
          {
           "condiciones": [
            {
-            "actual": 1.228,
+            "actual": 1.2281948465620554,
             "condicion": "puntuación ≤ -0,35",
-            "distancia": -1.578,
+            "distancia": -1.578194846562,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -7137,9 +7137,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.797,
+           "actual": 1.7970248313283603,
            "condicion": "puntuación < +0,35",
-           "distancia": -1.447,
+           "distancia": -1.447024831328,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -7151,9 +7151,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.797,
+           "actual": 1.7970248313283603,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -2.147,
+           "distancia": -2.147024831328,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -7353,9 +7353,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.551,
+           "actual": 1.5512903459198673,
            "condicion": "puntuación < +0,35",
-           "distancia": -1.201,
+           "distancia": -1.20129034592,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -7367,9 +7367,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.551,
+           "actual": 1.5512903459198673,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.901,
+           "distancia": -1.90129034592,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -7569,9 +7569,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.409,
+           "actual": 1.4086905728699048,
            "condicion": "puntuación < +0,35",
-           "distancia": -1.059,
+           "distancia": -1.05869057287,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -7583,9 +7583,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.409,
+           "actual": 1.4086905728699048,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.759,
+           "distancia": -1.75869057287,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -7785,9 +7785,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.326,
+           "actual": 1.3261211040596683,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.976,
+           "distancia": -0.97612110406,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -7799,9 +7799,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.326,
+           "actual": 1.3261211040596683,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.676,
+           "distancia": -1.67612110406,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"
@@ -8001,9 +8001,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.228,
+           "actual": 1.2281948465620554,
            "condicion": "puntuación < +0,35",
-           "distancia": -0.878,
+           "distancia": -0.878194846562,
            "regla": "puntuacion_favorable",
            "umbral": 0.35,
            "unidad": "puntos"
@@ -8015,9 +8015,9 @@
         {
          "condiciones": [
           {
-           "actual": 1.228,
+           "actual": 1.2281948465620554,
            "condicion": "puntuación ≤ -0,35",
-           "distancia": -1.578,
+           "distancia": -1.578194846562,
            "regla": "puntuacion_desfavorable",
            "umbral": -0.35,
            "unidad": "puntos"

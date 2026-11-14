@@ -2320,7 +2320,8 @@
       "precio": 92.0,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      },
      {
       "accion": "sin_datos",
@@ -2332,7 +2333,8 @@
       "precio": 104.0,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",
@@ -3181,13 +3183,21 @@
      "tipos_usados": {}
     },
     "estres": {
-     "aviso_sin_historico": "Mide solo el 0,0 % del dinero: KO no tiene histórico en caché (o menos de 60 sesiones) y queda fuera. El resto se repondera como si fuera toda la cartera: la caída es la de esa parte, no la tuya.",
-     "cobertura_peso": 0.0,
-     "nota": "Sin cartera o sin histórico.",
-     "sin_historico": [
-      "KO"
-     ],
-     "suficiente": false
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_sin_historico": null,
+     "años_cubiertos": 0.7,
+     "cobertura": "3 ene 2026 → 11 sept 2026",
+     "cobertura_peso": 1.0,
+     "drawdown_desde": "2026-08-22",
+     "drawdown_hasta": "2026-09-01",
+     "max_drawdown_pct": -0.58,
+     "peor_ventana_desde": null,
+     "peor_ventana_hasta": null,
+     "peor_ventana_meses": 12,
+     "peor_ventana_nota": "El histórico común no llega a 12 meses, así que no hay ninguna ventana entera que medir. Se deja vacío en vez de recortar el periodo y seguir rotulándolo igual.",
+     "peor_ventana_pct": null,
+     "sin_historico": [],
+     "suficiente": true
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",
     "positions": [
@@ -3281,8 +3291,9 @@
      "tope_pct": 6.0
     },
     "summary": {
-     "aviso_cobertura": "Sin histórico suficiente para estimar la caída máxima. Un retorno esperado sin su caída al lado no se puede interpretar.",
-     "max_drawdown_esperado_pct": null,
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "max_drawdown_esperado_pct": -0.58,
+     "peor_ventana_pct": null,
      "precios_viejos": [],
      "priced_positions": 1,
      "realizado_sin_convertir": [],

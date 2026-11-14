@@ -222,9 +222,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.297,
+            "distancia": 1.296689575216,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -244,9 +244,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.597,
+            "distancia": 0.596689575216,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -422,9 +422,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.267,
+            "distancia": 1.267441856845,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -444,9 +444,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.567,
+            "distancia": 0.567441856845,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -622,9 +622,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.242,
+            "distancia": 1.242055206442,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -644,9 +644,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.542,
+            "distancia": 0.542055206442,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -822,9 +822,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.203,
+            "distancia": 1.202805966538,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -844,9 +844,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.503,
+            "distancia": 0.502805966538,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1022,9 +1022,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.776,
+            "actual": -0.7760302104807789,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.126,
+            "distancia": 1.126030210481,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -1044,9 +1044,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.776,
+            "actual": -0.7760302104807789,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.426,
+            "distancia": 0.426030210481,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -1194,7 +1194,7 @@
      "ideas": [],
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
      "sizing": {
-      "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
+      "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación.",
       "base_cartera": "invertido",
       "clusters": [],
       "controles": [],
@@ -2682,9 +2682,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.297,
+            "distancia": 1.296689575216,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -2704,9 +2704,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.947,
+            "actual": -0.9466895752158021,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.597,
+            "distancia": 0.596689575216,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -2882,9 +2882,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.267,
+            "distancia": 1.267441856845,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -2904,9 +2904,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.917,
+            "actual": -0.9174418568446803,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.567,
+            "distancia": 0.567441856845,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -3082,9 +3082,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.903,
+            "actual": -0.9032968669537688,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.253,
+            "distancia": 1.253296866954,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -3104,9 +3104,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.903,
+            "actual": -0.9032968669537688,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.553,
+            "distancia": 0.553296866954,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -3282,9 +3282,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.242,
+            "distancia": 1.242055206442,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -3304,9 +3304,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.892,
+            "actual": -0.892055206442132,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.542,
+            "distancia": 0.542055206442,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -3482,9 +3482,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación ≥ +0,35",
-            "distancia": 1.203,
+            "distancia": 1.202805966538,
             "regla": "puntuacion_favorable",
             "umbral": 0.35,
             "unidad": "puntos"
@@ -3504,9 +3504,9 @@
          {
           "condiciones": [
            {
-            "actual": -0.853,
+            "actual": -0.8528059665381511,
             "condicion": "puntuación > -0,35",
-            "distancia": 0.503,
+            "distancia": 0.502805966538,
             "regla": "puntuacion_desfavorable",
             "umbral": -0.35,
             "unidad": "puntos"
@@ -3654,7 +3654,7 @@
      "ideas": [],
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
      "sizing": {
-      "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
+      "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación.",
       "base_cartera": "invertido",
       "clusters": [],
       "controles": [],

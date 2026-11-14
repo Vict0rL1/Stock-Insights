@@ -777,6 +777,27 @@ ninguna pareja posible (se filtra al enseñarlo; cambiarlo allí cambia el golde
 backtests de reglas guardados se midieron con la volatilidad vieja (entre 0,1 puntos de stop y el punto
 medio de la clase con 21–62 cierres): volver a ejecutarlos, junto con lo ya pendiente de la banda.
 
+### Novena revisión (de la octava, tres revisores, 14 nov)
+
+Tres revisores sobre `79a2f2d` (cifras, cartera, avisos), cada hallazgo reproducido antes de
+arreglarlo: 15 confirmados, 14 arreglados en este commit (golden idéntico). Cifras: las condiciones
+de puntuación se sirven sin redondear (0,1247 salía 0,12 en la traza y 0,13 en «¿Qué la cambiaría?», y
+la confianza veía 0,05 donde había 0,0496); «Qué cambió» escribe la puntuación frente a todos sus
+umbrales, en la explicación y en la fila; la fila de Hoy y la del historial usan los umbrales de su
+propia decisión (`umbrales_puntuacion` por fila); Señales, frente a las fronteras de su etiqueta
+(`label_thresholds`); cada evidencia de calidad, frente a los umbrales de su cifra; y la distancia al
+stop ya no sale «0,0 %». Cartera: el estrés va en dólares y lee el mismo histórico que el stop (un año
+vigente, el largo, o el de un año caducado hace menos de un día, nunca de días), y nombra cada
+posición que deja fuera con su motivo; un lote con fecha de apertura atrasada mide su stop con lo
+que se sabía entonces; un rescate `viejo` no vale para congelar un stop; un lote de coste 0 no tiene
+stop. Avisos: la nota de la base no afirma una dirección con posiciones sin valorar (en ningún estado
+del efectivo); Hoy sin candidatas no habla de un tamaño; el veredicto ya no pide anotar un efectivo
+que no se sumaría ni cita una lista vacía.
+Queda para Victor el decimoquinto: el stop por clase que se congela al abrir una posición sin
+histórico se dice en la respuesta y en pantalla, pero no se guarda; después no se puede bajar al
+medido. O se guarda su origen (migración, `positions.stop_origen`) o no se congela hasta poder
+medirlo (cambia el control del RC1).
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -798,7 +819,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
@@ -817,4 +838,5 @@ en `thresholds` (cambia el golden de `hoy`). De la quinta: los ETF ahora con la 
 y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra). De
 la séptima: los stops guardados fuera de la rejilla. De la octava: el control de correlación con
 0 parejas posibles sigue `aplicado: false` en `sizing` (cambiarlo cambia el golden de `sizing`), y
-los backtests de reglas guardados se midieron además con la volatilidad vieja.
+los backtests de reglas guardados se midieron además con la volatilidad vieja. De la novena: el
+stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo).

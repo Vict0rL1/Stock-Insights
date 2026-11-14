@@ -196,6 +196,7 @@ def historial(symbol: SimboloRuta, limite: int = Query(50, ge=1, le=500), sessio
                 "creado_en": sn.iso_utc(s.creado_en),
                 "origen": s.origen, "accion": s.accion, "precio": s.precio,
                 "moneda": s.moneda, "score": s.score, "reglas_version": s.reglas_version,
+                "umbrales_puntuacion": sn.umbrales_de_puntuacion(s),
                 "replay": (s.contexto or {}).get("esquema") == sn.ESQUEMA_ANALISIS,
             }
             for s in filas

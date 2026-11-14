@@ -15,7 +15,7 @@ empresa.
 | Congelar y reproducir | `backend/app/snapshots.py` | `congelar_analisis`, `anterior_comparable`, `reproducir` |
 | Diff material | `backend/app/analysis/cambios.py` | `comparar(anterior, actual)` con `MATERIALIDAD` |
 | Confianza por evidencia | `backend/app/analysis/confianza.py` | 10 factores, regla de agregación escrita |
-| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis`, `/historial` (con los `thresholds` de la puntuación, para escribirla de su lado), `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
+| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis`, `/historial` (con los `thresholds` de la puntuación y, en cada fila, los `umbrales_puntuacion` de su propia traza, para escribirla de su lado), `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
 
 ## El registro: `DecisionSnapshot`, el mismo de siempre
 

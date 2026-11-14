@@ -270,3 +270,27 @@ def test_la_nota_dice_que_efectivo_se_uso_y_de_cuando():
     assert r["sizing"]["base_cartera"] == "capital"
     assert r["sizing"]["efectivo"] == {"usd": 1000.0, "detalle": detalle}
     assert "(efectivo anotado: 1.000,00\u00a0USD, del 3 oct 2026)." in r["sizing"]["nota"]
+
+
+def test_la_nota_de_la_base_no_contradice_al_aviso_de_cartera_parcial():
+    """Revisión 9: sin efectivo anotado, con la única posición fuera del barrido,
+    el aviso decía «el tamaño es una cota superior» y la nota del mismo panel
+    «los topes aprietan antes de lo debido… Puedes anotarlo en Cartera»."""
+    sola = _lista_corta_dimensionada([señal("A", 1.2)], {"BTC-USD": {"quantity": 1}})["sizing"]
+    assert "cota superior" in sola["aviso_cartera"] and "cota superior" in sola["nota"]
+    assert "antes de lo debido" not in sola["nota"] and "Puedes anotarlo" not in sola["nota"]
+    con_valorada = _lista_corta_dimensionada(
+        [señal("A", 1.2), señal("B", 0.2, last=50.0)], {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}}
+    )["sizing"]
+    assert "puede quedarse corto o pasarse" in con_valorada["nota"]
+    assert "antes de lo debido" not in con_valorada["nota"]
+
+
+def test_sin_candidatas_el_aviso_no_habla_de_un_tamano():
+    """Revisión 9: «Hoy no hay candidatas que dimensionar» y, al lado, «el tamaño
+    puede quedarse corto o pasarse»."""
+    mantener = {**señal("B", 0.2, last=50.0), "decision": {"action": "mantener", "levels": {}}}
+    for ranked in ([], [mantener]):
+        s = _lista_corta_dimensionada(ranked, {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}})["sizing"]
+        assert not s["pesos"]
+        assert "BTC-USD" in s["aviso_cartera"] and "tamaño" not in s["aviso_cartera"]

@@ -338,7 +338,10 @@ def decide(
                 # debajo del stop exacto, y al más cercano un stop de 92,006 se
                 # servía 92,01 y un cierre de 92,01 no vendía (revisión 5).
                 "stop": datos.redondear_precio(stop_posicion, hacia="abajo"),
-                "stop_pct": round((stop_posicion / ultimo - 1) * 100, 1),
+                # A un decimal salvo que el redondeo lo deje en cero: con el stop en
+                # 100 y el precio en 100,04 (o en 99,96, ya perforado) la tarjeta
+                # decía «0,0 %» (revisión 9).
+                "stop_pct": _pct_no_cero((stop_posicion / ultimo - 1) * 100, 1),
                 "objetivo": datos.redondear_precio(objetivo),
                 "objetivo_pct": round((objetivo / ultimo - 1) * 100, 1) if objetivo else None,
                 "ratio": niveles["ratio"],
@@ -633,6 +636,12 @@ def _reglas_sin_posicion(score, sobre_media, tendencia, favorable_min, desfavora
     ]
 
 
+def _pct_no_cero(valor: float, decimales: int) -> float:
+    """Redondeado, salvo que el redondeo lo deje en cero sin serlo."""
+    redondeado = round(valor, decimales)
+    return redondeado if redondeado != 0 or valor == 0 else valor
+
+
 def _puntuacion(score: float, *umbrales: float) -> str:
     """La puntuación de su lado de los umbrales: con dos decimales, 0,3496 frente
     a «≥ +0,35» se escribía «+0,35» y la traza decía «0,35 frente a 0,35 ✗»
@@ -640,16 +649,14 @@ def _puntuacion(score: float, *umbrales: float) -> str:
     return fmt_num(score, decimales_frente(score, umbrales), signo=True)
 
 
-def _c_score(op: str, umbral: float, score: float, id_: str, *otros: float) -> dict:
-    """`otros`: los demás umbrales de puntuación de la misma decisión."""
-    # A tres decimales, salvo que el redondeo la deje en un umbral: «ahora 0,35;
-    # falta 0,00 puntos» con una condición pendiente (revisión 7). En cualquiera
-    # de ellos, no solo el suyo: con -0,3496, la condición de comprar (≥ +0,35)
-    # servía -0,35 y la de evitar (≤ -0,35), justo debajo, -0,3496 (revisión 8).
-    actual, distancia = round(score, 3), round(umbral - score, 3)
-    umbrales = (umbral, *otros)
-    if (actual in umbrales and score not in umbrales) or (distancia == 0 and score != umbral):
-        actual, distancia = score, umbral - score
+def _c_score(op: str, umbral: float, score: float, id_: str) -> dict:
+    """La cifra entera: el formateador la escribe frente a todos los umbrales."""
+    # Sin redondear: a tres decimales salía «ahora 0,35; falta 0,00 puntos» con
+    # una condición pendiente (revisión 7), -0,35 junto a -0,3496 (revisión 8),
+    # y 0,1247 se servía 0,125 y se pintaba «ahora 0,13» con la traza diciendo
+    # 0,12; con 0,3004 la distancia 0,05 ocultaba el 0,0496 que la confianza
+    # mide contra 0,05 (revisión 9). Solo se quita el ruido de coma flotante.
+    actual, distancia = score, round(umbral - score, 12)
     return {
         "regla": id_,
         "condicion": f"puntuación {op} {fmt_num(umbral, signo=True)}",
@@ -719,7 +726,7 @@ def _cambiaria_sin_posicion(
 ) -> list[dict]:
     """Qué tendría que pasar para pasar a cada una de las otras acciones."""
     ultimo, entrar = tendencia["precio"], _umbral_entrar(tendencia["sma200"])
-    comprar = [_c_score("≥", favorable_min, score, "puntuacion_favorable", desfavorable_max),
+    comprar = [_c_score("≥", favorable_min, score, "puntuacion_favorable"),
                _c_precio("≥", entrar, ultimo, "tendencia_a_favor", _media_entrar(), "arriba")]
     extra = []
     if resultados_en:
@@ -729,7 +736,7 @@ def _cambiaria_sin_posicion(
         extra.append({"regla": "precio_viejo", "condicion": "volver a tener precio actual",
                       "actual": "viejo", "umbral": None, "distancia": None, "unidad": None})
     evitar = {"hacia": "evitar", "requiere": "todas",
-              "condiciones": [_c_score("≤", desfavorable_max, score, "puntuacion_desfavorable", favorable_min)]}
+              "condiciones": [_c_score("≤", desfavorable_max, score, "puntuacion_desfavorable")]}
     salida = []
     if accion != "comprar":
         # Cumplida o pendiente, con la MISMA comparación que la regla y no con la
@@ -750,12 +757,12 @@ def _cambiaria_sin_posicion(
         ]})
     if accion in ("comprar", "vigilar"):
         salida.append({"hacia": "ninguna", "requiere": "todas",
-                       "condiciones": [_c_score("<", favorable_min, score, "puntuacion_favorable", desfavorable_max)]})
+                       "condiciones": [_c_score("<", favorable_min, score, "puntuacion_favorable")]})
     if accion != "evitar":
         salida.append(evitar)
     else:
         salida.append({"hacia": "ninguna", "requiere": "todas",
-                       "condiciones": [_c_score(">", desfavorable_max, score, "puntuacion_desfavorable", favorable_min)]})
+                       "condiciones": [_c_score(">", desfavorable_max, score, "puntuacion_desfavorable")]})
     return salida
 
 

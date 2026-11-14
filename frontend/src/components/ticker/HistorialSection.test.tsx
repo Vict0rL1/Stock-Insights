@@ -44,13 +44,16 @@ describe('historial de decisiones', () => {
     })
     const respuesta = {
       symbol: 'ACME', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
-      decisiones: [fila(1, 'comprar', 0.3504), fila(2, 'ninguna', 0.3496), fila(3, 'ninguna', 0.12)],
+      decisiones: [fila(1, 'comprar', 0.3504), fila(2, 'ninguna', 0.3496), fila(3, 'ninguna', 0.12),
+        // Con posición solo cuenta el umbral de vender, como en su traza y sus
+        // razones: «+0,35», no «+0,3496» (revisión 9).
+        { ...fila(4, 'mantener', 0.3497), umbrales_puntuacion: [-0.35] }],
     }
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 })))
     render(<HistorialSection symbol="ACME" />)
     expect(await screen.findByText('+0,3504')).toBeInTheDocument()
     expect(screen.getByText('+0,3496')).toBeInTheDocument()
     expect(screen.getByText('+0,12')).toBeInTheDocument()
-    expect(screen.queryByText('0,35')).toBeNull()
+    expect(screen.getByText('+0,35')).toBeInTheDocument()
   })
 })

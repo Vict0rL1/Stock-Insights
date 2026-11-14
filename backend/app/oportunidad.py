@@ -248,6 +248,7 @@ def evaluar(
                       "vol_anual_pct": _pct((por_contrib.get(p["symbol"]) or {}).get("volatilidad"))}
                      for p in posiciones],
             base_cartera="capital" if efectivo["usd"] is not None else "invertido_parcial" if parcial else "invertido",
+            parcial=bool(fuera),
         )
         tamano = (sizing["pesos"].get(symbol) or 0.0) / 100
 
@@ -282,7 +283,14 @@ def evaluar(
         max_posicion=MAX_POR_POSICION_PCT / 100,
         recortes=(sizing or {}).get("recortes"),
         # Anotado pero sin tipo a esa fecha, o con uno viejo: el veredicto lo dice.
-        aviso_efectivo=efectivo.get("motivo") if efectivo["estado"] != "valido" and efectivo.get("motivo") != SIN_ANOTAR else None,
+        # Sin anotar y con posiciones sin valorar, «Anota tu efectivo» no llevaba
+        # a nada: anotado tampoco se sumaría (revisión 9).
+        aviso_efectivo=(
+            efectivo.get("motivo") if efectivo["estado"] != "valido" and efectivo.get("motivo") != SIN_ANOTAR
+            else (f"aunque lo anotaras no se sumaría mientras {len(fuera)} "
+                  f"{plural(len(fuera), 'posición abierta siga sin valorar', 'posiciones abiertas sigan sin valorar')}")
+            if fuera and efectivo.get("motivo") == SIN_ANOTAR else None
+        ),
     )
     resultado["efectivo"] = efectivo
     resultado["sizing"] = {k: (sizing or {}).get(k) for k in ("controles", "recortes", "todos_los_limites_aplicados")}

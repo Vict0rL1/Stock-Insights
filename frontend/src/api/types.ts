@@ -614,6 +614,8 @@ export interface QuantSignal {
 
 export interface SignalResponse {
   signals: QuantSignal[]
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   unavailable: { symbol: string; reason: string }[]
   calibrated: boolean
   weights: Record<string, number>
@@ -632,6 +634,8 @@ export interface UniverseInfo {
 
 export interface ScanResponse {
   universe_key: string
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   universe_name: string
   universe_description: string
   top: QuantSignal[]
@@ -2235,6 +2239,8 @@ export interface DecisionHistorica {
   score: number | null
   reglas_version: string
   replay: boolean
+  /** Los de su propia traza (con posición, solo el de vender); vacío si no la guardó. */
+  umbrales_puntuacion?: number[]
 }
 
 export interface ReplayDecision {

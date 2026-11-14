@@ -323,7 +323,7 @@ export const api = {
   riesgoDeCartera: (descargar: boolean) =>
     fetchJson<RiesgoDeCartera>(`/api/portfolio/riesgo?descargar=${descargar}`),
   addPosition: (body: { symbol: string; quantity: number; cost_basis: number }) =>
-    postJson<{ id: number; symbol: string }>('/api/portfolio/positions', body),
+    postJson<{ id: number; symbol: string; thesis_id?: number | null; stop_por_clase?: boolean }>('/api/portfolio/positions', body),
   /** Fija o SUBE el stop de una posición abierta. Bajarlo lo rechaza el servidor. */
   fijarStop: (id: number, stop: number) =>
     postJson<{ id: number; stop: number; anterior: number | null }>(

@@ -744,7 +744,10 @@ y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
 valor de las posiciones abiertas: tu concentración real es entonces menor y los
 topes aprietan antes de lo debido, y la nota lo dice. Si hay posiciones que el
 barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
-cartera inventaría liquidez). La nota dice qué efectivo se usó y de qué fecha (y
+cartera inventaría liquidez) y la nota no afirma ninguna dirección: las que
+faltan aflojan los topes de su sector y las valoradas pesan de más, así que el
+tamaño puede quedarse corto o pasarse; sin ninguna valorada, los topes no ven
+nada y el tamaño es una cota superior. La nota dice qué efectivo se usó y de qué fecha (y
 la del tipo de cambio si tiene más de una semana; nunca se usa uno posterior), y
 la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
 cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
@@ -796,11 +799,14 @@ Y si el histórico común no llega a la ventana pedida, la peor ventana sale
 semanas viajaba rotulado como «peor 12 meses», y un número mal rotulado es peor
 que ninguno porque se compara con otros que sí significan lo que dicen.
 
-Las posiciones sin histórico en caché (o con menos de 60 sesiones) no entran, y
+Las posiciones sin histórico guardado (o con menos de 60 sesiones) no entran, y
 el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
-(`estres.cobertura_peso`) y cuáles se quedan fuera (`sin_historico`, con su
-aviso en el panel), como el estrés de crisis. Antes se quitaban en silencio y la
-caída de un 9 % de la cartera pasaba por la de toda.
+(`estres.cobertura_peso`) y cuáles se quedan fuera (`sin_historico`, cada una con
+su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
+silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
+en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
+«no perdía nada»), y el histórico se lee igual que para el stop: el de un año
+vigente, el largo o el de un año caducado hace menos de un día.
 
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las

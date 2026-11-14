@@ -554,6 +554,20 @@ def _retirar_futuro(a: dict, futuras: set[str], momento) -> list[str]:
 # --- Reconstruir -----------------------------------------------------------
 
 
+def umbrales_de_puntuacion(snap: DecisionSnapshot) -> list[float]:
+    """Los umbrales de puntuación con que se tomó esa decisión, de su traza: con
+    una posición abierta solo cuenta el de vender. El historial escribía todas
+    las filas frente a los dos, y una «mantener» con 0,3496 decía «+0,3496»
+    mientras su replay y sus razones decían «+0,35» (revisión 9). Vacío si la
+    instantánea no guardó la traza."""
+    ctx = snap.contexto or {}
+    fuente = ctx.get("analisis") if ctx.get("esquema") == ESQUEMA_ANALISIS else ctx.get("senal")
+    reglas = ((fuente or {}).get("decision") or {}).get("reglas") or []
+    return [r["datos"]["umbral"] for r in reglas
+            if isinstance(r, dict) and str(r.get("id", "")).startswith("puntuacion")
+            and isinstance((r.get("datos") or {}).get("umbral"), (int, float))]
+
+
 def reconstruir(snap: DecisionSnapshot, resultados: list[DecisionOutcome] | None = None) -> dict:
     """«¿Por qué el sistema dijo esto aquel día?», solo con lo congelado."""
     ctx = snap.contexto or {}

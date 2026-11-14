@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
@@ -22,7 +22,16 @@ const FACTOR: Record<string, string> = {
   desconocido: 'text-amber-800',
 }
 
-function Cambio({ c }: { c: CambioMetrica }) {
+// La puntuación, frente a los umbrales de las reglas de la decisión que se pinta
+// al lado: con dos decimales, 0,15 → 0,3496 salía «0,15 → 0,35» junto a una traza
+// que decía 0,3496 (revisión 9).
+function valorDe(v: number | string | null, c: CambioMetrica, umbrales: number[]): string {
+  return c.clave === 'score' && typeof v === 'number' && umbrales.length
+    ? fmtFrente(v, umbrales, { signo: true })
+    : fmtMetrica(v, c.unidad)
+}
+
+function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: number[] }) {
   const tono =
     c.tipo === 'dato_perdido' ? 'text-amber-800' : c.direccion === 'baja' ? 'text-red-700' : c.direccion === 'sube' ? 'text-emerald-700' : 'text-slate-700'
   return (
@@ -31,7 +40,7 @@ function Cambio({ c }: { c: CambioMetrica }) {
       {/* `ml-auto`: al bajar de línea (rótulo largo en móvil) el valor seguía a
           la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
       <span className={`ml-auto tabular-nums ${tono}`}>
-        {fmtMetrica(c.antes, c.unidad)} → {fmtMetrica(c.ahora, c.unidad)}
+        {valorDe(c.antes, c, umbrales)} → {valorDe(c.ahora, c, umbrales)}
         {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
         )}
@@ -156,6 +165,10 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
 
   const { analisis: a, cambios } = datos
   const d = a.decision
+  const umbralesPuntuacion = (d?.reglas ?? [])
+    .filter((r) => r.id.startsWith('puntuacion'))
+    .map((r) => r.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
   const pedirResumen = () => {
     setPidiendoIa(true)
     setErrorIa(null)
@@ -243,7 +256,7 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
                   <div className="text-[10px] uppercase tracking-wide text-slate-400">{etiqueta(cat)}</div>
                   <ul>
                     {lista.map((c) => (
-                      <Cambio key={c.clave} c={c} />
+                      <Cambio key={c.clave} c={c} umbrales={umbralesPuntuacion} />
                     ))}
                   </ul>
                 </div>

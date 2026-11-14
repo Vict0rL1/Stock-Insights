@@ -309,6 +309,16 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
                               "antes": {"resultado": p.get("resultado"), "papel": p.get("papel"), **(p.get("datos") or {})},
                               "ahora": None})
 
+    # La puntuación, frente a los umbrales de TODAS sus reglas de las dos trazas:
+    # frente al suyo, de 0,40 a -0,3504 se explicaba «≤ -0,35: cumple (-0,3504
+    # frente a -0,35)» y, justo después, «≥ +0,35: no cumple (-0,35 frente a
+    # +0,35)» (revisión 9).
+    umbrales_puntuacion = sorted({
+        u for r in [*ra.values(), *rb.values()]
+        if str(r.get("id", "")).startswith("puntuacion")
+        and isinstance(u := (r.get("datos") or {}).get("umbral"), (int, float))
+    })
+
     explicacion = []
     if bool(pos_antes) != bool(pos_ahora):
         explicacion.append(
@@ -333,7 +343,8 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
             if precio:
                 return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
             if isinstance(v, (int, float)) and isinstance(u, (int, float)):
-                return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, u, signo=True)} frente a "
+                frente = umbrales_puntuacion if c["regla"].startswith("puntuacion") and umbrales_puntuacion else u
+                return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, frente, signo=True)} frente a "
                         f"{fmt_frente(u, u, signo=True)})")
             return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
         explicacion.append(f"«{c['texto']}»: {leer(c['antes'])} → {leer(c['ahora'])}.")

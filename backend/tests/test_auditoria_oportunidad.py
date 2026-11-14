@@ -670,3 +670,17 @@ def test_con_la_cartera_vacia_no_hay_parejas_que_comprobar(session_factory):
     assert c["veredicto"]["accion"] is not None
     assert "0 de 0" not in c["veredicto"]["motivo"] and "Tope por" not in c["veredicto"]["motivo"]
 
+
+
+def test_sin_efectivo_y_con_posiciones_sin_valorar_no_pide_anotarlo(session_factory):
+    """Revisión 9: «Anota tu efectivo para saber si de verdad no cabe», y anotado
+    seguía sin sumarse; sin nada que revisar, «la lista de abajo» no existía."""
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        motivo = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]["veredicto"]["motivo"]
+    assert "Anota tu efectivo" not in motivo and "aunque lo anotaras no se sumaría" in motivo
+    assert "la lista de abajo" not in motivo

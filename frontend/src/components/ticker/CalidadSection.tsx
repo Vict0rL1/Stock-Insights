@@ -39,9 +39,25 @@ function Entrada({ nombre, e }: { nombre: string; e: Linaje }) {
   )
 }
 
+// Los umbrales que de verdad separan los estados de la cifra de cada evidencia.
+// Con todos los de `umbral`, el CFO/beneficio se escribía también frente al
+// límite del FCF (0,6) y 0,5996 salía «0,5996×» arriba y «0,60×» en la tabla; la
+// calidad del FCF separa BUENO de NORMAL en −5 %, no en +5 %, y −4,96 % y −5,04 %
+// salían los dos «−5,0 %» (revisión 9).
+const UMBRALES_DE_EVIDENCIA: Record<string, (u: Record<string, number>) => (number | undefined)[]> = {
+  conversion_caja: (u) => [u.bueno, u.aviso],
+  calidad_fcf: (u) => [u.divergencia === undefined ? undefined : -u.divergencia],
+}
+
+function umbralesDe(e: EvidenciaCalidad): number[] {
+  const umbral = e.umbral ?? {}
+  const elegidos = UMBRALES_DE_EVIDENCIA[e.categoria]?.(umbral) ?? Object.values(umbral)
+  return elegidos.filter((u): u is number => typeof u === 'number')
+}
+
 function Fila({ e }: { e: EvidenciaCalidad }) {
   const esFraccion = !['conversion_caja'].includes(e.categoria)
-  const umbrales = Object.values(e.umbral ?? {}).filter((u): u is number => typeof u === 'number')
+  const umbrales = umbralesDe(e)
   return (
     <details className="group border-b border-slate-100 py-2 last:border-0">
       {/* Con `display:flex` el `summary` pierde su triángulo, y en móvil no hay

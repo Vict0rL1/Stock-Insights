@@ -1583,7 +1583,8 @@
       "precio": null,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",

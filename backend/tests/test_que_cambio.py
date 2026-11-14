@@ -315,9 +315,19 @@ def test_la_puntuacion_se_sirve_frente_a_los_dos_umbrales():
         d = decide({"symbol": "X", "score": score}, precio)
         actuales = {c["actual"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")}
         assert actuales == {score}
-    # Lejos de los dos, se sigue sirviendo a tres decimales.
-    d = decide({"symbol": "X", "score": 0.12345}, precio)
-    assert {c["actual"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")} == {0.123}
+    # Lejos de los dos, tampoco se redondea: a tres decimales 0,1247 se servía
+    # 0,125 y se pintaba «ahora 0,13» con la traza diciendo 0,12, y con 0,3004
+    # la distancia 0,05 ocultaba el 0,0496 que la confianza mide contra 0,05
+    # (revisión 9).
+    d = decide({"symbol": "X", "score": 0.1247}, precio)
+    condiciones = [c for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")]
+    assert {c["actual"] for c in condiciones} == {0.1247}
+    assert {c["distancia"] for c in condiciones} == {0.2253, -0.4747}
+    borde = decide({"symbol": "X", "score": 0.3004}, precio)
+    base = {"faltan": [], "mercado": {"precio": {"estado": "valido", "valor": 1.0}, "historico": {"sesiones": 260}},
+            "fundamentales": {"ejercicios_disponibles": 5}, "valoracion": {}, "decision": borde}
+    estabilidad = next(f for f in confianza.evaluar(base, AHORA)["factores"] if f["id"] == "estabilidad")
+    assert estabilidad["estado"] == "debil"
 
 
 def test_una_condicion_de_precio_pendiente_no_dice_falta_cero():
@@ -336,3 +346,44 @@ def test_una_condicion_de_precio_pendiente_no_dice_falta_cero():
             "fundamentales": {"ejercicios_disponibles": 5}, "valoracion": {}, "decision": borde}
     estabilidad = next(f for f in confianza.evaluar(base, AHORA)["factores"] if f["id"] == "estabilidad")
     assert "(a 0,0004 puntos)" in estabilidad["detalle"] and "(a 0 puntos)" not in estabilidad["detalle"]
+
+
+def test_que_cambio_escribe_la_puntuacion_frente_a_todos_sus_umbrales():
+    """Revisión 9: «Qué cambió» escribía cada regla frente a su umbral. De 0,40 a
+    -0,3504: «≤ -0,35: … cumple (-0,3504 frente a -0,35)» y, justo después,
+    «≥ +0,35: … no cumple (-0,35 frente a +0,35)»."""
+    from app.analysis.decision import decide
+
+    precio = {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "X", "score": 0.40}, precio)
+    ahora = decide({"symbol": "X", "score": -0.3504}, precio)
+    explicacion = " ".join(cambios.comparar_decisiones(antes, ahora)["explicacion"])
+    assert "(-0,3504 frente a -0,35)" in explicacion and "(-0,3504 frente a +0,35)" in explicacion
+    assert "(-0,35 frente a +0,35)" not in explicacion
+
+
+def test_la_distancia_al_stop_de_una_posicion_no_se_sirve_como_cero():
+    """Revisión 9: con el stop en 100 y el precio en 100,04 (o 99,96, ya
+    perforado) la tarjeta decía «Stop 100,00 0,0 %»."""
+    from app.analysis.decision import decide
+
+    pos = {"cost_basis": 110.0, "quantity": 10, "stop": 100.0}
+    for last in (100.04, 99.96):
+        d = decide({"symbol": "X", "score": 0.6},
+                   {"last": last, "sma200": 90.0, "above_sma200": True, "daily_vol_pct": 1.2}, pos)
+        assert d["levels"]["stop_pct"] != 0 and abs(d["levels"]["stop_pct"]) < 0.05
+    lejos = decide({"symbol": "X", "score": 0.6}, {"last": 120.0, "sma200": 90.0, "above_sma200": True, "daily_vol_pct": 1.2}, pos)
+    assert lejos["levels"]["stop_pct"] == -16.7
+
+
+
+def test_el_historial_sirve_los_umbrales_de_cada_decision(session_factory, servicio):
+    """Revisión 9: el historial escribía todas las filas frente a ±0,35; una
+    «mantener» (solo cuenta el de vender) con 0,3496 decía «+0,3496» y su replay
+    «+0,35». Cada fila lleva los de su propia traza."""
+    from app import snapshots as sn
+
+    with session_factory() as s:
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        snap = s.query(DecisionSnapshot).one()
+        assert sorted(sn.umbrales_de_puntuacion(snap)) == [-0.35, 0.35]

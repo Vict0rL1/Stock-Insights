@@ -423,6 +423,9 @@ function PortfolioTab() {
   }
   const [form, setForm] = useState({ symbol: '', quantity: '', cost: '' })
   const [error, setError] = useState<string | null>(null)
+  // Abierta sin histórico que medir: su stop es el punto medio de la clase y
+  // queda fijado; la respuesta lo decía y nadie lo leía (revisión 9).
+  const [avisoStop, setAvisoStop] = useState<string | null>(null)
 
   const addPosition = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -437,12 +440,18 @@ function PortfolioTab() {
       )
       return
     }
+    setAvisoStop(null)
     try {
-      await api.addPosition({
+      const creada = await api.addPosition({
         symbol: form.symbol.trim().toUpperCase(),
         quantity,
         cost_basis: cost,
       })
+      if (creada.stop_por_clase) {
+        setAvisoStop(
+          `${creada.symbol}: no había histórico para medir su volatilidad, así que su stop es el punto medio de su clase, no uno medido. Revísalo: se puede subir, no bajar.`,
+        )
+      }
       setForm({ symbol: '', quantity: '', cost: '' })
       load()
     } catch (err) {
@@ -518,6 +527,7 @@ function PortfolioTab() {
           Añadir posición
         </button>
         {error && <span className="text-sm text-red-600">{error}</span>}
+        {avisoStop && <span className="text-sm text-amber-800">{avisoStop}</span>}
       </form>
 
       <BloqueDatos carga={cartera} que="la cartera">
@@ -687,7 +697,9 @@ function PortfolioTab() {
                               <td className="px-2 py-1.5 text-right">
                                 {p.stop_fijado_al_abrir === false && (
                                   <button
-                                    onClick={() => fijarStop(p.id, p.stop)}
+                                    // Sin proponer un stop que no se midió: con un Enter se
+                                    // congelaba el supuesto (revisión 9).
+                                    onClick={() => fijarStop(p.id, p.stop_por_clase ? null : p.stop)}
                                     title={
                                       p.stop_por_clase
                                         ? 'Su stop se recalcula y ahora mismo no hay histórico para medir la volatilidad: es el punto medio de su clase, no uno medido. Mejor fijarlo con el histórico a mano.'

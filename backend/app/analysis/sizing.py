@@ -210,25 +210,40 @@ def volatilidad_cartera(
 # --- El dimensionador ---------------------------------------------------------
 
 
-def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False) -> str:
+def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False,
+                parcial: bool = False) -> str:
     """La frase de BASE_CARTERA, con el detalle dentro antes del punto final.
-    Sin ninguna posición valorada, la de cartera parcial no puede hablar de «las
-    valoradas que pesan de más» (revisión 8)."""
-    if base_cartera == "invertido_parcial" and cartera_vacia:
-        base_cartera = "invertido_parcial_sin_valoradas"
+
+    Con posiciones abiertas sin valorar (`parcial`) la frase no puede afirmar una
+    dirección: sin efectivo anotado decía «tu concentración real es menor y los
+    topes aprietan antes de lo debido… Puedes anotarlo» junto al aviso «el
+    tamaño es una cota superior», y anotado tampoco se sumaría (revisión 9). Sin
+    ninguna valorada, tampoco puede hablar de «las valoradas que pesan de más»
+    (revisión 8). El detalle del efectivo sobra entonces: no se suma igual."""
+    if parcial or base_cartera == "invertido_parcial":
+        if cartera_vacia:
+            base_cartera, detalle_base = "parcial_sin_valoradas", None
+        elif base_cartera in ("invertido", "invertido_sin_cambio"):
+            base_cartera, detalle_base = "parcial_sin_efectivo", None
     frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
     return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
 
 
-def efecto_cartera_parcial(n: int, hay_valoradas: bool) -> str:
+def efecto_cartera_parcial(n: int, hay_valoradas: bool, con_tamano: bool = True) -> str:
     """Qué hacen al tamaño `n` posiciones abiertas sin valorar. Una sola frase
     para Hoy y la ficha: Hoy seguía con «Tu concentración real es mayor» al lado
     de la nota «puede quedarse corto o pasarse», y la ficha ya no lo decía
     (revisión 8). Con valoradas, las que faltan aflojan los topes de su sector y
     las valoradas, que pesan de más, aprietan los del resto (revisión 7). Sin
     ninguna, los topes no ven nada de lo que ya tienes: solo pueden quedarse
-    flojos, y el tamaño es una cota superior."""
+    flojos, y el tamaño es una cota superior. Sin nada que dimensionar
+    (`con_tamano` falso), sin hablar de un tamaño: Hoy sin candidatas decía «Hoy
+    no hay candidatas que dimensionar» y, al lado, «el tamaño puede quedarse
+    corto» (revisión 9)."""
     no_cuenta = "no cuenta" if n == 1 else "no cuentan"
+    if not con_tamano:
+        return (f"{no_cuenta} en los topes por sector y correlación"
+                + (", y no hay ninguna posición valorada." if not hay_valoradas else "."))
     if not hay_valoradas:
         return (f"{no_cuenta} en los topes por sector y correlación, y no hay ninguna posición valorada: "
                 "los topes no ven nada de lo que ya tienes, así que el tamaño es una cota superior.")
@@ -236,11 +251,11 @@ def efecto_cartera_parcial(n: int, hay_valoradas: bool) -> str:
             "cartera incompleta: el tamaño puede quedarse corto o pasarse.")
 
 
-def aviso_cartera_parcial(n: int, cuales: str, hay_valoradas: bool) -> str:
+def aviso_cartera_parcial(n: int, cuales: str, hay_valoradas: bool, con_tamano: bool = True) -> str:
     """El aviso entero, el mismo en Hoy y en la ficha: cuántas, cuáles (`cuales`,
     ya escrito, con su motivo) y qué hacen al tamaño."""
     cuantas = plural(n, "posición abierta sin valorar", "posiciones abiertas sin valorar")
-    return f"{n} {cuantas} ({cuales}) {efecto_cartera_parcial(n, hay_valoradas)}"
+    return f"{n} {cuantas} ({cuales}) {efecto_cartera_parcial(n, hay_valoradas, con_tamano)}"
 
 # Sobre qué se miden los pesos de lo que ya tienes, dicho en la nota del tamaño.
 BASE_CARTERA = {
@@ -272,11 +287,22 @@ BASE_CARTERA = {
         "de más (eso los aprieta en el resto), así que el tamaño puede quedarse corto "
         "o pasarse."
     ),
-    "invertido_parcial_sin_valoradas": (
+    # Con posiciones abiertas sin valorar y sin efectivo que sumar (sin anotar o
+    # sin tipo de cambio): ni «aprietan antes de lo debido» ni «anótalo», que
+    # tampoco se sumaría (revisión 9).
+    "parcial_sin_efectivo": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar, sin efectivo que sumar (aunque lo anotaras, no "
+        "se sumaría a una parte de la cartera). Ojo: los topes por sector y "
+        "correlación no ven las posiciones que faltan (eso los afloja en su sector) "
+        "y las valoradas pesan de más (eso los aprieta en el resto), así que el "
+        "tamaño puede quedarse corto o pasarse."
+    ),
+    "parcial_sin_valoradas": (
         "el peso de lo que ya tienes no se puede medir: ninguna posición abierta se "
-        "pudo valorar, y el efectivo anotado no se suma a una cartera que no se ve. "
-        "Ojo: los topes por sector y correlación no ven nada de lo que ya tienes, así "
-        "que el tamaño es una cota superior."
+        "pudo valorar, y el efectivo no se suma a una cartera que no se ve. Ojo: los "
+        "topes por sector y correlación no ven nada de lo que ya tienes, así que el "
+        "tamaño es una cota superior."
     ),
 }
 
@@ -292,6 +318,7 @@ def dimensionar(
     max_cluster_pct: float = MAX_POR_CLUSTER_PCT,
     base_cartera: str = "invertido",
     detalle_base: str | None = None,
+    parcial: bool = False,
 ) -> dict:
     """Convierte ideas en pesos de cartera, aplicando todos los límites.
 
@@ -301,6 +328,8 @@ def dimensionar(
     porque faltan posiciones por valorar). Solo cambia la nota, que antes
     afirmaba siempre que la app no registra el efectivo, también después de la
     migración 0008. `detalle_base` se añade a esa frase (qué efectivo y de cuándo).
+    `parcial`: hay posiciones abiertas que no se pudieron valorar y no están en
+    `cartera`; la frase lo tiene en cuenta (revisión 9).
 
     `candidatas`: [{symbol, sector, peso_bruto_pct, vol_anual_pct}]. El peso
     bruto es el que sale del riesgo por operación — el que `decision.py` calcula
@@ -604,7 +633,7 @@ def dimensionar(
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera)
+            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera, parcial=parcial)
         ),
     }
 

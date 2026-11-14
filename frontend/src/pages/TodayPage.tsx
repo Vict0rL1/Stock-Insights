@@ -102,6 +102,24 @@ export function distanciaAlStop(decision: Decision): number | null {
   return decision.owned ? pct : -pct
 }
 
+/** La distancia al stop, sin escribirse como cero si no lo es: con el stop en
+ *  100 y el precio en 100,04 (o 99,96, ya perforado) decía «0,0 %» (revisión 9). */
+export function textoDistanciaAlStop(decision: Decision): string {
+  const puntos = distanciaAlStop(decision)
+  return fmtFrente(puntos === null ? null : puntos / 100, 0, { pct: true, signo: true })
+}
+
+/** Los umbrales de puntuación de la propia decisión (con posición, solo el de
+ *  vender), como su traza y sus razones: frente a los dos, una «mantener» con
+ *  0,3496 decía «+0,3496» junto a «Puntuación +0,35» (revisión 9). */
+function umbralesDeSuDecision(decision: Decision | undefined, porDefecto: number[]): number[] {
+  const suyos = (decision?.reglas ?? [])
+    .filter((r) => r.id.startsWith('puntuacion'))
+    .map((r) => r.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
+  return suyos.length ? suyos : porDefecto
+}
+
 /** El plan completo: por qué, a qué precio, y cuándo salir. */
 function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: string }) {
   const { levels } = decision
@@ -146,7 +164,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
             <div className="text-sm tabular-nums text-red-600">
               {fmtPrecio(levels.stop)}{' '}
               <span className="text-xs text-slate-400">
-                {fmtPct(distanciaAlStop(decision), 1, { signo: true, enPuntos: true })}
+                {textoDistanciaAlStop(decision)}
               </span>
             </div>
           </div>
@@ -775,7 +793,7 @@ function SignalRow({
               positive ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
-            {fmtFrente(signal.score, umbrales, { signo: true })}
+            {fmtFrente(signal.score, umbralesDeSuDecision(signal.decision, umbrales), { signo: true })}
           </span>
           <span className="w-20 text-right">
             <ActionChip decision={signal.decision} />

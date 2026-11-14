@@ -45,4 +45,24 @@ describe('calidad de beneficios', () => {
     expect(within(tabla).queryByText('1,00×')).toBeNull()
     expect(within(tabla).queryByText('0,60×')).toBeNull()
   })
+
+  it('cada evidencia, frente a los umbrales de su propia cifra (revisión 9)', async () => {
+    // El CFO/beneficio se escribía también frente al límite del FCF (0,6):
+    // «0,5996×» arriba y «0,60×» en la tabla. La calidad del FCF separa BUENO de
+    // NORMAL en −5 %, y −4,96 % salía «−5,0 %».
+    const calidad = structuredClone(ACME['/api/empresa/ACME/calidad'].json) as {
+      evidencias: { categoria: string; estado: string; valor: number | null; umbral: Record<string, number> | null }[]
+      historia: Record<string, unknown>[]
+    }
+    Object.assign(calidad.evidencias.find((e) => e.categoria === 'conversion_caja')!, { valor: 0.5996, estado: 'aviso' })
+    Object.assign(calidad.evidencias.find((e) => e.categoria === 'calidad_fcf')!, {
+      valor: -0.0496, estado: 'bueno', umbral: { divergencia: 0.05 },
+    })
+    Object.assign(calidad.historia[calidad.historia.length - 1], { cfo_sobre_beneficio: 0.5996 })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(calidad), { status: 200 })))
+    render(<CalidadSection symbol="ACME" />)
+    expect(await screen.findByText('-4,96 %')).toBeInTheDocument()
+    expect(screen.queryByText('0,5996×')).toBeNull()
+    expect(screen.getAllByText('0,60×').length).toBeGreaterThanOrEqual(2)
+  })
 })
