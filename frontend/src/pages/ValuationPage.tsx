@@ -344,7 +344,7 @@ function InversoPanel({ inv }: { inv: DcfInverso }) {
   )
 }
 
-function ComparablesPanel({ c }: { c: Comparables }) {
+export function ComparablesPanel({ c }: { c: Comparables }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-800">
@@ -355,11 +355,13 @@ function ComparablesPanel({ c }: { c: Comparables }) {
         <>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3">
             <span className="text-lg font-semibold tabular-nums text-slate-900">
-              {c.etiqueta_multiplo} {fmtNum(c.intervalo.bajo, 1)} – {fmtNum(c.intervalo.alto, 1)}
+              {/* Con los dos decimales con que se sirven: con uno, 22,44 fuera de
+                  15,02–22,36 se leía «15,0 – 22,4 · cotiza a 22,4 (fuera)» (revisión 11). */}
+              {c.etiqueta_multiplo} {fmtNum(c.intervalo.bajo)} – {fmtNum(c.intervalo.alto)}
             </span>
             <span className="text-sm text-slate-500">
               cotiza a{' '}
-              <span className="font-medium text-slate-800">{fmtNum(c.multiplo_objetivo, 1)}</span>{' '}
+              <span className="font-medium text-slate-800">{fmtNum(c.multiplo_objetivo)}</span>{' '}
               ({c.dentro_del_intervalo ? 'dentro' : 'fuera'})
             </span>
           </div>

@@ -17,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.analysis.deep_dive import assemble
+from app.analysis.deep_dive import assemble, frente
+from app.analysis.health import ALTMAN_RIESGO, ALTMAN_SEGURA
 from app.analysis.factors import build_raw_factors, composite_score, family_scores, zscores
 from app.analysis.fundamentals import derive_ratio_series, growth_summary
 from app.analysis.signal import build_signal
@@ -344,23 +345,23 @@ Años de histórico disponibles: {business.get('years_of_history')}
 Precio actual: {fmt_precio(report.get('price'))}
 
 CRECIMIENTO
-CAGR ingresos {ventana}: {pct(growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
+CAGR ingresos {ventana}: {frente('revenue_cagr', growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
 CAGR BPA {ventana}: {pct(growth.get('eps_cagr'))} | CAGR FCF {ventana}: {pct(growth.get('fcf_cagr'))}
 Tendencia: {growth.get('acceleration') or 'sin determinar'}
 
 MÁRGENES
-Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {pct(margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
+Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {frente('operating_margin', margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
 Tendencia del margen operativo: {margins.get('trends', {}).get('operating_margin') or 'sin determinar'}
 
 DEUDA
-Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {fmt_num(debt.get('debt_to_equity'))}
-Cobertura de intereses: {fmt_num(debt.get('interest_coverage'), 1)}
-Altman Z: {fmt_num((debt.get('altman_z') or {}).get('score'))} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
+Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {frente('debt_to_equity', debt.get('debt_to_equity'))}
+Cobertura de intereses: {frente('interest_coverage', debt.get('interest_coverage'))}
+Altman Z: {fmt_frente((debt.get('altman_z') or {}).get('score'), (debt.get('altman_z') or {}).get('umbrales') or [ALTMAN_RIESGO, ALTMAN_SEGURA])} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
 Piotroski F: {_piotroski(debt.get('piotroski_f'))}
 
 CAJA
 FCF último ejercicio: {fmt_compacto(cash.get('current', {}).get('fcf'))}
-Conversión beneficio→caja: {pct(cash.get('current', {}).get('fcf_conversion'))}
+Conversión beneficio→caja: {frente('fcf_conversion', cash.get('current', {}).get('fcf_conversion'))}
 Intensidad de capex: {pct(cash.get('current', {}).get('capex_intensity'))}
 Tendencia del FCF: {cash.get('fcf_trend') or 'sin determinar'}
 

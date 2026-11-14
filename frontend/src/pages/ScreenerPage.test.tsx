@@ -39,3 +39,28 @@ describe('presets del screener', () => {
     expect(screen.getByText('ROE alto y deuda baja.')).toBeInTheDocument()
   })
 })
+
+describe('resultados del screener', () => {
+  it('la cifra de una comprobación no se escribe igual que su umbral (revisión 11)', async () => {
+    // Un ROE de 0,1496 salía en rojo «ROE: 15,0 %» bajo el filtro «ROE ≥ 15,0 %».
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      if (url === '/api/screener/presets') {
+        return new Response(JSON.stringify({ builtin: [PRESET], saved: [] }), { status: 200 })
+      }
+      if (url === '/api/screener/run') {
+        return new Response(JSON.stringify({
+          results: [{ symbol: 'ACME', name: 'Acme', passes: false, score: 0,
+            checks: [{ metric: 'roe', op: 'gte', value: 0.15, actual: 0.1496, passed: false }],
+            metrics: { roe: 0.1496 }, source: 'prueba', cached: false }],
+          unavailable: [], passed: 0, evaluated: 1, note: '',
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ detail: 'sin datos en el test' }), { status: 503 })
+    }))
+    render(<MemoryRouter><ScreenerPage /></MemoryRouter>)
+    await screen.findByText('ROE alto y deuda baja.')
+    fireEvent.click(screen.getByRole('button', { name: 'Ejecutar screener' }))
+    expect(await screen.findByText(/ROE: 14,96\s%/)).toBeInTheDocument()
+  })
+})

@@ -1050,9 +1050,20 @@ export interface DeepDiveReport {
   risks: DeepDiveRisk[]
   catalysts: DeepDiveCatalyst[]
   verdict: Verdict
+  /** Las fronteras con que el informe escribe cada cifra (revisión 11); falta en
+   *  informes de antes. */
+  umbrales?: Partial<Record<UmbralInforme, number[]>>
   data_sources: { financials: string; quote: string | null; as_of: string }
   computed_by: string
 }
+
+export type UmbralInforme =
+  | 'revenue_cagr'
+  | 'operating_margin'
+  | 'debt_to_equity'
+  | 'interest_coverage'
+  | 'fcf_conversion'
+  | 'max_drawdown'
 
 export interface DeepDiveNarrative {
   generated_by: 'llm'
@@ -2214,8 +2225,9 @@ export interface CambiosAnalisis {
     reglas_que_cambiaron: ReglaQueCambio[]
     papeles_que_cambiaron: { regla: string; texto: string; antes: string; ahora: string }[]
     explicacion: string[]
-    /** Los de las dos trazas: con ellos se escriben la explicación y la fila de la puntuación. */
-    umbrales_puntuacion?: number[]
+    /** Los de cada traza: con ellos se escribe cada lado de la explicación y de la fila de la puntuación. */
+    umbrales_puntuacion_antes?: number[]
+    umbrales_puntuacion_ahora?: number[]
   }
   materiales?: number
   irrelevantes?: number

@@ -309,15 +309,21 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
                               "antes": {"resultado": p.get("resultado"), "papel": p.get("papel"), **(p.get("datos") or {})},
                               "ahora": None})
 
-    # La puntuación, frente a los umbrales de TODAS sus reglas de las dos trazas:
-    # frente al suyo, de 0,40 a -0,3504 se explicaba «≤ -0,35: cumple (-0,3504
-    # frente a -0,35)» y, justo después, «≥ +0,35: no cumple (-0,35 frente a
-    # +0,35)» (revisión 9).
-    umbrales_puntuacion = sorted({
-        u for r in [*ra.values(), *rb.values()]
-        if str(r.get("id", "")).startswith("puntuacion")
-        and isinstance(u := (r.get("datos") or {}).get("umbral"), (int, float))
-    })
+    # La puntuación de cada lado, frente a los umbrales de TODAS las reglas de
+    # puntuación de SU traza: frente al suyo, de 0,40 a -0,3504 se explicaba
+    # «≤ -0,35: cumple (-0,3504 frente a -0,35)» y, justo después, «≥ +0,35: no
+    # cumple (-0,35 frente a +0,35)» (revisión 9). Son los que usan las razones y
+    # la traza de esa decisión: con los de las dos trazas juntas, al abrir una
+    # posición con 0,3496 la fila decía «+0,3496» y las razones del mismo panel
+    # «Puntuación +0,35» (revisión 11).
+    def _umbrales(reglas) -> list[float]:
+        return sorted({
+            u for r in reglas
+            if str(r.get("id", "")).startswith("puntuacion")
+            and isinstance(u := (r.get("datos") or {}).get("umbral"), (int, float))
+        })
+
+    umbrales_puntuacion = {"antes": _umbrales(ra.values()), "ahora": _umbrales(rb.values())}
 
     explicacion = []
     if bool(pos_antes) != bool(pos_ahora):
@@ -336,18 +342,19 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
         # La puntuación, de su lado del umbral: con dos decimales, 0,3504 → 0,3496
         # se explicaba «cumple (+0,35 frente a +0,35) → no cumple (+0,35 frente a
         # +0,35)» (revisión 7).
-        def leer(x, precio=c["regla"] in REGLAS_DE_PRECIO):
+        def leer(x, lado, precio=c["regla"] in REGLAS_DE_PRECIO):
             v, u = x.get("valor"), x.get("umbral")
             if v is None or u is None:
                 return etiqueta(x["resultado"])
             if precio:
                 return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
             if isinstance(v, (int, float)) and isinstance(u, (int, float)):
-                frente = umbrales_puntuacion if c["regla"].startswith("puntuacion") and umbrales_puntuacion else u
+                suyos = umbrales_puntuacion[lado]
+                frente = suyos if c["regla"].startswith("puntuacion") and suyos else u
                 return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, frente, signo=True)} frente a "
                         f"{fmt_frente(u, u, signo=True)})")
             return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
-        explicacion.append(f"«{c['texto']}»: {leer(c['antes'])} → {leer(c['ahora'])}.")
+        explicacion.append(f"«{c['texto']}»: {leer(c['antes'], 'antes')} → {leer(c['ahora'], 'ahora')}.")
     if not cambiaron and a_accion != b_accion:
         explicacion.append("Ninguna regla cambió de resultado: la diferencia viene de una instantánea sin traza (anterior a la traza de reglas).")
     return {
@@ -357,10 +364,12 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
         "reglas_que_cambiaron": cambiaron,
         "papeles_que_cambiaron": papeles,
         "explicacion": explicacion,
-        # Con ellos escribe el frontend la fila de la puntuación: con los de la
-        # traza de ahora (con posición, solo el de vender), el 0,3496 de antes
-        # salía «+0,35» en la fila y «+0,3496» en esta explicación (revisión 10).
-        "umbrales_puntuacion": umbrales_puntuacion,
+        # Con ellos escribe el frontend cada lado de la fila de la puntuación:
+        # con los de la traza de ahora (con posición, solo el de vender), el
+        # 0,3496 de antes salía «+0,35» en la fila y «+0,3496» en esta
+        # explicación (revisión 10).
+        "umbrales_puntuacion_antes": umbrales_puntuacion["antes"],
+        "umbrales_puntuacion_ahora": umbrales_puntuacion["ahora"],
         "generado_por": "app",
     }
 

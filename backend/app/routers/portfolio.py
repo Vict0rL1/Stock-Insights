@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import datos, vigilancia
 from app import punto_en_el_tiempo as pit
 from app.analysis import alertas, fx, historial as hist, portfolio_risk
-from app.analysis.decision import _stop_pct, vol_diaria_pct
+from app.analysis.decision import CIERRES_VOL, _stop_pct, vol_diaria_pct
 from app.analysis.risk_budget import presupuesto_de_riesgo
 from app.analysis.sizing import con_caida_esperada, peor_ventana
 from app.analysis.portfolio import (
@@ -142,8 +142,11 @@ def _volatilidad_de(
     `abierta`: con una apertura atrasada, solo los cierres que se conocían
     entonces; con los de hoy, un lote abierto hace 100 días en calma recibía el
     stop de la agitación de después (75,0 en vez de 92,0; revisión 9). Si el
-    año de histórico no llega a esa fecha (más de ~11 meses atrás), del
-    histórico largo: si no, siempre salía el punto medio (revisión 10).
+    año de histórico no deja antes de esa fecha la ventana entera del stop
+    (`CIERRES_VOL`), del histórico largo: más allá del año siempre salía el
+    punto medio (revisión 10), y con la apertura de hace 9 a 11 meses se
+    congelaba un stop medido con 20 retornos, 92,0 en vez del 80,5 de los 63
+    cierres de entonces (revisión 11).
 
     None si no hay histórico: el stop cae entonces al punto medio de su clase, y
     quien llama lo dice (`stop_por_clase`).
@@ -159,14 +162,16 @@ def _volatilidad_de(
     bars = (history or {}).get("bars") or []
     if abierta is not None:
         bars = _barras_hasta(history, abierta)
-    vol = vol_diaria_pct([b["close"] for b in bars if b.get("close")])
-    if vol is None and abierta is not None:
+    cierres = [b["close"] for b in bars if b.get("close")]
+    if abierta is not None and len(cierres) < CIERRES_VOL:
         try:
             largo = service.get("price_history_long", symbol=symbol)
         except (DataNotFoundError, AllProvidersFailedError):
             largo = None
-        vol = vol_diaria_pct([b["close"] for b in _barras_hasta(largo, abierta) if b.get("close")])
-    return vol
+        del_largo = [b["close"] for b in _barras_hasta(largo, abierta) if b.get("close")]
+        if len(del_largo) > len(cierres):
+            cierres = del_largo
+    return vol_diaria_pct(cierres)
 
 
 def _series_cacheadas(
@@ -1141,15 +1146,19 @@ def _referencia_del_universo(session: Session) -> tuple[dict | None, int]:
     return (referencia or None), empresas
 
 
-DIAS_FX_HISTORICO = 4000  # ~11 años: cubre cualquier cartera de esta app
-# El estrés de crisis llega a 2008: la serie de cambio tiene que llegar también,
-# o la posición extranjera se queda sin ese episodio (revisión 10).
-DIAS_FX_CRISIS = 365 * 20
+# Una sola ventana de cambio para todos, con el inicio FIJO un mes antes de la
+# crisis más antigua del estrés (2008): la serie tiene que llegar hasta allí o
+# la posición extranjera se queda sin ese episodio (revisión 10). Contada desde
+# hoy (365 × 20 días), a partir del 5-10-2027 dejaba de cubrir 2008 y el
+# episodio entero de la cartera, también el de las posiciones en dólares, se
+# medía desde donde empezara el cambio y sin decirlo; y cada ventana era otra
+# entrada de la caché: /riesgo bajaba otros veinte años por divisa y día además
+# de los once de la Cartera (revisión 11). Fija, la entrada es una y solo la
+# renueva su TTL.
+INICIO_FX_HISTORICO = (min(c["desde"] for c in portfolio_risk.CRISIS) - timedelta(days=31)).isoformat()
 
 
-def _fx_completo(
-    service: MarketDataService, monedas: set[str], dias: int | None = None
-) -> tuple[dict, dict, dict]:
+def _fx_completo(service: MarketDataService, monedas: set[str]) -> tuple[dict, dict, dict]:
     """UNA descarga larga por divisa, de la que salen el tipo de hoy Y la serie.
 
     Devuelve (tipos de hoy, series completas, fallos). Pedir la ventana corta
@@ -1157,7 +1166,7 @@ def _fx_completo(
     divisa para el mismo dato.
     """
     tipos, series, fallos = {}, {}, {}
-    desde = fx.inicio_de_ventana(dias=dias or DIAS_FX_HISTORICO)
+    desde = INICIO_FX_HISTORICO
     for moneda in sorted(monedas):
         if moneda == fx.BASE or moneda not in fx.SERIES:
             continue
@@ -1348,9 +1357,7 @@ def riesgo_de_cartera(
     from app.contexto_cartera import convertir_serie
 
     moneda_de = {p["symbol"]: _moneda_segura(p.get("currency")) for p in con_precio}
-    _, series_fx, _ = _fx_completo(
-        service, {m for m in moneda_de.values() if m and m != fx.BASE}, dias=DIAS_FX_CRISIS
-    )
+    _, series_fx, _ = _fx_completo(service, {m for m in moneda_de.values() if m and m != fx.BASE})
     en_usd: dict[str, list[tuple[date, float]]] = {}
     for symbol, serie in series.items():
         convertida = convertir_serie(serie, moneda_de.get(symbol), series_fx)

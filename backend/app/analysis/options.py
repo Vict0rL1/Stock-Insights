@@ -799,6 +799,7 @@ def panel(
     spot: float,
     cierres: list[tuple[date, float]],
     *,
+    cierres_rv: list[tuple[date, float]] | None = None,
     fechas_resultados: list[date] | None = None,
     proxima_resultados: date | None = None,
     base: dict | None = None,
@@ -845,7 +846,9 @@ def panel(
         por_venc.setdefault(c["vencimiento"], []).append(c)
 
     iv30 = iv_a_tenor(por_venc, spot, TENOR_REFERENCIA, hoy)
-    cierres_ord = [v for _, v in sorted(cierres)]
+    # `cierres_rv`: los recientes, si quien llama los separa del largo (una copia
+    # de días no da la realizada de hoy; revisión 11).
+    cierres_ord = [v for _, v in sorted(cierres if cierres_rv is None else cierres_rv)]
     rv30 = volatilidad_realizada(cierres_ord, 30)
 
     # Skew al vencimiento más cercano a 30 días con contratos a ambos lados.

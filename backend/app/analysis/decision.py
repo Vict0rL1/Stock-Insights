@@ -78,13 +78,17 @@ ACCIONES = {
 }
 
 
+# Cierres de la volatilidad del stop (~3 meses de sesiones).
+CIERRES_VOL = 63
+
+
 def vol_diaria_pct(cierres: list[float]) -> float | None:
     """Volatilidad diaria (%) de los últimos ~3 meses: es lo que dimensiona el
     stop. Una sola versión para Hoy, la ficha y la cartera: con 63 cierres
     redondeada en un sitio y 64 sin redondear en el otro, el stop recalculado de
     una posición salía 54,54 en la ficha y 54,60 en la cartera, y un cierre entre
     los dos «reducía» en una y había perforado el stop en la otra (revisión 7)."""
-    ventana = [c for c in cierres if c][-63:]
+    ventana = [c for c in cierres if c][-CIERRES_VOL:]
     retornos = [ventana[i] / ventana[i - 1] - 1 for i in range(1, len(ventana))]
     if len(retornos) < 20:
         return None

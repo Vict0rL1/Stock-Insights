@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import type { FilterSpec, ScreenerPreset, ScreenResult } from '../api/types'
 import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtNum, fmtPct } from '../lib/formato'
+import { fmtFrente, fmtNum, fmtPct } from '../lib/formato'
 import { useDato } from '../lib/useDato'
 
 const PCT_METRICS = new Set([
@@ -12,9 +12,12 @@ const PCT_METRICS = new Set([
   'dividend_yield', 'revenue_growth_5y', 'eps_growth_5y',
 ])
 
-function fmtMetric(metric: string, value: number | null) {
+// La cifra de cada comprobación, de su lado de su umbral: con decimales fijos,
+// un ROE de 0,1496 salía en rojo «ROE: 15,0 %» junto al filtro «ROE ≥ 15,0 %»
+// (revisión 11).
+function fmtMetric(metric: string, value: number | null, umbral: number) {
   if (value === null || value === undefined) return '—'
-  return PCT_METRICS.has(metric) ? fmtPct(value) : fmtNum(value)
+  return fmtFrente(value, umbral, { pct: PCT_METRICS.has(metric) })
 }
 
 function describeFilter(metric: string, spec: FilterSpec) {
@@ -170,6 +173,7 @@ export function ScreenerPage() {
                       title={`${etiqueta(check.metric, { mayuscula: true })}: ${fmtMetric(
                         check.metric,
                         check.actual,
+                        check.value,
                       )}`}
                       className={`rounded-full px-2 py-0.5 text-xs ${
                         check.passed
@@ -178,7 +182,7 @@ export function ScreenerPage() {
                       }`}
                     >
                       {etiqueta(check.metric, { mayuscula: true })}:{' '}
-                      {fmtMetric(check.metric, check.actual)}
+                      {fmtMetric(check.metric, check.actual, check.value)}
                     </span>
                   ))}
                 </div>

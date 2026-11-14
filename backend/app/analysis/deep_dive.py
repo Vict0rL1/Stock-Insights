@@ -11,6 +11,7 @@ informe es completo y honesto sin ella.
 
 from __future__ import annotations
 
+from app.analysis.calidad_beneficios import FCF_NI_DEBIL, FCF_NI_FUERTE
 from app.analysis.fundamentals import (
     cagr,
     derive_ratio_series,
@@ -20,7 +21,31 @@ from app.analysis.fundamentals import (
     total_debt,
 )
 from app.analysis.health import health_snapshot
-from app.formato import fmt_frente, fmt_num, fmt_pct, fmt_precio, plural
+from app.formato import fmt_frente, fmt_precio, plural
+
+# Una sola lista de fronteras por cifra, con TODAS las que la clasifican en el
+# informe: la lectura, los riesgos, el veredicto, el prompt de la IA y la
+# pantalla escriben la cifra frente a la lista entera. Con una lista por sitio,
+# una deuda/capital de 2,996 era «3,00 (apalancamiento alto)» en la lectura y
+# «2,996» en los riesgos, y una cobertura de 4,996 salía «4,996× — ajustada» en
+# la lectura y «5,0×» en la casilla de al lado (revisión 11). Se sirve en el
+# informe (`umbrales`) para que la pantalla no tenga que copiarla.
+UMBRALES = {
+    "revenue_cagr": [0, 0.05, 0.08, 0.15],
+    "operating_margin": [0.05, 0.15, 0.25],
+    "debt_to_equity": [1, 2, 3],
+    "interest_coverage": [1.5, 2, 3, 5, 8],
+    "fcf_conversion": [FCF_NI_DEBIL, FCF_NI_FUERTE],
+    "max_drawdown": [-0.35],
+}
+
+
+def frente(clave: str, valor) -> str:
+    """La cifra `clave` del informe escrita frente a sus fronteras (`UMBRALES`).
+    Ratios con «×» y conversión sin ceros a la derecha, como en la lectura."""
+    pct = clave in ("revenue_cagr", "operating_margin", "fcf_conversion", "max_drawdown")
+    ceros = clave not in ("interest_coverage", "fcf_conversion")
+    return fmt_frente(valor, UMBRALES[clave], pct=pct, ceros=ceros)
 
 
 def _trend(values: list[float | None]) -> str | None:
@@ -127,7 +152,7 @@ def _growth_reading(cagr_5y: float | None, acceleration: str | None, years: int 
     )
     tail = f", y a 3 años viene {acceleration}" if acceleration else ""
     corta = f"; ventana corta: la completa es de {VENTANA_NOMINAL}" if years < VENTANA_NOMINAL else ""
-    return f"Ingresos con {pace} ({fmt_pct(cagr_5y)} anual a {_anos(years)}{corta}){tail}."
+    return f"Ingresos con {pace} ({frente('revenue_cagr', cagr_5y)} anual a {_anos(years)}{corta}){tail}."
 
 
 def margins_section(ratios: list[dict]) -> dict:
@@ -172,7 +197,7 @@ def _margins_reading(operating: float | None, trend: str | None) -> str:
         else "márgenes muy finos o negativos"
     )
     tail = f" y la tendencia va {trend}" if trend else ""
-    return f"Margen operativo del {fmt_pct(operating)}: {level}{tail}."
+    return f"Margen operativo del {frente('operating_margin', operating)}: {level}{tail}."
 
 
 def debt_section(periods: list[dict], ratios: list[dict], market_cap: float | None) -> dict:
@@ -230,7 +255,7 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
             # Cada cifra, de su lado de los umbrales que la clasifican: 2,004 y
             # 1,996 salían los dos «2,00», uno «alto» y otro «moderado»; 1,96 y 2,04,
             # «2,0× — frágil» y «2,0× — ajustada» (revisión 10).
-            f"Deuda/capital {fmt_frente(d_e, [1, 2])}"
+            f"Deuda/capital {frente('debt_to_equity', d_e)}"
             + (
                 " (apalancamiento alto)" if d_e > 2
                 else " (moderado)" if d_e > 1
@@ -239,7 +264,7 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
         )
     if coverage is not None:
         parts.append(
-            f"cobertura de intereses {fmt_frente(coverage, [2, 5], ceros=False)}×"
+            f"cobertura de intereses {frente('interest_coverage', coverage)}×"
             + (" — holgada" if coverage > 5 else " — ajustada" if coverage > 2 else " — frágil")
         )
     if trend:
@@ -298,23 +323,20 @@ def _cash_reading(fcf: float | None, conversion: float | None) -> str:
         return "Flujo de caja libre negativo: el negocio consume caja."
     if conversion is None:
         return "Genera flujo de caja libre positivo."
-    from app.analysis.calidad_beneficios import FCF_NI_DEBIL, FCF_NI_FUERTE
-
     # De su lado de los dos umbrales: 0,596 y 0,604 salían «60 %», uno «solo» y el
     # otro «saludable» (revisión 10).
-    umbrales = [FCF_NI_DEBIL, FCF_NI_FUERTE]
     if conversion > FCF_NI_FUERTE:
         return (
-            f"Convierte el {fmt_frente(conversion, umbrales, pct=True, ceros=False)} del beneficio en caja: el "
+            f"Convierte el {frente('fcf_conversion', conversion)} del beneficio en caja: el "
             "beneficio contable subestima la generación real."
         )
     if conversion < FCF_NI_DEBIL:
         return (
-            f"Solo el {fmt_frente(conversion, umbrales, pct=True, ceros=False)} del beneficio llega a caja libre. "
+            f"Solo el {frente('fcf_conversion', conversion)} del beneficio llega a caja libre. "
             "Conviene mirar si es capex de crecimiento o deterioro de la calidad "
             "del beneficio."
         )
-    return f"Conversión de beneficio a caja del {fmt_frente(conversion, umbrales, pct=True, ceros=False)}: saludable."
+    return f"Conversión de beneficio a caja del {frente('fcf_conversion', conversion)}: saludable."
 
 
 def risks_section(
@@ -330,7 +352,7 @@ def risks_section(
             {
                 "type": "Apalancamiento",
                 "severity": "alto" if d_e > 3 else "medio",
-                "evidence": f"Deuda/capital de {fmt_frente(d_e, [2, 3])}",
+                "evidence": f"Deuda/capital de {frente('debt_to_equity', d_e)}",
                 "why": "Una subida de tipos o una caída de resultados aprieta mucho más rápido.",
             }
         )
@@ -341,7 +363,7 @@ def risks_section(
             {
                 "type": "Cobertura de intereses",
                 "severity": "alto" if coverage < 1.5 else "medio",
-                "evidence": f"El EBIT cubre {fmt_frente(coverage, [1.5, 3], ceros=False)}× los intereses",
+                "evidence": f"El EBIT cubre {frente('interest_coverage', coverage)}× los intereses",
                 "why": "Poco margen para absorber un año malo sin tensiones financieras.",
             }
         )
@@ -363,7 +385,7 @@ def risks_section(
             {
                 "type": "Ingresos en contracción",
                 "severity": "alto",
-                "evidence": f"CAGR de ingresos {fmt_pct(growth['revenue_cagr'])} a {growth['years']} años",
+                "evidence": f"CAGR de ingresos {frente('revenue_cagr', growth['revenue_cagr'])} a {growth['years']} años",
                 "why": "Un múltiplo bajo sobre un negocio que encoge no es una ganga.",
             }
         )
@@ -386,7 +408,7 @@ def risks_section(
                 {
                     "type": "Volatilidad histórica",
                     "severity": "medio",
-                    "evidence": f"Máxima caída del {fmt_pct(drawdown)} en el último año",
+                    "evidence": f"Máxima caída del {frente('max_drawdown', drawdown)} en el último año",
                     "why": "Dimensiona la posición contando con que puede repetirse.",
                 }
             )
@@ -458,13 +480,13 @@ def build_verdict(
     revenue_cagr = growth.get("revenue_cagr")
     if revenue_cagr is not None:
         if revenue_cagr > 0.08:
-            positives.append(f"ingresos creciendo al {fmt_pct(revenue_cagr)} anual")
+            positives.append(f"ingresos creciendo al {frente('revenue_cagr', revenue_cagr)} anual")
         elif revenue_cagr < 0:
             negatives.append("ingresos en contracción")
 
     operating = (margins.get("current") or {}).get("operating_margin")
     if operating is not None and operating > 0.15:
-        positives.append(f"margen operativo del {fmt_pct(operating)}")
+        positives.append(f"margen operativo del {frente('operating_margin', operating)}")
     if margins.get("trends", {}).get("operating_margin") == "deteriorándose":
         negatives.append("márgenes en deterioro")
 
@@ -473,7 +495,7 @@ def build_verdict(
         if coverage > 8:
             positives.append("balance sin tensión por intereses")
         elif coverage < 3:
-            negatives.append(f"cobertura de intereses ajustada ({fmt_frente(coverage, 3, ceros=False)}×)")
+            negatives.append(f"cobertura de intereses ajustada ({frente('interest_coverage', coverage)}×)")
 
     zone = (debt.get("altman_z") or {}).get("zone")
     if zone == "riesgo":
@@ -571,6 +593,8 @@ def assemble(
         "risks": risks_section(periods, ratios, risk, valuation),
         "catalysts": catalysts_section(earnings, filings, events),
         "verdict": build_verdict(signal, valuation, growth, debt, margins),
+        # Las fronteras con que el informe escribe cada cifra (`UMBRALES`).
+        "umbrales": {clave: list(lista) for clave, lista in UMBRALES.items()},
         "data_sources": {
             "financials": financials.get("source"),
             "quote": (quote or {}).get("source"),

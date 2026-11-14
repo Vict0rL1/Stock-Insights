@@ -59,6 +59,8 @@ def riesgo_de_posicion(posicion: dict, total_cartera: float | None) -> dict | No
         "symbol": posicion.get("symbol"),
         "grupo": _grupo(posicion),
         "riesgo_pct": round(perdida / total_cartera * 100, 2),
+        # Sin redondear, para sumar y comparar con los topes (revisión 11).
+        "_crudo": perdida / total_cartera * 100,
         "peso_pct": round(valor / total_cartera * 100, 2),
         "nota": nota,
     }
@@ -73,11 +75,17 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
     ]
     sin_calcular = len(posiciones) - len(detalle)
 
-    por_grupo: dict[str, float] = {}
+    # Se suma y se compara con los topes SIN redondear, y se sirve así (sin el
+    # ruido de coma flotante): la pantalla lo escribe de su lado del tope. Con la
+    # suma de cifras ya redondeadas, tres posiciones de 2,004 % daban «6,0 %,
+    # quedan 0,0 % de margen» y ningún aviso, con un 6,012 % en riesgo
+    # (revisión 11).
+    crudo_grupo: dict[str, float] = {}
     for r in detalle:
-        por_grupo[r["grupo"]] = round(por_grupo.get(r["grupo"], 0.0) + r["riesgo_pct"], 2)
+        crudo_grupo[r["grupo"]] = crudo_grupo.get(r["grupo"], 0.0) + r.pop("_crudo")
+    por_grupo = {grupo: round(v, 12) for grupo, v in crudo_grupo.items()}
 
-    total = round(sum(r["riesgo_pct"] for r in detalle), 2)
+    total = round(sum(crudo_grupo.values()), 12)
     avisos: list[str] = []
 
     if total > HEAT_MAXIMO_PCT:
@@ -113,7 +121,7 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
         "posiciones": sorted(detalle, key=lambda r: -r["riesgo_pct"]),
         "sin_calcular": sin_calcular,
         "avisos": avisos,
-        "margen_pct": round(max(0.0, HEAT_MAXIMO_PCT - total), 2),
+        "margen_pct": round(max(0.0, HEAT_MAXIMO_PCT - total), 12),
         "nota": (
             "El riesgo abierto es lo que perderías si TODAS tus posiciones "
             "tocaran su stop. Se agrupa por sector —y cripto en bloque, porque "

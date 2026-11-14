@@ -212,14 +212,18 @@ def volatilidad_cartera(
 
 def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False,
                 parcial: bool = False) -> str:
-    """La frase de BASE_CARTERA, con el detalle dentro antes del punto final.
+    """La frase de BASE_CARTERA, con el detalle dentro: donde la frase lo marca
+    (`{detalle}`) o, si no, antes del punto final.
 
     Con posiciones abiertas sin valorar (`parcial`) la frase no puede afirmar una
     dirección: sin efectivo anotado decía «tu concentración real es menor y los
     topes aprietan antes de lo debido… Puedes anotarlo» junto al aviso «el
     tamaño es una cota superior», y anotado tampoco se sumaría (revisión 9). Sin
     ninguna valorada, tampoco puede hablar de «las valoradas que pesan de más»
-    (revisión 8). El detalle del efectivo sobra entonces: no se suma igual."""
+    (revisión 8). Sin efectivo anotado no hay detalle que dar; anotado y sin tipo
+    de cambio, el detalle es el motivo del tipo y se queda (revisión 10), junto a
+    «no se pudo pasar a dólares»: al final, detrás de «el tamaño puede quedarse
+    corto o pasarse», parecía explicar eso (revisión 11)."""
     if parcial or base_cartera == "invertido_parcial":
         if cartera_vacia:
             base_cartera, detalle_base = "parcial_sin_valoradas", None
@@ -231,6 +235,8 @@ def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool
             # revisión 3 había hecho llegar (revisión 10). El detalle se queda.
             base_cartera = "parcial_sin_cambio"
     frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
+    if "{detalle}" in frase:
+        return frase.replace("{detalle}", f" {detalle_base}" if detalle_base else "")
     return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
 
 
@@ -292,9 +298,9 @@ BASE_CARTERA = {
         "de más (eso los aprieta en el resto), así que el tamaño puede quedarse corto "
         "o pasarse."
     ),
-    # Con posiciones abiertas sin valorar y sin efectivo que sumar (sin anotar o
-    # sin tipo de cambio): ni «aprietan antes de lo debido» ni «anótalo», que
-    # tampoco se sumaría (revisión 9).
+    # Con posiciones abiertas sin valorar y sin efectivo anotado: ni «aprietan
+    # antes de lo debido» ni «anótalo», que tampoco se sumaría (revisión 9).
+    # Anotado y sin tipo de cambio es `parcial_sin_cambio` (revisión 10).
     "parcial_sin_efectivo": (
         "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
         "este barrido puede valorar, sin efectivo que sumar (aunque lo anotaras, no "
@@ -306,7 +312,7 @@ BASE_CARTERA = {
     "parcial_sin_cambio": (
         "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
         "este barrido puede valorar: el efectivo está anotado, pero no se pudo pasar "
-        "a dólares, y con posiciones sin valorar tampoco se sumaría. Ojo: los topes "
+        "a dólares{detalle}, y con posiciones sin valorar tampoco se sumaría. Ojo: los topes "
         "por sector y correlación no ven las posiciones que faltan (eso los afloja en "
         "su sector) y las valoradas pesan de más (eso los aprieta en el resto), así "
         "que el tamaño puede quedarse corto o pasarse."

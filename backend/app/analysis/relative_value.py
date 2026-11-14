@@ -30,7 +30,7 @@ import math
 
 import numpy as np
 from app import datos
-from app.formato import fmt_num, fmt_precio
+from app.formato import fmt_frente, fmt_num, fmt_precio
 
 # Menos de esto y una regresión de dos variables no tiene grados de libertad
 # suficientes para nada. Es un límite duro, no una recomendación.
@@ -258,7 +258,7 @@ def _leer(
     if not fiable:
         return (
             f"El crecimiento y la calidad explican poco del múltiplo en esta "
-            f"muestra (R² = {fmt_num(r2)} con {n} pares): el ajuste no sostiene una "
+            f"muestra (R² = {fmt_frente(r2, MIN_R2)} con {n} pares): el ajuste no sostiene una "
             "conclusión. Puede ser que estos pares no sean realmente comparables, "
             "o que en este sector el múltiplo lo mande otra cosa. Mira la "
             "comparación cruda y trátala como lo que es — cruda."
@@ -266,11 +266,15 @@ def _leer(
     if intervalo is None:
         return f"Ajuste calculado con {n} pares, pero sin dispersión para un intervalo."
 
+    # El R² frente al mínimo que decide si el ajuste es fiable, y el intervalo y
+    # el múltiplo con los dos decimales con que se sirven: con uno, 0,2996 era
+    # «R² = 0,30» junto a «explican poco», y un múltiplo de 22,44 fuera de
+    # 15,02–22,36 se leía «15,0–22,4. Cotiza a 22,4» (revisión 11).
     base = (
         f"Con {n} pares y {gl} grados de libertad, la relación entre múltiplo, "
-        f"crecimiento y calidad (R² = {fmt_num(r2)}) sugiere un {etiqueta} de "
-        f"{fmt_num(intervalo[0], 1)}–{fmt_num(intervalo[1], 1)} para el perfil del objetivo. "
-        f"Cotiza a {fmt_num(objetivo['multiplo'], 1)}. "
+        f"crecimiento y calidad (R² = {fmt_frente(r2, MIN_R2)}) sugiere un {etiqueta} de "
+        f"{fmt_num(intervalo[0])}–{fmt_num(intervalo[1])} para el perfil del objetivo. "
+        f"Cotiza a {fmt_num(objetivo['multiplo'])}. "
     )
     if dentro:
         return base + (

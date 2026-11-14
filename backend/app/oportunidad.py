@@ -308,8 +308,18 @@ def evaluar(
         # no se repite (revisión 7).
         cuantas = plural(len(fuera), "Esa posición abierta sin valorar", "Esas posiciones abiertas sin valorar")
         en_veredicto = f"{cuantas} {efecto_cartera_parcial(len(fuera), hay_valoradas)}" if parcial else aviso
-        resultado["veredicto"] = {**resultado["veredicto"],
-                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {en_veredicto}".strip()}
+        # Pegada al paréntesis del efectivo que las nombra, delante de «Si no
+        # tuvieras nada, se revisaría primero AAA (lista de abajo).»: detrás,
+        # «Esa posición abierta sin valorar» se leía como si fuera AAA, que tiene
+        # precio y peso en la tabla (revisión 11).
+        motivo = resultado["veredicto"].get("motivo", "")
+        quien = resultado["veredicto"].get("si_no_hubiera_efectivo")
+        cola = motor.frase_si_no_hubiera(quien) if quien else ""
+        if cola and motivo.endswith(cola):
+            motivo = motivo.removesuffix(cola)
+        else:
+            cola = ""
+        resultado["veredicto"] = {**resultado["veredicto"], "motivo": f"{motivo} {en_veredicto}".strip() + cola}
     # Un tope que no se pudo aplicar llega a la ficha, como en el panel de Hoy y
     # con su forma: con una posición sin histórico, la correlación quedaba sin
     # comprobar y el veredicto decía «Hay efectivo… no hace falta vender nada» sin

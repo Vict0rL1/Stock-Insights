@@ -51,25 +51,9 @@ DIAS_HISTORICO = 900
 
 
 
-def _cierres(service: MarketDataService, symbol: str) -> list[tuple[date, float]]:
-    """Cierres diarios del histórico largo YA cacheado, sin descargar nada.
-
-    El estrés de cartera ya baja veinte años por posición y los guarda una
-    semana. Volver a pedirlos aquí sería pagar dos veces por el mismo dato, así
-    que si no están se trabaja sin ellos y se dice qué se pierde.
-    """
-    cache = getattr(service, "cache", None)
-    payload = cache.get("price_history_long", {"symbol": symbol}) if cache else None
-    if payload is None:
-        # El corto (252 barras) llega para la volatilidad realizada de 30 días,
-        # aunque no para los movimientos en resultados de hace dos años.
-        payload = (
-            cache.get("price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252})
-            if cache
-            else None
-        )
+def _puntos(barras: list[dict]) -> list[tuple[date, float]]:
     puntos = []
-    for bar in (payload or {}).get("bars") or []:
+    for bar in barras or []:
         cierre, ts = bar.get("close"), bar.get("ts")
         if not cierre or not ts:
             continue
@@ -78,6 +62,32 @@ def _cierres(service: MarketDataService, symbol: str) -> list[tuple[date, float]
         except ValueError:
             continue
     return sorted(puntos)
+
+
+def _cierres(
+    service: MarketDataService, symbol: str
+) -> tuple[list[tuple[date, float]], list[tuple[date, float]]]:
+    """(todos los cierres, los recientes) YA cacheados, sin descargar nada.
+
+    El estrés de cartera ya baja veinte años por posición y los guarda una
+    semana. Volver a pedirlos aquí sería pagar dos veces por el mismo dato, así
+    que si no están se trabaja sin ellos y se dice qué se pierde.
+
+    Los recientes, que dan la volatilidad realizada de 30 días (comparada con
+    la IV de HOY y guardada en la instantánea), salen del mismo lector que la
+    Cartera: nunca una copia de días. El largo vive 7 días y se leía primero:
+    con la copia de un año de hace 7 h al lado, la realizada salía de cierres
+    de hace 6 días y la prima, inflada en 9 puntos, quedaba guardada
+    (revisión 11). El largo solo aporta lo anterior a los recientes, para los
+    movimientos en resultados de hace dos años; sin recientes no hay realizada.
+    """
+    from app.routers.portfolio import _historico_cacheado
+
+    cache = getattr(service, "cache", None)
+    recientes = _puntos(_historico_cacheado(service, symbol))
+    largo = _puntos((cache.get("price_history_long", {"symbol": symbol}) or {}).get("bars")) if cache else []
+    desde = recientes[0][0] if recientes else date.max
+    return [p for p in largo if p[0] < desde] + recientes, recientes
 
 
 def _fechas_de_resultados(
@@ -229,7 +239,7 @@ def señales_de_opciones(
     for c in contratos:
         por_vencimiento.setdefault(c["vencimiento"], []).append(c)
 
-    cierres = _cierres(service, symbol)
+    cierres, recientes = _cierres(service, symbol)
     pasadas, proxima, fallo_calendario = _fechas_de_resultados(service, symbol, hoy)
     base = _base_historica(session, symbol, hoy)
 
@@ -237,6 +247,7 @@ def señales_de_opciones(
         por_vencimiento,
         float(spot),
         cierres,
+        cierres_rv=recientes,
         fechas_resultados=pasadas,
         proxima_resultados=proxima,
         base=base,

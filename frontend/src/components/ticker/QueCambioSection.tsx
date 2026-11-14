@@ -31,7 +31,7 @@ function valorDe(v: number | string | null, c: CambioMetrica, umbrales: number[]
     : fmtMetrica(v, c.unidad)
 }
 
-function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: number[] }) {
+function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: { antes: number[]; ahora: number[] } }) {
   const tono =
     c.tipo === 'dato_perdido' ? 'text-amber-800' : c.direccion === 'baja' ? 'text-red-700' : c.direccion === 'sube' ? 'text-emerald-700' : 'text-slate-700'
   return (
@@ -40,7 +40,7 @@ function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: number[] }) {
       {/* `ml-auto`: al bajar de línea (rótulo largo en móvil) el valor seguía a
           la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
       <span className={`ml-auto tabular-nums ${tono}`}>
-        {valorDe(c.antes, c, umbrales)} → {valorDe(c.ahora, c, umbrales)}
+        {valorDe(c.antes, c, umbrales.antes)} → {valorDe(c.ahora, c, umbrales.ahora)}
         {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
         )}
@@ -259,10 +259,22 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
                       <Cambio
                         key={c.clave}
                         c={c}
-                        // Los de las dos trazas, como la explicación de arriba: con
-                        // los de ahora solo, el valor de antes se escribía con
-                        // otros umbrales (revisión 10).
-                        umbrales={cambios.decision?.umbrales_puntuacion?.length ? cambios.decision.umbrales_puntuacion : umbralesPuntuacion}
+                        // Cada lado con los de su traza, como la explicación de
+                        // arriba y las razones de cada decisión: con los de ahora
+                        // solo, el valor de antes se escribía con otros umbrales
+                        // (revisión 10); con los de las dos juntas, el de ahora
+                        // salía «+0,3496» junto a razones que decían «+0,35»
+                        // (revisión 11).
+                        // Sin ellos (una traza vacía o una respuesta de antes), los
+                        // de la decisión que se pinta.
+                        umbrales={{
+                          antes: cambios.decision?.umbrales_puntuacion_antes?.length
+                            ? cambios.decision.umbrales_puntuacion_antes
+                            : umbralesPuntuacion,
+                          ahora: cambios.decision?.umbrales_puntuacion_ahora?.length
+                            ? cambios.decision.umbrales_puntuacion_ahora
+                            : umbralesPuntuacion,
+                        }}
                       />
                     ))}
                   </ul>

@@ -202,7 +202,8 @@ def _lista_corta_dimensionada(
     if base == "invertido" and efectivo_usd is None and efectivo_motivo and efectivo_motivo != SIN_ANOTAR:
         # Anotado pero sin tipo de cambio: la nota decía «no hay efectivo anotado…
         # Puedes anotarlo en Cartera» y se perdía el motivo (revisión 3).
-        base, sin_cambio = "invertido_sin_cambio", f"({efectivo_motivo})"
+        # Sin su punto final: va entre paréntesis dentro de una frase (revisión 11).
+        base, sin_cambio = "invertido_sin_cambio", f"({efectivo_motivo.rstrip('.')})"
     interesan = {c["symbol"] for c in candidatas} | {p["symbol"] for p in cartera}
 
     corta["sizing"] = dimensionar(

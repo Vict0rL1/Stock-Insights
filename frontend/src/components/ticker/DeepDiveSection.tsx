@@ -5,6 +5,7 @@ import type {
   DeepDiveReport,
   LlmStatus,
   MultipleStats,
+  UmbralInforme,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
 import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
@@ -157,6 +158,11 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
   }
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
+  // La cifra de la casilla, igual que en la lectura de encima: frente a las mismas
+  // fronteras. Con decimales fijos, «cobertura de intereses 4,996× — ajustada»
+  // llevaba al lado «Cobertura 5,0×», con holgada por encima de 5 (revisión 11).
+  const frente = (clave: UmbralInforme, valor: number | null, opciones?: { pct?: boolean; ceros?: boolean }) =>
+    fmtFrente(valor, report.umbrales?.[clave] ?? [], opciones)
 
   return (
     <div className="space-y-4">
@@ -225,7 +231,9 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                 <dt className="text-xs text-slate-400">
                   {rotulo} {ventana}
                 </dt>
-                <dd className="tabular-nums">{fmtPct(valor)}</dd>
+                <dd className="tabular-nums">
+                  {clave === 'ingresos' ? frente('revenue_cagr', valor, { pct: true }) : fmtPct(valor)}
+                </dd>
               </div>
             ))}
           </dl>
@@ -246,7 +254,11 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                 <dt className="text-xs text-slate-400">
                   {etiqueta(key, { mayuscula: true })}
                 </dt>
-                <dd className="tabular-nums">{fmtPct(margins.current[key])}</dd>
+                <dd className="tabular-nums">
+                  {key === 'operating_margin'
+                    ? frente('operating_margin', margins.current[key], { pct: true })
+                    : fmtPct(margins.current[key])}
+                </dd>
                 <dd className="text-[10px] text-slate-400">
                   {margins.trends[key] ? `${FLECHA[margins.trends[key]] ?? ''} ${etiqueta(margins.trends[key])}`.trim() : ''}
                 </dd>
@@ -264,12 +276,12 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
             </div>
             <div>
               <dt className="text-xs text-slate-400">Deuda/Capital</dt>
-              <dd className="tabular-nums">{fmtNum(debt.debt_to_equity)}</dd>
+              <dd className="tabular-nums">{frente('debt_to_equity', debt.debt_to_equity)}</dd>
             </div>
             <div>
               <dt className="text-xs text-slate-400">Cobertura</dt>
               <dd className="tabular-nums">
-                {debt.interest_coverage !== null ? `${fmtNum(debt.interest_coverage, 1)}×` : '—'}
+                {debt.interest_coverage !== null ? `${frente('interest_coverage', debt.interest_coverage, { ceros: false })}×` : '—'}
               </dd>
             </div>
             <div>
@@ -293,7 +305,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
             <div>
               <dt className="text-xs text-slate-400">Conversión</dt>
               <dd className="tabular-nums">
-                {fmtPct(cash.current.fcf_conversion as number | null)}
+                {frente('fcf_conversion', cash.current.fcf_conversion as number | null, { pct: true, ceros: false })}
               </dd>
             </div>
             <div>

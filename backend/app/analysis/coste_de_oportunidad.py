@@ -284,6 +284,12 @@ def evaluar(
     return {**base, "tamano": tamano, "candidatos_a_revisar": revisables, "veredicto": veredicto}
 
 
+def frase_si_no_hubiera(symbol: str) -> str:
+    """El cierre del veredicto con el efectivo desconocido: qué se revisaría
+    primero. Quien añada una nota sobre el efectivo la pone DELANTE (revisión 11)."""
+    return f" Si no tuvieras nada, se revisaría primero {symbol} (lista de abajo)."
+
+
 def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None, aviso_efectivo: str | None = None) -> dict:
     elegibles = [f for f in revisables if f.get("elegible")]
     superan = [f for f in elegibles if f.get("supera_umbral")]
@@ -298,8 +304,7 @@ def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None,
                        "vender algo." if aviso_efectivo else
                        "Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
                        "Anota tu efectivo.")
-                      + (f" Si no tuvieras nada, se revisaría primero {superan[0]['symbol']} (lista de abajo)."
-                         if superan else ""),
+                      + (frase_si_no_hubiera(superan[0]["symbol"]) if superan else ""),
             "si_no_hubiera_efectivo": superan[0]["symbol"] if superan else None,
         }
     if superan:

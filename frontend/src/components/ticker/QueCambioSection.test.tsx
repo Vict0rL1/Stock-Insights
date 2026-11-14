@@ -53,7 +53,8 @@ describe('qué cambió', () => {
     analisis.cambios.decision = {
       antes: 'ninguna', ahora: 'vender', cambio: true, reglas_que_cambiaron: [], papeles_que_cambiaron: [],
       explicacion: ['«Puntuación ≤ -0,35»: no cumple (+0,3496 frente a -0,35) → cumple (-0,36 frente a -0,35).'],
-      umbrales_puntuacion: [-0.35, 0.35],
+      umbrales_puntuacion_antes: [-0.35, 0.35],
+      umbrales_puntuacion_ahora: [-0.35],
     }
     analisis.cambios.categorias.senal = [
       { clave: 'score', etiqueta: 'Puntuación frente a comparables', tipo: 'material', antes: 0.3496, ahora: -0.36,
@@ -66,6 +67,39 @@ describe('qué cambió', () => {
     }))
     render(<MemoryRouter><QueCambioSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText(/\+0,3496 → -0,36/)).toBeInTheDocument()
+  })
+
+  it('cada lado de la fila, con los umbrales de su traza (revisión 11)', async () => {
+    // Abrir una posición con la misma puntuación: antes se comparaba con el
+    // umbral de comprar (0,35) y ahora solo con el de vender (-0,35). Con los de
+    // las dos trazas juntas, el de ahora salía «+0,3496» junto a unas razones y
+    // una traza que decían «+0,35».
+    const rutas = structuredClone((empresaCompleta as unknown as { rutas: Rutas }).rutas)
+    const analisis = rutas['/api/empresa/ACME/analisis'].json as {
+      analisis: { decision: { reglas: unknown[] } }
+      cambios: { categorias: Record<string, unknown[]>; decision?: Record<string, unknown> }
+    }
+    analisis.analisis.decision.reglas = [
+      { id: 'puntuacion_desfavorable', regla: 'Puntuación ≤ -0,35', resultado: 'no_cumple', papel: 'decide', efecto: 'vender',
+        datos: { valor: 0.3496, umbral: -0.35 } },
+    ]
+    analisis.cambios.decision = {
+      antes: 'ninguna', ahora: 'mantener', cambio: true, reglas_que_cambiaron: [], papeles_que_cambiaron: [],
+      explicacion: ['Ahora tienes posición: la pregunta pasa a ser si sostenerla o soltarla, y con ella cambia el conjunto de reglas.'],
+      umbrales_puntuacion_antes: [-0.35, 0.35],
+      umbrales_puntuacion_ahora: [-0.35],
+    }
+    analisis.cambios.categorias.senal = [
+      { clave: 'score', etiqueta: 'Puntuación frente a comparables', tipo: 'material', antes: 0.3496, ahora: 0.3496,
+        unidad: 'puntos', absoluto: 0, direccion: 'igual' },
+    ]
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const r = rutas[url]
+      return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+    }))
+    render(<MemoryRouter><QueCambioSection symbol="ACME" /></MemoryRouter>)
+    expect(await screen.findByText(/\+0,3496 → \+0,35\b/)).toBeInTheDocument()
   })
 })
 

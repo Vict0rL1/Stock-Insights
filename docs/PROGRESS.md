@@ -813,6 +813,23 @@ a fondo, la salud (Altman Z con sus `umbrales`) y el riesgo abierto escriben cad
 la clasifica. Avisos: con efectivo anotado sin tipo y posiciones sin valorar, la nota conserva el
 motivo del tipo de cambio; y «la lista de abajo» solo sale si algo se revisaría, nombrándolo.
 
+### Undécima revisión (de la décima, workflow, 14 nov)
+
+Cuatro revisores sobre `12c2d02` y las tres lentes: 18 confirmados (15 distintos), 0 descartados;
+los 15 arreglados (golden idéntico). Cartera: la serie de cambio empieza en una fecha fija antes de
+2008 (`INICIO_FX_HISTORICO`), una sola ventana y una sola entrada de caché para todos: contada desde
+hoy, en octubre de 2027 dejaba de cubrir 2008 y recortaba el episodio de toda la cartera sin decirlo;
+una apertura atrasada de 9 a 11 meses usa el largo si el año no deja los 63 cierres del stop; el
+riesgo abierto se suma y se compara sin redondear (tres de 2,004 % daban «6,0 %» sin aviso); las
+opciones toman la realizada de la copia reciente, no de un largo de días; y hay test del largo de días
+sin copia reciente. Cifras: el informe a fondo tiene una sola lista de fronteras por cifra
+(`deep_dive.UMBRALES`, servida como `umbrales`) para la lectura, los riesgos, el veredicto, el prompt
+de la IA (también el Altman Z) y las casillas, y escribe así el margen y el crecimiento; «Qué cambió»
+escribe cada lado con los umbrales de su traza (`umbrales_puntuacion_antes` y `_ahora`); el screener
+y los comparables (R² y el intervalo con sus dos decimales) escriben cada cifra frente a lo que la
+decide. Avisos: «Esa posición abierta sin valorar» va pegada al paréntesis que la nombra, delante de
+«Si no tuvieras nada…»; y el motivo del tipo de cambio va junto a «no se pudo pasar a dólares».
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -834,7 +851,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de

@@ -1226,8 +1226,12 @@ cuál.
 - **El movimiento real se mide del cierre anterior al anuncio al siguiente**, y
   el calendario de Finnhub llega entero: se filtra por símbolo, porque devuelve
   también el de las demás empresas.
-- **La volatilidad realizada sale del histórico largo ya cacheado** por el
-  estrés de cartera. Pedirlo otra vez sería pagar dos veces por el mismo dato.
+- **Nada se descarga para esto**: los cierres son los ya cacheados. La
+  volatilidad realizada de 30 días sale de la copia reciente, con el mismo
+  lector que la Cartera (el histórico de un año, o el largo si se descargó hace
+  menos de un día; nunca una copia de días, que inflaba la prima). El histórico
+  largo del estrés de cartera solo aporta lo anterior, para los resultados de
+  hace dos años. Pedirlo otra vez sería pagar dos veces por el mismo dato.
 
 ### Lo que no se hace
 
@@ -1328,10 +1332,13 @@ cartera en 2008»**: es «las seis que existían, reponderadas». Se calcula igu
 - sin ningún histórico se dice «no es que aguantara bien: es que no existía o
   no hay datos», porque el silencio se lee como buena noticia.
 
-Las series van **en dólares**, como los pesos, con la serie de cambio de veinte
-años: en moneda local, una acción canadiense plana en CAD «se habría quedado
-plana» en 2008 mientras en dólares caía un 27 %. Lo que no se puede convertir
-queda fuera y se nombra.
+Las series van **en dólares**, como los pesos, con una serie de cambio que
+empieza en una fecha fija, un mes antes de la crisis de 2008 (la misma ventana
+y la misma entrada de caché para toda la Cartera): en moneda local, una acción
+canadiense plana en CAD «se habría quedado plana» en 2008 mientras en dólares
+caía un 27 %. Contada desde hoy, la ventana habría dejado de cubrir 2008 en
+octubre de 2027 sin decirlo. Lo que no se puede convertir queda fuera y se
+nombra.
 
 Se simula con **mezcla constante**, rebalanceando a los pesos de hoy, por la
 misma razón que en `sizing.peor_ventana`: comprar y no tocar deja que los pesos

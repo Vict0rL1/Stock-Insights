@@ -157,6 +157,8 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
     "app.analysis.decision.BANDA_TENDENCIA_ENTRAR_PCT": [(3.0, "decide")],
     "app.analysis.decision.BANDA_TENDENCIA_SALIR_PCT": [(2.0, "decide")],
     "app.analysis.decision.SESIONES_MES": [(42, "decide")],
+    # Los cierres de la volatilidad del stop (antes un 63 escrito en la función).
+    "app.analysis.decision.CIERRES_VOL": [(42, "analisis")],
     "app.analysis.sizing.MAX_POR_POSICION_PCT": [(20.0, "sizing")],
     "app.analysis.sizing.MAX_POR_SECTOR_PCT": [(50.0, "sizing")],
     "app.analysis.sizing.MAX_POR_CLUSTER_PCT": [(50.0, "sizing")],

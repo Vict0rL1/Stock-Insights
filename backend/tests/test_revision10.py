@@ -21,7 +21,7 @@ def test_que_cambio_sirve_los_umbrales_con_que_escribe_la_puntuacion():
     pos = {"cost_basis": 100.0, "quantity": 10, "stop": 80.0}
     ahora = decide({"symbol": "X", "score": -0.36}, PRECIO, pos)
     d = cambios.comparar_decisiones(antes, ahora, None, pos)
-    assert d["umbrales_puntuacion"] == [-0.35, 0.35]
+    assert d["umbrales_puntuacion_antes"] == [-0.35, 0.35]
 
 
 class _LLM(LLMProvider):
