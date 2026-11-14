@@ -357,6 +357,10 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
         "reglas_que_cambiaron": cambiaron,
         "papeles_que_cambiaron": papeles,
         "explicacion": explicacion,
+        # Con ellos escribe el frontend la fila de la puntuación: con los de la
+        # traza de ahora (con posición, solo el de vender), el 0,3496 de antes
+        # salía «+0,35» en la fila y «+0,3496» en esta explicación (revisión 10).
+        "umbrales_puntuacion": umbrales_puntuacion,
         "generado_por": "app",
     }
 

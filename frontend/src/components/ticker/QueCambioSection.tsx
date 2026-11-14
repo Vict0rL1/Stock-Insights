@@ -256,7 +256,14 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
                   <div className="text-[10px] uppercase tracking-wide text-slate-400">{etiqueta(cat)}</div>
                   <ul>
                     {lista.map((c) => (
-                      <Cambio key={c.clave} c={c} umbrales={umbralesPuntuacion} />
+                      <Cambio
+                        key={c.clave}
+                        c={c}
+                        // Los de las dos trazas, como la explicación de arriba: con
+                        // los de ahora solo, el valor de antes se escribía con
+                        // otros umbrales (revisión 10).
+                        umbrales={cambios.decision?.umbrales_puntuacion?.length ? cambios.decision.umbrales_puntuacion : umbralesPuntuacion}
+                      />
                     ))}
                   </ul>
                 </div>

@@ -8,7 +8,8 @@ puedas leer el informe entero sin gastar nada en Claude.
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_compacto, fmt_num, fmt_pct, fmt_precio
+from app.formato import fmt_compacto, fmt_frente, fmt_num, fmt_pct, fmt_precio
+from app.llm.signal_llm import FRONTERAS_ETIQUETA
 from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
 from datetime import datetime, timedelta, timezone
@@ -368,7 +369,7 @@ VALORACIÓN FRENTE A SU PROPIA HISTORIA ({valuation.get('years_covered')} años)
 Lectura: {valuation.get('reading')}
 
 SEÑAL CUANTITATIVA (frente a sus pares)
-{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_num((report.get('quant_signal') or {}).get('score'), signo=True)}
+{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_frente((report.get('quant_signal') or {}).get('score'), FRONTERAS_ETIQUETA, signo=True)}
 
 RIESGOS DETECTADOS EN LOS DATOS
 {risks or '- Ninguno relevante detectado'}

@@ -387,3 +387,20 @@ def test_el_historial_sirve_los_umbrales_de_cada_decision(session_factory, servi
         analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
         snap = s.query(DecisionSnapshot).one()
         assert sorted(sn.umbrales_de_puntuacion(snap)) == [-0.35, 0.35]
+
+
+def test_con_posicion_el_historial_sirve_solo_el_umbral_de_vender(session_factory, servicio):
+    """Revisión 10: el caso que motiva los umbrales por fila no tenía test. Con
+    posición, la traza solo tiene el umbral de vender, y la fila del historial
+    se escribe con él, como sus razones."""
+    from app import snapshots as sn
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple", sector="Tech", currency="USD")
+        s.add(inst)
+        s.flush()
+        s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=100.0, opened_at=AHORA - timedelta(days=60)))
+        s.commit()
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        snap = s.query(DecisionSnapshot).one()
+        assert sn.umbrales_de_puntuacion(snap) == [-0.35]

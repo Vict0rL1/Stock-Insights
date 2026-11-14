@@ -1,7 +1,7 @@
 import { api } from '../../api/client'
 import type { Health, RiskResponse } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct } from '../../lib/formato'
 import { Ausencia, ausenteSi404, useDato, type CargaConReintento } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { DeudaParcial } from './DeudaParcial'
@@ -45,7 +45,9 @@ function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<R
           </div>
           <div className="flex items-baseline gap-3">
             <span className="text-3xl font-semibold tabular-nums text-slate-900">
-              {z.score !== null ? fmtNum(z.score) : '—'}
+              {/* De su lado de las fronteras: 2,9904 y 2,9896 salían «2,99», uno
+                  «zona segura» y el otro «zona gris» (revisión 10). */}
+              {z.score !== null ? fmtFrente(z.score, z.umbrales ?? []) : '—'}
             </span>
             {z.zone && (
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ZONE_STYLES[z.zone]}`}>

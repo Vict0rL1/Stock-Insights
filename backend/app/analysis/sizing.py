@@ -39,7 +39,7 @@ from __future__ import annotations
 import math
 
 from app import datos
-from app.formato import fmt_fecha, fmt_num, fmt_pct, plural
+from app.formato import fmt_fecha, fmt_frente, fmt_num, fmt_pct, plural
 from app.registro import log
 
 # --- Límites. Todos aquí, con nombre, para poder discutirlos. ---
@@ -223,8 +223,13 @@ def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool
     if parcial or base_cartera == "invertido_parcial":
         if cartera_vacia:
             base_cartera, detalle_base = "parcial_sin_valoradas", None
-        elif base_cartera in ("invertido", "invertido_sin_cambio"):
+        elif base_cartera == "invertido":
             base_cartera, detalle_base = "parcial_sin_efectivo", None
+        elif base_cartera == "invertido_sin_cambio":
+            # Anotado pero sin tipo: «aunque lo anotaras» se lo decía a quien ya lo
+            # había anotado, y se perdía el motivo del tipo de cambio que la
+            # revisión 3 había hecho llegar (revisión 10). El detalle se queda.
+            base_cartera = "parcial_sin_cambio"
     frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
     return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
 
@@ -297,6 +302,14 @@ BASE_CARTERA = {
         "correlación no ven las posiciones que faltan (eso los afloja en su sector) "
         "y las valoradas pesan de más (eso los aprieta en el resto), así que el "
         "tamaño puede quedarse corto o pasarse."
+    ),
+    "parcial_sin_cambio": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar: el efectivo está anotado, pero no se pudo pasar "
+        "a dólares, y con posiciones sin valorar tampoco se sumaría. Ojo: los topes "
+        "por sector y correlación no ven las posiciones que faltan (eso los afloja en "
+        "su sector) y las valoradas pesan de más (eso los aprieta en el resto), así "
+        "que el tamaño puede quedarse corto o pasarse."
     ),
     "parcial_sin_valoradas": (
         "el peso de lo que ya tienes no se puede medir: ninguna posición abierta se "
@@ -538,7 +551,9 @@ def dimensionar(
             escala = 0.0
             recortes.append(
                 f"{RECORTE_SIN_HUECO_DE_RIESGO}: la cartera que YA tienes estima un "
-                f"{fmt_pct(vol_solo_libro)} de volatilidad, por encima del "
+                # De su lado del objetivo: con 12,03 decía «un 12,0 % … por encima
+                # del objetivo (12 %)» (revisión 10).
+                f"{fmt_frente(vol_solo_libro, objetivo_vol_pct / 100, pct=True)} de volatilidad, por encima del "
                 f"objetivo ({fmt_pct(objetivo_vol_pct, en_puntos=True, ceros=False)}). No es que las ideas sean malas "
                 "— es que no cabe más riesgo. Bajar del objetivo pasa por soltar "
                 "algo de lo que ya tienes, y eso no lo decide el dimensionador."
@@ -559,7 +574,7 @@ def dimensionar(
             escala = bajo
             recortes.append(
                 f"Ideas nuevas escaladas al {fmt_pct(escala, 0)}: la volatilidad "
-                f"estimada de la cartera combinada ({fmt_pct(vol_llena)}) "
+                f"estimada de la cartera combinada ({fmt_frente(vol_llena, objetivo_vol_pct / 100, pct=True)}) "
                 f"superaba el objetivo ({fmt_pct(objetivo_vol_pct, en_puntos=True, ceros=False)})."
             )
         pesos = {s: w * escala for s, w in pesos.items()}

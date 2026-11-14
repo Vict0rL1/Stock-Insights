@@ -294,3 +294,14 @@ def test_sin_candidatas_el_aviso_no_habla_de_un_tamano():
         s = _lista_corta_dimensionada(ranked, {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}})["sizing"]
         assert not s["pesos"]
         assert "BTC-USD" in s["aviso_cartera"] and "tamaño" not in s["aviso_cartera"]
+
+
+def test_con_efectivo_sin_tipo_y_posiciones_sin_valorar_la_nota_conserva_el_motivo():
+    """Revisión 10: con EUR anotados sin tipo de cambio y una posición fuera del
+    barrido, la nota decía «aunque lo anotaras» y perdía el motivo del tipo."""
+    s = _lista_corta_dimensionada(
+        [señal("A", 1.2), señal("B", 0.2, last=50.0)], {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}},
+        efectivo_motivo="efectivo en EUR sin tipo de cambio: no se supone 1:1",
+    )["sizing"]
+    assert "aunque lo anotaras" not in s["nota"]
+    assert "efectivo en EUR sin tipo de cambio" in s["nota"] and "puede quedarse corto o pasarse" in s["nota"]

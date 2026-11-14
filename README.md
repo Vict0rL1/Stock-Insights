@@ -805,8 +805,11 @@ el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
 su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
 silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
 en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
-«no perdía nada»), y el histórico se lee igual que para el stop: el de un año
-vigente, el largo o el de un año caducado hace menos de un día.
+«no perdía nada»), y el histórico se lee igual que para el stop y el minigráfico:
+el de un año vigente, el mismo caducado hace menos de un día o el largo si se
+descargó hace menos de un día. El largo vive 7 días en la caché: servirlo antes
+que una copia de un año de hace horas daba el stop perforado en la Cartera y no
+en la ficha.
 
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
@@ -1324,6 +1327,11 @@ cartera en 2008»**: es «las seis que existían, reponderadas». Se calcula igu
   cartera»;
 - sin ningún histórico se dice «no es que aguantara bien: es que no existía o
   no hay datos», porque el silencio se lee como buena noticia.
+
+Las series van **en dólares**, como los pesos, con la serie de cambio de veinte
+años: en moneda local, una acción canadiense plana en CAD «se habría quedado
+plana» en 2008 mientras en dólares caía un 27 %. Lo que no se puede convertir
+queda fuera y se nombra.
 
 Se simula con **mezcla constante**, rebalanceando a los pesos de hoy, por la
 misma razón que en `sizing.peor_ventana`: comprar y no tocar deja que los pesos

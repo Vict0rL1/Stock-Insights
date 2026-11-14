@@ -134,6 +134,8 @@ export interface Financials extends Sourced {
 export interface AltmanZ {
   score: number | null
   zone: string | null
+  /** Las fronteras de las zonas (riesgo, segura): con ellas se escribe la cifra de su lado. */
+  umbrales?: number[]
   components: Record<string, number | null>
   note: string
 }
@@ -2212,6 +2214,8 @@ export interface CambiosAnalisis {
     reglas_que_cambiaron: ReglaQueCambio[]
     papeles_que_cambiaron: { regla: string; texto: string; antes: string; ahora: string }[]
     explicacion: string[]
+    /** Los de las dos trazas: con ellos se escriben la explicación y la fila de la puntuación. */
+    umbrales_puntuacion?: number[]
   }
   materiales?: number
   irrelevantes?: number

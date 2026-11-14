@@ -54,7 +54,7 @@
       "year": "2025"
      },
      "fcf_trend": null,
-     "reading": "Convierte el 121 % del beneficio en caja: el beneficio contable subestima la generación real."
+     "reading": "Convierte el 121,2 % del beneficio en caja: el beneficio contable subestima la generación real."
     },
     "catalysts": [],
     "computed_by": "app",
@@ -134,6 +134,10 @@
       },
       "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
       "score": null,
+      "umbrales": [
+       1.81,
+       2.99
+      ],
       "zone": null
      },
      "by_year": [
@@ -1750,7 +1754,8 @@
       "explicacion": [],
       "generado_por": "app",
       "papeles_que_cambiaron": [],
-      "reglas_que_cambiaron": []
+      "reglas_que_cambiaron": [],
+      "umbrales_puntuacion": []
      },
      "generado_por": "app",
      "irrelevantes": 11,

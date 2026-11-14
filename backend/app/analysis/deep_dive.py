@@ -20,7 +20,7 @@ from app.analysis.fundamentals import (
     total_debt,
 )
 from app.analysis.health import health_snapshot
-from app.formato import fmt_num, fmt_pct, fmt_precio, plural
+from app.formato import fmt_frente, fmt_num, fmt_pct, fmt_precio, plural
 
 
 def _trend(values: list[float | None]) -> str | None:
@@ -227,7 +227,10 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
     parts = []
     if d_e is not None:
         parts.append(
-            f"Deuda/capital {fmt_num(d_e)}"
+            # Cada cifra, de su lado de los umbrales que la clasifican: 2,004 y
+            # 1,996 salían los dos «2,00», uno «alto» y otro «moderado»; 1,96 y 2,04,
+            # «2,0× — frágil» y «2,0× — ajustada» (revisión 10).
+            f"Deuda/capital {fmt_frente(d_e, [1, 2])}"
             + (
                 " (apalancamiento alto)" if d_e > 2
                 else " (moderado)" if d_e > 1
@@ -236,7 +239,7 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
         )
     if coverage is not None:
         parts.append(
-            f"cobertura de intereses {fmt_num(coverage, 1)}×"
+            f"cobertura de intereses {fmt_frente(coverage, [2, 5], ceros=False)}×"
             + (" — holgada" if coverage > 5 else " — ajustada" if coverage > 2 else " — frágil")
         )
     if trend:
@@ -297,18 +300,21 @@ def _cash_reading(fcf: float | None, conversion: float | None) -> str:
         return "Genera flujo de caja libre positivo."
     from app.analysis.calidad_beneficios import FCF_NI_DEBIL, FCF_NI_FUERTE
 
+    # De su lado de los dos umbrales: 0,596 y 0,604 salían «60 %», uno «solo» y el
+    # otro «saludable» (revisión 10).
+    umbrales = [FCF_NI_DEBIL, FCF_NI_FUERTE]
     if conversion > FCF_NI_FUERTE:
         return (
-            f"Convierte el {fmt_pct(conversion, 0)} del beneficio en caja: el "
+            f"Convierte el {fmt_frente(conversion, umbrales, pct=True, ceros=False)} del beneficio en caja: el "
             "beneficio contable subestima la generación real."
         )
     if conversion < FCF_NI_DEBIL:
         return (
-            f"Solo el {fmt_pct(conversion, 0)} del beneficio llega a caja libre. "
+            f"Solo el {fmt_frente(conversion, umbrales, pct=True, ceros=False)} del beneficio llega a caja libre. "
             "Conviene mirar si es capex de crecimiento o deterioro de la calidad "
             "del beneficio."
         )
-    return f"Conversión de beneficio a caja del {fmt_pct(conversion, 0)}: saludable."
+    return f"Conversión de beneficio a caja del {fmt_frente(conversion, umbrales, pct=True, ceros=False)}: saludable."
 
 
 def risks_section(
@@ -324,7 +330,7 @@ def risks_section(
             {
                 "type": "Apalancamiento",
                 "severity": "alto" if d_e > 3 else "medio",
-                "evidence": f"Deuda/capital de {fmt_num(d_e)}",
+                "evidence": f"Deuda/capital de {fmt_frente(d_e, [2, 3])}",
                 "why": "Una subida de tipos o una caída de resultados aprieta mucho más rápido.",
             }
         )
@@ -335,7 +341,7 @@ def risks_section(
             {
                 "type": "Cobertura de intereses",
                 "severity": "alto" if coverage < 1.5 else "medio",
-                "evidence": f"El EBIT cubre {fmt_num(coverage, 1)}× los intereses",
+                "evidence": f"El EBIT cubre {fmt_frente(coverage, [1.5, 3], ceros=False)}× los intereses",
                 "why": "Poco margen para absorber un año malo sin tensiones financieras.",
             }
         )
@@ -467,7 +473,7 @@ def build_verdict(
         if coverage > 8:
             positives.append("balance sin tensión por intereses")
         elif coverage < 3:
-            negatives.append(f"cobertura de intereses ajustada ({fmt_num(coverage, 1)}×)")
+            negatives.append(f"cobertura de intereses ajustada ({fmt_frente(coverage, 3, ceros=False)}×)")
 
     zone = (debt.get("altman_z") or {}).get("zone")
     if zone == "riesgo":

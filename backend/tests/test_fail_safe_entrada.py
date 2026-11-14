@@ -40,9 +40,10 @@ class Servicio:
                     "sector": "Tech", "currency": "USD"}
         if data_type == "quote":
             return {**common, "symbol": kw["symbol"], "price": 100.0, "currency": "USD"}
-        if data_type == "price_history":
+        if data_type in ("price_history", "price_history_long"):
             # Abrir una posición descarga el histórico una vez para medir su stop
-            # (revisión 8); aquí no lo hay, y el stop cae al punto medio de la clase.
+            # (revisión 8), y con apertura atrasada también el largo (revisión 10);
+            # aquí no lo hay, y el stop cae al punto medio de la clase.
             raise DataNotFoundError("sin histórico")
         raise AssertionError(data_type)
 

@@ -18,7 +18,7 @@ tienes un 12 % en riesgo y todo va en la misma dirección, pierdes un 12 %.
 """
 
 from __future__ import annotations
-from app.formato import fmt_pct, plural
+from app.formato import fmt_frente, fmt_pct, plural
 
 # Topes. Convención habitual entre gestores; ajustables y discutibles.
 HEAT_MAXIMO_PCT = 6.0        # riesgo abierto total
@@ -82,7 +82,9 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
 
     if total > HEAT_MAXIMO_PCT:
         avisos.append(
-            f"Tienes un {fmt_pct(total, en_puntos=True)} de la cartera en riesgo a la vez, por "
+            # De su lado del tope: con 6,03 decía «un 6,0 %… por encima del 6 %»
+            # (revisión 10).
+            f"Tienes un {fmt_frente(total / 100, HEAT_MAXIMO_PCT / 100, pct=True)} de la cartera en riesgo a la vez, por "
             f"encima del {fmt_pct(HEAT_MAXIMO_PCT, 0, en_puntos=True)} que se suele considerar el "
             "tope. Si todo se gira en tu contra, eso es lo que pierdes."
         )
@@ -90,7 +92,7 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
     for grupo, riesgo in sorted(por_grupo.items(), key=lambda kv: -kv[1]):
         if riesgo > HEAT_GRUPO_MAXIMO_PCT:
             avisos.append(
-                f"«{grupo}» concentra un {fmt_pct(riesgo, en_puntos=True)} de riesgo. Las posiciones "
+                f"«{grupo}» concentra un {fmt_frente(riesgo / 100, HEAT_GRUPO_MAXIMO_PCT / 100, pct=True)} de riesgo. Las posiciones "
                 "de un mismo grupo caen juntas, así que cuentan como una sola "
                 f"apuesta grande, no como varias pequeñas (tope sugerido: "
                 f"{fmt_pct(HEAT_GRUPO_MAXIMO_PCT, 0, en_puntos=True)})."

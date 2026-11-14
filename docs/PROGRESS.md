@@ -787,7 +787,8 @@ umbrales, en la explicación y en la fila; la fila de Hoy y la del historial usa
 propia decisión (`umbrales_puntuacion` por fila); Señales, frente a las fronteras de su etiqueta
 (`label_thresholds`); cada evidencia de calidad, frente a los umbrales de su cifra; y la distancia al
 stop ya no sale «0,0 %». Cartera: el estrés va en dólares y lee el mismo histórico que el stop (un año
-vigente, el largo, o el de un año caducado hace menos de un día, nunca de días), y nombra cada
+vigente o caducado hace menos de un día; el largo, solo si se descargó hace menos de un día desde la
+décima), y nombra cada
 posición que deja fuera con su motivo; un lote con fecha de apertura atrasada mide su stop con lo
 que se sabía entonces; un rescate `viejo` no vale para congelar un stop; un lote de coste 0 no tiene
 stop. Avisos: la nota de la base no afirma una dirección con posiciones sin valorar (en ningún estado
@@ -797,6 +798,20 @@ Queda para Victor el decimoquinto: el stop por clase que se congela al abrir una
 histórico se dice en la respuesta y en pantalla, pero no se guarda; después no se puede bajar al
 medido. O se guarda su origen (migración, `positions.stop_origen`) o no se congela hasta poder
 medirlo (cambia el control del RC1).
+
+### Décima revisión (de la novena, workflow, 14 nov)
+
+Cuatro revisores sobre `ca24ed8` y las tres lentes: 17 confirmados (13 distintos), 0 descartados;
+los 13 arreglados en este commit (golden idéntico). Cartera: el histórico largo (7 días en la caché)
+ya no pisa a una copia de un año más reciente ni mide el stop con datos de días, y el minigráfico lee
+lo mismo; el estrés de crisis de `/riesgo` va en dólares, con una serie de cambio de veinte años; al
+abrir con las fuentes caídas vale un rescate de horas; una apertura atrasada más de un año se mide con
+el histórico largo; y el aviso tras abrir ya no promete «se puede subir». Cifras: «Qué cambió» sirve
+los umbrales con que escribe la puntuación (`umbrales_puntuacion`) y la fila los usa; la IA recibe la
+puntuación de su lado de la etiqueta; el objetivo y la distancia al coste no salen «0,0 %»; el informe
+a fondo, la salud (Altman Z con sus `umbrales`) y el riesgo abierto escriben cada cifra frente a lo que
+la clasifica. Avisos: con efectivo anotado sin tipo y posiciones sin valorar, la nota conserva el
+motivo del tipo de cambio; y «la lista de abajo» solo sale si algo se revisaría, nombrándolo.
 
 ## Informe del repaso de seguridad (0.9)
 
@@ -819,7 +834,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de

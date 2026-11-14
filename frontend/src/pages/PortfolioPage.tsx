@@ -14,7 +14,7 @@ import type {
   RiskBudget,
   Vigilancia,
 } from '../api/types'
-import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtDinero, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { useDato, type CargaConReintento } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
@@ -140,10 +140,12 @@ function RiskBudgetPanel({ risk }: { risk: RiskBudget }) {
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <span className={`text-3xl font-semibold tabular-nums ${excedido ? 'text-red-600' : 'text-slate-900'}`}>
-          {fmtPct(risk.riesgo_total_pct, 1, { enPuntos: true })}
+          {/* De su lado del tope, y el margen sin escribirse como cero: con 5,97,
+              «6,0 %» sin rojo y «quedan 0,0 % de margen» (revisión 10). */}
+          {fmtFrente(risk.riesgo_total_pct / 100, risk.tope_pct / 100, { pct: true })}
         </span>
         <span className="text-xs text-slate-400">
-          {excedido ? 'por encima del tope' : `quedan ${fmtPct(risk.margen_pct, 1, { enPuntos: true })} de margen`}
+          {excedido ? 'por encima del tope' : `quedan ${fmtFrente(risk.margen_pct / 100, 0, { pct: true })} de margen`}
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
@@ -163,7 +165,7 @@ function RiskBudgetPanel({ risk }: { risk: RiskBudget }) {
               <li key={grupo} className="flex justify-between gap-3">
                 <span className="text-slate-600">{grupo}</span>
                 <span className={`tabular-nums ${valor > risk.tope_grupo_pct ? 'text-red-600' : 'text-slate-700'}`}>
-                  {fmtPct(valor, 1, { enPuntos: true })}
+                  {fmtFrente(valor / 100, risk.tope_grupo_pct / 100, { pct: true })}
                 </span>
               </li>
             ))}
@@ -449,7 +451,9 @@ function PortfolioTab() {
       })
       if (creada.stop_por_clase) {
         setAvisoStop(
-          `${creada.symbol}: no había histórico para medir su volatilidad, así que su stop es el punto medio de su clase, no uno medido. Revísalo: se puede subir, no bajar.`,
+          // Sin «se puede subir»: la fila de una posición con el stop fijado al
+          // abrir no tiene «Fijar stop» (revisión 10).
+          `${creada.symbol}: no había histórico para medir su volatilidad, así que su stop es el punto medio de su clase, no uno medido, y queda fijado así.`,
         )
       }
       setForm({ symbol: '', quantity: '', cost: '' })

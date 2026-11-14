@@ -175,7 +175,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
             <div className="text-sm tabular-nums text-emerald-700">
               {fmtPrecio(levels.objetivo)}{' '}
               <span className="text-xs text-slate-400">
-                {fmtPct(levels.objetivo_pct, 1, { signo: true, enPuntos: true })}
+                {fmtFrente(levels.objetivo_pct == null ? null : levels.objetivo_pct / 100, 0, { pct: true, signo: true })}
               </span>
             </div>
           </div>

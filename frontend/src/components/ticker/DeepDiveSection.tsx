@@ -7,7 +7,7 @@ import type {
   MultipleStats,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
 import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
@@ -275,7 +275,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
             <div>
               <dt className="text-xs text-slate-400">Altman Z</dt>
               <dd className="tabular-nums">
-                {fmtNum(debt.altman_z.score)}
+                {fmtFrente(debt.altman_z.score, debt.altman_z.umbrales ?? [])}
                 {debt.altman_z.zone && (
                   <span className="ml-1 text-[10px] text-slate-500">({debt.altman_z.zone})</span>
                 )}

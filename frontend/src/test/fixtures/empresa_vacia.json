@@ -75,6 +75,10 @@
       },
       "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
       "score": null,
+      "umbrales": [
+       1.81,
+       2.99
+      ],
       "zone": null
      },
      "by_year": [

@@ -54,7 +54,7 @@
       "year": "2025"
      },
      "fcf_trend": null,
-     "reading": "Convierte el 121 % del beneficio en caja: el beneficio contable subestima la generación real."
+     "reading": "Convierte el 121,2 % del beneficio en caja: el beneficio contable subestima la generación real."
     },
     "catalysts": [],
     "computed_by": "app",
@@ -134,6 +134,10 @@
       },
       "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
       "score": null,
+      "umbrales": [
+       1.81,
+       2.99
+      ],
       "zone": null
      },
      "by_year": [
@@ -1010,7 +1014,7 @@
       },
       "veredicto": {
        "accion": "INDETERMINADO",
-       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero. Esa posición abierta sin valorar no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Esa posición abierta sin valorar no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
        "si_no_hubiera_efectivo": null
       }
      },
@@ -4681,7 +4685,7 @@
       },
       "veredicto": {
        "accion": "INDETERMINADO",
-       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero. Esa posición abierta sin valorar no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
+       "motivo": "Efectivo desconocido (el efectivo anotado no se suma: 1 posición abierta no se pudo valorar (SHOP.TO, sin tipo de cambio para CAD), y sumarlo a una parte de la cartera inventaría una liquidez que no existe): no se puede saber si comprar esta idea exige vender algo. Esa posición abierta sin valorar no cuenta en los topes por sector y correlación, y las valoradas pesan de más sobre una cartera incompleta: el tamaño puede quedarse corto o pasarse.",
        "si_no_hubiera_efectivo": null
       }
      },

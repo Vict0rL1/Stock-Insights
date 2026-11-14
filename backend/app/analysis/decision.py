@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 
 from app import datos
-from app.formato import decimales_frente, fmt_fecha, fmt_num, fmt_pct, fmt_precio
+from app.formato import decimales_frente, fmt_fecha, fmt_frente, fmt_num, fmt_pct, fmt_precio
 
 # --- Parámetros del sistema. Están aquí, juntos y con nombre, para que se
 # puedan discutir y ajustar sin bucear por el código. ---
@@ -275,7 +275,9 @@ def decide(
             if coste and stop_posicion >= coste:
                 respecto_coste = "por encima de tu coste: protegía beneficio"
             elif coste:
-                respecto_coste = f"un {fmt_pct(1 - stop_posicion / coste)} bajo tu coste"
+                # Sin escribirse como cero: con el coste medio en 100,03 y el stop
+                # en 100 decía «un 0,0 % bajo tu coste» (revisión 10).
+                respecto_coste = f"un {fmt_frente(1 - stop_posicion / coste, 0, pct=True)} bajo tu coste"
             else:
                 respecto_coste = "sin coste utilizable con el que compararlo"
             razones.append(
@@ -343,7 +345,7 @@ def decide(
                 # decía «0,0 %» (revisión 9).
                 "stop_pct": _pct_no_cero((stop_posicion / ultimo - 1) * 100, 1),
                 "objetivo": datos.redondear_precio(objetivo),
-                "objetivo_pct": round((objetivo / ultimo - 1) * 100, 1) if objetivo else None,
+                "objetivo_pct": _pct_no_cero((objetivo / ultimo - 1) * 100, 1) if objetivo else None,
                 "ratio": niveles["ratio"],
                 "peso_bruto_pct": None,
                 "stop_fijado_al_abrir": stop_fijado is not None,

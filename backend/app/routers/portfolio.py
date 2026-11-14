@@ -81,26 +81,48 @@ VENCIDO_MAX_SEGUNDOS = 24 * 3600
 SESIONES_HISTORICO = 252
 
 
+def _edad_segundos(cache, payload: dict) -> float:
+    """Cuánto hace que se descargó una entrada de la caché (0 si no lo dice)."""
+    if payload.get("antiguedad_segundos") is not None:
+        return float(payload["antiguedad_segundos"])
+    instante = pit.marca(payload.get("fetched_at"))
+    if not instante or not instante[1]:
+        return 0.0
+    ahora = getattr(cache, "_now", None)
+    return ((ahora() if callable(ahora) else datetime.now(timezone.utc)) - instante[0]).total_seconds()
+
+
 def _historico_cacheado(service: MarketDataService, symbol: str) -> list[dict]:
-    """Las barras diarias guardadas de un símbolo, sin descargar nada: el
-    histórico de un año vigente, el largo vigente (lo baja la propia Cartera
-    para el riesgo y el minigráfico; se recorta al último año) o el de un año
-    caducado hace menos de un día. Uno solo para el stop y el estrés: con
-    lectores distintos, la misma fila tenía el stop medido y salía «sin
-    histórico» en el estrés (revisión 9)."""
+    """Las barras diarias guardadas de un símbolo, del último año y sin
+    descargar nada, de la copia más reciente que tenga como mucho un día: el
+    histórico de un año vigente, el mismo caducado hace menos de un día o el
+    largo (que baja la propia Cartera para el riesgo) si se descargó hace menos
+    de un día. Uno solo para el stop, el estrés y el minigráfico: con lectores
+    distintos, la misma fila tenía el stop medido y salía «sin histórico» en el
+    estrés (revisión 9). El largo vive 7 días en la caché, y antes de la copia
+    de un año de hace 7 h se servía uno de hace 6 días: la Cartera daba el stop
+    perforado y la ficha no (revisión 10)."""
     cache = getattr(service, "cache", None)
     if cache is None:
         return []
     params = {"symbol": symbol, "interval": "1day", "outputsize": SESIONES_HISTORICO}
-    for tipo, p in (("price_history", params), ("price_history_long", {"symbol": symbol})):
-        barras = (cache.get(tipo, p) or {}).get("bars") or []
-        if barras:
-            return barras[-SESIONES_HISTORICO:]
+    vigente = cache.get("price_history", params)
+    if vigente and vigente.get("bars"):
+        return vigente["bars"][-SESIONES_HISTORICO:]
     vencido = getattr(cache, "get_vencido", None)
     copia = vencido("price_history", params) if vencido is not None else None
-    if copia and (copia.get("antiguedad_segundos") or 0) <= VENCIDO_MAX_SEGUNDOS:
-        return (copia.get("bars") or [])[-SESIONES_HISTORICO:]
+    if copia and copia.get("bars") and _edad_segundos(cache, copia) <= VENCIDO_MAX_SEGUNDOS:
+        return copia["bars"][-SESIONES_HISTORICO:]
+    largo = cache.get("price_history_long", {"symbol": symbol})
+    if largo and largo.get("bars") and _edad_segundos(cache, largo) <= VENCIDO_MAX_SEGUNDOS:
+        return largo["bars"][-SESIONES_HISTORICO:]
     return []
+
+
+def _barras_hasta(history: dict | None, abierta: datetime) -> list[dict]:
+    """Las barras que se conocían en `abierta` (`pit.barra_disponible`)."""
+    return [b for b in (history or {}).get("bars") or []
+            if pit.barra_disponible(b.get("ts"), abierta, (history or {}).get("as_of"))]
 
 
 def _volatilidad_de(
@@ -113,29 +135,38 @@ def _volatilidad_de(
     caché vigente, pasadas las 6 h del histórico el stop caía al punto medio de
     la clase: 83,5 en la cartera y 75,0 en la ficha con la misma posición
     (revisión 8). Al ABRIR una posición sí descarga, una vez: ese stop se congela
-    y después no se puede bajar. Un rescate de las fuentes caídas (`viejo`) no
-    vale para congelarlo.
+    y después no se puede bajar. Un rescate de las fuentes caídas (`viejo`) vale
+    solo con la misma antigüedad que acepta el listado: rechazar uno de hace
+    7 h congelaba el punto medio de la clase en vez de una medida (revisión 10).
 
     `abierta`: con una apertura atrasada, solo los cierres que se conocían
     entonces; con los de hoy, un lote abierto hace 100 días en calma recibía el
-    stop de la agitación de después (75,0 en vez de 92,0; revisión 9).
+    stop de la agitación de después (75,0 en vez de 92,0; revisión 9). Si el
+    año de histórico no llega a esa fecha (más de ~11 meses atrás), del
+    histórico largo: si no, siempre salía el punto medio (revisión 10).
 
     None si no hay histórico: el stop cae entonces al punto medio de su clase, y
     quien llama lo dice (`stop_por_clase`).
     """
-    if descargar:
+    if not descargar:
+        return vol_diaria_pct([b["close"] for b in _historico_cacheado(service, symbol) if b.get("close")])
+    try:
+        history = service.get("price_history", symbol=symbol, interval="1day", outputsize=SESIONES_HISTORICO)
+    except (DataNotFoundError, AllProvidersFailedError):
+        history = None
+    if (history or {}).get("estado") == "viejo" and (history.get("antiguedad_segundos") or 0) > VENCIDO_MAX_SEGUNDOS:
+        history = None
+    bars = (history or {}).get("bars") or []
+    if abierta is not None:
+        bars = _barras_hasta(history, abierta)
+    vol = vol_diaria_pct([b["close"] for b in bars if b.get("close")])
+    if vol is None and abierta is not None:
         try:
-            history = service.get("price_history", symbol=symbol, interval="1day", outputsize=SESIONES_HISTORICO)
+            largo = service.get("price_history_long", symbol=symbol)
         except (DataNotFoundError, AllProvidersFailedError):
-            return None
-        if (history or {}).get("estado") == "viejo":
-            return None
-        bars = (history or {}).get("bars") or []
-        if abierta is not None:
-            bars = [b for b in bars if pit.barra_disponible(b.get("ts"), abierta, history.get("as_of"))]
-    else:
-        bars = _historico_cacheado(service, symbol)
-    return vol_diaria_pct([b["close"] for b in bars if b.get("close")])
+            largo = None
+        vol = vol_diaria_pct([b["close"] for b in _barras_hasta(largo, abierta) if b.get("close")])
+    return vol
 
 
 def _series_cacheadas(
@@ -214,17 +245,8 @@ def _spark_cacheado(
     es gratis; si no está, la fila sale sin gráfico en vez de costar una llamada
     por posición cada vez que abres el portafolio.
     """
-    cache = getattr(service, "cache", None)
-    if cache is None:
-        return None
-    payload = cache.get("price_history_long", {"symbol": symbol}) or cache.get(
-        "price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252}
-    )
-    cierres = [
-        float(b["close"])
-        for b in (payload or {}).get("bars") or []
-        if b.get("close")
-    ][-sesiones:]
+    # El mismo lector que el stop y el estrés (revisión 10).
+    cierres = [float(b["close"]) for b in _historico_cacheado(service, symbol) if b.get("close")][-sesiones:]
     if len(cierres) < PUNTOS_SPARK:
         return None
     paso = (len(cierres) - 1) / (PUNTOS_SPARK - 1)
@@ -878,9 +900,10 @@ def get_portfolio(
     for p in convertidas:
         if p.get("market_value"):
             pesos_estres[p["symbol"]] = pesos_estres.get(p["symbol"], 0.0) + p["market_value"]
-    # En dólares, como los pesos y como el estrés de crisis de `/riesgo`: con los
-    # cierres en su moneda, una acción canadiense plana mientras el CAD caía de
-    # 1,30 a 1,70 «no perdía nada», y en dólares había caído un 23,5 % (revisión 9).
+    # En dólares, como los pesos (y como el estrés de crisis de `/riesgo` desde la
+    # revisión 10): con los cierres en su moneda, una acción canadiense plana
+    # mientras el CAD caía de 1,30 a 1,70 «no perdía nada», y en dólares había
+    # caído un 23,5 % (revisión 9).
     from app.contexto_cartera import convertir_serie
 
     monedas_estres = {p["symbol"]: p.get("currency") for p in convertidas}
@@ -1119,9 +1142,14 @@ def _referencia_del_universo(session: Session) -> tuple[dict | None, int]:
 
 
 DIAS_FX_HISTORICO = 4000  # ~11 años: cubre cualquier cartera de esta app
+# El estrés de crisis llega a 2008: la serie de cambio tiene que llegar también,
+# o la posición extranjera se queda sin ese episodio (revisión 10).
+DIAS_FX_CRISIS = 365 * 20
 
 
-def _fx_completo(service: MarketDataService, monedas: set[str]) -> tuple[dict, dict, dict]:
+def _fx_completo(
+    service: MarketDataService, monedas: set[str], dias: int | None = None
+) -> tuple[dict, dict, dict]:
     """UNA descarga larga por divisa, de la que salen el tipo de hoy Y la serie.
 
     Devuelve (tipos de hoy, series completas, fallos). Pedir la ventana corta
@@ -1129,7 +1157,7 @@ def _fx_completo(service: MarketDataService, monedas: set[str]) -> tuple[dict, d
     divisa para el mismo dato.
     """
     tipos, series, fallos = {}, {}, {}
-    desde = fx.inicio_de_ventana(dias=DIAS_FX_HISTORICO)
+    desde = fx.inicio_de_ventana(dias=dias or DIAS_FX_HISTORICO)
     for moneda in sorted(monedas):
         if moneda == fx.BASE or moneda not in fx.SERIES:
             continue
@@ -1312,6 +1340,25 @@ def riesgo_de_cartera(
 
     referencia, n_universo = _referencia_del_universo(session)
     series, fallos = _historico_largo(service, symbols, descargar)
+    # En dólares, como los pesos: con los cierres en su moneda, una acción
+    # canadiense plana en CAD «se habría quedado plana» en 2008 mientras en
+    # dólares caía un 26,9 %, y su volatilidad y sus correlaciones salían en
+    # moneda local (revisión 10). Lo que no se puede convertir sale del estrés y
+    # se nombra con su motivo.
+    from app.contexto_cartera import convertir_serie
+
+    moneda_de = {p["symbol"]: _moneda_segura(p.get("currency")) for p in con_precio}
+    _, series_fx, _ = _fx_completo(
+        service, {m for m in moneda_de.values() if m and m != fx.BASE}, dias=DIAS_FX_CRISIS
+    )
+    en_usd: dict[str, list[tuple[date, float]]] = {}
+    for symbol, serie in series.items():
+        convertida = convertir_serie(serie, moneda_de.get(symbol), series_fx)
+        if convertida:
+            en_usd[symbol] = convertida
+        else:
+            fallos[symbol] = f"sin tipo de cambio de {moneda_de.get(symbol) or 'su moneda'} para pasar su histórico a dólares"
+    series = en_usd
 
     # La volatilidad sale del histórico que ya está descargado para el estrés.
     # Sin esto la fila de low_volatility salía siempre vacía, teniendo el dato.

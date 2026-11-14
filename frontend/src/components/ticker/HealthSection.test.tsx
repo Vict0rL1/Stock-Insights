@@ -80,4 +80,18 @@ describe('salud y riesgo de la ficha', () => {
     expect(await screen.findByText('No se pudo cargar la salud financiera: EDGAR caído')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
+
+  it('el Altman Z se escribe de su lado de las fronteras de su zona (revisión 10)', async () => {
+    // 2,9904 y 2,9896 salían los dos «2,99», uno «zona segura» y el otro «zona gris».
+    servir({
+      '/api/stocks/ACME/health': {
+        status: 200,
+        json: { ...SALUD, altman_z: { ...SALUD.altman_z, score: 2.9896, zone: 'gris', umbrales: [1.81, 2.99] } },
+      },
+      '/api/stocks/ACME/risk': { status: 200, json: RIESGO_SIN_DATOS },
+    })
+    render(<HealthSection symbol="ACME" />)
+    expect(await screen.findByText('2,9896')).toBeInTheDocument()
+  })
 })
+
