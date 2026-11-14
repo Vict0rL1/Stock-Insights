@@ -347,7 +347,7 @@ PERTURBACIONES = {
     "growth_rate": (0.01, "Crecimiento del FCF (+/- 1 pp)"),
     "discount_rate": (0.01, "Tasa de descuento / WACC (+/- 1 pp)"),
     "terminal_growth": (0.005, "Crecimiento a perpetuidad (+/- 0,5 pp)"),
-    "base_fcf": (None, "Flujo de caja de partida (+/- 10 %)"),
+    "base_fcf": (None, "Flujo de caja de partida (+/- 10\u00a0%)"),
 }
 
 

@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DecisionExplicada } from '../components/DecisionExplicada'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DailySignal,
   Conviction,
   Decision,
   DecisionAction,
-  MarketInfo,
   Sizing,
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
 import { coord } from '../lib/svg'
+import { mensajeDeError, useDato } from '../lib/useDato'
 
 type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
 
@@ -101,6 +102,24 @@ export function distanciaAlStop(decision: Decision): number | null {
   return decision.owned ? pct : -pct
 }
 
+/** La distancia al stop, sin escribirse como cero si no lo es: con el stop en
+ *  100 y el precio en 100,04 (o 99,96, ya perforado) decía «0,0 %» (revisión 9). */
+export function textoDistanciaAlStop(decision: Decision): string {
+  const puntos = distanciaAlStop(decision)
+  return fmtFrente(puntos === null ? null : puntos / 100, 0, { pct: true, signo: true })
+}
+
+/** Los umbrales de puntuación de la propia decisión (con posición, solo el de
+ *  vender), como su traza y sus razones: frente a los dos, una «mantener» con
+ *  0,3496 decía «+0,3496» junto a «Puntuación +0,35» (revisión 9). */
+function umbralesDeSuDecision(decision: Decision | undefined, porDefecto: number[]): number[] {
+  const suyos = (decision?.reglas ?? [])
+    .filter((r) => r.id.startsWith('puntuacion'))
+    .map((r) => r.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
+  return suyos.length ? suyos : porDefecto
+}
+
 /** El plan completo: por qué, a qué precio, y cuándo salir. */
 function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: string }) {
   const { levels } = decision
@@ -134,7 +153,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
                 Zona de compra
               </div>
               <div className="text-sm tabular-nums text-slate-800">
-                {fmtNum(levels.entrada_desde, 2)}–{fmtNum(levels.entrada_hasta, 2)}
+                {fmtPrecio(levels.entrada_desde)}–{fmtPrecio(levels.entrada_hasta)}
               </div>
             </div>
           )}
@@ -143,9 +162,9 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Stop
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(levels.stop, 2)}{' '}
+              {fmtPrecio(levels.stop)}{' '}
               <span className="text-xs text-slate-400">
-                {fmtPct(distanciaAlStop(decision), 1, { signo: true, enPuntos: true })}
+                {textoDistanciaAlStop(decision)}
               </span>
             </div>
           </div>
@@ -154,7 +173,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Objetivo
             </div>
             <div className="text-sm tabular-nums text-emerald-700">
-              {fmtNum(levels.objetivo, 2)}{' '}
+              {fmtPrecio(levels.objetivo)}{' '}
               <span className="text-xs text-slate-400">
                 {fmtPct(levels.objetivo_pct, 1, { signo: true, enPuntos: true })}
               </span>
@@ -266,8 +285,10 @@ function SummaryStrip({
   acciones: { comprar: number; vigilar: number; cartera: number; vender: number }
   onPick: (v: View) => void
 }) {
-  const ideas = data.shortlist?.ideas.length ?? 0
-  const cobertura = data.requested ? (data.scored / data.requested) * 100 : 0
+  // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
+  // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
+  const ideas = data.shortlist ? data.shortlist.ideas.length : null
+  const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
     label: string
     valor: string
@@ -277,9 +298,9 @@ function SummaryStrip({
   }[] = [
     {
       label: 'Ideas de compra',
-      valor: String(ideas),
-      tono: 'text-emerald-700',
-      sub: `de ${acciones.comprar} que califican`,
+      valor: ideas === null ? '—' : String(ideas),
+      tono: ideas === null ? 'text-slate-500' : 'text-emerald-700',
+      sub: ideas === null ? 'sin lista corta' : `de ${acciones.comprar} que califican`,
       vista: 'ideas',
     },
     {
@@ -377,11 +398,16 @@ function IdeaCard({
         {price && (
           <div className="text-right">
             <div className="text-base tabular-nums text-slate-900">
-              {fmtNum(price.last, 2)}
+              {fmtPrecio(price.last)}
             </div>
+            {/* Sin variación, neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
             <div
               className={`text-xs tabular-nums ${
-                (price.change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
+                price.change_pct === null || price.change_pct === undefined
+                  ? 'text-slate-400'
+                  : price.change_pct >= 0
+                    ? 'text-emerald-600'
+                    : 'text-red-600'
               }`}
             >
               {fmtPct(price.change_pct, 2, { signo: true, enPuntos: true })}
@@ -401,7 +427,7 @@ function IdeaCard({
               Comprar entre
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtNum(niveles.entrada_desde, 2)}–{fmtNum(niveles.entrada_hasta, 2)}
+              {fmtPrecio(niveles.entrada_desde)}–{fmtPrecio(niveles.entrada_hasta)}
             </div>
           </div>
           <div>
@@ -409,7 +435,7 @@ function IdeaCard({
               Vender si baja a
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(niveles.stop, 2)}
+              {fmtPrecio(niveles.stop)}
             </div>
           </div>
           <div>
@@ -417,7 +443,21 @@ function IdeaCard({
               Cuánto de tu cartera
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtPct(signal.peso_final_pct ?? niveles.peso_bruto_pct, 1, { enPuntos: true })}
+              {/* Sin peso final, el bruto no se enseña como si lo fuera: es lo que
+                  permitiría el stop mirando la empresa sola, antes de los topes
+                  de la cartera (ítem 2.1). */}
+              {signal.peso_final_pct !== null && signal.peso_final_pct !== undefined ? (
+                fmtPct(signal.peso_final_pct, 1, { enPuntos: true })
+              ) : (
+                <span className="text-slate-500">
+                  —
+                  {niveles.peso_bruto_pct !== null && (
+                    <span className="block text-[10px]">
+                      sin tamaño final; bruto {fmtPct(niveles.peso_bruto_pct, 1, { enPuntos: true })}
+                    </span>
+                  )}
+                </span>
+              )}
               {signal.peso_final_pct !== null &&
                 signal.peso_final_pct !== undefined &&
                 niveles.peso_bruto_pct !== null &&
@@ -467,9 +507,12 @@ function AvoidList({
         {signals.map((s) => (
           <li key={s.symbol} className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-medium text-slate-800">{s.symbol}</span>
-            <span className="text-slate-500">{s.context.name}</span>
+            {/* El separador, al final del nombre: al saltar de línea en móvil,
+                al principio de la descripción quedaba colgando («· Information
+                Technology…»; ítem 2.12). */}
+            <span className="text-slate-500">{s.context.name} ·</span>
             <span className="text-xs text-slate-400">
-              · {s.context.sector_name} · {s.conviction.resumen}
+              {s.context.sector_name} · {s.conviction.resumen}
             </span>
           </li>
         ))}
@@ -492,7 +535,10 @@ function puntos(v: number | null | undefined): string {
 
 function SizingPanel({ sizing }: { sizing: Sizing }) {
   const enLibro = Object.entries(sizing.cartera_actual ?? {})
-  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado)
+  // Sin ninguna pareja posible (una idea y nada en cartera) no hay nada que
+  // comprobar: «Solo se pudieron medir 0 de 0 parejas» era una falsa alarma
+  // (revisión 8; igual que en el veredicto de la ficha).
+  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado && c.parejas_posibles !== 0)
   // Un límite que no se pudo aplicar SIEMPRE se enseña, aunque no haya
   // recortado nada. Antes el panel se ocultaba sin recortes, y «no recortó
   // porque no pudo mirar» era indistinguible de «no hacía falta recortar».
@@ -632,14 +678,19 @@ function FactorBars({
 }
 
 /** Cabecera de columnas: alineada con la fila, con las mismas anchuras. */
+// La cabecera y la fila comparten columnas: cede «Empresa» (flexible), nunca la
+// puntuación ni la acción. Con anchos fijos dentro de un `overflow-hidden`, a
+// 390 px y en tableta (768–1140 px, con la barra lateral) desaparecían justo
+// la señal y la acción; las barras de factores van desde `xl` y, por debajo,
+// en el panel desplegado (revisión de A7).
 function ListHeader() {
   return (
     <div className="flex items-center gap-4 border-b border-slate-100 px-4 py-2 text-[10px] uppercase tracking-wide text-slate-400">
-      <span className="w-7 shrink-0" />
-      <span className="w-40 shrink-0">Empresa</span>
+      <span className="hidden w-7 shrink-0 sm:block" />
+      <span className="min-w-0 flex-1 xl:w-40 xl:flex-none">Empresa</span>
       <span className="hidden w-20 shrink-0 lg:block">Año</span>
       <span className="hidden w-24 shrink-0 text-right sm:block">Precio</span>
-      <span className="hidden flex-1 pl-4 md:block">
+      <span className="hidden flex-1 pl-4 xl:block">
         <span className="flex gap-3">
           {FACTOR_KEYS.map((key) => (
             <span key={key} className="w-16">
@@ -648,18 +699,24 @@ function ListHeader() {
           ))}
         </span>
       </span>
-      <span className="ml-auto pr-[7.5rem] text-right">Puntuación</span>
-      <span className="w-20 pr-6 text-right">Acción</span>
+      <span className="ml-auto flex shrink-0 items-center gap-3">
+        <span className="w-16 whitespace-nowrap text-right">Puntuación</span>
+        <span className="w-20 text-right">Acción</span>
+        <span className="w-1.5" aria-hidden />
+      </span>
     </div>
   )
 }
 
 function SignalRow({
   signal,
+  umbrales,
   expanded,
   onToggle,
 }: {
   signal: DailySignal
+  /** Los de la puntuación: con dos decimales, 0,3496 era «+0,35 · Sin acción» (revisión 8). */
+  umbrales: number[]
   expanded: boolean
   onToggle: () => void
 }) {
@@ -671,14 +728,18 @@ function SignalRow({
         aria-expanded={expanded}
         className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-slate-50"
       >
-        <span className="w-7 shrink-0 text-xs tabular-nums text-slate-300">
+        <span className="hidden w-7 shrink-0 text-xs tabular-nums text-slate-300 sm:block">
           {signal.rank}
         </span>
 
-        <span className="flex w-40 shrink-0 items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-2 xl:w-40 xl:flex-none">
           <CompanyLogo symbol={signal.symbol} size="sm" />
           <span className="min-w-0">
             <span className="font-medium text-slate-900">{signal.symbol}</span>
+            {/* Por debajo de 640 px la columna del puesto no cabe: va junto al
+                símbolo, o en las vistas filtradas (Mi cartera, Vigilar) se
+                perdía el orden global (revisión 3). */}
+            <span className="ml-1.5 text-[10px] tabular-nums text-slate-400 sm:hidden">#{signal.rank}</span>
             <span className="block truncate text-xs text-slate-400">
               {signal.context.name ?? signal.context.sector_name ?? '—'}
             </span>
@@ -703,13 +764,15 @@ function SignalRow({
           {signal.price ? (
             <>
               <span className="block text-sm tabular-nums text-slate-800">
-                {fmtNum(signal.price.last, 2)}
+                {fmtPrecio(signal.price.last)}
               </span>
               <span
                 className={`block text-xs tabular-nums ${
-                  (signal.price.change_pct ?? 0) >= 0
-                    ? 'text-emerald-600'
-                    : 'text-red-500'
+                  signal.price.change_pct === null || signal.price.change_pct === undefined
+                    ? 'text-slate-400'
+                    : signal.price.change_pct >= 0
+                      ? 'text-emerald-600'
+                      : 'text-red-500'
                 }`}
               >
                 {fmtPct(signal.price.change_pct, 2, { signo: true, enPuntos: true })}
@@ -720,24 +783,23 @@ function SignalRow({
           )}
         </span>
 
-        <span className="hidden flex-1 pl-4 md:block">
+        <span className="hidden flex-1 pl-4 xl:block">
           <FactorBars families={signal.families} />
         </span>
 
-        <span className="ml-auto flex items-center gap-3">
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <span
-            className={`w-12 text-right text-sm font-semibold tabular-nums ${
+            className={`w-16 text-right text-sm font-semibold tabular-nums ${
               positive ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
-            {signal.score > 0 ? '+' : ''}
-            {fmtNum(signal.score, 2)}
+            {fmtFrente(signal.score, umbralesDeSuDecision(signal.decision, umbrales), { signo: true })}
           </span>
           <span className="w-20 text-right">
             <ActionChip decision={signal.decision} />
           </span>
           <span
-            className={`text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
+            className={`w-1.5 text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
             aria-hidden
           >
             ›
@@ -747,7 +809,7 @@ function SignalRow({
 
       {expanded && (
         <div className="space-y-3 bg-slate-50/70 px-4 pb-4 pt-1 md:pl-[4.75rem]">
-          <div className="md:hidden">
+          <div className="xl:hidden">
             <FactorBars families={signal.families} withLabels />
           </div>
           <DecisionPlan decision={signal.decision} symbol={signal.symbol} />
@@ -757,8 +819,8 @@ function SignalRow({
               <div className="flex items-baseline justify-between text-xs text-slate-500">
                 <span>Rango de 52 semanas</span>
                 <span className="tabular-nums">
-                  {fmtNum(signal.price.low_52w, 2)} –{' '}
-                  {fmtNum(signal.price.high_52w, 2)}
+                  {fmtPrecio(signal.price.low_52w)} –{' '}
+                  {fmtPrecio(signal.price.high_52w)}
                 </span>
               </div>
               {signal.price.range_position !== null && (
@@ -817,10 +879,27 @@ function SignalRow({
 }
 
 export function TodayPage() {
-  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [market, setMarket] = useState('us_sp500')
   const [data, setData] = useState<TodayResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // La lista no va por `useDato`: encadena pasadas sola («Seguir
+  // completando») y cada una sustituye a la anterior sin vaciar lo que ya se
+  // ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
+  // repite la misma pasada (ítem 2.1).
+  const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
+  // Cada carga que se inicia (cambio de mercado, «Actualizar», «Reintentar»)
+  // es una cadena con su número, y sus pasadas automáticas lo heredan. Una
+  // respuesta, buena o mala, de una cadena que ya no es la vigente se
+  // descarta: el aviso de una pasada vieja del S&P 500 quedaba encima de la
+  // lista buena, y su «Reintentar» cargaba el S&P 500 bajo el botón de otro
+  // mercado (revisión del 2.1). Descartar por mercado no bastaba: con
+  // S&P 500 → Canadá → S&P 500 la pasada vieja era «del mercado vigente»
+  // (segunda revisión del 2.1).
+  const cadena = useRef(0)
+  // Las peticiones en vuelo, por mercado y tipo de pasada: una cadena nueva que
+  // pide lo mismo se engancha a la que ya va. Al abrir Hoy con `npm run dev`
+  // (StrictMode) el efecto corre dos veces, y eran dos cadenas de hasta cuatro
+  // pasadas cada una: el doble de cuota de APIs gratuitas para lo mismo.
+  const enVuelo = useRef(new Map<string, Promise<TodayResponse>>())
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<View>('ideas')
   const [autoRondas, setAutoRondas] = useState(0)
@@ -834,31 +913,48 @@ export function TodayPage() {
   // agotarla en silencio dejaría el resto del día sin datos.
   const MAX_PASADAS_AUTO = 4
 
-  const load = (which: string, refresh = false, autoPasada = 0) => {
+  const pedir = (which: string, refresh: boolean): Promise<TodayResponse> => {
+    const clave = `${which}|${refresh}`
+    const previa = enVuelo.current.get(clave)
+    if (previa) return previa
+    const promesa = api.today(which, refresh)
+    enVuelo.current.set(clave, promesa)
+    // Solo saca la petición del mapa: su fallo lo atiende `load`.
+    const soltar = () => {
+      if (enVuelo.current.get(clave) === promesa) enVuelo.current.delete(clave)
+    }
+    void promesa.then(soltar, soltar)
+    return promesa
+  }
+
+  const load = (which: string, refresh = false, autoPasada = 0, deCadena?: number) => {
+    const mia = deCadena ?? ++cadena.current
     setBusy(true)
     setError(null)
-    api.today(which, refresh).then(
+    pedir(which, refresh).then(
       (d) => {
+        if (mia !== cadena.current) return
         setData(d)
         if (!d.complete && autoPasada < MAX_PASADAS_AUTO) {
           setAutoRondas(autoPasada + 1)
-          load(which, true, autoPasada + 1)
+          load(which, true, autoPasada + 1, mia)
           return
         }
         setAutoRondas(0)
         setBusy(false)
       },
-      (e) => {
-        setError(e instanceof Error ? e.message : 'Error')
+      (e: unknown) => {
+        if (mia !== cadena.current) return
+        setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
         setAutoRondas(0)
         setBusy(false)
       },
     )
   }
 
-  useEffect(() => {
-    api.markets().then((d) => setMarkets(d.markets), () => undefined)
-  }, [])
+  // Un fallo al pedir los mercados se dice: `() => undefined` lo callaba y el
+  // selector desaparecía sin más (ítem 2.1).
+  const mercados = useDato(() => api.markets().then((d) => d.markets), 'mercados')
 
   useEffect(() => {
     // Al cambiar de mercado los filtros previos ya no aplican.
@@ -866,6 +962,11 @@ export function TodayPage() {
     setSector(null)
     setExpanded(null)
     load(market)
+    // Al irse (otro mercado, otra pantalla, o el desmontaje de StrictMode) la
+    // cadena en marcha deja de ser la vigente.
+    return () => {
+      cadena.current += 1
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market])
 
@@ -922,7 +1023,9 @@ export function TodayPage() {
           <p className="mt-0.5 max-w-3xl text-sm leading-snug text-slate-500">
             {data
               ? [
-                  `${data.shortlist?.ideas.length ?? 0} ${plural(data.shortlist?.ideas.length ?? 0, 'idea', 'ideas')} de compra`,
+                  data.shortlist
+                    ? `${data.shortlist.ideas.length} ${plural(data.shortlist.ideas.length, 'idea', 'ideas')} de compra`
+                    : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
                   acciones.cartera > 0 ? `${acciones.cartera} en cartera` : null,
                   `${data.scored} ${plural(data.scored, 'empresa puntuada', 'empresas puntuadas')}`,
@@ -964,7 +1067,7 @@ export function TodayPage() {
             Una idea sostenida por un solo factor es una apuesta a ese factor, no al
             activo — y comprar algo <em>porque ha subido</em> es exactamente el
             razonamiento que las otras tres familias existen para contrastar. Los
-            stops son mucho más anchos (hasta 60 %) porque la volatilidad lo exige,
+            stops son mucho más anchos (hasta 60&nbsp;%) porque la volatilidad lo exige,
             y por eso el peso sugerido de cartera sale mucho más pequeño.
           </p>
         </div>
@@ -974,24 +1077,33 @@ export function TodayPage() {
         <SummaryStrip data={data} acciones={acciones} onPick={setView} />
       )}
 
-      {markets.length > 1 && (
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
-          {markets.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => setMarket(m.key)}
-              title={`${m.companies} empresas · ${m.sectors} sectores`}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                market === m.key
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Con un solo mercado no hay nada que elegir y no se pinta. */}
+      <BloqueDatos carga={mercados} que="los mercados">
+        {(lista) =>
+          lista.length > 1 && (
+            // Los selectores saltan de línea y sus etiquetas no se parten: a
+            // 390 px los botones se encogían y «Mejores ideas (5)» salía en tres
+            // líneas; desplazándose en su marco, la opción activa quedaba
+            // recortada contra el borde y las demás, escondidas (ítem 2.12).
+            <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
+              {lista.map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setMarket(m.key)}
+                  title={`${m.companies} empresas · ${m.sectors} sectores`}
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    market === m.key
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )
+        }
+      </BloqueDatos>
 
       {busy && !data && (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -1003,11 +1115,7 @@ export function TodayPage() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {error}
-        </div>
-      )}
+      {error && <ErrorDeCarga que="la lista de hoy" error={error.mensaje} reintentar={error.reintentar} />}
 
       {data && !data.signals && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1020,10 +1128,10 @@ export function TodayPage() {
         <>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+              <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
                 {(
                   [
-                    ['ideas', `Mejores ideas (${data.shortlist?.ideas.length ?? 0})`],
+                    ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],
                     ['comprar', `Todas las que califican (${acciones.comprar})`],
                     ['vigilar', `Vigilar (${acciones.vigilar})`],
                     ['cartera', `Mi cartera (${acciones.cartera})`],
@@ -1033,7 +1141,7 @@ export function TodayPage() {
                   <button
                     key={key}
                     onClick={() => setView(key)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       view === key
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-500 hover:text-slate-900'
@@ -1110,7 +1218,15 @@ export function TodayPage() {
             </div>
           )}
 
-          {view === 'ideas' && data.shortlist ? (
+          {/* Sin lista corta, la vista de ideas lo dice: antes caía a la tabla
+              de todas las puntuadas bajo «Mejores ideas (0)» (ítem 2.1). */}
+          {view === 'ideas' && !data.shortlist ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Esta respuesta no trae la lista corta de ideas, así que no se puede
+              decir cuántas hay: no es lo mismo que ninguna. Pulsa «Actualizar»
+              para recalcularla, o mira «Todas las que califican».
+            </div>
+          ) : view === 'ideas' && data.shortlist ? (
             <div className="space-y-4">
               <p className="text-xs leading-relaxed text-slate-500">
                 {data.shortlist.nota}
@@ -1163,10 +1279,13 @@ export function TodayPage() {
                       Hoy no hay ninguna compra en {data.market_name}.
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                      Ninguna empresa cumple a la vez las dos condiciones:
-                      puntuar por encima de {fmtNum(data.thresholds.favorable, 2, { signo: true })}{' '}
-                      frente a sus comparables <em>y</em> cotizar sobre su media
-                      de 200 sesiones. No actuar también es una decisión.
+                      Ninguna empresa está hoy en «Comprar»: o no cumple a la vez
+                      las dos condiciones (puntuar por encima de{' '}
+                      {fmtNum(data.thresholds.favorable, 2, { signo: true })} frente a
+                      sus comparables <em>y</em> cerrar por encima de su media de 200
+                      sesiones con el margen de su banda) o se aplaza (resultados en
+                      los próximos días, precio viejo). Cada una en «Vigilar» dice
+                      qué espera. No actuar también es una decisión.
                     </p>
                     {acciones.vigilar > 0 && (
                       <button
@@ -1189,6 +1308,7 @@ export function TodayPage() {
                     <SignalRow
                       key={signal.symbol}
                       signal={signal}
+                      umbrales={data?.thresholds ? [data.thresholds.favorable, data.thresholds.desfavorable] : []}
                       expanded={expanded === signal.symbol}
                       onToggle={() =>
                         setExpanded(expanded === signal.symbol ? null : signal.symbol)

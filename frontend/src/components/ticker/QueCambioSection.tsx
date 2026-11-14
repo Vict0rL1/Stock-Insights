@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtMetrica } from '../../lib/metricas'
+import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
+import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 
 const NIVEL: Record<string, string> = {
@@ -19,22 +22,25 @@ const FACTOR: Record<string, string> = {
   desconocido: 'text-amber-800',
 }
 
-function fmtValor(v: number | string | null | undefined, unidad?: string): string {
-  if (v === null || v === undefined) return 'desconocido'
-  if (typeof v === 'string') return v
-  if (unidad === 'fracción') return fmtPct(v, 1)
-  if (unidad === 'USD') return fmtCompacto(v)
-  return fmtNum(v, 2)
+// La puntuación, frente a los umbrales de las reglas de la decisión que se pinta
+// al lado: con dos decimales, 0,15 → 0,3496 salía «0,15 → 0,35» junto a una traza
+// que decía 0,3496 (revisión 9).
+function valorDe(v: number | string | null, c: CambioMetrica, umbrales: number[]): string {
+  return c.clave === 'score' && typeof v === 'number' && umbrales.length
+    ? fmtFrente(v, umbrales, { signo: true })
+    : fmtMetrica(v, c.unidad)
 }
 
-function Cambio({ c }: { c: CambioMetrica }) {
+function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: number[] }) {
   const tono =
     c.tipo === 'dato_perdido' ? 'text-amber-800' : c.direccion === 'baja' ? 'text-red-700' : c.direccion === 'sube' ? 'text-emerald-700' : 'text-slate-700'
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 py-1 text-xs last:border-0">
       <span className="text-slate-700">{c.etiqueta}</span>
-      <span className={`tabular-nums ${tono}`}>
-        {fmtValor(c.antes, c.unidad)} → {fmtValor(c.ahora, c.unidad)}
+      {/* `ml-auto`: al bajar de línea (rótulo largo en móvil) el valor seguía a
+          la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
+      <span className={`ml-auto tabular-nums ${tono}`}>
+        {valorDe(c.antes, c, umbrales)} → {valorDe(c.ahora, c, umbrales)}
         {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
         )}
@@ -68,6 +74,8 @@ export function RiesgoResumen({ r }: { r: RiesgoEnCartera }) {
         Correlación con la cartera {fmtNum(r.correlacion_con_cartera ?? null, 2)} · clúster {r.cluster_nivel ?? '—'} ·
         riesgo por unidad de peso {fmtNum(r.riesgo_por_peso ?? null, 2)}
       </p>
+      {/* Con posiciones sin valorar, «pesa el 100 %» no era verdad (revisión 6). */}
+      {r.aviso && <p className="mt-1 text-amber-800">{r.aviso}</p>}
     </div>
   )
 }
@@ -138,28 +146,35 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
 }
 
 export function QueCambioSection({ symbol }: { symbol: string }) {
-  const [datos, setDatos] = useState<AnalisisEmpresaResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const carga = useDato(() => api.analisisEmpresa(symbol), symbol)
+  // Al cambiar de símbolo el bloque vuelve a «cargando» y `QueCambio` se monta
+  // de nuevo: el resumen por IA del anterior no puede quedarse colgado aquí.
+  return (
+    <BloqueDatos carga={carga} que={`el análisis de ${symbol}`}>
+      {(datos) => <QueCambio symbol={symbol} datos={datos} />}
+    </BloqueDatos>
+  )
+}
+
+function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaResponse }) {
   const [resumenIa, setResumenIa] = useState<{ content_md: string; model: string; aviso: string } | null>(null)
   const [pidiendoIa, setPidiendoIa] = useState(false)
-
-  useEffect(() => {
-    setDatos(null)
-    setError(null)
-    setResumenIa(null)
-    api.analisisEmpresa(symbol).then(setDatos, (e: Error) => setError(e.message))
-  }, [symbol])
-
-  if (error) return <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>
-  if (!datos) return <p className="text-sm text-slate-400">Analizando {symbol} y comparando con el último análisis…</p>
+  // El fallo del resumen es del resumen: antes sustituía la sección entera, y
+  // un 503 de la IA borraba de la pantalla el análisis ya calculado (ítem 2.1).
+  const [errorIa, setErrorIa] = useState<string | null>(null)
 
   const { analisis: a, cambios } = datos
   const d = a.decision
+  const umbralesPuntuacion = (d?.reglas ?? [])
+    .filter((r) => r.id.startsWith('puntuacion'))
+    .map((r) => r.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
   const pedirResumen = () => {
     setPidiendoIa(true)
+    setErrorIa(null)
     api
       .resumenCambiosIa(symbol, cambios)
-      .then(setResumenIa, (e: Error) => setError(e.message))
+      .then(setResumenIa, (e: unknown) => setErrorIa(mensajeDeError(e)))
       .finally(() => setPidiendoIa(false))
   }
 
@@ -179,6 +194,7 @@ export function QueCambioSection({ symbol }: { symbol: string }) {
               : 'sin congelar'}
           </span>
         </div>
+        {datos.sin_congelar && <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{datos.sin_congelar}</p>}
         <ul className="mt-2 space-y-1 text-xs text-slate-600">
           {d.reasons.map((r, i) => (
             <li key={i}>· {r}</li>
@@ -240,7 +256,7 @@ export function QueCambioSection({ symbol }: { symbol: string }) {
                   <div className="text-[10px] uppercase tracking-wide text-slate-400">{etiqueta(cat)}</div>
                   <ul>
                     {lista.map((c) => (
-                      <Cambio key={c.clave} c={c} />
+                      <Cambio key={c.clave} c={c} umbrales={umbralesPuntuacion} />
                     ))}
                   </ul>
                 </div>
@@ -259,7 +275,15 @@ export function QueCambioSection({ symbol }: { symbol: string }) {
                 ).map(([t, l, tono]) =>
                   l.length ? (
                     <p key={t} className={tono}>
-                      {t}: {l.map((x) => `${x.punto}${'detalle' in x && x.detalle ? ` (${x.detalle})` : ''}`).join('; ')}
+                      {t}:{' '}
+                      {/* Con su motivo: «Nuevos riesgos: Si hay un recall» a secas parecía que
+                          el recall había aparecido, cuando solo fallaron las noticias (revisión de M1). */}
+                      {l
+                        .map((x) => {
+                          const extra = 'detalle' in x && x.detalle ? x.detalle : 'motivo' in x && x.motivo ? x.motivo : null
+                          return `${x.punto}${extra ? ` (${extra})` : ''}`
+                        })
+                        .join('; ')}
                     </p>
                   ) : null,
                 )}
@@ -275,13 +299,20 @@ export function QueCambioSection({ symbol }: { symbol: string }) {
               <p className="text-[10px] text-slate-400">
                 {cambios.materiales} {plural(cambios.materiales, 'cambio material', 'cambios materiales')};{' '}
                 {cambios.irrelevantes} por debajo de su umbral no se {plural(cambios.irrelevantes, 'enseña', 'enseñan')}
-                (umbrales v{cambios.umbrales?.version}).
+                {/* Faltaba el espacio («enseñan(umbrales v…)») y el identificador iba
+                    entero; corto, como un commit, sigue sirviendo para cotejar. */}
+                {cambios.umbrales?.version ? ` (versión de los umbrales ${cambios.umbrales.version.slice(0, 7)})` : ''}.
               </p>
             )}
             <div>
-              <BotonIA onClick={pedirResumen} disabled={pidiendoIa}>
-                {pidiendoIa ? 'Resumiendo…' : 'Resumir este diff con IA (opcional, gasta API)'}
-              </BotonIA>
+              {/* Con el resumen ya a la vista, el botón se va, como en Noticias:
+                  cada toque volvía a llamar al modelo y a gastar API. */}
+              {!resumenIa && (
+                <BotonIA onClick={pedirResumen} disabled={pidiendoIa}>
+                  {pidiendoIa ? 'Resumiendo…' : 'Resumir este diff con IA (opcional, gasta API)'}
+                </BotonIA>
+              )}
+              {errorIa && <p className="mt-2 text-xs text-red-700">No se pudo resumir con IA: {errorIa}</p>}
               {resumenIa && (
                 <BloqueIA className="mt-2" modelo={resumenIa.model} aviso={resumenIa.aviso}>
                   {resumenIa.content_md}

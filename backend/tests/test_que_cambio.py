@@ -201,3 +201,189 @@ def test_una_decision_al_borde_de_su_umbral_es_menos_estable(session_factory, se
         a = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)["analisis"]
     est = next(f for f in a["confianza"]["factores"] if f["id"] == "estabilidad")
     assert est["estado"] == "debil" and "puntuación" in est["detalle"]
+
+
+def test_un_punto_que_deja_de_medirse_dice_por_que():
+    """«Nuevos riesgos: Si hay un recall» a secas parecía que el recall había
+    aparecido, cuando solo habían fallado las noticias (revisión de M1)."""
+    antes = {"disparadores": [{"id": 1, "descripcion": "Si hay un recall", "salta": False, "medible": True}]}
+    ahora = {"disparadores": [{"id": 1, "descripcion": "Si hay un recall", "salta": False, "medible": False,
+                               "detalle": "Las noticias no se pudieron descargar"}]}
+    motivo = cambios.comparar_tesis(antes, ahora)["nuevos_riesgos"][0]["motivo"]
+    assert motivo.startswith("ya no se puede medir") and "no se pudieron descargar" in motivo
+
+
+# --- Un símbolo que ninguna fuente conoce no deja instantánea --------------------
+
+
+def test_un_simbolo_sin_un_solo_dato_no_deja_instantanea_inmutable(session_factory):
+    """Segunda revisión del 2.1: abrir «Qué cambió» de «AAPLL» (o evaluarlo como
+    idea en Cartera) congelaba una instantánea de un símbolo inexistente, que los
+    triggers de la 0004 ya no dejan borrar."""
+    vacio = ServicioFalso(AHORA)
+    with session_factory() as s:
+        r = analizar_y_congelar("AAPLL", vacio, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 0
+    assert r["instantanea"] is None
+    assert "AAPLL" in r["sin_congelar"] and "quizá no existe" in r["sin_congelar"]
+    # El análisis se devuelve igual: lo que no se hace es guardarlo.
+    assert r["analisis"]["decision"]["action"] == "sin_datos"
+
+
+def test_con_solo_los_estados_de_edgar_si_se_congela(session_factory):
+    """VACIA: sin cotización, perfil ni fundamentales, pero EDGAR la conoce."""
+    sv = ServicioFalso(AHORA)
+    sv.financials["VACIA"] = {"symbol": "VACIA", "source": "edgar", "as_of": AHORA.isoformat(),
+                              "periods": financieros_base(), "quarters": []}
+    with session_factory() as s:
+        r = analizar_y_congelar("VACIA", sv, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 1
+    assert r["instantanea"] is not None and r["sin_congelar"] is None
+
+
+def test_en_una_caida_no_dice_que_quiza_no_existe_ni_vuelve_a_preguntar(session_factory):
+    """Tercera pasada: con las fuentes caídas, el motivo decía que AAPL «quizá no
+    existe» (un fallo contado como ausencia, con «'quote'» en crudo) y volvía a
+    pedir cotización, perfil y fundamentales con sus reintentos."""
+    from app.providers.router import AllProvidersFailedError
+
+    class Caido(ServicioFalso):
+        def get(self, tipo, **kw):
+            self.llamadas.append((tipo, kw))
+            if tipo in ("quote", "financials", "price_history"):
+                raise AllProvidersFailedError(tipo, {"finnhub": "HTTP 503"})
+            return super().get(tipo, **kw)
+
+    sv = Caido(AHORA)
+    with session_factory() as s:
+        r = analizar_y_congelar("AAPL", sv, s, ahora=AHORA, con_pares=False)
+        assert s.query(DecisionSnapshot).count() == 0
+    assert "no se pudieron descargar" in r["sin_congelar"]
+    assert "quizá no existe" not in r["sin_congelar"] and "'quote'" not in r["sin_congelar"]
+    # Decide con lo que el análisis ya tiene: no vuelve a preguntar.
+    assert [t for t, _ in sv.llamadas].count("quote") == 1
+    assert not any(t == "profile" for t, _ in sv.llamadas)
+
+
+
+def test_la_explicacion_escribe_los_precios_como_precios():
+    """Revisión 4: «Qué cambió» explicaba la venta de una acción de céntimos con
+    los dos decimales y el signo de la puntuación: «no cumple (+0,01 frente a
+    0,00) → cumple (0,00 frente a 0,00)», el stop a cero del fallo A1."""
+    from app.analysis.decision import decide
+
+    pos = {"cost_basis": 0.005, "quantity": 1000, "stop": 0.0045}
+    def precio(last):
+        return {"last": last, "sma200": 0.004, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "CENT", "score": 0.6}, precio(0.0051), pos)
+    ahora = decide({"symbol": "CENT", "score": 0.6}, precio(0.0044), pos)
+    d = cambios.comparar_decisiones(antes, ahora, pos, pos)
+    stop = next(e for e in d["explicacion"] if "stop" in e)
+    assert "no cumple (0,0051 frente a 0,0045) → cumple (0,0044 frente a 0,0045)" in stop
+    # Una acción de menos de 10: sin el «+» de la puntuación.
+    a = decide({"symbol": "X", "score": 0.6}, {"last": 5.10, "sma200": 5.30, "above_sma200": False, "daily_vol_pct": 1.2})
+    b = decide({"symbol": "X", "score": 0.6}, {"last": 5.60, "sma200": 5.30, "above_sma200": True, "daily_vol_pct": 1.2})
+    tendencia = next(e for e in cambios.comparar_decisiones(a, b)["explicacion"] if "media" in e)
+    assert "(5,10 frente a 5,41)" in tendencia and "+5" not in tendencia
+
+
+def test_la_puntuacion_junto_a_su_umbral_no_se_escribe_igual_que_el():
+    """Revisión 7: con 0,3504 → 0,3496 se explicaba «cumple (+0,35 frente a +0,35)
+    → no cumple (+0,35 frente a +0,35)», y la traza «falta 0,00 puntos»."""
+    from app.analysis.decision import decide
+
+    def precio():
+        return {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "X", "score": 0.3504}, precio())
+    ahora = decide({"symbol": "X", "score": 0.3496}, precio())
+    explicacion = " ".join(cambios.comparar_decisiones(antes, ahora)["explicacion"])
+    assert "(+0,3504 frente a +0,35) → no cumple (+0,3496 frente a +0,35)" in explicacion
+    assert any("+0,3496" in r for r in ahora["reasons"])
+    comprar = next(g for g in ahora["cambiaria"] if g["hacia"] == "comprar")
+    c = next(c for c in comprar["condiciones"] if c["regla"] == "puntuacion_favorable")
+    assert c["actual"] == 0.3496 and c["distancia"] > 0
+
+
+def test_la_puntuacion_se_sirve_frente_a_los_dos_umbrales():
+    """Revisión 8: `_c_score` solo miraba su umbral. Con -0,3496, la condición de
+    comprar (≥ +0,35) servía -0,35 y la de evitar (≤ -0,35), justo debajo, -0,3496;
+    la cifra de una línea cumpliría la regla que la otra daba por no cumplida."""
+    from app.analysis.decision import decide
+
+    precio = {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    for score in (-0.3496, 0.3496):
+        d = decide({"symbol": "X", "score": score}, precio)
+        actuales = {c["actual"] for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")}
+        assert actuales == {score}
+    # Lejos de los dos, tampoco se redondea: a tres decimales 0,1247 se servía
+    # 0,125 y se pintaba «ahora 0,13» con la traza diciendo 0,12, y con 0,3004
+    # la distancia 0,05 ocultaba el 0,0496 que la confianza mide contra 0,05
+    # (revisión 9).
+    d = decide({"symbol": "X", "score": 0.1247}, precio)
+    condiciones = [c for g in d["cambiaria"] for c in g["condiciones"] if c["regla"].startswith("puntuacion")]
+    assert {c["actual"] for c in condiciones} == {0.1247}
+    assert {c["distancia"] for c in condiciones} == {0.2253, -0.4747}
+    borde = decide({"symbol": "X", "score": 0.3004}, precio)
+    base = {"faltan": [], "mercado": {"precio": {"estado": "valido", "valor": 1.0}, "historico": {"sesiones": 260}},
+            "fundamentales": {"ejercicios_disponibles": 5}, "valoracion": {}, "decision": borde}
+    estabilidad = next(f for f in confianza.evaluar(base, AHORA)["factores"] if f["id"] == "estabilidad")
+    assert estabilidad["estado"] == "debil"
+
+
+def test_una_condicion_de_precio_pendiente_no_dice_falta_cero():
+    """Revisión 8: con dos decimales, en una acción de más de 200 un céntimo es
+    menos de 0,005 %: «precio ≥ 510,00 (ahora 509,99; falta 0,00 %)». Y la
+    confianza lo repetía: «(a 0 puntos)» con una puntuación a 0,0004."""
+    from app.analysis.decision import decide
+
+    d = decide({"symbol": "X", "score": 0.6}, {"last": 509.99, "sma200": 500.0, "above_sma200": True, "daily_vol_pct": 1.2})
+    comprar = next(g for g in d["cambiaria"] if g["hacia"] == "comprar")
+    c = next(c for c in comprar["condiciones"] if c["regla"] == "tendencia_a_favor")
+    assert c["umbral"] == 510.0 and 0 < c["distancia"] < 0.005
+
+    borde = decide({"symbol": "X", "score": 0.3496}, {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2})
+    base = {"faltan": [], "mercado": {"precio": {"estado": "valido", "valor": 1.0}, "historico": {"sesiones": 260}},
+            "fundamentales": {"ejercicios_disponibles": 5}, "valoracion": {}, "decision": borde}
+    estabilidad = next(f for f in confianza.evaluar(base, AHORA)["factores"] if f["id"] == "estabilidad")
+    assert "(a 0,0004 puntos)" in estabilidad["detalle"] and "(a 0 puntos)" not in estabilidad["detalle"]
+
+
+def test_que_cambio_escribe_la_puntuacion_frente_a_todos_sus_umbrales():
+    """Revisión 9: «Qué cambió» escribía cada regla frente a su umbral. De 0,40 a
+    -0,3504: «≤ -0,35: … cumple (-0,3504 frente a -0,35)» y, justo después,
+    «≥ +0,35: … no cumple (-0,35 frente a +0,35)»."""
+    from app.analysis.decision import decide
+
+    precio = {"last": 110.0, "sma200": 100.0, "above_sma200": True, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "X", "score": 0.40}, precio)
+    ahora = decide({"symbol": "X", "score": -0.3504}, precio)
+    explicacion = " ".join(cambios.comparar_decisiones(antes, ahora)["explicacion"])
+    assert "(-0,3504 frente a -0,35)" in explicacion and "(-0,3504 frente a +0,35)" in explicacion
+    assert "(-0,35 frente a +0,35)" not in explicacion
+
+
+def test_la_distancia_al_stop_de_una_posicion_no_se_sirve_como_cero():
+    """Revisión 9: con el stop en 100 y el precio en 100,04 (o 99,96, ya
+    perforado) la tarjeta decía «Stop 100,00 0,0 %»."""
+    from app.analysis.decision import decide
+
+    pos = {"cost_basis": 110.0, "quantity": 10, "stop": 100.0}
+    for last in (100.04, 99.96):
+        d = decide({"symbol": "X", "score": 0.6},
+                   {"last": last, "sma200": 90.0, "above_sma200": True, "daily_vol_pct": 1.2}, pos)
+        assert d["levels"]["stop_pct"] != 0 and abs(d["levels"]["stop_pct"]) < 0.05
+    lejos = decide({"symbol": "X", "score": 0.6}, {"last": 120.0, "sma200": 90.0, "above_sma200": True, "daily_vol_pct": 1.2}, pos)
+    assert lejos["levels"]["stop_pct"] == -16.7
+
+
+
+def test_el_historial_sirve_los_umbrales_de_cada_decision(session_factory, servicio):
+    """Revisión 9: el historial escribía todas las filas frente a ±0,35; una
+    «mantener» (solo cuenta el de vender) con 0,3496 decía «+0,3496» y su replay
+    «+0,35». Cada fila lleva los de su propia traza."""
+    from app import snapshots as sn
+
+    with session_factory() as s:
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        snap = s.query(DecisionSnapshot).one()
+        assert sorted(sn.umbrales_de_puntuacion(snap)) == [-0.35, 0.35]

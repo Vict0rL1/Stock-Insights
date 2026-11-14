@@ -48,9 +48,11 @@ def _periodos():
 
 
 class FakeService:
-    def __init__(self, titular="Resultados en línea con lo esperado", noticias_caidas=False):
+    def __init__(self, titular="Resultados en línea con lo esperado", noticias_caidas=False,
+                 noticias_viejas=False):
         self.titular = titular
         self.noticias_caidas = noticias_caidas
+        self.noticias_viejas = noticias_viejas
         self.llamadas: dict[str, int] = {}
 
     def get(self, data_type, **kwargs):
@@ -65,6 +67,8 @@ class FakeService:
         if data_type == "financials":
             return {**common, "symbol": kwargs["symbol"], "periods": _periodos()}
         if data_type == "news":
+            if self.noticias_viejas:
+                common = {**common, "estado": "viejo", "antiguedad_segundos": 3 * 3600}
             return {
                 **common,
                 "items": [
@@ -145,6 +149,19 @@ def test_se_añade_un_punto_de_invalidacion_vigilable(client):
     assert r.status_code == 200, r.text
     assert r.json()["kind"] == "metrica"
     assert r.json()["activo"] is True
+
+
+def test_un_punto_nuevo_guarda_su_unidad_y_un_umbral_pequeno_se_comprueba(client):
+    # Revisión 3: «Deuda/capital > 0,1» creado ahora quedaba sin comprobar para
+    # siempre (un corte por valor no distinguía los puntos viejos de los nuevos).
+    c, _ = client()
+    tid = _crear_tesis(c)
+    r = c.post(f"/api/theses/{tid}/triggers", json={
+        "kind": "metrica", "descripcion": "caja neta",
+        "config": {"metrica": "debt_to_equity", "op": "gt", "umbral": 0.1},
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["config"]["unidad"] == "veces"
 
 
 def test_una_metrica_no_vigilable_se_rechaza_con_el_catalogo(client):
@@ -244,6 +261,18 @@ def test_con_las_noticias_caidas_el_punto_queda_sin_comprobar(client):
     ctx = r.json()["contexto"]
     assert ctx["disparadores_saltando"] == []
     assert [d["descripcion"] for d in ctx["disparadores_sin_comprobar"]] == ["Si hay un recall"]
+
+
+def test_con_noticias_viejas_de_la_cache_el_punto_no_se_da_por_comprobado(client):
+    """Una copia de hace horas no cubre los últimos 14 días: «ningún titular» no
+    se puede afirmar (revisión de M1)."""
+    c, _ = client(noticias_viejas=True)
+    tid = _crear_tesis(c)
+    c.post(f"/api/theses/{tid}/triggers", json={
+        "kind": "noticia", "descripcion": "Si hay un recall", "config": {"palabras": ["recall"]},
+    })
+    d = c.get("/api/theses/vigilancia").json()["tesis"][0]["vigilancia"]["disparadores"][0]
+    assert d["medible"] is False and "copia guardada hace 3 h" in d["motivo"]
 
 
 def test_las_noticias_solo_se_piden_si_alguna_tesis_las_vigila(client):
@@ -424,3 +453,14 @@ def test_con_todo_documentado_no_se_inventa_un_reproche(client):
     d = c.get("/api/theses/sin-tesis").json()
     assert d["posiciones_sin_tesis"] == []
     assert "Todas tus posiciones abiertas tienen una tesis escrita" in d["nota"]
+
+
+def test_el_catalogo_dice_en_que_unidad_se_escribe_cada_metrica(client):
+    # Revisión del 2.12: sin unidad, el formulario lo pedía todo en % y un ratio
+    # corriente de 1 se guardaba como 0,01.
+    c, _ = client()
+    m = c.get("/api/theses/vigilancia/metricas").json()
+    unidad = {x["clave"]: x["unidad"] for x in m["metricas"] + m["crecimientos"]}
+    assert unidad["operating_margin"] == "pct" and unidad["roe"] == "pct" and unidad["revenue_cagr"] == "pct"
+    assert unidad["current_ratio"] == "veces" and unidad["debt_to_equity"] == "veces"
+    assert unidad["interest_coverage"] == "veces"

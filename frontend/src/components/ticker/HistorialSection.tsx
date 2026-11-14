@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
-import type { DecisionHistorica, ReplayDecision } from '../../api/types'
+import type { Decision, ReplayDecision } from '../../api/types'
 import { etiqueta, etiquetaOrigen } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural, ZONA_MERCADO } from '../../lib/formato'
+import { fmtMetrica } from '../../lib/metricas'
+import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
+import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from './QueCambioSection'
+import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 function Bloque({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -49,6 +54,12 @@ export function Anticipacion({ p }: { p: NonNullable<ReplayDecision['proteccion_
 
 function Replay({ r }: { r: ReplayDecision }) {
   const s = r.secciones
+  // La puntuación, frente a los umbrales de las reglas de esa decisión: con dos
+  // decimales, «Puntuación 0,35» junto a una traza que ya dice 0,3496 (revisión 8).
+  const umbrales = ((s.decision as Decision | undefined)?.reglas ?? [])
+    .filter((x) => x.id.startsWith('puntuacion'))
+    .map((x) => x.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
   const precio = (s.mercado as ReplayDecision['secciones']['mercado'])?.precio
   return (
     <div className="space-y-3">
@@ -77,14 +88,14 @@ function Replay({ r }: { r: ReplayDecision }) {
         {precio && (
           <Bloque titulo="Precio utilizado">
             <p className="text-xs text-slate-700">
-              {fmtNum(precio.valor, 2)} {precio.moneda ?? ''} · {precio.fuente ?? 'fuente desconocida'} · {precio.publicado ? fmtFecha(precio.publicado, { hora: true, zona: 'UTC' }) : 'sin fecha'} · {etiqueta(precio.estado)}
+              {fmtPrecio(precio.valor)} {precio.moneda ?? ''} · {precio.fuente ?? 'fuente desconocida'} · {precio.publicado ? fmtFecha(precio.publicado, { hora: true, zona: 'UTC' }) : 'sin fecha'} · {etiqueta(precio.estado)}
             </p>
           </Bloque>
         )}
         {s.senal && (
           <Bloque titulo="Señal">
             <p className="text-xs text-slate-700">
-              Puntuación {fmtNum((s.senal as { score: number | null }).score, 2)} · {(s.senal as { origen?: string }).origen ?? ''}
+              Puntuación {fmtFrente((s.senal as { score: number | null }).score, umbrales, { signo: true })} · {(s.senal as { origen?: string }).origen ?? ''}
             </p>
           </Bloque>
         )}
@@ -94,7 +105,7 @@ function Replay({ r }: { r: ReplayDecision }) {
               {Object.entries((s.fundamentales as { metricas: Record<string, { valor: number | null; unidad?: string }> }).metricas).map(([k, m]) => (
                 <li key={k} className="flex justify-between">
                   <span>{etiqueta(k, { mayuscula: true })}</span>
-                  <span className="tabular-nums">{m.valor == null ? 'desconocido' : m.unidad === 'fracción' ? fmtPct(m.valor, 1) : Math.abs(m.valor) > 1e5 ? fmtCompacto(m.valor) : fmtNum(m.valor, 2)}</span>
+                  <span className="tabular-nums">{fmtMetrica(m.valor, m.unidad)}</span>
                 </li>
               ))}
             </ul>
@@ -103,7 +114,7 @@ function Replay({ r }: { r: ReplayDecision }) {
         {s.valoracion && (
           <Bloque titulo="Valoración">
             <p className="text-xs text-slate-700">
-              P/E {fmtNum((s.valoracion as { pe?: { valor: number | null } }).pe?.valor ?? null, 1)} · crecimiento implícito (DCF inverso al 9 %){' '}
+              P/E {fmtNum((s.valoracion as { pe?: { valor: number | null } }).pe?.valor ?? null, 1)} · crecimiento implícito (DCF inverso al 9&nbsp;%){' '}
               {fmtPct((s.valoracion as { dcf_inverso?: { crecimiento_implicito?: number | null } }).dcf_inverso?.crecimiento_implicito ?? null, 1)}
             </p>
           </Bloque>
@@ -114,8 +125,13 @@ function Replay({ r }: { r: ReplayDecision }) {
               {(s.tesis as { titulo?: string }).titulo ?? 'sin tesis'} · estado {etiqueta((s.tesis as { estado: string }).estado)}
             </p>
             <ul className="mt-1 text-[11px] text-slate-500">
-              {((s.tesis as { disparadores?: { id: number; descripcion: string; salta: boolean; medible: boolean }[] }).disparadores ?? []).map((t) => (
-                <li key={t.id}>{t.salta ? '✗ cruzado' : t.medible ? '✓' : '?'} {t.descripcion}</li>
+              {((s.tesis as { disparadores?: { id: number; descripcion: string; salta: boolean; medible: boolean; aviso?: string }[] }).disparadores ?? []).map((t) => (
+                <li key={t.id}>
+                  {t.salta ? '✗ cruzado' : t.medible ? '✓' : '?'} {t.descripcion}
+                  {/* La duda de un punto sin unidad guardada viajaba congelada y
+                      no la pintaba nadie (revisión 6). */}
+                  {t.aviso && <span className="block text-amber-800">{t.aviso}</span>}
+                </li>
               ))}
             </ul>
           </Bloque>
@@ -130,7 +146,7 @@ function Replay({ r }: { r: ReplayDecision }) {
           <Bloque titulo="Noticias disponibles hasta ese momento">
             <ul className="text-[11px] text-slate-600">
               {((s.noticias as { items: { headline: string; published_at: string; source: string }[] }).items ?? []).map((n, i) => (
-                <li key={i}>{fmtFecha(n.published_at, { hora: true })} · {n.source} · {n.headline}</li>
+                <li key={i}>{fmtFecha(n.published_at, { hora: true, zona: ZONA_MERCADO })} · {n.source} · {n.headline}</li>
               ))}
             </ul>
           </Bloque>
@@ -159,20 +175,30 @@ function Replay({ r }: { r: ReplayDecision }) {
 }
 
 export function HistorialSection({ symbol }: { symbol: string }) {
-  const [filas, setFilas] = useState<DecisionHistorica[] | null>(null)
+  // Con los umbrales de la puntuación: «Comprar 0,35» y «Sin acción 0,35» eran
+  // 0,3504 y 0,3496 (revisión 8).
+  const filas = useDato(
+    () => api.historialEmpresa(symbol).then((r) => ({ lista: r.decisiones, umbrales: [r.thresholds.favorable, r.thresholds.desfavorable] })),
+    symbol,
+  )
   const [replay, setReplay] = useState<ReplayDecision | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // El fallo de un replay es del replay: antes ocupaba el sitio de toda la
+  // sección y el historial desaparecía por no poder abrir una fila (ítem 2.1).
+  const [errorReplay, setErrorReplay] = useState<string | null>(null)
 
   useEffect(() => {
-    setFilas(null)
     setReplay(null)
-    api.historialEmpresa(symbol).then((r) => setFilas(r.decisiones), (e: Error) => setError(e.message))
+    setErrorReplay(null)
   }, [symbol])
 
-  const abrir = (id: number) => api.replay(id).then(setReplay, (e: Error) => setError(e.message))
-
-  if (error) return <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>
-  if (!filas) return <p className="text-sm text-slate-400">Cargando historial de decisiones…</p>
+  const abrir = (id: number) => {
+    setErrorReplay(null)
+    // Sin replay viejo al lado del error: parecería el de la fila que falló.
+    api.replay(id).then(setReplay, (e: unknown) => {
+      setReplay(null)
+      setErrorReplay(mensajeDeError(e))
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -181,32 +207,44 @@ export function HistorialSection({ symbol }: { symbol: string }) {
         <p className="mt-1 text-[11px] text-slate-500">
           Cada fila es una instantánea inmutable. El replay enseña SOLO lo que se sabía en ese momento.
         </p>
-        {filas.length === 0 ? (
-          <p className="mt-2 text-xs text-slate-500">Todavía no hay decisiones congeladas de esta empresa. Abre «Qué cambió» para crear la primera.</p>
-        ) : (
-          <table className="mt-2 w-full text-xs">
-            <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-              <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
-            </thead>
-            <tbody>
-              {filas.map((f) => (
-                <tr key={f.id} className={`border-t border-slate-100 ${replay?.id === f.id ? 'bg-slate-50' : ''}`}>
-                  <td className="py-1 text-slate-700">{fmtFecha(f.creado_en, { hora: true })}</td>
-                  <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
-                  <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
-                  <td className="text-right tabular-nums">{fmtNum(f.precio, 2)}</td>
-                  <td className="text-right tabular-nums">{fmtNum(f.score, 2)}</td>
-                  <td className="text-right">
-                    <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
-                      Replay
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <div className="mt-2">
+          <BloqueDatos
+            carga={filas}
+            que="el historial de decisiones"
+            vacio={(d) => d.lista.length === 0}
+            mensajeVacio="Todavía no hay decisiones congeladas de esta empresa. Abre «Qué cambió» para crear la primera."
+          >
+            {({ lista, umbrales }) => (
+              <MarcoTabla etiqueta="Historial de decisiones">
+                <table className={`${TABLA_COMPACTA} text-xs`}>
+                  <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+                    <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
+                  </thead>
+                  <tbody>
+                    {lista.map((f) => (
+                      <tr key={f.id} className={`border-t border-slate-100 ${replay?.id === f.id ? 'bg-slate-50' : ''}`}>
+                        <td className="py-1 text-slate-700">{fmtFecha(f.creado_en, { hora: true, zona: 'UTC' })}</td>
+                        <td className="text-slate-500">{etiquetaOrigen(f.origen)}</td>
+                        <td className="font-medium text-slate-800">{etiqueta(f.accion, { mayuscula: true })}</td>
+                        <td className="text-right tabular-nums">{fmtPrecio(f.precio)}</td>
+                        <td className="text-right tabular-nums">
+                          {fmtFrente(f.score, f.umbrales_puntuacion?.length ? f.umbrales_puntuacion : umbrales, { signo: true })}
+                        </td>
+                        <td className="text-right">
+                          <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
+                            Replay
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </MarcoTabla>
+            )}
+          </BloqueDatos>
+        </div>
       </section>
+      {errorReplay && <ErrorDeCarga que="el replay" error={errorReplay} />}
       {replay && (
         <section className="rounded-xl border border-slate-300 bg-slate-50 p-4">
           <Replay r={replay} />

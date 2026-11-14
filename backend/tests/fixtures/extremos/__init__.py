@@ -185,7 +185,10 @@ def _una_posicion(session, sv: ServicioFalso) -> None:
     sv.empresa("KO", precio=60.0, score=None)
     _historia_larga(sv, "KO", 60.0, 0.0008, 3)
     _posicion(session, _instrumento(session, "KO", "Consumer Staples"), 300, 58.0, 50.0)
-    session.add(CashBalance(moneda="USD", importe=1500.0, as_of=AHORA - timedelta(days=1)))
+    # Anotado el día de su saldo: sin `registrado_en`, la fila quedaba anotada con
+    # el reloj real, después de AHORA, y no contaría (auditoría del 19 oct, A4).
+    ayer = AHORA - timedelta(days=1)
+    session.add(CashBalance(moneda="USD", importe=1500.0, as_of=ayer, registrado_en=ayer))
 
 
 def _cad_en_usd(session, sv: ServicioFalso) -> None:
@@ -229,9 +232,12 @@ def tesis_con_punto(session, symbol: str, umbral: float = 0.18) -> None:
                created_at=AHORA - timedelta(days=60), updated_at=AHORA - timedelta(days=60))
     session.add(t)
     session.flush()
+    # Con la tesis: un punto añadido después no existía en el análisis de AHORA.
     session.add(ThesisTrigger(thesis_id=t.id, kind="metrica", descripcion=f"margen operativo < {umbral:.0%}",
-                              config={"metrica": "operating_margin", "op": "lt", "umbral": umbral}))
-    session.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+                              config={"metrica": "operating_margin", "op": "lt", "umbral": umbral},
+                              created_at=t.created_at))
+    session.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                              created_at=t.created_at))
     session.commit()
 
 

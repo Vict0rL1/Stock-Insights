@@ -50,9 +50,9 @@ from app.analysis.reverse_dcf import curva_de_crecimiento_implicito
 from app.analysis.signal import FAVORABLE_MIN, UNFAVORABLE_MAX
 from app.db.models import Instrument, Position, Thesis, ThesisTrigger
 from app.etiquetas import etiqueta
-from app.formato import fmt_pct
+from app.formato import fmt_pct, plural
 from app.providers.base import DataNotFoundError
-from app.providers.router import AllProvidersFailedError
+from app.providers.router import TODAS_FALLARON, AllProvidersFailedError
 from app.registro import log
 
 # Versión de la FORMA del documento. Cambia si cambian sus claves; dos
@@ -142,7 +142,7 @@ def seccion_mercado(service, symbol: str, ahora: datetime) -> tuple[dict, dict]:
     barras = [b for b in barras if pit.barra_disponible(b.get("ts"), ahora, obtenida)]
     resumen = _price_summary(pd.Series([float(b["close"]) for b in barras], dtype="float64")) if barras else None
 
-    if quote is not None and pit.disponible_en(quote.get("as_of"), ahora) is False:
+    if quote is not None and pit.descargado_a_tiempo(quote.get("as_of"), ahora) is False:
         # Una cotización fechada DESPUÉS del análisis (un análisis a una fecha
         # pasada, o un reloj adelantado) es información futura: fuera.
         quote, fallo_q = None, "cotización posterior al momento del análisis"
@@ -182,14 +182,15 @@ def seccion_mercado(service, symbol: str, ahora: datetime) -> tuple[dict, dict]:
             "obtenido_en": (historia or {}).get("as_of"),
             "motivo": None if barras else (fallo_h or "sin histórico"),
         },
-        "sma200": (resumen or {}).get("sma200"),
+        # Servida redondeada, como cualquier nivel; el motor decide con la entera.
+        "sma200": datos.redondear_precio((resumen or {}).get("sma200")),
         "vol_diaria_pct": (resumen or {}).get("daily_vol_pct"),
         "drawdown_pct": (resumen or {}).get("drawdown_pct"),
         "cambio_pct": (quote or {}).get("change_pct"),
     }
     bloque = {
         "last": precio,
-        "sma200": seccion["sma200"],
+        "sma200": (resumen or {}).get("sma200"),
         "above_sma200": (resumen or {}).get("above_sma200"),
         "daily_vol_pct": seccion["vol_diaria_pct"],
         "drawdown_pct": seccion["drawdown_pct"],
@@ -369,12 +370,13 @@ def seccion_valoracion(fund: dict, precio: float | None) -> dict:
 
 def seccion_tesis(
     session: Session, instrument: Instrument | None, fund: dict, noticias: list[dict] | None,
-    ahora: datetime,
+    ahora: datetime, noticias_incompletas: str | None = None,
 ) -> dict:
     """La tesis vigente, congelada por contenido: si luego se edita, esto no cambia.
 
     `noticias=None` cuando no se pudieron descargar: el punto de noticias queda
-    sin comprobar en vez de pasar con cero titulares.
+    sin comprobar en vez de pasar con cero titulares. `noticias_incompletas`
+    dice por qué la lista no cubre la ventana (una copia vieja de la caché).
     """
     if instrument is None:
         return {"estado": "sin_tesis"}
@@ -391,9 +393,13 @@ def seccion_tesis(
         # guardó en ningún sitio. No se enseña el de hoy como si fuera aquel.
         return {"estado": DESCONOCIDO, "id": tesis.id,
                 "motivo": "la tesis se modificó después de este momento; su contenido de entonces no se conserva"}
-    disparadores = session.execute(
-        select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)
-    ).scalars().all()
+    # Solo los puntos que ya existían: añadir uno no toca `updated_at`, y uno del
+    # 15 de octubre con la palabra «demanda» cruzaba en la reconstrucción del 12
+    # una tesis que entonces no tenía puntos (revisión de A4, la misma clase).
+    disparadores = [
+        d for d in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()
+        if pit.disponible_en(d.created_at, ahora) is True
+    ]
     periodos = fund.get("_periodos") or []
     vigilancia = thesis_watch.vigilar(
         [
@@ -405,6 +411,8 @@ def seccion_tesis(
             "ratios": derive_ratio_series(periodos) if periodos else [],
             "crecimiento": growth_summary(periodos) if periodos else {},
             "noticias": noticias,
+            "noticias_incompletas": noticias_incompletas,
+            "ahora": ahora,
         },
     )
     if not vigilancia["total"]:
@@ -432,6 +440,10 @@ def seccion_tesis(
                 "config": d.get("config"), "salta": bool(d.get("salta")),
                 "medible": bool(d.get("medible")), "valor": d.get("valor"),
                 "umbral": d.get("umbral"), "detalle": d.get("detalle") or d.get("motivo"),
+                # La duda de un punto sin unidad guardada: solo la enseñaba
+                # Vigilancia, y la ficha, «Qué cambió» y lo congelado decían solo
+                # la centésima (revisión 5).
+                **({"aviso": d["aviso"]} if d.get("aviso") else {}),
             }
             for d in vigilancia["disparadores"]
         ],
@@ -439,14 +451,34 @@ def seccion_tesis(
     }
 
 
-def seccion_noticias(service, symbol: str, ahora: datetime) -> dict:
-    """Titulares ya publicados en el momento del análisis. Solo hechos de la API."""
+def seccion_noticias(service, symbol: str, ahora: datetime) -> tuple[dict, dict | None]:
+    """Titulares ya publicados en el momento del análisis. Solo hechos de la API.
+
+    Devuelve (sección para enseñar, lo que necesita la tesis). La sección lleva
+    los MAX_NOTICIAS más recientes y sin resumen; la tesis, todos los de la
+    ventana con su resumen. Antes la tesis recibía la lista de la pantalla: con
+    más de diez titulares en 14 días miraba solo los diez últimos, sin resumen,
+    y congelaba «intacta» mientras Vigilancia lo daba por cruzado (revisión de
+    M1). Va aparte, y no dentro de la sección, porque la instantánea solo quita
+    las claves internas del primer nivel del análisis.
+
+    Una copia vieja de la caché (todas las fuentes fallaron) se marca VIEJO:
+    antes contaba como una comprobación completa de los últimos 14 días.
+    """
     payload, fallo = _traer(service, "news", symbol=symbol, days=DIAS_NOTICIAS)
     items = (payload or {}).get("items") or []
     separadas = pit.filtrar(items, lambda n: n.get("published_at"), ahora)
     disponibles = sorted(separadas["disponibles"], key=lambda n: str(n.get("published_at")), reverse=True)
-    return {
-        "estado": VALIDO if payload is not None else DESCONOCIDO,
+    vieja = payload is not None and payload.get("estado") == VIEJO
+    if payload is None:
+        para_tesis = None
+    else:
+        para_tesis = {
+            "items": disponibles,
+            "incompletas": thesis_watch.copia_vieja(payload.get("antiguedad_segundos"), ahora) if vieja else None,
+        }
+    seccion = {
+        "estado": DESCONOCIDO if payload is None else VIEJO if vieja else VALIDO,
         "fuente": (payload or {}).get("source"),
         "obtenido_en": (payload or {}).get("as_of"),
         "motivo": fallo,
@@ -460,6 +492,9 @@ def seccion_noticias(service, symbol: str, ahora: datetime) -> dict:
         "excluidas_futuras": len(separadas["futuros"]),
         "excluidas_sin_fecha": len(separadas["sin_fecha"]),
     }
+    if vieja:
+        seccion["antiguedad_segundos"] = payload.get("antiguedad_segundos")
+    return seccion, para_tesis
 
 
 def _senal_cacheada(service, symbol: str) -> dict | None:
@@ -469,14 +504,14 @@ def _senal_cacheada(service, symbol: str) -> dict | None:
     lista sale y de cuándo es. No se recalcula aquí porque puntuar una empresa
     sola no tiene sentido — los factores se miden contra sus comparables.
     """
-    from app.analysis.markets import MARKETS
+    from app.analysis.markets import MARKETS, parametros_lista_diaria
 
     cache = getattr(service, "cache", None)
     if cache is None:
         return None
     for clave in MARKETS:
         try:
-            lista = cache.get("daily_picks", {"v": 6, "market": clave})
+            lista = cache.get("daily_picks", parametros_lista_diaria(clave))
         except Exception:  # noqa: BLE001 — una caché ilegible no es una señal
             log("cache").exception("análisis: lista diaria ilegible (%s)", clave)
             continue
@@ -501,7 +536,7 @@ def seccion_senal(service, symbol: str, con_pares: bool, ahora: datetime) -> dic
         fund, _ = _traer(service, "fundamentals", symbol=symbol)
         # Los fundamentales de los pares son los de HOY: para un análisis a una
         # fecha pasada serían información futura.
-        if fund and fund.get("metrics") and pit.disponible_en(fund.get("as_of"), ahora) is not False:
+        if fund and fund.get("metrics") and pit.descargado_a_tiempo(fund.get("as_of"), ahora) is not False:
             try:
                 p = _peer_signal(service, symbol, dict(fund["metrics"]))
             except Exception:  # noqa: BLE001 — sin señal se decide «sin datos», no se cae
@@ -572,6 +607,23 @@ def serie_en_dolares(service, symbol: str, moneda: str | None, ctx: dict, ahora:
     return contexto_cartera.convertir_serie(serie, moneda, (ctx or {}).get("fx_series") or {}) if serie else None
 
 
+def _aviso_parcial(desconocidas: list[dict], symbol: str) -> dict:
+    """El riesgo se mide sobre las posiciones con precio e histórico: se dice
+    cuáles faltan. Con XYZ (~100.000 USD) sin precio y AAPL (10.000) sí, la
+    ficha decía «pesa el 100 % y aporta el 100 % del riesgo» (revisión 6); y
+    con XYZ con precio pero sin histórico en caché, igual, porque solo se
+    miraban las sin precio (revisión 7). Salen de las `desconocidas` del propio
+    cálculo y de las sin precio del contexto, cada una con su motivo."""
+    vistas: set[str] = set()
+    fuera = [d for d in desconocidas if d["symbol"] != symbol and not (d["symbol"] in vistas or vistas.add(d["symbol"]))]
+    if not fuera:
+        return {}
+    nombres = "; ".join(f"{d['symbol']}, {d.get('motivo')}" for d in fuera[:5])
+    return {"aviso": (f"Medido solo sobre las posiciones con precio e histórico: {len(fuera)} "
+                      f"{plural(len(fuera), 'posición abierta no cuenta', 'posiciones abiertas no cuentan')} "
+                      f"({nombres}).")}
+
+
 def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decision: dict, ahora: datetime,
                    ctx: dict | None = None, serie: list | None = None) -> dict:
     """Su riesgo DENTRO de tu cartera: lo que aporta si la tienes, o lo que
@@ -581,7 +633,20 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
 
     if ctx is None:
         return {"estado": ERROR, "motivo": "no se pudo leer la cartera", "huella": None}
+    propia_sin_peso = next((p for p in ctx["posiciones"] if p["symbol"] == symbol and p.get("peso") is None), None)
+    if propia_sin_peso is not None:
+        # La propia empresa está en cartera y sin valorar: su riesgo es
+        # desconocido. Antes, si era la única, salía «sin cartera» (revisión 6).
+        return {"estado": DESCONOCIDO, "en_cartera": True, "huella": "desconocido",
+                "motivo": propia_sin_peso.get("motivo")}
+    fuera = [p for p in ctx["posiciones"] if p["symbol"] != symbol and p.get("peso") is None]
     if not any(p.get("peso") for p in ctx["posiciones"]):
+        if fuera:
+            # Hay posiciones, pero ninguna valorada: el riesgo es desconocido, no
+            # «no hay cartera» (revisión 5).
+            nombres = "; ".join(f"{p['symbol']}, {p.get('motivo')}" for p in fuera[:5])
+            return {"estado": DESCONOCIDO, "en_cartera": False, "huella": "desconocido",
+                    "motivo": f"ninguna posición abierta se pudo valorar ({nombres})"}
         return {"estado": "sin_cartera", "huella": None,
                 "nota": "No hay posiciones valoradas: no hay riesgo de cartera que medir."}
 
@@ -593,6 +658,7 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
             motivo = next((d["motivo"] for d in total.get("desconocidas") or [] if d["symbol"] == symbol), None)
             return {"estado": DESCONOCIDO, "en_cartera": True, "motivo": motivo, "huella": "desconocido"}
         return {
+            **_aviso_parcial([*fuera, *(total.get("desconocidas") or [])], symbol),
             "estado": VALIDO, "en_cartera": True, "peso": propia["peso"], "contribucion": propia["contribucion"],
             "volatilidad": propia["volatilidad"], "correlacion_con_cartera": propia["correlacion_con_cartera"],
             "beta_mercado": propia["beta_mercado"], "cluster_nivel": propia["cluster_nivel"],
@@ -613,6 +679,7 @@ def seccion_riesgo(session: Session, service, symbol: str, mercado: dict, decisi
     if not hipotesis.get("disponible"):
         return {"estado": DESCONOCIDO, "en_cartera": False, "motivo": hipotesis.get("motivo"), "huella": "desconocido"}
     return {
+        **_aviso_parcial([*fuera, *(hipotesis.get("desconocidas") or [])], symbol),
         "estado": VALIDO, "en_cartera": False, "peso_supuesto": peso,
         "contribucion": hipotesis["contribucion_del_candidato"],
         "correlacion_con_cartera": hipotesis["correlacion_con_cartera"],
@@ -647,9 +714,11 @@ def analizar(
     financials, fallo_f = _traer(service, "financials", symbol=symbol)
     fund = seccion_fundamentales(financials, fallo_f, ahora)
     valoracion = seccion_valoracion(fund, mercado["precio"]["valor"])
-    noticias = seccion_noticias(service, symbol, ahora)
+    noticias, noticias_tesis = seccion_noticias(service, symbol, ahora)
     tesis = seccion_tesis(
-        session, instrument, fund, noticias["items"] if noticias["estado"] == VALIDO else None, ahora
+        session, instrument, fund,
+        noticias_tesis["items"] if noticias_tesis else None, ahora,
+        noticias_incompletas=noticias_tesis["incompletas"] if noticias_tesis else None,
     )
     senal = seccion_senal(service, symbol, con_pares, ahora)
     posicion = _posicion(session, instrument, ahora)
@@ -662,7 +731,7 @@ def analizar(
         posicion,
         favorable_min=FAVORABLE_MIN,
         desfavorable_max=UNFAVORABLE_MAX,
-        reglas=_stored_rule_backtest(session, hasta=ahora),
+        reglas=_stored_rule_backtest(session, hasta=ahora, clase=clase),
         clase=clase,
         resultados_en=resultados_en,
     )
@@ -716,6 +785,38 @@ def analizar(
     analisis["marcas"] = marcas_de_tiempo(analisis)
     analisis["_fund"] = fund  # para secciones posteriores; no se congela
     return analisis
+
+
+def sin_ningun_dato(analisis: dict) -> str | None:
+    """Por qué no se debe congelar este análisis, o `None` si se puede.
+
+    Una instantánea es inmutable (triggers de la migración 0004): la de un
+    símbolo que ninguna fuente conoce —un error de tecleo, «AAPLL»— no se puede
+    borrar nunca. Antes bastaba abrir «Qué cambió» o evaluar una idea en Cartera
+    para dejarla en la base (segunda revisión del 2.1). Se decide con lo que el
+    análisis ya trae, sin volver a pedir nada: sin precio (ni cotización ni
+    último cierre) y sin estados financieros no registra nada que la app
+    supiera. Preguntar otra vez a las fuentes costaba, en una caída, una
+    veintena de llamadas con sus esperas (tercera pasada).
+
+    El motivo distingue «ninguna fuente lo tiene» de «no respondieron»: decir
+    «quizá no existe» de una empresa real durante una caída era un fallo
+    contado como ausencia.
+    """
+    precio = analisis["mercado"]["precio"]
+    fund = analisis.get("_fund") or {}
+    if precio.get("valor") is not None or fund.get("_periodos"):
+        return None
+    symbol = analisis["symbol"]
+    motivos = {"la cotización": precio.get("motivo"), "los estados financieros": fund.get("motivo")}
+    cayeron = [nombre for nombre, m in motivos.items() if m and m.startswith(TODAS_FALLARON)]
+    if cayeron:
+        return (f"No se guarda una instantánea de {symbol}: no hay precio ni estados financieros, y "
+                f"{' ni '.join(cayeron)} no se pudieron descargar (las fuentes no respondieron). "
+                "Se guardará cuando respondan.")
+    detalle = "; ".join(f"{nombre}: {m}" for nombre, m in motivos.items() if m)
+    return (f"Ninguna fuente tiene precio ni estados financieros de {symbol} ({detalle}): "
+            "no se guarda una instantánea de algo que quizá no existe.")
 
 
 def datos_desconocidos(a: dict) -> list[dict]:

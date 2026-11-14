@@ -28,7 +28,7 @@ from datetime import date, datetime
 
 from app import datos
 from app.etiquetas import etiqueta
-from app.formato import fmt_fecha, fmt_num, fmt_pct, plural
+from app.formato import decimales_frente, fmt_fecha, fmt_num, fmt_pct, plural
 
 OK, DEBIL, CRITICO, DESCONOCIDO = "ok", "debil", "critico", "desconocido"
 ALTA, MEDIA, BAJA = "alta", "media", "baja"
@@ -146,7 +146,7 @@ def evaluar(analisis: dict, ahora: datetime) -> dict:
             "sensibilidad_valoracion", "Sensibilidad de la valoración al WACC",
             OK if amplitud <= AMPLITUD_DCF_INVERSO else DEBIL,
             f"el crecimiento implícito va de {fmt_pct(rango['bajo'])} a {fmt_pct(rango['alto'])} "
-            "entre un WACC del 7 % y del 12 %",
+            "entre un WACC del 7\u00a0% y del 12\u00a0%",
         ))
     else:
         factores.append(_f("sensibilidad_valoracion", "Sensibilidad de la valoración al WACC",
@@ -162,7 +162,10 @@ def evaluar(analisis: dict, ahora: datetime) -> dict:
                 continue
             limite = CERCA_UMBRAL_PUNTOS if c.get("unidad") == "puntos" else CERCA_UMBRAL_PRECIO_PCT
             if abs(dist) < limite:
-                cerca.append(f"{c['condicion']} (a {fmt_num(abs(dist), 3, ceros=False)} {c.get('unidad')}) → {alt['hacia']}")
+                # Con tres decimales fijos, la distancia pendiente 0,0004 que sirve
+                # el motor se escribía «(a 0 puntos)» (revisión 8).
+                cifra = fmt_num(abs(dist), max(3, decimales_frente(abs(dist), [0])), ceros=False)
+                cerca.append(f"{c['condicion']} (a {cifra} {c.get('unidad')}) → {alt['hacia']}")
     factores.append(_f(
         "estabilidad", "Distancia de la decisión a sus umbrales",
         DEBIL if cerca else OK,

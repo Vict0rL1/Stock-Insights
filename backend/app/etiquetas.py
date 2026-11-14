@@ -50,6 +50,8 @@ _BASE: dict[str, str] = {
     "debil": "débil",
     "critico": "crítico",
     "intacta": "intacta",
+    "sin_comprobar": "sin comprobar",
+    "sin_puntos": "sin puntos vigilables",
     "valido": "válido",
     "viejo": "viejo",
     "sin_cartera": "sin cartera",

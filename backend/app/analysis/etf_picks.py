@@ -15,7 +15,7 @@ Lo que sí predice el resultado de un ETF, por orden de solidez de la evidencia:
    conocido y garantizado — lo pagas seguro, gane o pierda el fondo.
 
 2. **La tendencia.** El mismo filtro de la media de 200 sesiones que las
-   acciones. Un precio es un precio.
+   acciones, con su banda (`decision._tendencia`). Un precio es un precio.
 
 3. **El tamaño.** Un ETF pequeño tiene horquillas más anchas y puede cerrarse:
    si liquidan el fondo, te devuelven el dinero cuando a ellos les conviene, y
@@ -27,6 +27,9 @@ ETF de salud y uno de energía es una apuesta sectorial, y esa decisión es tuya
 """
 
 from __future__ import annotations
+
+from app import datos
+from app.analysis.decision import _tendencia
 from app.formato import fmt_compacto, fmt_num, fmt_pct
 
 # Umbrales. Están aquí, con nombre, para poder discutirlos.
@@ -76,11 +79,19 @@ def evaluar_etf(etf: dict, price: dict | None) -> dict:
     coste_v, coste_txt = _nota_coste(etf.get("expense_ratio"))
     tam_v, tam_txt = _nota_tamano(etf.get("aum"))
 
-    sobre_media = (price or {}).get("above_sma200")
+    # La regla de las acciones (`decision._tendencia`), con su banda: con el
+    # booleano crudo «precio > media», un ETF un 0,5 % sobre su media salía
+    # «comprar» mientras `decide` lo dejaba en «vigilar», y el docstring y el
+    # README decían que era el mismo filtro (revisión 5).
+    p = price or {}
+    ultimo, sma = datos.numero(p.get("last")), datos.numero(p.get("sma200"))
+    sobre_media = _tendencia(ultimo, sma, p.get("above_sma200")) if ultimo is not None else p.get("above_sma200")
     if sobre_media is True:
-        tend_v, tend_txt = 1.0, "Cotiza sobre su media de 200 sesiones: la tendencia acompaña."
+        tend_v, tend_txt = 1.0, "Cotiza sobre su media de 200 sesiones con margen: la tendencia acompaña."
     elif sobre_media is False:
         tend_v, tend_txt = 0.0, "Cotiza bajo su media de 200 sesiones: tendencia en contra."
+    elif sma is not None and ultimo is not None:
+        tend_v, tend_txt = 0.5, "Cotiza cerca de su media de 200 sesiones, dentro de la banda: ni a favor ni en contra."
     else:
         tend_v, tend_txt = 0.5, "Sin histórico suficiente para juzgar la tendencia."
 

@@ -3,7 +3,7 @@
 El motor (`analysis/coste_de_oportunidad.py`) es puro. Aquí se le dan sus
 entradas, sin inventar ninguna:
 
-- el **efectivo** que el usuario anotó (la última anotación de cada moneda,
+- el **efectivo** que el usuario anotó (el saldo vigente de cada moneda,
   convertida); sin anotación, desconocido;
 - el **tamaño máximo** de la idea, del dimensionador de siempre, con la cartera
   abierta y la confianza de la idea como entrada declarada;
@@ -26,46 +26,101 @@ from app import snapshots as sn
 from app.analysis import coste_de_oportunidad as motor
 from app.analysis import fx, portfolio_risk
 from app.analysis.rule_backtest import costes_por_lado
-from app.analysis.sizing import MAX_POR_POSICION_PCT, dimensionar
+from app.analysis.sizing import MAX_POR_POSICION_PCT, aviso_cartera_parcial, dimensionar, efecto_cartera_parcial
 from app.db.models import CashBalance, DecisionSnapshot
+from app.etiquetas import etiqueta
+from app.formato import fmt_fecha, plural
 
 
 def _ultimas_anotaciones(session: Session, ahora: datetime) -> list[CashBalance]:
-    """La última anotación de cada moneda que ya existía en `ahora`.
+    """La anotación VIGENTE de cada moneda en `ahora`.
 
-    Antes se cogía la última de cada moneda y, si era posterior a `ahora`, se
-    descartaba: en un análisis a fecha pasada el efectivo de entonces salía «no
-    anotado» en vez de ser la anotación anterior. Son pocas filas: se filtran
-    aquí, con el punto en el tiempo, en vez de en SQL.
+    Cuenta solo lo que ya se sabía en `ahora`: un saldo fechado antes Y anotado
+    antes. Antes bastaba la fecha del saldo, y un efectivo anotado hoy con fecha
+    del 1 de septiembre aparecía en una reconstrucción del 12, cuando aún no se
+    había escrito (auditoría del 19 oct); y lo que no se podía probar (`None`)
+    contaba como sabido.
+
+    Entre las que cuentan, manda el saldo MÁS RECIENTE (`as_of`), no la última
+    fila: anotar después un saldo antiguo, para la historia, no tapa el de hoy.
+    Con el mismo `as_of`, la anotada después corrige a la anterior. Son pocas
+    filas: se filtran aquí, con el punto en el tiempo, en vez de en SQL.
     """
-    filas = session.execute(select(CashBalance).order_by(CashBalance.id)).scalars().all()
-    por_moneda: dict[str, CashBalance] = {}
+    filas = session.execute(select(CashBalance)).scalars().all()
+    vigente: dict[str, tuple] = {}
     for c in filas:
-        if pit.disponible_en(c.as_of, ahora) is not False:
-            por_moneda[c.moneda] = c
-    return list(por_moneda.values())
+        if not (pit.disponible_en(c.as_of, ahora) is True and pit.disponible_en(c.registrado_en, ahora) is True):
+            continue
+        orden = (pit.marca(c.as_of)[0], pit.marca(c.registrado_en)[0], c.id)
+        if c.moneda not in vigente or orden > vigente[c.moneda][0]:
+            vigente[c.moneda] = (orden, c)
+    return [c for _, c in vigente.values()]
+
+
+def _tipo_en(serie: list, ahora: datetime, moneda: str | None = None) -> dict | None:
+    """El último tipo de la serie que ya se conocía en `ahora`, con su fecha.
+
+    Antes se cogía el último de la serie, fuera de cuando fuera: 130 CAD
+    anotados el 11 de septiembre, a 1,30, valían 100 USD; recalculado el 12 con
+    la serie ya descargada hasta el 14 (1,50), 86,67 USD (auditoría del 19 oct).
+    Un tipo fechado el mismo día de una decisión con hora no se conocía salvo
+    prueba (`punto_en_el_tiempo`): FRED lo publica después.
+
+    Con `moneda`, el tipo elegido pasa el detector de inversión
+    (`fx.comprobar_banda`, que lanza `fx.SinTipo`), como el tipo de hoy en
+    `fx.tipo_desde_observaciones`: la serie solo comprueba su mediana, y un
+    último punto de 13 en vez de 1,30 convertía la posición a 10 USD sin aviso
+    (revisión de 2f8d84b)."""
+    disponibles = pit.filtrar(sorted(serie or []), lambda p: p[0], ahora)["disponibles"]
+    utiles = [(fecha, tipo) for fecha, tipo in disponibles if datos.precio(tipo) is not None]
+    if not utiles:
+        return None
+    fecha, tipo = utiles[-1]
+    if moneda is not None:
+        fx.comprobar_banda(moneda, tipo)
+    dias = pit.antiguedad_dias(fecha, ahora)
+    return {"por_usd": tipo, "fecha": fecha.isoformat(), "dias": dias, "fresco": dias <= fx.DIAS_FRESCO}
+
+
+SIN_ANOTAR = "no hay efectivo anotado"
 
 
 def efectivo_usd(session: Session, ctx: dict, ahora: datetime) -> dict:
-    """{usd, detalle}. Una moneda sin tipo de cambio deja el total DESCONOCIDO."""
+    """{usd, estado, detalle}. Una moneda sin tipo de cambio conocido en `ahora`
+    deja el total DESCONOCIDO; con un tipo de más de `fx.DIAS_FRESCO` días se
+    convierte igual, como en la cartera, pero el estado es «viejo» y se dice."""
     ultimas = _ultimas_anotaciones(session, ahora)
     if not ultimas:
-        return {"usd": None, "estado": "desconocido", "motivo": "no hay efectivo anotado"}
-    total, detalle = 0.0, []
+        return {"usd": None, "estado": "desconocido", "motivo": SIN_ANOTAR}
+    total, detalle, viejos = 0.0, [], []
     for c in ultimas:
+        tipo = None
         if c.moneda == "USD":
             usd = c.importe
         else:
-            serie = sorted(ctx.get("fx_series", {}).get(c.moneda) or [])
-            tipo = serie[-1][1] if serie else None
-            if not tipo:
-                return {"usd": None, "estado": "desconocido",
-                        "motivo": f"efectivo en {c.moneda} sin tipo de cambio: no se supone 1:1"}
-            usd = c.importe / tipo
+            serie = ctx.get("fx_series", {}).get(c.moneda) or []
+            try:
+                tipo = _tipo_en(serie, ahora, c.moneda)
+            except fx.SinTipo as exc:
+                return {"usd": None, "estado": "desconocido", "motivo": f"efectivo en {c.moneda}: {exc}"}
+            if tipo is None:
+                motivo = (f"efectivo en {c.moneda} sin tipo de cambio conocido a esa fecha (la serie empieza "
+                          "después): no se supone 1:1") if serie else (
+                          f"efectivo en {c.moneda} sin tipo de cambio: no se supone 1:1")
+                return {"usd": None, "estado": "desconocido", "motivo": motivo}
+            usd = c.importe / tipo["por_usd"]
+            if not tipo["fresco"]:
+                viejos.append(f"{c.moneda}, del {fmt_fecha(tipo['fecha'])}")
         total += usd
         detalle.append({"moneda": c.moneda, "importe": c.importe, "usd": round(usd, 2),
-                        "as_of": sn.iso_utc(c.as_of)})
-    return {"usd": round(total, 2), "estado": "valido", "detalle": detalle}
+                        "as_of": sn.iso_utc(c.as_of),
+                        **({"tipo_por_usd": tipo["por_usd"], "tipo_fecha": tipo["fecha"],
+                            "tipo_fresco": tipo["fresco"]} if tipo else {})})
+    salida = {"usd": round(total, 2), "estado": "viejo" if viejos else "valido", "detalle": detalle}
+    if viejos:
+        salida["motivo"] = (f"tipo de cambio de más de {fx.DIAS_FRESCO} días ({'; '.join(viejos)}): "
+                            "se convierte con él y se dice")
+    return salida
 
 
 def efectivo_con_cambio(session: Session, service, ahora: datetime) -> dict:
@@ -83,13 +138,20 @@ def efectivo_con_cambio(session: Session, service, ahora: datetime) -> dict:
 
 
 def _lectura_congelada(session: Session, symbol: str, ahora: datetime) -> dict:
-    """La última lectura de análisis de una posición, tal como se congeló."""
-    snap = session.execute(
+    """La última lectura de análisis de una posición que ya existía en `ahora`,
+    tal como se congeló.
+
+    Se filtra ANTES de elegir la más reciente: antes se cogía la más reciente y,
+    si era posterior a `ahora`, se devolvía nada, así que una reconstrucción
+    del 12 con una lectura del 15 en la base salía «sin lectura» aunque hubiera
+    una válida del 10 (auditoría del 19 oct), como hace `anterior_comparable`."""
+    filas = session.execute(
         select(DecisionSnapshot)
         .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{sn.ORIGEN_ANALISIS}:%"))
         .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
-    ).scalars().first()
-    if snap is None or pit.disponible_en(snap.creado_en, ahora) is False:
+    ).scalars()
+    snap = next((s for s in filas if pit.disponible_en(s.creado_en, ahora) is True), None)
+    if snap is None:
         return {}
     a = (snap.contexto or {}).get("analisis") or {}
     return {
@@ -136,13 +198,29 @@ def evaluar(
     symbol = analisis["symbol"]
     decision = analisis.get("decision") or {}
     efectivo = efectivo_usd(session, ctx, ahora)
+    # Con posiciones abiertas sin valorar (sin precio, sin moneda o sin tipo),
+    # el efectivo no se suma, como en Hoy (`signals._cartera_actual`, base
+    # «invertido_parcial»): sumarlo a una parte de la cartera inventa una
+    # liquidez que no existe y afloja los topes. Con una posición de 100.000 USD
+    # sin cotización y 1.000 de efectivo, la ficha decía «Hay efectivo (100 %)»
+    # y no nombraba la posición (revisión 5).
+    fuera = [x for x in ctx.get("sin_peso") or [] if x["symbol"] != symbol]
+    nombres = "; ".join(f"{x['symbol']}, {x['motivo']}" for x in fuera[:5])
+    parcial = bool(fuera) and efectivo["usd"] is not None
+    if parcial:
+        efectivo = {**efectivo, "usd": None, "estado": "desconocido", "motivo": (
+            f"el efectivo anotado no se suma: {len(fuera)} "
+            f"{plural(len(fuera), 'posición abierta no se pudo valorar', 'posiciones abiertas no se pudieron valorar')} "
+            f"({nombres}), y sumarlo a una parte de la cartera inventaría una liquidez que no existe")}
     invertido = ctx.get("total_usd") or 0.0
     capital = invertido + (efectivo["usd"] or 0.0)
 
     posiciones = [p for p in ctx["posiciones"] if p.get("peso") is not None and p["symbol"] != symbol]
     # Con el efectivo conocido, los pesos son sobre el capital TOTAL. Sin él,
     # sobre lo invertido: pesos más altos, topes más estrictos — el error va
-    # hacia el lado prudente y se dice.
+    # hacia el lado prudente y se dice. Salvo con posiciones sin valorar: esas
+    # no cuentan en los topes por sector y correlación, que se aflojan, y el
+    # veredicto lo dice más abajo (revisión 6).
     for p in posiciones:
         p["peso_capital"] = p["valor_usd"] / capital if capital else None
 
@@ -169,7 +247,8 @@ def evaluar(
                       "peso_pct": (p["peso_capital"] if efectivo["usd"] is not None else p["peso"]) * 100,
                       "vol_anual_pct": _pct((por_contrib.get(p["symbol"]) or {}).get("volatilidad"))}
                      for p in posiciones],
-            base_cartera="capital" if efectivo["usd"] is not None else "invertido",
+            base_cartera="capital" if efectivo["usd"] is not None else "invertido_parcial" if parcial else "invertido",
+            parcial=bool(fuera),
         )
         tamano = (sizing["pesos"].get(symbol) or 0.0) / 100
 
@@ -203,9 +282,48 @@ def evaluar(
         tipo_impositivo=tipo_impositivo,
         max_posicion=MAX_POR_POSICION_PCT / 100,
         recortes=(sizing or {}).get("recortes"),
+        # Anotado pero sin tipo a esa fecha, o con uno viejo: el veredicto lo dice.
+        # Sin anotar y con posiciones sin valorar, «Anota tu efectivo» no llevaba
+        # a nada: anotado tampoco se sumaría (revisión 9).
+        aviso_efectivo=(
+            efectivo.get("motivo") if efectivo["estado"] != "valido" and efectivo.get("motivo") != SIN_ANOTAR
+            else (f"aunque lo anotaras no se sumaría mientras {len(fuera)} "
+                  f"{plural(len(fuera), 'posición abierta siga sin valorar', 'posiciones abiertas sigan sin valorar')}")
+            if fuera and efectivo.get("motivo") == SIN_ANOTAR else None
+        ),
     )
     resultado["efectivo"] = efectivo
     resultado["sizing"] = {k: (sizing or {}).get(k) for k in ("controles", "recortes", "todos_los_limites_aplicados")}
+    if fuera and sizing is not None:
+        # Las posiciones sin valorar se nombran haya efectivo o no: sin efectivo
+        # anotado el veredicto solo pedía «Anota tu efectivo», y con un tipo de
+        # cambio rechazado un «no cabe» pasaba a un 6,3 % sin decir por qué
+        # (revisión 6). Solo si hubo tamaño (una «evitar» hablaba de un tamaño que
+        # no se calculó; revisión 7), y con la MISMA frase que el `aviso_cartera`
+        # de Hoy, que seguía afirmando «tu concentración real es mayor» (revisión 8).
+        hay_valoradas = any(p["symbol"] != symbol for p in posiciones)
+        aviso = aviso_cartera_parcial(len(fuera), nombres, hay_valoradas)
+        resultado["sizing"]["aviso_cartera"] = aviso
+        # Con el efectivo ya desconocido por ellas, su lista ya está en el motivo:
+        # no se repite (revisión 7).
+        cuantas = plural(len(fuera), "Esa posición abierta sin valorar", "Esas posiciones abiertas sin valorar")
+        en_veredicto = f"{cuantas} {efecto_cartera_parcial(len(fuera), hay_valoradas)}" if parcial else aviso
+        resultado["veredicto"] = {**resultado["veredicto"],
+                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {en_veredicto}".strip()}
+    # Un tope que no se pudo aplicar llega a la ficha, como en el panel de Hoy y
+    # con su forma: con una posición sin histórico, la correlación quedaba sin
+    # comprobar y el veredicto decía «Hay efectivo… no hace falta vender nada» sin
+    # más (revisión 7; RC1: «un límite no aplicado se ve en pantalla»). Sin
+    # ninguna pareja posible (la cartera vacía, o nada valorado) no hay nada que
+    # comprobar: toda compra de un usuario nuevo avisaba de «0 de 0 parejas»
+    # (revisión 8). Van al final, para que «Esa posición…» siga al paréntesis del
+    # efectivo que la nombra.
+    sin_aplicar = [c for c in (sizing or {}).get("controles") or []
+                   if not c.get("aplicado") and c.get("motivo") and c.get("parejas_posibles") != 0]
+    if sin_aplicar:
+        topes = " ".join(f"Tope por {etiqueta(c['limite'])}. {c['motivo']}" for c in sin_aplicar)
+        resultado["veredicto"] = {**resultado["veredicto"],
+                                  "motivo": f"{resultado['veredicto'].get('motivo', '')} {topes}".strip()}
     resultado["impuestos"] = ({"tipo": tipo_impositivo} if tipo_impositivo is not None
                               else {"tipo": None, "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero"})
     resultado["huella"] = f"{resultado['veredicto']['accion']}:{resultado['veredicto'].get('revisar')}"

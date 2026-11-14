@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
 import { CurvaDeCartera, Sparkline } from '../components/Sparkline'
 import { api } from '../api/client'
 import type {
@@ -8,12 +9,21 @@ import type {
   HistorialDeCartera,
   Estres,
   Portfolio,
+  PortfolioPosition,
   PriceAlert,
   RiskBudget,
   Vigilancia,
-  WatchlistItem,
 } from '../api/types'
-import { fmtDinero, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
+import { leerNumero } from '../lib/entrada'
+import { useDato, type CargaConReintento } from '../lib/useDato'
+import { MarcoTabla } from '../components/MarcoTabla'
+
+// Las cifras que se escriben aquí se guardan: con `parseFloat`, «1.250,50»
+// (como la app escribe un importe) era 1,25 y «12,5» era 12, sin aviso. Una
+// posición, un stop o una venta guardados mil veces más pequeños (tercera
+// pasada de la revisión del 2.1). Lo que no se entiende se dice y no se envía.
+const EJEMPLO = 'escribe p. ej. 1.250,50 o 98,5'
 
 type Tab = 'portafolio' | 'watchlist' | 'alertas'
 
@@ -25,6 +35,18 @@ type Tab = 'portafolio' | 'watchlist' | 'alertas'
  *  lo que vio, porque un «peor caso» de cinco años tranquilos no es el peor
  *  caso: es el peor de lo que dio tiempo a pasar.
  */
+/** Las posiciones que el estrés no ve, por nombre y con la parte del dinero que
+ *  sí mide: se reponderaba el resto en silencio y la caída de un 9 % de la
+ *  cartera pasaba por la de toda (revisión 8). */
+function SinHistorico({ estres }: { estres: Estres }) {
+  if (!estres.aviso_sin_historico) return null
+  return (
+    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+      {estres.aviso_sin_historico}
+    </p>
+  )
+}
+
 function EstresPanel({ estres }: { estres: Estres }) {
   if (!estres.suficiente) {
     return (
@@ -35,6 +57,7 @@ function EstresPanel({ estres }: { estres: Estres }) {
         <p className="mt-1 text-xs text-slate-500">
           {estres.nota ?? 'Histórico insuficiente para estresar esta cartera.'}
         </p>
+        <SinHistorico estres={estres} />
       </section>
     )
   }
@@ -87,6 +110,7 @@ function EstresPanel({ estres }: { estres: Estres }) {
           <dd className="text-[11px] text-slate-400">{estres.cobertura}</dd>
         </div>
       </dl>
+      <SinHistorico estres={estres} />
       {estres.aviso_cobertura && (
         <p
           className={`mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed ${
@@ -221,24 +245,21 @@ function DivisasPanel({ d }: { d: DivisasDeCartera }) {
 
 /** El recorrido del valor de la cartera, no solo el P&L de hoy.
  *
- *  Se carga aparte y solo cuando se abre la pestaña: necesita el histórico
- *  largo de cada posición, que puede costar una descarga. */
-function HistorialPanel() {
-  const [d, setD] = useState<HistorialDeCartera | null>(null)
-  const [error, setError] = useState<string | null>(null)
+ *  Su carga vive en `PortfolioTab` (solo cuando se abre la pestaña: necesita el
+ *  histórico largo de cada posición, que puede costar una descarga) para que
+ *  añadir o cerrar una posición lo vuelva a pedir. Mientras colgaba de aquí,
+ *  solo se volvía a pedir al desmontarse; con `refrescar` no se desmonta y la
+ *  curva se quedaba en la cartera de antes (segunda revisión del 2.1). El fallo
+ *  salía como el motivo a secas, sin decir qué no había cargado (ítem 2.1). */
+function HistorialPanel({ historial }: { historial: CargaConReintento<HistorialDeCartera> }) {
+  return (
+    <BloqueDatos carga={historial} que="el recorrido de la cartera">
+      {(d) => <Recorrido d={d} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    api.historialDeCartera(false).then(setD, (e: Error) => setError(e.message))
-  }, [])
-
-  if (error) {
-    return (
-      <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        {error}
-      </section>
-    )
-  }
-  if (!d) return null
+function Recorrido({ d }: { d: HistorialDeCartera }) {
   if (!d.disponible) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -284,9 +305,14 @@ function HistorialPanel() {
             <div className="text-[10px] uppercase tracking-wide text-slate-400">
               Rendimiento
             </div>
+            {/* Sin dato, en neutro: `?? 0` lo pintaba en verde (ítem 2.1). */}
             <div
               className={`text-xl font-semibold tabular-nums ${
-                (r.rendimiento_pct ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700'
+                r.rendimiento_pct == null
+                  ? 'text-slate-500'
+                  : r.rendimiento_pct >= 0
+                    ? 'text-emerald-700'
+                    : 'text-red-700'
               }`}
             >
               {fmtPct(r.rendimiento_pct, 1, { signo: true, enPuntos: true })}
@@ -333,35 +359,99 @@ function Pnl({ value, pct, moneda = null }: { value: number | null; pct: number 
   if (value === null) return <span className="text-slate-400">—</span>
   const up = value >= 0
   return (
-    <span className={`tabular-nums font-medium ${up ? 'text-emerald-600' : 'text-red-600'}`}>
-      {fmtDinero(value, moneda, 2, { signo: true })}
-      {pct !== null && <span className="ml-1 text-xs">({fmtPct(pct)})</span>}
+    // Con `flex-wrap`, el porcentaje baja de línea si no cabe: entre el importe y
+    // «(9,0 %)» no había por dónde partir, y a 390 px el porcentaje se salía de su
+    // tarjeta y lo tapaba la de al lado (ítem 2.12).
+    <span className={`inline-flex flex-wrap items-baseline gap-x-1 tabular-nums font-medium ${up ? 'text-emerald-600' : 'text-red-600'}`}>
+      <span>{fmtDinero(value, moneda, 2, { signo: true })}</span>
+      {pct !== null && <span className="text-xs">({fmtPct(pct)})</span>}
     </span>
   )
 }
 
+/** ¿Hay importes en más de una moneda en pantalla? `mezcla_de_divisas` solo
+ *  mira las abiertas: una cerrada en CAD entre abiertas en USD salía «+370,00»
+ *  a secas, junto a un realizado que está en USD (ítem 2.1). Una moneda
+ *  desconocida tampoco es la base. */
+function variasMonedas(data: Portfolio): boolean {
+  if (data.divisas?.mezcla_de_divisas) return true
+  const base = data.divisas?.base
+  return base != null && data.closed_positions.some((c) => c.currency !== base)
+}
+
+/** El estado del precio de una fila, si no es el normal.
+ *
+ *  La tabla se hacía su propio «viejo · N min» con minutos a mano, y el
+ *  «desconocido» que manda el backend (ninguna fuente dio precio) no se decía:
+ *  la fila quedaba con un «—» sin explicar (ítem 2.1). */
+function EstadoDelPrecio({ p }: { p: PortfolioPosition }) {
+  if (p.precio_estado === 'viejo') {
+    const s = p.precio_antiguedad_segundos
+    return (
+      <span
+        className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800"
+        title="Todas las fuentes fallaron: es la última copia guardada."
+      >
+        viejo · {s == null ? 'antigüedad desconocida' : fmtAntiguedad(new Date(Date.now() - s * 1000))}
+      </span>
+    )
+  }
+  if (p.precio_estado === 'desconocido') {
+    return (
+      <span
+        className="ml-1 rounded bg-slate-100 px-1 text-[10px] text-slate-600"
+        title="Ninguna fuente dio precio: la posición queda fuera de los totales."
+      >
+        precio desconocido
+      </span>
+    )
+  }
+  return null
+}
+
 function PortfolioTab() {
-  const [data, setData] = useState<Portfolio | null>(null)
+  // Un fallo al cargar salía como un motivo suelto junto al formulario, sin
+  // decir qué no había cargado (ítem 2.1). `error` queda para las acciones.
+  const cartera = useDato(() => api.portfolio(), 'cartera')
+  const historial = useDato(() => api.historialDeCartera(false), 'historial')
+  // Tras una acción se refrescan la tabla y el recorrido sin vaciarlos: con
+  // `reintentar` pasaba por «Cargando la cartera…» y la página saltaba
+  // (revisión del 2.1).
+  const load = () => {
+    cartera.refrescar()
+    historial.refrescar()
+  }
   const [form, setForm] = useState({ symbol: '', quantity: '', cost: '' })
   const [error, setError] = useState<string | null>(null)
-  // Con varias divisas, cada importe dice la suya: «2.903,00» a secas no dice
-  // si son dólares o dólares canadienses (ítem 1.7). Con una sola, sería ruido.
-  const monedaDe = (m: string | null | undefined) => (data?.divisas?.mezcla_de_divisas ? (m ?? null) : null)
-
-  const load = useCallback(() => {
-    api.portfolio().then(setData, (e) => setError(e.message))
-  }, [])
-  useEffect(load, [load])
+  // Abierta sin histórico que medir: su stop es el punto medio de la clase y
+  // queda fijado; la respuesta lo decía y nadie lo leía (revisión 9).
+  const [avisoStop, setAvisoStop] = useState<string | null>(null)
 
   const addPosition = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const quantity = leerNumero(form.quantity)
+    const cost = leerNumero(form.cost)
+    if (quantity === null || cost === null) {
+      setError(
+        quantity === null
+          ? `«${form.quantity}» no es un número de acciones: ${EJEMPLO}.`
+          : `«${form.cost}» no es un coste por acción: ${EJEMPLO}.`,
+      )
+      return
+    }
+    setAvisoStop(null)
     try {
-      await api.addPosition({
+      const creada = await api.addPosition({
         symbol: form.symbol.trim().toUpperCase(),
-        quantity: parseFloat(form.quantity),
-        cost_basis: parseFloat(form.cost),
+        quantity,
+        cost_basis: cost,
       })
+      if (creada.stop_por_clase) {
+        setAvisoStop(
+          `${creada.symbol}: no había histórico para medir su volatilidad, así que su stop es el punto medio de su clase, no uno medido. Revísalo: se puede subir, no bajar.`,
+        )
+      }
       setForm({ symbol: '', quantity: '', cost: '' })
       load()
     } catch (err) {
@@ -379,8 +469,11 @@ function PortfolioTab() {
       sugerido ? String(sugerido) : '',
     )
     if (!raw) return
-    const stop = parseFloat(raw)
-    if (Number.isNaN(stop)) return
+    const stop = leerNumero(raw)
+    if (stop === null) {
+      setError(`«${raw}» no es un precio de stop: ${EJEMPLO}.`)
+      return
+    }
     try {
       await api.fijarStop(id, stop)
       load()
@@ -392,10 +485,18 @@ function PortfolioTab() {
   const close = async (id: number) => {
     const raw = window.prompt('Precio de venta por acción:')
     if (!raw) return
-    const price = parseFloat(raw)
-    if (Number.isNaN(price)) return
-    await api.closePosition(id, price)
-    load()
+    const price = leerNumero(raw)
+    if (price === null) {
+      setError(`«${raw}» no es un precio de venta: ${EJEMPLO}.`)
+      return
+    }
+    // Sin capturar, un cierre rechazado no decía nada (ítem 2.1).
+    try {
+      await api.closePosition(id, price)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    }
   }
 
   const inputCls =
@@ -426,250 +527,280 @@ function PortfolioTab() {
           Añadir posición
         </button>
         {error && <span className="text-sm text-red-600">{error}</span>}
+        {avisoStop && <span className="text-sm text-amber-800">{avisoStop}</span>}
       </form>
 
-      {data && (
-        <>
-          <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs text-slate-400">Invertido</div>
-              <div className="text-xl font-semibold tabular-nums">
-                {fmtDinero(data.summary.total_invested, monedaDe(data.divisas?.base))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs text-slate-400">Valor de mercado</div>
-              <div className="text-xl font-semibold tabular-nums">
-                {fmtDinero(data.summary.total_market_value, monedaDe(data.divisas?.base))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs text-slate-400">No realizado</div>
-              <div className="text-xl">
-                <Pnl value={data.summary.unrealized_pnl} pct={data.summary.unrealized_pct} moneda={monedaDe(data.divisas?.base)} />
-              </div>
-              {/* La rentabilidad no se enseña sola, nunca. Un «+12 %» y un
-                  «+12 % con un −45 % por el camino» son propuestas distintas, y
-                  quien solo ve la primera abandona en el peor momento. */}
-              <div className="mt-1 text-[11px] leading-tight text-slate-500">
-                {data.summary.max_drawdown_esperado_pct !== null ? (
-                  <>
-                    Peor caída histórica de esta cartera:{' '}
-                    <span className="font-medium text-red-700 tabular-nums">
-                      {fmtPct(data.summary.max_drawdown_esperado_pct, 1, { enPuntos: true })}
-                    </span>
-                  </>
-                ) : (
-                  'Sin histórico para estimar la caída máxima.'
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs text-slate-400">Realizado (cerradas)</div>
-              <div className="text-xl">
-                <Pnl value={data.summary.realized_pnl} pct={null} />
-              </div>
-              {(data.summary.realizado_sin_convertir?.length ?? 0) > 0 && (
-                <div className="mt-1 text-[11px] text-amber-800">
-                  Sin contar {data.summary.realizado_sin_convertir!.join(', ')}: moneda o
-                  tipo de cambio desconocidos.
+      <BloqueDatos carga={cartera} que="la cartera">
+        {(data) => {
+          // Con varias divisas, cada importe dice la suya: «2.903,00» a secas no dice
+          // si son dólares o dólares canadienses (ítem 1.7). Con una sola, sería ruido.
+          const conCodigo = variasMonedas(data)
+          const monedaDe = (m: string | null | undefined) => (conCodigo ? (m ?? null) : null)
+          return (
+            <>
+              <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 [&>div]:min-w-0">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-xs text-slate-400">Invertido</div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    {fmtDinero(data.summary.total_invested, monedaDe(data.divisas?.base))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-xs text-slate-400">Valor de mercado</div>
+                  <div className="text-xl font-semibold tabular-nums">
+                    {fmtDinero(data.summary.total_market_value, monedaDe(data.divisas?.base))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-xs text-slate-400">No realizado</div>
+                  <div className="text-xl">
+                    <Pnl value={data.summary.unrealized_pnl} pct={data.summary.unrealized_pct} moneda={monedaDe(data.divisas?.base)} />
+                  </div>
+                  {/* La rentabilidad no se enseña sola, nunca. Un «+12 %» y un
+                      «+12 % con un −45 % por el camino» son propuestas distintas, y
+                      quien solo ve la primera abandona en el peor momento. */}
+                  <div className="mt-1 text-[11px] leading-tight text-slate-500">
+                    {data.summary.max_drawdown_esperado_pct !== null ? (
+                      <>
+                        Peor caída histórica de esta cartera:{' '}
+                        <span className="font-medium text-red-700 tabular-nums">
+                          {fmtPct(data.summary.max_drawdown_esperado_pct, 1, { enPuntos: true })}
+                        </span>
+                      </>
+                    ) : (
+                      'Sin histórico para estimar la caída máxima.'
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-xs text-slate-400">Realizado (cerradas)</div>
+                  <div className="text-xl">
+                    {/* En la base, como «Valor de mercado» y «No realizado»: sin
+                        código no se sabía en qué moneda estaba (ítem 2.1). */}
+                    <Pnl value={data.summary.realized_pnl} pct={null} moneda={monedaDe(data.divisas?.base)} />
+                  </div>
+                  {(data.summary.realizado_sin_convertir?.length ?? 0) > 0 && (
+                    <div className="mt-1 text-[11px] text-amber-800">
+                      Sin contar {data.summary.realizado_sin_convertir!.join(', ')}: no se pueden
+                      convertir (moneda desconocida, en céntimos o sin tipo de cambio).
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {(data.summary.precios_viejos?.length ?? 0) > 0 && (
+                <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-800">
+                  Precios VIEJOS en {data.summary.precios_viejos!.join(', ')}: todas las fuentes
+                  fallaron y se usa la última copia guardada. El valor, el P&L y el riesgo de
+                  arriba los incluyen, pero no son de ahora.
+                </p>
+              )}
+
+              {data.summary.priced_positions < data.summary.total_positions && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                  {data.summary.total_positions - data.summary.priced_positions}{' '}
+                  {plural(data.summary.total_positions - data.summary.priced_positions, 'posición', 'posiciones')} sin
+                  precio disponible{' '}
+                  {plural(data.summary.total_positions - data.summary.priced_positions, 'queda', 'quedan')} fuera de los
+                  totales. {data.note}
+                </p>
+              )}
+
+              {data.divisas && <DivisasPanel d={data.divisas} />}
+              <HistorialPanel historial={historial} />
+              {data.risk_budget && <RiskBudgetPanel risk={data.risk_budget} />}
+
+              {data.estres && <EstresPanel estres={data.estres} />}
+
+              {data.concentration_warnings.length > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-1 text-xs font-semibold text-slate-600">Concentración</div>
+                  <ul className="text-xs text-slate-600">
+                    {data.concentration_warnings.map((w) => (
+                      <li key={w}>· {w}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
-            </div>
-          </section>
 
-          {(data.summary.precios_viejos?.length ?? 0) > 0 && (
-            <p className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-800">
-              Precios VIEJOS en {data.summary.precios_viejos!.join(', ')}: todas las fuentes
-              fallaron y se usa la última copia guardada. El valor, el P&L y el riesgo de
-              arriba los incluyen, pero no son de ahora.
-            </p>
-          )}
-
-          {data.summary.priced_positions < data.summary.total_positions && (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-              {data.summary.total_positions - data.summary.priced_positions}{' '}
-              {plural(data.summary.total_positions - data.summary.priced_positions, 'posición', 'posiciones')} sin
-              precio disponible{' '}
-              {plural(data.summary.total_positions - data.summary.priced_positions, 'queda', 'quedan')} fuera de los
-              totales. {data.note}
-            </p>
-          )}
-
-          {data.divisas && <DivisasPanel d={data.divisas} />}
-          <HistorialPanel />
-          {data.risk_budget && <RiskBudgetPanel risk={data.risk_budget} />}
-
-          {data.estres && <EstresPanel estres={data.estres} />}
-
-          {data.concentration_warnings.length > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-1 text-xs font-semibold text-slate-600">Concentración</div>
-              <ul className="text-xs text-slate-600">
-                {data.concentration_warnings.map((w) => (
-                  <li key={w}>· {w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Posiciones abiertas</h2>
-            {data.positions.length === 0 ? (
-              <p className="text-sm text-slate-400">Sin posiciones abiertas.</p>
-            ) : (
-              <table className="w-full min-w-[640px] text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                    {/* «1 año» y no una cabecera vacía: `key={h}` haría colisión
-                        con la columna en blanco del final, y además dice qué
-                        periodo dibuja la línea. */}
-                    {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Valor', 'No realizado', 'Peso', ''].map(
-                      (h) => (
-                        <th key={h} className="px-2 py-1 font-normal">
-                          {h}
-                        </th>
-                      ),
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.positions.map((p) => {
-                    const weight = data.allocation_by_position.find((a) => a.label === p.symbol)
-                    return (
-                      <tr
-                        key={p.id}
-                        className={`border-b border-slate-100 ${
-                          p.sin_convertir ? 'bg-amber-50' : ''
-                        }`}
-                        title={p.sin_convertir ?? undefined}
-                      >
-                        <td className="px-2 py-1.5">
-                          <Link
-                            to={`/ticker/${p.symbol}`}
-                            className="flex items-center gap-2 font-medium hover:underline"
-                          >
-                            <CompanyLogo symbol={p.symbol} size="sm" />
-                            {p.symbol}
-                            {p.currency && p.currency !== data.divisas?.base && (
-                              <span
-                                className={`rounded px-1 py-0.5 text-[9px] font-medium ${
-                                  p.sin_convertir
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
-                                {p.currency}
-                              </span>
-                            )}
-                          </Link>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Sparkline valores={p.spark} width={64} height={20} />
-                        </td>
-                        <td className="px-2 py-1.5 text-xs text-slate-500">{p.sector}</td>
-                        <td className="px-2 py-1.5 tabular-nums">{fmtNum(p.quantity, 0)}</td>
-                        <td className="px-2 py-1.5 tabular-nums">{fmtDinero(p.cost_basis, monedaDe(p.currency))}</td>
-                        <td className="px-2 py-1.5 tabular-nums">
-                          {fmtDinero(p.price, monedaDe(p.currency))}
-                          {p.precio_estado === 'viejo' && (
-                            <span
-                              className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800"
-                              title="Todas las fuentes fallaron: es la última copia guardada."
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <h2 className="mb-2 text-sm font-semibold text-slate-700">Posiciones abiertas</h2>
+                {data.positions.length === 0 ? (
+                  <p className="text-sm text-slate-400">Sin posiciones abiertas.</p>
+                ) : (
+                  <MarcoTabla etiqueta="Posiciones abiertas">
+                    <table className="w-full min-w-[640px] text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                          {/* «1 año» y no una cabecera vacía: `key={h}` haría colisión
+                              con la columna en blanco del final, y además dice qué
+                              periodo dibuja la línea. */}
+                          {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Valor', 'No realizado', 'Peso', ''].map(
+                            (h) => (
+                              <th key={h} className="px-2 py-1 font-normal">
+                                {h}
+                              </th>
+                            ),
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.positions.map((p) => {
+                          const weight = data.allocation_by_position.find((a) => a.label === p.symbol)
+                          return (
+                            <tr
+                              key={p.id}
+                              className={`border-b border-slate-100 ${
+                                p.sin_convertir ? 'bg-amber-50' : ''
+                              }`}
+                              title={p.sin_convertir ?? undefined}
                             >
-                              viejo ·{' '}
-                              {p.precio_antiguedad_segundos != null
-                                ? `${fmtNum(p.precio_antiguedad_segundos / 60, 0)} min`
-                                : 'antigüedad desconocida'}
+                              <td className="px-2 py-1.5">
+                                <Link
+                                  to={`/ticker/${p.symbol}`}
+                                  className="flex items-center gap-2 font-medium hover:underline"
+                                >
+                                  <CompanyLogo symbol={p.symbol} size="sm" />
+                                  {p.symbol}
+                                  {p.currency && p.currency !== data.divisas?.base && (
+                                    <span
+                                      className={`rounded px-1 py-0.5 text-[9px] font-medium ${
+                                        p.sin_convertir
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-slate-100 text-slate-600'
+                                      }`}
+                                    >
+                                      {p.currency}
+                                    </span>
+                                  )}
+                                </Link>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Sparkline valores={p.spark} width={64} height={20} />
+                              </td>
+                              <td className="px-2 py-1.5 text-xs text-slate-500">{p.sector}</td>
+                              <td className="px-2 py-1.5 tabular-nums">{fmtNum(p.quantity, 0)}</td>
+                              <td className="px-2 py-1.5 tabular-nums">{fmtPrecio(p.cost_basis, monedaDe(p.currency))}</td>
+                              <td className="px-2 py-1.5 tabular-nums">
+                                {fmtPrecio(p.price, monedaDe(p.currency))}
+                                <EstadoDelPrecio p={p} />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums">
+                                {fmtDinero(p.market_value, monedaDe(p.currency))}
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <Pnl value={p.unrealized_pnl} pct={p.unrealized_pct} moneda={monedaDe(p.currency)} />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums text-slate-600">
+                                {weight ? fmtPct(weight.weight) : '—'}
+                              </td>
+                              <td className="px-2 py-1.5 text-right">
+                                {p.stop_fijado_al_abrir === false && (
+                                  <button
+                                    // Sin proponer un stop que no se midió: con un Enter se
+                                    // congelaba el supuesto (revisión 9).
+                                    onClick={() => fijarStop(p.id, p.stop_por_clase ? null : p.stop)}
+                                    title={
+                                      p.stop_por_clase
+                                        ? 'Su stop se recalcula y ahora mismo no hay histórico para medir la volatilidad: es el punto medio de su clase, no uno medido. Mejor fijarlo con el histórico a mano.'
+                                        : 'Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo.'
+                                    }
+                                    className="mr-3 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
+                                  >
+                                    Fijar stop
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => close(p.id)}
+                                  className="text-xs text-slate-400 hover:text-slate-700"
+                                >
+                                  Cerrar
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </MarcoTabla>
+                )}
+              </section>
+
+              {data.allocation_by_sector.length > 0 && (
+                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                  <h2 className="mb-2 text-sm font-semibold text-slate-700">Exposición por sector</h2>
+                  <ul className="space-y-1">
+                    {data.allocation_by_sector.map((s) => (
+                      <li key={s.label} className="flex items-center gap-2 text-sm">
+                        <span className="w-40 shrink-0 truncate text-slate-600">{s.label}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded bg-slate-100">
+                          <div className="h-full bg-sky-400" style={{ width: `${s.weight * 100}%` }} />
+                        </div>
+                        <span className="w-16 text-right tabular-nums text-slate-600">
+                          {fmtPct(s.weight)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {data.closed_positions.length > 0 && (
+                <section className="rounded-xl border border-slate-200 bg-white p-4">
+                  <h2 className="mb-2 text-sm font-semibold text-slate-700">Posiciones cerradas</h2>
+                  <ul className="space-y-1 text-sm">
+                    {data.closed_positions.map((p) => (
+                      <li key={p.id} className="flex justify-between border-b border-slate-100 py-1">
+                        <span className="text-slate-700">
+                          {p.symbol}
+                          <span className="ml-2 text-xs text-slate-400">
+                            {fmtFecha(p.closed_at)}
+                          </span>
+                        </span>
+                        {/* En la moneda de la posición, con su código si hay más de
+                            una; si no se sabe cuál es, se dice (ítem 2.1). */}
+                        <span>
+                          <Pnl value={p.realized_pnl} pct={null} moneda={monedaDe(p.currency)} />
+                          {p.currency == null && p.realized_pnl !== null && (
+                            <span className="ml-1 text-[10px] text-amber-800">moneda desconocida</span>
+                          )}
+                          {p.currency != null && p.sin_convertir && (
+                            <span className="ml-1 text-[10px] text-amber-800" title={p.sin_convertir}>
+                              sin convertir
                             </span>
                           )}
-                        </td>
-                        <td className="px-2 py-1.5 tabular-nums">
-                          {fmtDinero(p.market_value, monedaDe(p.currency))}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Pnl value={p.unrealized_pnl} pct={p.unrealized_pct} moneda={monedaDe(p.currency)} />
-                        </td>
-                        <td className="px-2 py-1.5 tabular-nums text-slate-600">
-                          {weight ? fmtPct(weight.weight) : '—'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right">
-                          {p.stop_fijado_al_abrir === false && (
-                            <button
-                              onClick={() => fijarStop(p.id, p.stop)}
-                              title="Su stop se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fíjalo."
-                              className="mr-3 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800"
-                            >
-                              Fijar stop
-                            </button>
-                          )}
-                          <button
-                            onClick={() => close(p.id)}
-                            className="text-xs text-slate-400 hover:text-slate-700"
-                          >
-                            Cerrar
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          {data.allocation_by_sector.length > 0 && (
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">Exposición por sector</h2>
-              <ul className="space-y-1">
-                {data.allocation_by_sector.map((s) => (
-                  <li key={s.label} className="flex items-center gap-2 text-sm">
-                    <span className="w-40 shrink-0 truncate text-slate-600">{s.label}</span>
-                    <div className="h-2 flex-1 overflow-hidden rounded bg-slate-100">
-                      <div className="h-full bg-sky-400" style={{ width: `${s.weight * 100}%` }} />
-                    </div>
-                    <span className="w-16 text-right tabular-nums text-slate-600">
-                      {fmtPct(s.weight)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {data.closed_positions.length > 0 && (
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">Posiciones cerradas</h2>
-              <ul className="space-y-1 text-sm">
-                {data.closed_positions.map((p) => (
-                  <li key={p.id} className="flex justify-between border-b border-slate-100 py-1">
-                    <span className="text-slate-700">
-                      {p.symbol}
-                      <span className="ml-2 text-xs text-slate-400">
-                        {fmtFecha(p.closed_at)}
-                      </span>
-                    </span>
-                    <Pnl value={p.realized_pnl} pct={null} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
-      )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
+          )
+        }}
+      </BloqueDatos>
     </div>
   )
 }
 
 function WatchlistTab() {
-  const [items, setItems] = useState<WatchlistItem[]>([])
+  // Con la carga fallida, la lista se quedaba en su `[]` inicial y decía
+  // «Watchlist vacía.» (ítem 2.1). `error` queda para las acciones.
+  const watchlist = useDato(() => api.watchlist().then((d) => d.items), 'watchlist')
+  const load = watchlist.refrescar
   const [symbol, setSymbol] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(() => {
-    api.watchlist().then((d) => setItems(d.items), (e) => setError(e.message))
-  }, [])
-  useEffect(load, [load])
+  const quitar = async (id: number) => {
+    setError(null)
+    // Sin capturar, un borrado rechazado no decía nada (ítem 2.1).
+    try {
+      await api.removeFromWatchlist(id)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    }
+  }
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -698,56 +829,66 @@ function WatchlistTab() {
         {error && <span className="self-center text-sm text-red-600">{error}</span>}
       </form>
 
-      {items.length === 0 ? (
-        <p className="text-sm text-slate-400">Watchlist vacía.</p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3"
-            >
-              <div className="flex items-center gap-2.5">
-                <CompanyLogo symbol={item.symbol} size="md" />
-                <div>
-                <Link to={`/ticker/${item.symbol}`} className="font-medium hover:underline">
-                  {item.symbol}
-                </Link>
-                <span className="ml-2 text-xs text-slate-400">
-                  {item.name ?? ''} {item.sector ? `· ${item.sector}` : ''}
-                </span>
-                </div>
-                <Sparkline valores={item.spark} width={64} height={20} className="ml-1" />
-              </div>
-              <div className="flex items-center gap-4">
-                {item.quote ? (
-                  <span className="tabular-nums text-slate-700">
-                    {fmtNum(item.quote.price)}
-                    <span
-                      className={`ml-2 text-sm ${
-                        (item.quote.change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
-                      }`}
-                    >
-                      {fmtPct(item.quote.change_pct, 2, { signo: true, enPuntos: true })}
-                    </span>
+      <BloqueDatos carga={watchlist} que="la watchlist" vacio={(d) => d.length === 0} mensajeVacio="Watchlist vacía.">
+        {(items) => (
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <CompanyLogo symbol={item.symbol} size="md" />
+                  <div>
+                  <Link to={`/ticker/${item.symbol}`} className="font-medium hover:underline">
+                    {item.symbol}
+                  </Link>
+                  <span className="ml-2 text-xs text-slate-400">
+                    {item.name ?? ''} {item.sector ? `· ${item.sector}` : ''}
                   </span>
-                ) : (
-                  <span className="text-sm text-slate-400">sin precio</span>
-                )}
-                <button
-                  onClick={async () => {
-                    await api.removeFromWatchlist(item.id)
-                    load()
-                  }}
-                  className="text-xs text-slate-400 hover:text-red-600"
-                >
-                  Quitar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                  </div>
+                  <Sparkline valores={item.spark} width={64} height={20} className="ml-1" />
+                </div>
+                <div className="flex items-center gap-4">
+                  {item.quote ? (
+                    <span className="tabular-nums text-slate-700">
+                      {fmtPrecio(item.quote.price)}
+                      {/* Sin variación, en neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
+                      <span
+                        className={`ml-2 text-sm ${
+                          item.quote.change_pct == null
+                            ? 'text-slate-400'
+                            : item.quote.change_pct >= 0
+                              ? 'text-emerald-600'
+                              : 'text-red-600'
+                        }`}
+                      >
+                        {fmtPct(item.quote.change_pct, 2, { signo: true, enPuntos: true })}
+                      </span>
+                      {/* Un precio rescatado de la caché (o sin estado fiable) se
+                          dice: salía igual que uno en vivo (revisión del 2.1),
+                          como ya hace la tabla de posiciones. */}
+                      {item.quote.estado !== undefined && item.quote.estado !== 'valido' && (
+                        <span className="ml-2">
+                          <EstadoDato data={item.quote} />
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-slate-400">sin precio</span>
+                  )}
+                  <button
+                    onClick={() => quitar(item.id)}
+                    className="text-xs text-slate-400 hover:text-red-600"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </BloqueDatos>
     </div>
   )
 }
@@ -801,7 +942,7 @@ function AvisoDeVigilancia({ v }: { v: Vigilancia | null }) {
 function textoDeCondicion(c: PriceAlert['condition']): string {
   const verbo = c.op === 'lt' ? 'baja de' : c.op === 'gt' ? 'sube de' : null
   if (verbo === null) return `condición no reconocida (${c.op ?? 'sin operador'})`
-  return `${verbo} ${fmtNum(c.price)}`
+  return `${verbo} ${fmtPrecio(c.price)}`
 }
 
 /** Lo que no se puede comprobar no se pinta como tranquilo. */
@@ -832,37 +973,48 @@ function EstadoDeAlerta({ a }: { a: PriceAlert }) {
 }
 
 function AlertsTab() {
-  const [alerts, setAlerts] = useState<PriceAlert[]>([])
-  const [vigilancia, setVigilancia] = useState<Vigilancia | null>(null)
+  // Un control de riesgo que se callaba: con la carga fallida, `() => setAlerts([])`
+  // pintaba «Sin alertas configuradas.» y quien tenía un stop vigilado creía
+  // que no había ninguno (ítem 2.1). Ahora el fallo se dice, con su motivo.
+  const alertas = useDato(() => api.alerts(), 'alertas')
+  const load = alertas.refrescar
   const [form, setForm] = useState<{ symbol: string; op: 'lt' | 'gt'; price: string }>({
     symbol: '',
     op: 'lt',
     price: '',
   })
+  const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(() => {
-    api.alerts().then(
-      (d) => {
-        setAlerts(d.alerts)
-        setVigilancia(d.vigilancia)
-      },
-      () => {
-        setAlerts([])
-        setVigilancia(null)
-      },
-    )
-  }, [])
-  useEffect(load, [load])
-
+  // Crear y borrar tampoco capturaban: una alerta que no se guardaba no decía nada.
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
-    await api.addAlert({
-      symbol: form.symbol.trim().toUpperCase(),
-      op: form.op,
-      price: parseFloat(form.price),
-    })
-    setForm({ symbol: '', op: 'lt', price: '' })
-    load()
+    setError(null)
+    const price = leerNumero(form.price)
+    if (price === null) {
+      setError(`«${form.price}» no es un precio: ${EJEMPLO}.`)
+      return
+    }
+    try {
+      await api.addAlert({
+        symbol: form.symbol.trim().toUpperCase(),
+        op: form.op,
+        price,
+      })
+      setForm({ symbol: '', op: 'lt', price: '' })
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    }
+  }
+
+  const borrar = async (id: number) => {
+    setError(null)
+    try {
+      await api.deleteAlert(id)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    }
   }
 
   const inputCls =
@@ -894,44 +1046,48 @@ function AlertsTab() {
         <button className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700">
           Crear alerta
         </button>
+        {error && <span className="self-center text-sm text-red-600">{error}</span>}
       </form>
 
-      <AvisoDeVigilancia v={vigilancia} />
+      <BloqueDatos carga={alertas} que="las alertas">
+        {({ alerts, vigilancia }) => (
+          <>
+            <AvisoDeVigilancia v={vigilancia} />
 
-      {alerts.length === 0 ? (
-        <p className="text-sm text-slate-400">Sin alertas configuradas.</p>
-      ) : (
-        <ul className="space-y-2">
-          {alerts.map((a) => (
-            <li
-              key={a.id}
-              className={`flex items-center justify-between rounded-xl border p-3 ${
-                a.triggered ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
-              }`}
-            >
-              <div className="text-sm">
-                <span className="font-medium text-slate-800">{a.symbol}</span>
-                <span className="ml-2 text-slate-500">{textoDeCondicion(a.condition)}</span>
-                <EstadoDeAlerta a={a} />
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-sm tabular-nums text-slate-600">
-                  {a.current_price !== null ? fmtNum(a.current_price) : '—'}
-                </span>
-                <button
-                  onClick={async () => {
-                    await api.deleteAlert(a.id)
-                    load()
-                  }}
-                  className="text-xs text-slate-400 hover:text-red-600"
-                >
-                  Borrar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            {alerts.length === 0 ? (
+              <p className="text-sm text-slate-400">Sin alertas configuradas.</p>
+            ) : (
+              <ul className="space-y-2">
+                {alerts.map((a) => (
+                  <li
+                    key={a.id}
+                    className={`flex items-center justify-between rounded-xl border p-3 ${
+                      a.triggered ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <div className="text-sm">
+                      <span className="font-medium text-slate-800">{a.symbol}</span>
+                      <span className="ml-2 text-slate-500">{textoDeCondicion(a.condition)}</span>
+                      <EstadoDeAlerta a={a} />
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm tabular-nums text-slate-600">
+                        {fmtPrecio(a.current_price)}
+                      </span>
+                      <button
+                        onClick={() => borrar(a.id)}
+                        className="text-xs text-slate-400 hover:text-red-600"
+                      >
+                        Borrar
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </BloqueDatos>
     </div>
   )
 }

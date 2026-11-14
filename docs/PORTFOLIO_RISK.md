@@ -11,10 +11,13 @@ Pesos y series en dólares, una sola vez, con las reglas de la cartera:
 - varios lotes del mismo símbolo = una posición (también en `/api/portfolio/riesgo`
   y, para decidir, en `posiciones_para_decidir`: cantidad sumada, coste medio
   ponderado y el stop más protector de los fijados);
-- sin precio → sin peso, fuera y nombrada (no vale cero);
+- sin precio → sin peso, fuera y nombrada (no vale cero); en vivo nunca se
+  rellena con el último cierre de la caché, igual que en `/api/portfolio`;
 - sin moneda o sin tipo de cambio → fuera y nombrada (no se supone dólar);
 - cada serie se convierte con el tipo de **su** fecha: una acción canadiense mide
-  también su riesgo de divisa.
+  también su riesgo de divisa. Un punto de la serie de tipos fuera de la banda del
+  detector cuenta como un día sin publicar (vale el anterior); el tipo de la fecha
+  de la decisión, en cambio, se rechaza con su motivo.
 
 Solo lee el histórico de la caché, salvo que se pida descargar.
 
@@ -64,9 +67,36 @@ No dice «vende X y compra Y». Concluye una de cinco:
 
 **Entradas, sin inventar ninguna.** Tamaño máximo del dimensionador de siempre
 (cartera abierta, confianza de la idea como entrada declarada). Efectivo
-anotado por el usuario (`POST /api/portfolio/efectivo`, migración 0008; la última
-anotación por moneda manda; sin anotar = desconocido). De cada posición, su última
-lectura **congelada** (acción, tesis, valoración, confianza): no se reanaliza la
+anotado por el usuario (`POST /api/portfolio/efectivo`, migración 0008; sin anotar =
+desconocido). Cuenta lo que ya se sabía en la fecha de la decisión: un saldo fechado antes
+**y anotado antes** (`registrado_en`); entre esos, manda el saldo más reciente (`as_of`), no
+la última fila, y con el mismo `as_of` la anotación posterior corrige a la anterior. Un
+`as_of` de solo día es el saldo de ese día UTC, no su medianoche: el de hoy (o el de mañana en
+UTC, que es el hoy de quien está al este) vale ahora y el de un día pasado, su último instante; uno con hora unos minutos adelantado (reloj de quien llama) se
+guarda como ahora. El POST responde `vigente` y, si un saldo más reciente sigue mandando, una
+`nota` que lo dice. La pantalla de efectivo usa la misma regla. Otra moneda se convierte con
+el último tipo que ya se conocía en la fecha de la decisión (`punto_en_el_tiempo`: el del
+mismo día no, FRED lo publica después), nunca con uno posterior; sin ninguno, el
+efectivo es desconocido; con uno de más de 7 días (`fx.DIAS_FRESCO`) se convierte igual
+pero el estado es `viejo` y la nota de Hoy dice su fecha. El veredicto de la ficha y de
+«Evaluar idea» dice lo mismo (`aviso_efectivo`): con el efectivo anotado pero sin tipo a esa
+fecha no pide «Anota tu efectivo», y con un tipo viejo lo advierte. Las posiciones del capital, igual:
+las abiertas en esa fecha (también las cerradas después), al último cierre conocido si la
+cotización es posterior (o, al reconstruir el pasado, si hoy no hay cotización; en vivo,
+sin cotización la posición queda fuera y nombrada), y convertidas con el mismo tipo que el efectivo.
+Con alguna posición abierta sin valorar, el efectivo anotado **no se suma** (como en Hoy, base
+`invertido_parcial`), el veredicto nombra siempre las posiciones que faltan (con efectivo anotado
+o sin él, una vez y solo si hubo tamaño) y avisa de que los topes por sector y correlación no
+las cuentan mientras las valoradas pesan de más: el tamaño puede quedarse corto o pasarse. Sin
+ninguna valorada no hay nada que pese de más y el tamaño es una cota superior. Es la misma frase
+que el `aviso_cartera` de Hoy (`sizing.aviso_cartera_parcial`). Un tope de correlación o de
+volatilidad que no se pudo aplicar llega también al veredicto de la ficha («Tope por
+correlación. …», como en el panel de Hoy); sin ninguna pareja que comprobar (la cartera vacía o
+nada valorado) no hay aviso. El riesgo se mide solo sobre las posiciones con precio e histórico y
+nombra las que faltan, cada una con su motivo (`aviso`); si ninguna se
+pudo valorar, o la propia empresa está sin valorar, es desconocido y no «sin cartera». De cada posición, su última
+lectura **congelada** que ya existía en la fecha de la decisión (una posterior no esconde la
+anterior) (acción, tesis, valoración, confianza): no se reanaliza la
 cartera entera; sin lectura, «analízala primero».
 
 **Reglas visibles.**

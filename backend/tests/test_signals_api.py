@@ -140,3 +140,12 @@ def test_backtest_sin_edgar_avisa_en_vez_de_inventar(client):
     resp = client.post("/api/signals/backtest", json={"symbols": ["A", "B", "C"]})
     assert resp.status_code == 422
     assert "EDGAR" in resp.json()["detail"]
+
+
+def test_la_respuesta_trae_las_fronteras_de_la_etiqueta(client):
+    """Revisión 9: sin ellas, el frontend escribía 0,3496 «+0,35 neutral» y
+    0,3504 «+0,35 favorable»: la cifra no decía de qué lado de la frontera caía."""
+    from app.analysis.signal import LABEL_THRESHOLDS
+
+    data = client.post("/api/signals/score", json={"symbols": ["A", "B", "C", "D"]}).json()
+    assert data["label_thresholds"] == [t for t, _ in LABEL_THRESHOLDS]

@@ -41,7 +41,7 @@ repositorio.
 
 ## Fase 2 — Claridad y uso diario (P2)
 
-- [ ] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: pendiente · commit: — · nota: —
+- [x] **2.1** `<EstadoDato>` y estados de carga, vacío y error — estado: hecho (tres revisiones independientes, todas arregladas; capturas 1440/390 repetidas, 66 sin fallos) · commit: `d05312c`, `c9eea22`, `d238798`, `9b84525` y el de la tercera pasada (abajo) · nota: `lib/useDato.ts` (cargando/listo/error, reintento, sin respuestas viejas al cambiar de clave) y `components/EstadoDato.tsx` (`EstadoDato` con los cuatro estados del backend, antes `SourceBadge`; `BloqueDatos` y `ErrorDeCarga` con «Reintentar»). Todas las cargas al montar del frontend pasan por ahí: 23 manejadores de error que no miraban el error (fallo pintado como vacío o callado) y los estados ad hoc de unas 30 cargas. La ficha se pinta sin cotización. Tras la revisión: cada carga va atada a su clave (ni un render con los datos de otra), `refrescar()` recarga tras una acción sin vaciar la pantalla, y `ausenteSi404` + `BloqueDatos ausente` dicen un 404 («la fuente no lo tiene») como ausencia, sin «Reintentar». Guardas: ESLint marca un `.then`/`.catch` cuyo manejador no recibe el error, un `catch {}` sin parámetro y una promesa flotante; 73 tests de render en `d05312c` y 37 más en la revisión (todos fallan con el código anterior salvo las guardas rotuladas).
 - [ ] **2.2** V14 · `AvisoAgrupado` — estado: pendiente · commit: — · nota: —
 - [ ] **2.3** Tipografía (mínimo 12 px, `<TituloPagina>`, `<TituloTarjeta>`) — estado: pendiente · commit: — · nota: —
 - [ ] **2.4** V15 · `<BarraExposicion>` — estado: pendiente · commit: — · nota: —
@@ -52,7 +52,7 @@ repositorio.
 - [ ] **2.9** Modo resumen — estado: pendiente · commit: — · nota: —
 - [ ] **2.10** Editar tesis, varias watchlists, exportar CSV — estado: pendiente · commit: — · nota: —
 - [ ] **2.11** Vista global «qué cambió en mis posiciones» — estado: pendiente · commit: — · nota: —
-- [ ] **2.12** V2 · diseño móvil — estado: pendiente · commit: — · nota: —
+- [x] **2.12** V2 · diseño móvil — estado: hecho (adelantado por la auditoría del 19 oct, A7; detalle en su sección) · commit: el de A7 · nota: por debajo de 768 px la barra lateral es un cajón («Menú»); las capturas a 390 px fallan si una pantalla desborda en horizontal o parte un texto palabra a palabra, y ya no pulsan «a la fuerza».
 - [ ] **2.13** Accesibilidad (axe-core, foco, aria-label, color no único) — estado: pendiente · commit: — · nota: —
 - [ ] **2.14** Rendimiento medido de Hoy — estado: pendiente · commit: — · nota: —
 
@@ -123,7 +123,7 @@ la red de seguridad tenía agujeros. Cada hallazgo, su arreglo y su commit:
 | S14 | (revisor D3, D5) Unas 30 fechas ISO en pantalla y en frases del backend; la hora de una cotización sin la zona del mercado | hecho: `fmtFecha`/`fmt_fecha` en todas; ET para la hora del dato de mercado. Multifactor no: sus «desde–hasta» son ejercicios. Guarda: patrón `fecha_iso` en los dos trinquetes (14 sitios en pantalla y 7 frases del backend) y test del rótulo ET | `1aeb8f0` |
 | — | (revisor A6) Los commits llevan `Co-Authored-By: Claude Opus 5.5`, y CLAUDE.md dice «sin identificadores de modelo en commits» | **decidido por Victor (2026-10-09)**: manda CLAUDE.md. Desde ese día los commits van sin identificador de modelo; los 147 anteriores no se reescriben (exigiría forzar `main`) | — |
 | — | (revisor B6) Las bandas de tipo de cambio no ven una inversión cerca de la paridad (EUR del revés da 1,09 por dólar, dentro de 0,5–1,8; también GBP y CHF) | **para Victor**: estrecharlas es cambiar un umbral (§3). Propuesta: banda por divisa alrededor de su rango de 30 años | — |
-| — | (revisor B5) Un instante sin zona: el backend lo escribe en UTC y el frontend en la hora del navegador | **para la Fase 2**: decidir si la pantalla rotula la hora local o escribe siempre UTC; hoy lo rotulado (replay, informe, datos de mercado) ya es explícito | — |
+| — | (revisor B5) Un instante sin zona: el backend lo escribe en UTC y el frontend en la hora del navegador | **hecho (27 oct)**: los dos gemelos escriben UTC, con hora rotulada y sin ella (`fmtFecha` usaba la zona del navegador y el mismo instante daba dos días distintos); la hora de un dato de mercado, en ET | — |
 | — | (revisor B1) La guarda AST no ve un float crudo en un subíndice o una variable local (`f"{est['sharpe']}"`), ni ESLint un `${x}` con un float | **límite conocido**: los tipos no se ven sin ejecutar; lo cubren los trinquetes de fugas (`decimal_punto`) sobre el paquete de casos extremos |  — |
 
 ## Etiquetas
@@ -156,23 +156,26 @@ git push origin 'refs/tags/fase-*:refs/tags/fase-*'   # cuando se pueda; despué
 - **Sin cotización, la ficha entera desaparece** (destapado al dejar de inventar datos en la demo).
   `TickerPage` trata la cotización como imprescindible: si falta, enseña «No se encontró el símbolo» y
   ninguna pestaña, aunque EDGAR tenga estados financieros, análisis, calidad e historial. Ausente ≠ «no
-  existe». Para el ítem 2.1 (estados de dato); hasta entonces la captura `empresa_sin_datos` fotografía eso.
+  existe». **Resuelto en 2.1**: cabecera, «Precio no disponible…» y todas las pestañas.
 - **`?? 0` en el frontend** (`grep -rn "?? 0" frontend/src`): la mayoría solo eligen un color por el
   signo, pero alguno puede pintar un 0 donde falta el dato. En 1.7 se arreglaron los que pintaban una
   cifra (tasa de acierto, minutos de un precio viejo, alertas nuevas). La revisión del 9-oct contó 26
   líneas y no son solo de color y orden: «Posiciones 0» y «+0,0 %» en Cartera, la prima de opciones,
   «0 seguidas» en Señales y «0 ideas» en Hoy pintan una cifra si falta el campo; y `?? 0.05` en
-  `ValuationSection` rellena un 5 % de crecimiento sin decirlo. Para 2.1 (estados de dato).
+  `ValuationSection` rellena un 5 % de crecimiento sin decirlo. **Resuelto en 2.1** (y «Cuánto de tu
+  cartera» en Hoy, que enseñaba el peso bruto como final si faltaba este); quedan los `?.length ?? 0`
+  de condición u orden, inocuos.
 - **Un fallo se pinta como «vacío»**: índices y sectores del panel de mercado hacen `() => setX([])` al
   fallar (curva y macro ya se arreglaron en S11; el calendario en 1.10). El mismo patrón, también como
   `() => setX(null)`, está en unas 15 cargas más; la peor, las alertas de Portafolio («Sin alertas
   configuradas» si la carga falla, un control de riesgo que se calla), y después el efectivo de Cartera,
   `sinTesis` de Vigilancia, Screener, Resultados, Valoración, Señales, Multifactor y las secciones de la
-  ficha. Para 2.1 (estados de dato).
+  ficha. **Resuelto en 2.1**, con guarda de ESLint.
 - **Las posiciones cerradas salen sin moneda**: con dos divisas, su P&L realizado sale sin código. La
   API ya manda `currency` y `opened_at` en cada cerrada (`routers/portfolio.py`); lo que falta es el
   tipo `ClosedPosition` del frontend y pasar la moneda a `<Pnl>` (también en «Realizado (cerradas)»).
-  No cambia el contrato. Para 2.1.
+  No cambia el contrato. **Resuelto en 2.1.** Queda en el backend: `mezcla_de_divisas` solo mira las
+  abiertas (el frontend lo compensa); que `/api/portfolio` cuente también las cerradas.
 - **El texto de la IA sale con el Markdown en crudo** («\*\*Lectura…\*\*»): `content_md` se pinta con
   `whitespace-pre-wrap`, sin interpretar. Visto en las capturas `con_ia` del ítem 1.3. Para 2.x (o
   pedir texto plano al modelo).
@@ -192,9 +195,9 @@ Lo que encontraron y adónde va:
 
 | # | Hallazgo | Destino |
 |---|---|---|
-| M1 | Si falla la descarga de noticias, el disparador de noticias de la tesis cuenta 0 titulares como comprobados y la tesis sale «intacta» (UNKNOWN convertido en PASS) | arreglar ya (visto bueno de Victor) |
-| M2 | «Calibrada» sale con solo la probabilidad del modelo de factores, o con ventaja desconocida: Hoy dice «Reglas validadas contra el histórico» sin backtest de reglas | arreglar ya (visto bueno de Victor) |
-| M3 | Hoy dimensiona sobre lo invertido aunque haya efectivo anotado (0008) y dice «la app no registra tu efectivo»; el coste de oportunidad sí lo usa | arreglar ya (visto bueno de Victor) |
+| M1 | Si falla la descarga de noticias, el disparador de noticias de la tesis cuenta 0 titulares como comprobados y la tesis sale «intacta» (UNKNOWN convertido en PASS) | hecho: `d86f3b8` (golden `tesis`, caso `vacios`, aprobado). Quedan hallazgos de su revisión, abajo |
+| M2 | «Calibrada» sale con solo la probabilidad del modelo de factores, o con ventaja desconocida: Hoy dice «Reglas validadas contra el histórico» sin backtest de reglas | hecho: `c61a65d` (golden igual). Quedan hallazgos de su revisión, abajo |
+| M3 | Hoy dimensiona sobre lo invertido aunque haya efectivo anotado (0008) y dice «la app no registra tu efectivo»; el coste de oportunidad sí lo usa | hecho: `88c391a` y, tras su revisión, `0a54bfd` (golden `hoy`: dos claves nuevas, ninguna cifra cambia) |
 | M4 | La matriz de sensibilidad de la ficha pinta el valor total de la empresa como «valor/acción» si faltan las acciones (`valuation.py`, `value_per_share or equity_value`, hermano de P0-9) | 3.3 o antes |
 | M5 | Hay tres DCF, no dos: el «precargado» del informe (`deep_dive._dcf_defaults`) aplica un 3 % supuesto sin decirlo y no lee la deuda parcial; la ficha supone un 5 % en el frontend y sube a 0 % un crecimiento negativo medido; con crecimiento negativo, bajista y alcista se invierten | 3.3 (incluir el tercero) |
 | M6 | Opciones: volumen e interés abierto ausentes cuentan como 0 (`or 0`), sin marcar parcial | 2.1 o suelto |
@@ -208,7 +211,592 @@ Lo que encontraron y adónde va:
 | M14 | `frontend/tsconfig.node.tsbuildinfo` está versionado aunque `.gitignore` lo ignora; `tsc -b` lo reescribe (hoy idéntico) | `git rm --cached` cuando se toque |
 | M15 | Informe de validación (`coherencia.py`): «1 periodos», fechas ISO y listas de Python en crudo; los trinquetes no lo ven | suelto |
 | M16 | Altman Z cuenta como negativo en la lectura conjunta del informe también en bancos; el aviso solo está en Salud. ROIC con el 21 % supuesto entra en Multifactor y en disparadores sin aviso | para Victor |
-| M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | con M1 |
+| M17 | El instante de una decisión congela «0 disparadores saltando» sin guardar los no comprobados | hecho con M1 (`d86f3b8`) |
+
+**Revisión independiente de M1–M3** (confirmada por un segundo agente). Arreglado en `05f6032`,
+con un test por punto que falla sin el arreglo:
+
+- M1: el análisis vigila el punto de noticias con la lista completa y su resumen (la misma que
+  Vigilancia), no con los 10 titulares recortados para la pantalla.
+- M1: unas noticias viejas rescatadas de la caché ya no cuentan como comprobadas: sin coincidencia,
+  el punto queda «sin comprobar» con «copia guardada hace X»; con coincidencia, salta igual.
+- M1: «Qué cambió» dice por qué un punto deja de medirse («ya no se puede medir (las noticias no se
+  pudieron descargar)…») y `sin_comprobar` / `sin_puntos` tienen etiqueta.
+- M2: el backtest que califica las reglas es el último fiable de la misma clase de activo; el pie de
+  Hoy dice lo mismo que las filas (calibrada, refutada o sin validar y por qué); el panel de Señales
+  no pinta en verde ni en rojo un backtest no fiable; una media sin operaciones de ese lado es «—».
+  El golden de `decide` gana 6 casos (`reglas|…`: calibrada, refutada, gana menos que a ciegas, sin
+  referencia, no fiable y solo probabilidad del modelo); solo se añaden, ninguno existente cambia.
+- M3: los textos que decían «la app no lleva saldo en efectivo» (curva de la cartera y README)
+  ahora dicen que el efectivo anotado no entra en la curva.
+
+**Sigue abierto, para Victor** (M3): Hoy se cachea 6 h con la cartera y el efectivo de cuando se
+puntuó. Invalidar la caché al anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y
+recalcular el tamaño al servirla contradice lo congelado. ¿Recalcular y congelar de nuevo al servir,
+o basta con «Actualizar»?
+
+**Revisión independiente del 2.1** (`d05312c`, 3 bloques revisados y cada hallazgo verificado por
+otro agente; 16 confirmados o matizados). Arreglados en `c9eea22` y `d238798`:
+
+- Ficha: un símbolo que no existe en ninguna fuente (los tres 404) vuelve a decir «No se encontró el
+  símbolo» y no abre pestañas: «Qué cambió» congelaba una instantánea inmutable de él. Las pestañas
+  esperan a saber que existe, y la pestaña elegida es del símbolo (un render con la anterior abierta
+  ya pedía el análisis del nuevo).
+- Un 404 en Fundamentales, pares, Salud, riesgo, Valoración, Filings y Opciones es ausencia, no
+  «No se pudo cargar…» con un «Reintentar» inútil (el motivo de la fuente llega desde la segunda
+  revisión, abajo).
+- Recargar tras una acción (Portafolio, alertas, watchlist, efectivo, Expectativas, Tesis,
+  Vigilancia) y las descargas de Cartera y Contribución ya no vacían la pantalla; el botón dice
+  «Descargando…».
+- Tesis: una lista que no carga ya no sale «Sin tesis guardadas» (el error iba dentro del formulario
+  cerrado); el registro se pedía dos veces al montar. Vigilancia: su carga principal pasa por
+  `useDato`. Borrar tesis, «+ Escenario» y «quitar» un punto ya no fallan en silencio.
+- Noticias: un feed general tardío ya no pisa el del símbolo filtrado; «sin ANTHROPIC_API_KEY» ya no
+  se afirma cuando solo falló la consulta del estado de la IA. La barra lateral vuelve a pedir ese
+  estado cada 30 s, se entera del que consigue otra pantalla y dice «últimas cifras» a la vista.
+- Dato viejo que parecía fresco: watchlist, índices y sectores de Mercado, y cada ETF del comparador
+  (antes solo la insignia del primero).
+- Hoy: la respuesta de un mercado que ya no es el elegido se descarta (su aviso tapaba la lista
+  buena y su «Reintentar» cargaba el otro mercado).
+- Tests: el de `useDato` que no podía fallar (ahora lo caza quitar el descarte de respuestas
+  tardías), el «+0,0 %» de Cartera que no existía, seis guardas rotuladas como tales, y tests para
+  las acciones rechazadas de Portafolio.
+
+**Segunda revisión del 2.1** (`c9eea22`, 4 bloques y verificación de cada hallazgo; 13 confirmados o
+matizados). Arreglados en `9b84525`, con tests que fallan con el código anterior salvo las guardas
+rotuladas:
+
+- VACIA (captura `empresa_sin_datos`) volvía a perder las pestañas: la ficha pregunta a EDGAR antes de
+  decir «No se encontró» (`d238798`), y si un símbolo ya no está en ninguna fuente pero tiene decisiones
+  congeladas, las enseña (el historial es la única entrada a sus replays).
+- El freno a las instantáneas de símbolos inexistentes estaba solo en la ficha: un 502 en una pieza
+  abría las pestañas, y «Coste de oportunidad» en Cartera congelaba cualquier símbolo escrito. Ahora
+  lo frena el backend (`analisis_empresa.sin_ningun_dato`): sin cotización, perfil, fundamentales ni
+  estados no se congela, y la respuesta dice por qué (`sin_congelar`; `docs/DECISION_REPLAY.md`).
+- El 404 enseñaba «'financials' no existe en ninguna fuente (edgar)», un código en crudo, y el test se
+  inventaba el motivo: el router compone ahora el 404 con lo que dijo cada fuente («edgar: SHOP.TO no
+  está registrado en la SEC…») y los tests usan los textos reales.
+- Opciones: un fallo a mitad (vencimientos sin contratos, sin precio de la acción) salía como «no
+  cotiza opciones»; ahora es un fallo (502). Calidad e Informe separan 404 (EDGAR no lo tiene) de 502
+  (no respondió) y su 404 ya se dice como ausencia.
+- El recorrido de la cartera no se volvía a pedir tras añadir o cerrar una posición (y el test lo
+  exigía): vuelve a pedirse, sin vaciarse. `refrescar()` desde un error vuelve a «cargando» (en Cartera
+  dejaba el error con «Reintentar» durante la descarga y permitía lanzar dos). Lo que se refresca se ve
+  atenuado, con «Actualizando…», y no se puede pulsar (una tesis ya borrada seguía con su «Borrar»).
+- StrictMode (`npm run dev`, el modo de uso): `useDato` y Hoy reutilizan la petición en curso; antes
+  cada carga llegaba dos veces al backend, y Hoy lanzaba dos cadenas de pasadas (doble cuota). Hoy
+  descarta por petición, no por mercado (S&P 500 → Canadá → S&P 500), y al volver a un símbolo la
+  ficha ya no reabre «Qué cambió».
+- Entradas de usuario: «+ Escenario» acepta «bajista/base/alcista», lee «12,5» y «1.250» con la
+  convención de la app y dice lo que no entiende (antes 12 y 1,25 sin aviso, o nada); un umbral vacío
+  ya no se guarda como 0 %. Borrar algo que ya no existía (404) no es un fallo.
+- Textos: «IA apagada» (no «off»), las pestañas del formulario de disparador con `etiqueta()`, el
+  fallo de red en español, y en Mercado «ninguna fuente dio precio» (no afirma una caída).
+- Tests: el de `useDato` que comprobaba un «cargando» del reintento y no del cambio de clave, y los
+  rótulos de guarda que faltaban (Informe 502, acciones rechazadas de Portafolio). Mutaciones de
+  `useDato` (devolver la carga de otra clave, quitar el descarte, conservar un error, no reutilizar
+  la petición): las cuatro las caza algún test.
+
+**Tercera pasada** (`9b84525`, 3 bloques y verificación; 12 confirmados o matizados, varios en los
+arreglos de la segunda). Arreglados en el commit «fix(2.1): tercera pasada…»:
+
+- `useDato` guardaba para siempre la promesa reutilizada en StrictMode: /ticker/AAPL → /ticker →
+  /ticker/AAPL enseñaba el precio de la primera visita como actual. Ahora solo reutiliza la que está
+  en vuelo. `BloqueDatos` remonta su contenido al empezar y al acabar un refresco; tener el envoltorio
+  siempre (`display: contents`) lo evitaba, pero quitaba los márgenes de `space-y-*` en 20 pantallas
+  (lo destapó repetir las capturas), así que se acepta el remontaje y se quita su coste concreto:
+  `CompanyLogo` recuerda los logos que fallaron y no los vuelve a pedir.
+- La consulta de las decisiones guardadas de un símbolo no encontrado, si falla, se dice con
+  «Reintentar».
+- Cifras escritas a mano: `leerNumero` leía «0.125» como 125 (un grupo de miles no empieza por 0) y no
+  aceptaba «.5»; Vigilancia ya no lo usa (su campo es numérico y el navegador lo normaliza: un umbral
+  de tres decimales se multiplicaba por mil). Y llega a lo que guarda datos del usuario, que seguía con
+  `parseFloat`: posición, stop, venta, alerta, efectivo y tipo impositivo («1.250,50» era 1,25 y
+  «10.000» de efectivo eran 10). Lo que no se entiende se dice y no se envía.
+- Backend: `sin_ningun_dato` decide con el análisis (sin volver a preguntar: en una caída eran ~20
+  llamadas con esperas) y distingue «ninguna fuente lo tiene» de «no respondieron»;
+  `./start.sh validar` contaba como TypeError un símbolo sin congelar (ahora UNKNOWN); una cadena de
+  opciones sin precio se cacheaba una hora (ahora el validador la rechaza y un fallo no se cachea);
+  el «not found» de Twelve Data llegaba en inglés a la pantalla.
+
+Pendiente (baja, no regresión): un 429 de yfinance en la cadena de opciones se reintenta como
+cualquier `ProviderError` (+2 peticiones); traducir los 429 de yfinance a `RateLimitError` sería una
+mejora general. Los campos del DCF de la ficha (`ValuationSection`) siguen con `parseFloat`: no se
+guardan, pero leerían «12,5» como 12.
+
+Queda para la fase 4.5: `@typescript-eslint/no-misused-promises` marca 29 manejadores `async` en
+13 ficheros (la mayoría capturan dentro); activarla es revisarlos uno a uno. Tampoco se ve una
+referencia a función que se trague el error (`.catch(ignorar)`): sin tipos no se distingue de
+`.catch(setError)`.
+
+**Notas de la migración del 2.1** (fuera de su alcance): `routers/options.py` aplana la cadena y tira
+`estado`/`antiguedad_segundos` (una cadena vieja sale como normal); `CalidadSection` y `OptionsSection`
+pintan códigos en mayúsculas sin `etiqueta()` (`BUENO`, `CONTANGO`…); Multifactor no enseña
+`sin_puntuar`; el `DailyPrice` del frontend no declara `estado` (Hoy no dice «dato viejo» en la fila);
+un replay pedido para un símbolo puede llegar tras cambiar de símbolo.
+
+## Auditoría del 19-oct-2026 (sobre `main` d28a058)
+
+Una auditoría externa con siete hallazgos; todos seguían en esta rama. Se arreglan en orden de
+prioridad, cada uno con un test que falla con el código anterior.
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| A1 (P1) | El stop de la posición se redondeaba a dos decimales ANTES de compararlo: coste 0,005, stop 0,004 y precio 0,003 salía «mantener» (la regla preguntaba «0,003 ≤ 0»), con el stop a «−100 %» | hecho (abajo) |
+| A2 (P1) | `oportunidad.efectivo_usd` convertía con el último tipo de la serie, aunque fuera posterior a la fecha de la decisión | hecho (abajo) |
+| A3 (P2) | Una posición en peniques (GBX, ZAC, ILA) tumbaba `/api/portfolio` con un 500 | hecho (abajo) |
+| A4 (P2) | Un efectivo anotado hoy con fecha atrasada aparecía en reconstrucciones de antes de anotarlo | hecho (abajo) |
+| A5 (P2) | Una instantánea congelada posterior a la fecha pedida escondía la anterior válida | hecho (abajo) |
+| A6 (P2) | El backend aceptaba cualquier cabecera `Host` | hecho (abajo) |
+| A7 (P2) | En móvil la barra lateral fija se come la pantalla (es el 2.12) | hecho (abajo) |
+
+**A1.** Se compara con el valor sin redondear (el stop guardado tal cual, el recalculado sin
+`round`) y solo se redondea lo que se sirve, con `datos.redondear_precio`: dos decimales desde 1 (el
+tick de siempre; las cifras de las acciones normales no cambian y el golden queda idéntico) y cuatro
+cifras significativas por debajo. Lo mismo en los otros sitios que perdían la cifra: Yahoo servía el
+último cierre con `round(x, 2)` (0,003 era 0 y el motor decía «sin precio»), los niveles de compra
+(entrada 0,00–0,00, stop 0,00), el stop fijado al abrir (`round(…, 4)`: 0,00005 se guardaba como 0,
+es decir «sin stop»), la cartera (`round(…, 2)` del stop) y las operaciones del backtest. Para
+pintarlos, `fmt_precio`/`fmtPrecio` (gemelos, 18 casos en la tabla compartida) en Hoy, la ficha, la
+cartera, tesis, vigilancia, historial y el gráfico. Hermano: un stop guardado con tres decimales
+(92,004) también se redondeaba y un precio de 92,002 salía «mantener». Guardas: el caso de la
+auditoría (vender, stop 0,004, distancia +33,3 %, disparador «0,004»), niveles positivos y ordenados
+de 1e-8 a 1e5, stop recalculado bajo el coste, Yahoo, el stop guardado por la API y el render de Hoy
+(9 de los 18 tests del backend y el de Hoy fallan con el código anterior; el resto son guardas de no
+regresión para precios normales).
+
+**A2.** El tipo es el último que ya se conocía en la fecha de la decisión (`pit.filtrar`; el del
+mismo día de una decisión con hora no, salvo prueba), y viaja en el detalle con su fecha
+(`tipo_por_usd`, `tipo_fecha`, `tipo_fresco`). Se distinguen los tres casos: ningún tipo
+conocido a esa fecha (desconocido, con su motivo), uno de más de `fx.DIAS_FRESCO` días (se
+convierte, estado `viejo`, y la nota de Hoy dice la fecha del tipo) y uno reciente. Nuevo
+`pit.antiguedad_dias` para no restar fechas a mano. El test de la ficha con efectivo en CAD
+usaba el reloj real con una serie anclada a `AHORA`: ahora usa `AHORA` (con el reloj real el
+tipo tenía semanas, y eso ya se dice). Guardas: el caso de la auditoría (100 USD, no 86,67),
+el tipo del mismo día, la serie que empieza después y el tipo viejo (fallan con el código
+anterior); el tipo reciente sin aviso es guarda.
+
+**A3.** El `fx.normalizar` suelto que reunía las monedas lanzaba `SinTipo` antes de llegar a
+`convertir_cartera`, que ya sabía dejar la fila visible, fuera del total y con su motivo; ahora
+pasa por `_moneda_segura`. Barrido: todas las rutas GET de la cartera con una posición en GBX
+(solo `/api/portfolio` caía). Hermano: el contexto de cartera (ficha, riesgo, coste de
+oportunidad) decía «moneda desconocida» de una moneda que se sabe en peniques; ahora da el
+motivo real. Guardas: la cartera con GBX y USD (200, total solo con USD, ninguna serie de FRED
+pedida) y el motivo del contexto (fallan con el código anterior).
+
+**A4.** Una anotación cuenta en `ahora` solo si su saldo está fechado antes **y** se anotó antes
+(`registrado_en`), las dos con `disponible_en(...) is True`: antes bastaba la fecha del saldo y
+lo que no se podía probar (`None`) contaba como sabido. Vigencia definida: entre las que
+cuentan manda el saldo más reciente (`as_of`), no la última fila; con el mismo `as_of`, la
+anotada después corrige. Hermano: `GET /api/portfolio/efectivo` enseñaba la última fila
+(`max(id)`), así que un saldo antiguo anotado después salía en pantalla como el de hoy mientras
+los cálculos usaban otro; ahora usa la misma función. Las tres fixtures que modelan «anotado el
+día de su saldo» (extremos, `test_e2e_evolucion`, coste de oportunidad) lo declaran en
+`registrado_en`: con el reloj real quedaban anotadas después de su propio `ahora`. Golden igual.
+Guardas: anotada con fecha atrasada, saldo antiguo anotado después, corrección del mismo día y
+la pantalla coherente (los cuatro fallan con el código anterior).
+
+**A5.** `_lectura_congelada` filtra por `disponible_en(creado_en, ahora) is True` antes de
+coger la más reciente, como ya hacía `anterior_comparable`. Barrido de las otras consultas «la
+más reciente» de instantáneas: `anterior_comparable` ya filtraba antes; el historial de la ficha
+lista todas y el antiduplicado de `congelar_analisis` es del momento presente. Guarda: dos
+lecturas reales (`analizar_y_congelar`) a dos fechas; la del medio ve la primera (falla con el
+código anterior), después ve la segunda y antes de las dos, ninguna.
+
+**A6.** `HostDeConfianza` en `main.py`, la más externa: una cabecera `Host` que no es de esta
+máquina (`settings.allowed_hosts`, por defecto `localhost`, `127.0.0.1`, `[::1]`; `ALLOWED_HOSTS`
+en `.env`) es un 400 con el motivo en `detail`, en español, antes de llegar a ninguna ruta. No es
+el `TrustedHostMiddleware` de Starlette porque responde en inglés y en texto plano y su lector
+de la cabecera es privado (`starlette._utils`); este compara sin distinguir mayúsculas. Los
+tests añaden `testserver` en `conftest.py` (solo ahí); el golden y el exportador de fixtures,
+que corren fuera de pytest, llaman con `base_url="http://localhost"`. Guardas: seis hosts ajenos
+(dominio, con puerto, IP de la red, sufijo engañoso, vacío, `::1` sin corchetes) son 400 sin
+llamar a ningún proveedor, cinco de esta máquina pasan y el valor por defecto no incluye
+`testserver` (los siete primeros fallan con el código anterior). Golden y fixtures idénticos.
+
+**A7 (ítem 2.12).** `Layout.tsx`: por debajo de `md` (768 px) una barra superior con el logo y
+«Menú», que abre la navegación como cajón; se cierra al navegar (también a la misma pantalla),
+con Escape (el foco vuelve a «Menú») y tocando fuera; desde `md`, la barra lateral de siempre.
+Relleno del contenido 16 px en móvil (24 desde `md`). El criterio del plan se convirtió en guarda
+de `npm run capturas`: a 390 px una pantalla falla si desborda en horizontal (dice qué elemento
+lo empuja; lo que está dentro de un contenedor con scroll propio no cuenta) o si un texto de tres
+o más palabras sale con una palabra por línea; y el clic de las acciones ya no es `force`. Con el
+cajón, lo que quedaba: la leyenda del gráfico (32 px fuera; ahora `flex-wrap`), los selectores
+de mercado y de vista de Hoy («Mejores ideas (5)» en tres líneas; ahora se desplazan en su marco
+sin partir las etiquetas) y la cabecera de la tabla de Calidad («Días de cobro»). Dos capturas
+nuevas, solo a 390: el menú abierto y la navegación desde él, con clics reales. Hermano,
+regresión de A1: el `priceFormatter` global del gráfico con `fmtPrecio` formateaba también RSI y
+MACD (valores bajo 1 con cuatro decimales), el eje se ensanchaba y el gráfico se desplazaba; ahora
+cada serie lleva su formato (las de precio `fmtPrecio`, con el paso que dan sus decimales) y no
+hay formateador global, que mandaba sobre el de cada serie (segunda revisión, abajo). Capturas: 68 sin fallos; a 1440, 24 idénticas y el resto con diferencias de antialiasing
+salvo Calidad (relleno de columnas). Guardas: 5 tests del cajón en `Layout.test.tsx` (fallan con
+el código anterior) y las dos guardas de las capturas. Queda como estaba el aviso de Vite por el
+tamaño del paquete (~717 kB): es el 2.14 (rendimiento).
+
+### Revisión del 2.12 y de A1–A6 (workflow, 23 oct)
+
+Dos pistas en paralelo: las 35 capturas a 390 px, con un verificador por hallazgo (44
+confirmados, muchos repetidos entre pantallas; 32 refutados como estéticos), y una revisión
+adversarial del código de A1–A6 (abajo, cuando se verifique).
+
+**Visual, arreglado.** La herramienta de capturas: a 390 px una página de más de 4000 px salía
+recortada a la primera pantalla (`clip` sin `fullPage`), y tras pulsar un botón la cabecera fija
+se pintaba a media página. Tablas que se apretaban o escondían columnas (Historial, Calibración
+de expectativas, Características de la cartera, Calidad, Fundamentales, comparador de ETFs):
+`lib/tablas.ts` (`TABLA_COMPACTA`, `COLUMNA_FIJA`) y `<MarcoTabla>`, una sola forma de hacerlo; en
+Fundamentales y ETFs, sin `min-w` y con el rótulo fijo, de modo que las cifras se ven o asoman.
+Rótulo y motivo pegados en «Valoración frente a su propia historia» («P/ESolo…»); fecha ISO en
+Catalizadores (`fmtFecha`); la hora del Historial sin zona junto a un origen en UTC; los
+selectores de Hoy saltan de línea en vez de recortar la opción activa; el «·» huérfano en «Lo que
+NO comprar»; el «quitar» de Vigilancia tapaba el detalle (ahora va en el flujo); el porcentaje
+del P&L de Portafolio se salía de su tarjeta; el botón de IA de Noticias dejaba media tarjeta al
+titular; «Qué cambió» sin espacio antes de «(umbrales…)» y con el hash entero, valores que
+perdían la alineación al bajar de línea y el botón de IA activo con el resumen ya a la vista
+(cada toque gastaba API); los KPI de concentración en dos columnas; contraste de los títulos
+del menú (1,9:1 → `slate-400`) y el significado del tachado de la barra de APIs a la vista; el
+marcador de las filas desplegables de Calidad; la cabecera móvil centrada. Espacio duro: 18
+literales del backend con «15 %» y espacio normal (en móvil, «15» / «% de crecimiento»), con
+guarda AST en `test_formato.py`; el único exento, la etiqueta que entra en el hash de los
+umbrales de «Qué cambió» (otro espacio sería otra versión). «ratio corriente ≥ 1.2» con punto
+decimal en los presets del screener; «Desempleo EE. UU.» sin partir.
+
+**Hermano serio, arreglado.** El formulario de Vigilancia lo pedía todo en % y dividía entre 100:
+«ratio corriente < 1» se guardaba como 0,01 y el punto no saltaba nunca, un control de riesgo
+desactivado en silencio. El catálogo dice ahora la `unidad` de cada métrica (`pct` o `veces`), el
+formulario y la serie de la tarjeta la usan, el detalle sale en la unidad («21,0 % … 18,0 %», no
+«0,210 … 0,180») y los puntos viejos en `veces` se leen de las dos formas (tercera revisión,
+abajo). Dos tests ajustados a la cifra
+nueva (`test_gramatica`, `test_thesis_watch`: la frase es la misma); el de opciones busca el «%»
+con espacio duro. El recorte «Ideas nuevas al 0 %» se reconoce por una constante
+(`sizing.RECORTE_SIN_HUECO_DE_RIESGO`) y no buscando el texto «0 %» suelto. Golden idéntico.
+
+**Código, A1 (tres votos a favor), arreglado.** (1) Fail-unsafe: con el stop ya entero, Yahoo seguía
+sirviendo el último cierre redondeado a dos decimales; un stop de 1,8165 con el cierre en 1,8155
+se comparaba con 1,82 y salía «mantener». Ahora `_price_summary` sirve el cierre tal cual (la
+pantalla lo escribe con `fmtPrecio`). (2) La traza de «¿Por qué?» y «¿Qué la cambiaría?» pintaba
+los precios con `fmtNum(v, 2)`: el caso de la auditoría se leía «0,00 frente a 0,00»; ahora las
+reglas de precio usan `fmtPrecio`. (3) Lo servido y lo escrito no coincidían en los empates de
+medio céntimo (`round()` frente al formateador: stop 2,67 en la tarjeta, «2,68» en el disparador):
+los textos escriben ahora el valor servido. Hacerlo al revés —servir con el redondeo del
+formateador— cambiaba `decide` y `hoy` del golden, y eso es de Victor. (4) Los mensajes de stop
+de la cartera («No se puede bajar el stop de 0 a 0») y (5) su minigráfico (32 ceros, plano y en
+verde). (6) Las medias de `/history` a 4 decimales fijos (0 o el doble del precio por debajo de
+0,0001). Golden idéntico; guardas en `test_precision_precios.py`, `DecisionExplicada.test.tsx`
+(todas fallan con el código anterior).
+
+**Segunda revisión (de `ea20bc9` y `eda2424`, verificada).** (1) Regresión de A7: el
+`priceFormatter` global de lightweight-charts manda sobre el `priceFormat` de cada serie, así que
+con `fmtNum(p, 2)` una acción de 0,003 volvía a tener todo el eje en «0,00»; se quita el global y
+cada serie lleva el suyo (RSI a dos decimales, MACD como el precio si es menor que 1). (2) El
+umbral sospechoso solo avisaba, y el punto seguía contando como «no cruzado»: la tesis salía
+intacta con un control que el código sabía roto. Ahora queda sin comprobar (`medible: False`,
+como un dato que falta) y dice qué haría («no saltaría nunca» o «saltaría siempre»); cero y
+negativos siguen siendo umbrales legítimos (exento del golden por eso; el caso nuevo del golden,
+para Victor). (3) El cajón: tocar el velo no devolvía el foco a «Menú», y abierto no era modal
+(Mayús+Tab salía a la cabecera tapada); ahora la cabecera y el contenido quedan `inert` y el cajón
+es un diálogo. (4) La lista de Hoy entre 768 y 1280 px apretaba el nombre hasta una letra por
+línea: las barras de factores se ven desde `xl` y, debajo, al desplegar la fila; captura nueva a
+820 × 1180 y vista «Todas» con sus guardas. (5) `fmtFecha` con hora y sin zona escribía la hora
+local del navegador sin rótulo («16:35» en «Qué cambió» y «14:35 UTC» en el Historial para la
+misma instantánea): ahora UTC rotulada, como el gemelo (caso nuevo en `formato.casos.json`); las
+horas de las noticias, en ET. (6) Los KPI de Fundamentales a 390 px, en dos columnas. (7) Espacio
+duro en los literales del frontend («IC 95 %», «0 %», «100 %»), con regla de ESLint. (8) Las
+capturas fallan también si un contenedor con `overflow-x: hidden` recorta texto, y la guarda de
+«palabra por línea» cuenta líneas de verdad (rectángulos del texto) y no parte por el espacio
+duro. (9) Las tablas con scroll eran un `div` sin foco: con teclado no se llegaba a las columnas
+de fuera; `<MarcoTabla>` (región con nombre, `tabIndex=0` y anillo de foco) es ahora la única
+forma, en las 17 tablas, con guarda en `MarcoTabla.test.tsx`. Golden idéntico.
+
+**Visual, no se toca (registrado).** El texto de la IA se pinta con el Markdown sin interpretar
+(`BloqueIA`; los prompts piden Markdown): pide un renderizador seguro o texto plano, fuera del
+2.12. Las 11 pestañas de la ficha en 5 filas en móvil: es el 2.6 (6 + «Más ▾»). En el gráfico,
+el primer rótulo del eje de tiempo cortado y los rótulos de 70/30 del RSI sobre los ticks.
+
+### Hermanos de A1–A6 (verificados, 23 oct)
+
+De la revisión adversarial del código de A1–A6, los hallazgos con dos o tres votos a favor.
+
+**A4.** Desde que manda el `as_of` más reciente, un saldo enviado solo con el día
+(«2026-10-20») se guardaba como su medianoche y perdía siempre contra uno con hora anotado
+antes ese día: el POST respondía 200 y seguían mandando los 10.000 de la mañana, el lado no
+prudente. Un día suelto se lee como día (hoy, la hora del registro; uno pasado, su último
+instante), un `as_of` unos minutos adelantado se recorta a ahora (la pantalla decía «Sin
+efectivo anotado» esos minutos) y el POST dice si la anotación queda `vigente`.
+
+**A3.** (1) yfinance da «GBp» para Londres y tres sitios lo pasaban a mayúsculas: «GBP», y la
+posición se convertía como libras, cien veces su valor. Una sola lectura, `fx.codigo`, para la
+cotización, el perfil y el instrumento. (2) Una fila en peniques no contaba como otra divisa:
+la nota decía «Toda la cartera está en USD» y Riesgo, «moneda desconocida». (3) Dos lotes en
+peniques del mismo símbolo: el primero salía dos veces y el segundo no se podía cerrar (las
+filas sin convertir se reponían por símbolo; ahora por id). (4) La curva y las cerradas
+también decían «moneda desconocida»; el aviso de la curva decía «por no tener histórico» de
+cualquier excluida, y ahora dice el motivo de cada una. (5) El motivo pedía «Corrige la divisa
+de la posición», que la app no permite: ahora dice que viene del proveedor y queda fuera.
+
+**A2 y A5, en la cartera del contexto.** `contexto_cartera.construir`, reconstruido a una fecha:
+(1) filtraba en SQL por `closed_at IS NULL`, y una posición abierta ese día y cerrada después
+faltaba del capital y de los comparables mientras el mismo análisis la daba por abierta; (2)
+pesaba cada posición con la cotización de hoy (ahora, el último cierre conocido entonces,
+«viejo»); (3) convertía con el último tipo de la serie mientras el efectivo usaba el de
+entonces: dos tipos para el mismo CAD en el mismo capital. **Encontrado de paso, en vivo:** una
+cotización o unos fundamentales descargados durante el análisis llevan la hora de la descarga,
+milisegundos después del `ahora` con que empezó, y `seccion_mercado` los tiraba como
+«posteriores» (precio fresco de yfinance → se decidía con el cierre de ayer, «viejo»; los pares
+sin señal). `pit.descargado_a_tiempo` les da un margen de 5 minutos (`MARGEN_DE_DESCARGA`); a una
+reconstrucción del pasado no le cambia nada. Golden idéntico.
+
+**A4, en otras tablas.** Los puntos de una tesis se cargaban sin mirar su `created_at` (y añadir
+uno no toca `updated_at`): uno añadido el 15 de octubre cruzaba en la reconstrucción del 12 una
+tesis que entonces no tenía puntos; y `resumen_para_analisis` filtraba los resultados para
+saber si el evento estaba resuelto pero luego `evaluar` releía todo (el guidance anotado
+después, las expectativas del evento siguiente). Ahora todo pasa por la fecha de registro.
+Los dobles de los tests creaban los puntos con el reloj real y analizaban el 12 de septiembre:
+se les da la fecha de su tesis. **Queda, para Victor:** un punto **borrado** después no se
+puede reconstruir (no queda rastro de la baja); guardarla pide una migración (`borrado_en`).
+
+**A6.** (1) El filtro de `Host` cerraba el DNS rebinding, pero no las peticiones simples de otra
+web: con `Host: 127.0.0.1:8000`, el de verdad, un `<img>` hacia `/api/empresa/AAPL/analisis`
+congelaba una instantánea inmutable y un POST sin cuerpo gastaba cuota (CORS solo impide leer
+la respuesta). El mismo middleware rechaza con 403 un `Origin` que no es la interfaz ni el propio
+backend, y sin `Origin`, un `Sec-Fetch-Site` de otro sitio. Las capturas sirven la interfaz en
+otro puerto y se lo dicen al backend de demostración (`CORS_ORIGINS`). (2) `ALLOWED_HOSTS`
+sustituía la lista y con `["mi-mac.local"]` el proxy de Vite (que llama como `localhost`)
+recibía un 400 en todo; ahora se añade a los nombres de esta máquina. (3) `start.sh` decía
+«Todo listo» con el backend respondiendo 400 (`curl -s`); ahora `curl -sf`.
+
+**A1, los hermanos.** (1) Los umbrales de tendencia salían ya redondeados de `_umbral_entrar`
+y `_umbral_salir`, y con ellos se medía la distancia: con la media en 1,0054 el umbral exacto es
+1,0255 y el servido 1,03, así que «Qué la cambiaría» pedía «precio ≥ 1,03» con 1,0256, una
+condición ya cumplida. Ahora se calcula con el exacto y solo se sirve redondeado. (2) Textos de
+precio con decimales fijos: el motivo de una alerta («a 0,00, por debajo de 0,00»), el prompt
+del análisis IA («Precio actual: 0,00»), el intervalo de comparables («da 0–0, y cotiza a 0»,
+y servido con `round(x, 2)`), el rango de Valoración y su nota. Todos con `fmt_precio`. Golden
+idéntico.
+
+**A2 y A5, los últimos.** (1) El estado «viejo» del efectivo y el motivo «sin tipo de cambio a
+esa fecha» se quedaban en `coste_oportunidad.efectivo`, que ninguna pantalla lee: la ficha daba
+«Hay efectivo… no hace falta vender nada» con un tipo de hace tres semanas, y pedía «Anota tu
+efectivo» con el efectivo anotado. El motor recibe `aviso_efectivo` y lo dice en el veredicto.
+(2) El antiduplicado de `congelar_analisis` miraba la instantánea más reciente aunque fuera
+posterior a `ahora`: con una del día siguiente en la base, cada análisis igual congelaba una
+copia inmutable. Filtra como `_lectura_congelada`. **Queda, para Victor:** los lotes de posición
+no guardan cuándo se anotaron (`opened_at` lo escribe el usuario), así que uno anotado hoy con
+fecha atrasada entra en una reconstrucción anterior. Arreglarlo pide una columna
+`registrado_en` en `positions` (migración) y decidir qué hacer con las filas viejas, sin fecha
+de registro: exigirla como al efectivo las sacaría también del análisis de hoy. Golden idéntico.
+
+### Tercera revisión (de los hermanos de A1–A6, workflow, 27 oct)
+
+Once revisores sobre los commits de la segunda revisión y de los hermanos, y tres lentes por
+hallazgo (corrección, reproducción, impacto): 34 con dos o más votos, 1 descartado.
+
+**El margen de descarga, una sola regla.** Lo introdujo `2f8d84b` solo en el análisis: al
+congelar, la cotización aceptada con margen quedaba como «futura» y el replay retiraba el precio
+con que se había decidido (completo=False, FAIL en `./start.sh validar`), en cada análisis en vivo
+con cotización de yfinance o Twelve Data. Ahora `anomalias_temporales` aplica
+`descargado_a_tiempo` a la cotización y a la puntuación de pares, y el desempate por `obtenido_en`
+lleva el mismo margen (la barra o el filing de hoy descargados durante el análisis entraban solo
+si venían de la caché). En `construir`, las cotizaciones se piden antes que el histórico largo,
+sin cotización hoy se usa el cierre de entonces, el motivo dice cuándo la cotización es
+posterior, y `_tipo_en` pasa el detector de inversión (un último punto de 13 en vez de 1,30
+convertía a 10 USD sin aviso).
+
+**Los puntos viejos en «veces», sin corte por valor.** El de la segunda revisión (≤ 0,1 → sin
+comprobar) tenía tres fallos: un punto cruzado con las dos lecturas («cobertura < 10» guardado
+como 0,1, con EBIT negativo) pasaba de CRUZADO a «sin medir», fail-unsafe; un umbral nuevo y
+legítimo («Deuda/capital > 0,1») quedaba sin comprobar para siempre; y uno viejo de 0,15
+seguía «no cruzado». Ahora los puntos nuevos guardan `unidad` al crearse, y uno viejo en `veces`
+con el umbral por debajo de 1 (`LEGADO_MAX`, desde la cuarta revisión `TOPE_LEGADO` por métrica) se lee tal cual y ×100: si coinciden, ese es el
+veredicto; si no, sin comprobar con lo que daría cada una. La nota de la tesis ya no atribuye
+todo lo no comprobado a «falta de datos». Golden idéntico (su `D/E > 2` se lee tal cual).
+
+**La tendencia de A1, hasta el final.** El «umbral exacto» de `9bebc3d` no llegaba a producción:
+`_price_summary` servía la media de 200 sesiones redondeada (1,0054 → 1,01), y con ella decidía
+el motor; ahora el motor recibe la entera y la ficha la sirve redondeada (golden idéntico). Una
+condición a menos de 0,005 % del umbral se daba por cumplida (distancia redondeada a 0,0) y
+«→ Comprar si:» quedaba vacío: ahora se decide con la misma comparación que la regla. «Vigilar»
+decía «cotiza bajo su media» dentro de la banda, encima de ella, y pedía cerrar sobre la media sin
+la banda; «mantener» decía «precio sobre su media» sin media. Los rangos del DCF, redondeados a
+tres cifras significativas a propósito, salían con céntimos («147,00»): `fmt_valor_redondo`, gemelo
+nuevo («147», «0,00347»). «Qué cambió» escribe los precios con `fmtPrecio`.
+
+**Efectivo, peniques, origen y tesis.** (1) El antiduplicado filtraba por «ya existía en `ahora`»
+y dos análisis solapados (el que empezó después congela antes) dejaban dos instantáneas
+iguales; ahora compara con la última del mismo día. (2) «No cabe» con efectivo de tipo viejo no
+lo avisaba; Hoy, con el efectivo anotado y sin tipo, pedía «Puedes anotarlo» y perdía el motivo.
+(3) El «hoy» de un saldo solo con el día es el UTC; el de mañana en UTC (el hoy de quien está al
+este) cuenta como hoy, y los mensajes lo dicen. (4) La fecha de apertura unos minutos adelantada
+se recorta a ahora, como el efectivo. (5) Migración **0009**: vacía la moneda «GBP» que el código
+anterior guardaba por «GBp»; con ella, una cerrada o una cotización sin moneda convertían
+peniques como libras. (6) Con toda la cartera en peniques, Riesgo y la curva dicen el motivo
+real. (7) El origen: `Sec-Fetch-Site: same-origin` pasa (la interfaz en otro puerto recibía 403
+en todo POST), sin Fetch Metadata se mira el `Referer`, y el 403 dice cómo arreglarlo
+(`CORS_ORIGINS`). (8) La ventana de noticias de la tesis acaba en el `ahora` del análisis, no en
+el reloj de la máquina. (9) Test del filtro de puntos de `evaluar(…, ahora)`, que nada cubría.
+
+**Frontend.** (1) El cajón abierto al pasar a ≥ md (girar el móvil) dejaba todo inerte sin
+salida visible: se cierra al cruzar el punto de corte. (2) Pulsar la pantalla en la que ya estás,
+o «Atrás», dejaba el foco en BODY: vuelve a «Menú». (3) `fmtFecha` sin hora usaba la zona del
+navegador: ahora UTC, como el gemelo (caso nuevo y un test con otra zona). (4) El anillo de foco de
+`MarcoTabla` se pinta por dentro (lo recortaba el `overflow-hidden` del ranking multifactor); el
+mensaje del error también va en `MarcoTabla`, y la guarda mira los `.ts` y cualquier scroll
+horizontal. (5) La guarda de «palabra por línea» ya no salta un elemento con un icono o un hijo
+oculto. (6) La regla de ESLint del espacio duro ve también una cifra y su «%» separados por un
+salto de línea. (7) En Hoy por debajo de 640 px, el puesto global va junto al símbolo. Capturas:
+104 sin fallos.
+
+### Cuarta revisión (de la tercera, workflow, 27 oct)
+
+Revisores sobre `d790aa9`…`21a0b8b` y un barrido de hermanos, con las tres lentes: 22
+confirmados, ninguno descartado. Cada arreglo lleva un test que falla sin él; golden idéntico.
+
+**Lo alto.** (1) «Capturar expectativas» daba 500 con la caché fría: el calendario de Finnhub se
+descarga durante la captura, llega fechado segundos después de `ahora` y `_guardar` comparaba sin
+margen. Ahora `descargado_a_tiempo` e `informacion_hasta` como mucho `ahora`; fuera del margen, 422.
+(2) En vivo, una posición sin cotización entraba en los pesos con el último cierre de la caché
+(total 3000 frente a los 1000 de `/api/portfolio`): ese respaldo queda para las reconstrucciones.
+
+**FX.** Un punto suelto fuera de banda convertía la serie de la candidata (volatilidad cien veces
+mayor), la curva de valor y el P&L realizado: `fx.puntos_en_banda` lo trata como un día sin
+publicar. El tipo de la fecha de la decisión sigue rechazándose con su motivo.
+
+**Tesis.** La lectura ×100 de un punto sin `unidad` solo si cabe en la métrica (`TOPE_LEGADO`:
+10 veces en D/E y ratio corriente, 30 en cobertura; antes un «D/E > 0,5» se leía también como 50 y
+un CRUZADO quedaba sin comprobar); ×100 redondeado (0,07 × 100 ≠ 7 en coma flotante); el motivo y el
+detalle con el umbral entero (0,005, no «0,01») y sin afirmar «anterior al arreglo»; con las dos
+lecturas iguales, un aviso; la nota ya no dice «no se ha cruzado» de lo no comprobado; la exención
+del inventario del golden decía que lo cubría el golden y lo cubre `test_thesis_watch`.
+
+**Decisión y textos.** Los umbrales de la banda se sirven y se escriben hacia el lado en que la
+frase es cierta (`redondear_precio(..., hacia=...)`: entrada hacia arriba, reducir hacia abajo);
+el disparador con posición dice «Reducir si cierra en o por debajo de X (media 200 − 1 %)»; «Qué
+cambió» escribe los precios con `fmt_precio` y el resultado con `etiqueta()`; un test pasa por
+`seccion_mercado` (media entera al motor, redondeada a la ficha); el backtest de reglas entra con la
+banda del motor y lo anota (`banda_tendencia_pct`); README y el estado vacío de Hoy nombran la banda.
+
+**Instantáneas, fechas y origen.** El antiduplicado compara con la última congelada (`id`): una del
+mismo día a una hora posterior y otra huella volvía a duplicar. La fecha de apertura de mañana en
+UTC cuenta como hoy, como el efectivo. `.env.example` y el README ya no prometen «cualquier puerto»
+con un nombre de `ALLOWED_HOSTS` por http (un test lo fija).
+
+**Frontend.** Valores por acción con `fmtPrecio` (BPA del replay, DCF, valor estimado de las
+tesis; la matriz con `fmtValorRedondo`), `fmtMetrica` compartido por el replay y «Qué cambió», y
+ESLint contra `fmtNum` sobre un valor por acción. El anillo de `MarcoTabla` es una capa hermana por
+encima de la columna fija (la tapaba en tres tablas); medido en Chromium con Tab, en reposo y
+desplazada. Capturas: 104 sin fallos.
+
+### Quinta revisión (de la cuarta, workflow, 28-30 oct)
+
+Seis revisores sobre `5f6ddd3`…`f0d5757` y las tres lentes: 28 confirmados, 1 descartado. Cada
+arreglo con un test que falla sin él; golden idéntico; capturas 104 sin fallos.
+
+**Expectativas, apertura y FX.** Lo anotado a mano ya no recibe el margen de lo descargado ni
+una fecha ilegible leída como «ahora» (422); el motivo de «escala dudosa» con fecha para una
+persona y etiqueta; la fecha de apertura con otra zona se guarda en UTC; tests del filtro de
+tipos fuera de banda en el P&L realizado y el coste, y del 422 de «próximos resultados».
+
+**Tesis.** `escribir_cifras`: valor y umbrales con los decimales justos para que ninguna cifra
+cambie de lado (2,997 frente a «< 3» decía «= 3»), y lejos del umbral los de siempre; el aviso de
+la doble lectura llega a la ficha, a lo congelado y a «Qué cambió»; los deteriorados en la unidad
+del punto (% para un margen); tests que fijan los topes de ratio corriente y cobertura.
+
+**Decisión.** Umbrales de la banda sin ruido de coma flotante (14 × 1,02 ≠ 14,28) y redondeo hacia
+un lado en decimal; el stop hacia abajo y «en o por debajo de» en todos sus textos; sin cifra de
+la media, el disparador ya no escribe «—»; la distancia contra el umbral escrito; el estado vacío
+de Hoy admite las «Vigilar» aplazadas; los ETF usan `decision._tendencia` (con la banda).
+
+**Instantáneas y origen.** El antiduplicado coincide con la última por `id` o por `creado_en`;
+README y `.env.example` dicen que Vite necesita `server.allowedHosts` para un nombre de
+`ALLOWED_HOSTS`.
+
+**Frontend.** BPA y precios de céntimos con `fmtPrecio` en estados financieros, Expectativas
+(`fmtMetrica`), 52 semanas, calendario e informe profundo y cambio del día; ESLint más amplio; la
+matriz del DCF con `fmt_cifras` (gemelo nuevo, tres cifras significativas); el anillo de
+`MarcoTabla` como outline (con colores forzados el ring desaparecía).
+
+**El efectivo con posiciones sin valorar (alta, con el visto bueno de Victor al golden).** Con
+una posición abierta sin valorar (sin cotización en vivo, o con su tipo de cambio rechazado), la
+ficha sumaba todo el efectivo a la parte valorada: con XYZ (~100.000 USD) sin precio y 1.000 de
+efectivo, «Hay efectivo (100 %)… no hace falta vender nada» y el riesgo «sin cartera». Hoy no lo
+hacía desde M3. Ahora no se suma (base `invertido_parcial`), el veredicto es INDETERMINADO y nombra
+las posiciones, y el riesgo es desconocido. El golden de `analisis` cambia solo en `fx_invertido`
+(COMPRAR_CON_EFECTIVO → INDETERMINADO), regenerado con su visto bueno.
+
+### Sexta revisión (de la quinta, workflow, 31 oct)
+
+Siete revisores sobre `2536bc3`…`b47bed2` y las tres lentes: 20 confirmados, 0 descartados. Cada
+arreglo con un test que falla sin él; golden idéntico; capturas 104 sin fallos.
+
+**Cifras frente al umbral.** `fmt_frente` / `fmtFrente` (gemelos con casos comunes) deciden los
+decimales con lo que de verdad se escribe (con `round()`, 0,995 «era» 0,99 y salía «1,00» frente a
+«< 1»); los usan la tesis, la serie de Vigilancia y el impacto en la tesis de Expectativas.
+
+**Expectativas.** Sorpresa absoluta en la unidad de la fila y con signo; «parcial: sin resultado
+para» con etiquetas; las horas con otra zona, en UTC; el 409 de un evento ya conocido con la fecha
+para una persona; «escala dudosa» con cifras significativas («0 veces»).
+
+**Decisión y cartera.** El stop recalculado y el tecleado, en la rejilla de precios (el tecleado,
+hacia arriba); el cambio del día con los decimales del precio (ruido de float32 de Yahoo). Las
+posiciones sin valorar se nombran siempre (veredicto, `aviso_cartera` y riesgo, que se mide sobre
+la parte valorada y lo dice); la propia empresa sin valorar tiene el riesgo desconocido.
+
+**Instantáneas.** El antiduplicado por `creado_en` solo mira las que ya existían en `ahora`: una
+adelantada del mismo día se tragaba un cambio material. El aviso de un punto sin unidad se pinta
+en el replay y en el registro de decisiones.
+
+### Séptima revisión (de la sexta, workflow, 1 nov)
+
+Cuatro revisores sobre `da9be69`…`2c5c6b1` y las tres lentes: 14 confirmados, 0 descartados; 13
+arreglados en `a19d927` y `8621dc7` (golden idéntico, capturas 104 sin fallos). La puntuación se
+escribe de su lado del umbral en el motor, «Qué cambió» y la traza (`fmt_frente` con signo); una
+sola volatilidad para el stop (`vol_diaria_pct`) en la cartera, Hoy y la ficha; el antiduplicado
+ignora las instantáneas futuras también por `id`; la serie de un punto de tesis no cambia de lado
+al redondearla; la calidad de beneficios escribe cada valor de su lado de los umbrales; el aviso
+de cartera parcial ya no afirma una dirección, no sale sin tamaño ni repite la lista; el riesgo
+nombra también las posiciones sin histórico; y un tope sin aplicar llega al veredicto de la ficha.
+Queda para Victor el decimocuarto: los stops guardados antes fuera de la rejilla (abiertas entre
+el 30 sep y el 20 oct) siguen fuera; se arreglan leyéndolos en la rejilla o con una migración que
+los normalice, y las dos cosas cambian lo que se compara.
+
+### Octava revisión (de la séptima, workflow, 6 nov)
+
+Cuatro revisores sobre `a19d927`…`4e25934` y las tres lentes: 17 confirmados (12 distintos), 0
+descartados; los 12 arreglados en este commit (golden idéntico, capturas 104 sin fallos). La
+puntuación se escribe frente a TODOS sus umbrales (`fmt_frente` acepta una lista) en la traza, «¿Qué
+la cambiaría?», el historial, el replay y la fila de Hoy (`/historial` sirve los `thresholds`); una
+distancia pendiente no se escribe como cero (precio en %, y la estabilidad de la confianza); la tabla
+«Evolución» de la calidad de beneficios, frente a los umbrales de su regla, y el FCF/beneficio a la
+vista cuando da el aviso; la volatilidad del stop de la cartera ya no caduca con la caché (al listar,
+la copia vencida; al abrir, una descarga) y `stop_por_clase` dice cuándo es el punto medio de la clase;
+el backtest de reglas mide la volatilidad con `vol_diaria_pct`; el aviso de cartera parcial es la misma
+frase en Hoy y en la ficha (`sizing.aviso_cartera_parcial`), con su variante sin ninguna valorada;
+sin parejas posibles no se avisa de «0 de 0» en la ficha ni en Hoy; y el estrés de Cartera dice qué
+parte del dinero mide y qué posiciones deja fuera (sumando los lotes del mismo símbolo).
+Queda para Victor: en `sizing` el control de correlación sigue con `aplicado: false` cuando no hay
+ninguna pareja posible (se filtra al enseñarlo; cambiarlo allí cambia el golden de `sizing`), y los
+backtests de reglas guardados se midieron con la volatilidad vieja (entre 0,1 puntos de stop y el punto
+medio de la clase con 21–62 cierres): volver a ejecutarlos, junto con lo ya pendiente de la banda.
+
+### Novena revisión (de la octava, tres revisores, 14 nov)
+
+Tres revisores sobre `79a2f2d` (cifras, cartera, avisos), cada hallazgo reproducido antes de
+arreglarlo: 15 confirmados, 14 arreglados en este commit (golden idéntico). Cifras: las condiciones
+de puntuación se sirven sin redondear (0,1247 salía 0,12 en la traza y 0,13 en «¿Qué la cambiaría?», y
+la confianza veía 0,05 donde había 0,0496); «Qué cambió» escribe la puntuación frente a todos sus
+umbrales, en la explicación y en la fila; la fila de Hoy y la del historial usan los umbrales de su
+propia decisión (`umbrales_puntuacion` por fila); Señales, frente a las fronteras de su etiqueta
+(`label_thresholds`); cada evidencia de calidad, frente a los umbrales de su cifra; y la distancia al
+stop ya no sale «0,0 %». Cartera: el estrés va en dólares y lee el mismo histórico que el stop (un año
+vigente, el largo, o el de un año caducado hace menos de un día, nunca de días), y nombra cada
+posición que deja fuera con su motivo; un lote con fecha de apertura atrasada mide su stop con lo
+que se sabía entonces; un rescate `viejo` no vale para congelar un stop; un lote de coste 0 no tiene
+stop. Avisos: la nota de la base no afirma una dirección con posiciones sin valorar (en ningún estado
+del efectivo); Hoy sin candidatas no habla de un tamaño; el veredicto ya no pide anotar un efectivo
+que no se sumaría ni cita una lista vacía.
+Queda para Victor el decimoquinto: el stop por clase que se congela al abrir una posición sin
+histórico se dice en la respuesta y en pantalla, pero no se guarda; después no se puede bajar al
+medido. O se guarda su origen (migración, `positions.stop_origen`) o no se congela hasta poder
+medirlo (cambia el control del RC1).
 
 ## Informe del repaso de seguridad (0.9)
 
@@ -226,9 +814,29 @@ Lo que encontraron y adónde va:
 
 (Si una sesión termina a mitad de un ítem, aquí va exactamente qué falta.)
 
-Fase 1 cerrada. Orden acordado con Victor el 9-oct: M1, M2 y M3 (revisión del 9-oct, arriba) y
-después la Fase 2 de `docs/FIX_PLAN.md`, empezando por 2.1 (estados de dato), que ya tiene anotados:
-la ficha sin cotización, los `?? 0`, los fallos que se pintan como vacío y las posiciones cerradas sin
-moneda. Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`), la hora real en
-`thesis_watch` y en el tipo de cambio, las bandas de FX cerca de la paridad, M10, M11 y M16, y una
-regla de permisos para crear y empujar las etiquetas.
+Fase 1 cerrada; M1–M3 hechos y revisados (`05f6032`); 2.1 hecho (tres revisiones independientes
+arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuatro rondas de revisión
+adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
+`2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
+`analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15). Lo siguiente es 2.2
+(`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
+
+Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
+cambio (`fx.tipo_desde_observaciones` mide la frescura con `date.today()`); las bandas de FX cerca
+de la paridad; M10, M11 y M16; una regla de permisos para crear y empujar las etiquetas; el caso
+del golden de tesis para un punto viejo en «veces»; servir con el redondeo del formateador (cambia
+`decide` y `hoy` del golden); la caché de 6 h de Hoy (M3); la columna `registrado_en` de los lotes
+de posición y el rastro de los puntos de tesis borrados (los dos piden migración); y aprobar la
+migración 0009, que vacía la moneda «GBP» aprendida (se vuelve a aprender sola). De la cuarta
+revisión: los topes de `TOPE_LEGADO` (10, 10 y 30) y una forma de confirmar la unidad de un punto
+viejo sin borrarlo (un PATCH que conserve `created_at`; hoy rehacerlo lo saca de las
+reconstrucciones anteriores); volver a ejecutar el backtest de reglas, porque los guardados sin
+`banda_tendencia_pct` entraron con «precio > media» y siguen dando «calibrada» (¿invalidarlos, como
+los anteriores al RC1?); y, si se quiere la cifra de la banda en el estado vacío de Hoy, servirla
+en `thresholds` (cambia el golden de `hoy`). De la quinta: los ETF ahora con la banda del motor (antes «precio > media»);
+y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la media + 2 % compra). De
+la séptima: los stops guardados fuera de la rejilla. De la octava: el control de correlación con
+0 parejas posibles sigue `aplicado: false` en `sizing` (cambiarlo cambia el golden de `sizing`), y
+los backtests de reglas guardados se midieron además con la volatilidad vieja. De la novena: el
+stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo).

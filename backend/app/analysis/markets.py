@@ -19,6 +19,16 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
+# Versión de la forma de la lista diaria en caché (`daily_picks`). Una sola
+# constante para quien la guarda y quien la lee (Hoy, la ficha y los dobles de
+# prueba): antes el 6 estaba escrito a mano en cada sitio.
+VERSION_LISTA_DIARIA = 6
+
+
+def parametros_lista_diaria(market: str) -> dict:
+    return {"v": VERSION_LISTA_DIARIA, "market": market}
+
+
 MARKETS: dict[str, dict] = {
     "cripto": {
         "name": "Cripto — grandes por capitalización",

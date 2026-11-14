@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '../api/client'
+import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   Comparables,
   DcfInverso,
@@ -7,10 +8,10 @@ import type {
   Sensibilidad,
   SupuestosEscenario,
   Valoracion,
-  WatchlistItem,
 } from '../api/types'
-import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../lib/formato'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo, valorDeCampo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const ESCENARIOS = ['bajista', 'base', 'alcista'] as const
 type NombreEscenario = (typeof ESCENARIOS)[number]
@@ -56,7 +57,7 @@ function BarraRango({
         <div
           className="absolute top-0.5 h-5 w-0.5 bg-slate-900"
           style={{ left: `calc(${marca}% - 1px)` }}
-          title={`Precio actual: ${fmtNum(actual, 2)}`}
+          title={`Precio actual: ${fmtPrecio(actual)}`}
         />
       )}
     </div>
@@ -71,13 +72,13 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
       </h2>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-2xl font-semibold tabular-nums text-slate-900">
-          {fmtNum(g.bajo, 0)} – {fmtNum(g.alto, 0)}
+          {fmtValorRedondo(g.bajo)} – {fmtValorRedondo(g.alto)}
         </span>
         {g.precio_actual !== null && (
           <span className="text-sm text-slate-500">
             cotiza a{' '}
             <span className="font-medium tabular-nums text-slate-800">
-              {fmtNum(g.precio_actual, 0)}
+              {fmtPrecio(g.precio_actual)}
             </span>{' '}
             ({g.posicion})
           </span>
@@ -140,10 +141,10 @@ function Escenarios({
                 </span>
                 {e.rango.disponible ? (
                   <span className="tabular-nums text-slate-900">
-                    {fmtNum(e.rango.bajo, 0)}{' '}
+                    {fmtValorRedondo(e.rango.bajo)}{' '}
                     <span className="text-slate-400">–</span>{' '}
-                    <span className="font-medium">{fmtNum(e.rango.centro, 0)}</span>{' '}
-                    <span className="text-slate-400">–</span> {fmtNum(e.rango.alto, 0)}
+                    <span className="font-medium">{fmtValorRedondo(e.rango.centro)}</span>{' '}
+                    <span className="text-slate-400">–</span> {fmtValorRedondo(e.rango.alto)}
                   </span>
                 ) : (
                   <span className="text-xs text-amber-800">sin rango calculable</span>
@@ -252,7 +253,7 @@ function SensibilidadPanel({ s }: { s: Sensibilidad }) {
               />
             </div>
             <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
-              {fmtNum(f.valor_abajo, 0)} → {fmtNum(f.valor_arriba, 0)}
+              {fmtValorRedondo(f.valor_abajo)} → {fmtValorRedondo(f.valor_arriba)}
             </div>
           </li>
         ))}
@@ -393,7 +394,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
       )}
 
       {c.pares && c.pares.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
+        <MarcoTabla etiqueta="Comparación con los pares" className="mt-3">
           <table className="w-full min-w-[420px] text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
@@ -428,7 +429,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
     </section>
   )
@@ -437,18 +438,10 @@ function ComparablesPanel({ c }: { c: Comparables }) {
 export function ValuationPage() {
   const [entrada, setEntrada] = useState('')
   const [symbol, setSymbol] = useState('')
-  const [seguidas, setSeguidas] = useState<string[]>([])
   const [data, setData] = useState<Valoracion | null>(null)
   const [supuestos, setSupuestos] = useState<Record<string, SupuestosEscenario>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.watchlist().then(
-      (w) => setSeguidas(w.items.map((i: WatchlistItem) => i.symbol)),
-      () => setSeguidas([]),
-    )
-  }, [])
 
   const correr = useCallback(
     async (s: string, escenarios?: Record<string, SupuestosEscenario>) => {
@@ -488,7 +481,7 @@ export function ValuationPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) correr(s)
+            if (s) void correr(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -507,27 +500,13 @@ export function ValuationPage() {
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </form>
-        {seguidas.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate-400">De tu watchlist:</span>
-            {seguidas.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setEntrada(s)
-                  correr(s)
-                }}
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  symbol === s
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <AtajosWatchlist
+          actual={symbol}
+          elegir={(s) => {
+            setEntrada(s)
+            void correr(s)
+          }}
+        />
       </section>
 
       {data && (

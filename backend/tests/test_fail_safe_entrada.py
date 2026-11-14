@@ -23,7 +23,7 @@ from app.db.engine import get_session
 from app.db.models import Alert, Position
 from app.deps import get_service
 from app.main import app
-from app.providers.base import iso_utc
+from app.providers.base import DataNotFoundError, iso_utc
 
 
 def _crudo(c, ruta, cuerpo: str):
@@ -40,6 +40,10 @@ class Servicio:
                     "sector": "Tech", "currency": "USD"}
         if data_type == "quote":
             return {**common, "symbol": kw["symbol"], "price": 100.0, "currency": "USD"}
+        if data_type == "price_history":
+            # Abrir una posición descarga el histórico una vez para medir su stop
+            # (revisión 8); aquí no lo hay, y el stop cae al punto medio de la clase.
+            raise DataNotFoundError("sin histórico")
         raise AssertionError(data_type)
 
 
@@ -113,6 +117,23 @@ def test_una_fecha_sin_zona_se_guarda_como_utc(api):
     assert r.status_code == 200, r.text
 
 
+def test_una_hora_con_otra_zona_se_guarda_en_utc(api):
+    # Revisión 5: «21:45+02:00» se guardaba como 21:45 sin zona y se servía como
+    # 21:45 UTC, dos horas en el futuro: la posición quedaba fuera del análisis
+    # y el doble clic pasaba el antiduplicado.
+    from datetime import timedelta
+
+    c, factory = api
+    hace_un_minuto = datetime.now(timezone.utc) - timedelta(minutes=1)
+    local = hace_un_minuto.astimezone(timezone(timedelta(hours=2))).isoformat()
+    cuerpo = {"symbol": "AAPL", "quantity": 10, "cost_basis": 100.0, "opened_at": local}
+    r = c.post("/api/portfolio/positions", json=cuerpo)
+    assert r.status_code == 200, r.text
+    servida = datetime.fromisoformat(c.get("/api/portfolio").json()["positions"][0]["opened_at"])
+    assert abs(servida - hace_un_minuto) < timedelta(seconds=1)
+    assert c.post("/api/portfolio/positions", json=cuerpo).status_code == 409
+
+
 # --- Duplicados ----------------------------------------------------------
 
 
@@ -174,6 +195,14 @@ def test_abrir_una_posicion_fija_su_stop(api):
     with factory() as s:
         p = s.query(Position).one()
     assert p.stop is not None and 0 < p.stop < 150.0
+
+
+def test_un_stop_sin_historico_que_medir_se_dice(api):
+    """Revisión 8: sin histórico (ni descargándolo) el stop guardado es el punto
+    medio de su clase, no uno medido; la respuesta lo dice."""
+    c, _ = api
+    r = c.post("/api/portfolio/positions", json={"symbol": "AAPL", "quantity": 10, "cost_basis": 150.0})
+    assert r.status_code == 200 and r.json()["stop_por_clase"] is True
 
 
 def test_el_stop_se_puede_dar_a_mano(api):
@@ -253,6 +282,19 @@ def test_se_puede_fijar_el_stop_de_una_posicion_antigua(api):
     assert r.status_code == 200, r.text
     with factory() as s:
         assert s.get(Position, pid).stop == 90.0
+
+
+def test_un_stop_tecleado_va_a_la_rejilla_hacia_arriba(api):
+    # Revisión 6: fuera de la rejilla, 51.000,109 se servía 51.000,10 y un cierre
+    # por encima del stop escrito «lo perforaba». Hacia arriba: nunca más lejos.
+    c, factory = api
+    r = c.post("/api/portfolio/positions",
+               json={"symbol": "AAPL", "quantity": 1, "cost_basis": 60000.0, "stop": 51000.109})
+    assert r.status_code == 200, r.text
+    pid = r.json()["id"]
+    with factory() as s:
+        assert s.get(Position, pid).stop == 51000.11
+    assert c.post(f"/api/portfolio/positions/{pid}/stop", json={"stop": 52000.101}).json()["stop"] == 52000.11
 
 
 def test_un_stop_se_puede_subir(api):

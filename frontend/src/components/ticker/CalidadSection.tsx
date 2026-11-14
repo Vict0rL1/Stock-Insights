@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
 import { api } from '../../api/client'
 import type { CalidadBeneficios, EvidenciaCalidad, Linaje } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { decimalesFrente, fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
+import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 const ESTADO: Record<string, string> = {
   bueno: 'bg-emerald-100 text-emerald-800',
@@ -36,16 +39,45 @@ function Entrada({ nombre, e }: { nombre: string; e: Linaje }) {
   )
 }
 
+// Los umbrales que de verdad separan los estados de la cifra de cada evidencia.
+// Con todos los de `umbral`, el CFO/beneficio se escribía también frente al
+// límite del FCF (0,6) y 0,5996 salía «0,5996×» arriba y «0,60×» en la tabla; la
+// calidad del FCF separa BUENO de NORMAL en −5 %, no en +5 %, y −4,96 % y −5,04 %
+// salían los dos «−5,0 %» (revisión 9).
+const UMBRALES_DE_EVIDENCIA: Record<string, (u: Record<string, number>) => (number | undefined)[]> = {
+  conversion_caja: (u) => [u.bueno, u.aviso],
+  calidad_fcf: (u) => [u.divergencia === undefined ? undefined : -u.divergencia],
+}
+
+function umbralesDe(e: EvidenciaCalidad): number[] {
+  const umbral = e.umbral ?? {}
+  const elegidos = UMBRALES_DE_EVIDENCIA[e.categoria]?.(umbral) ?? Object.values(umbral)
+  return elegidos.filter((u): u is number => typeof u === 'number')
+}
+
 function Fila({ e }: { e: EvidenciaCalidad }) {
   const esFraccion = !['conversion_caja'].includes(e.categoria)
+  const umbrales = umbralesDe(e)
   return (
-    <details className="border-b border-slate-100 py-2 last:border-0">
+    <details className="group border-b border-slate-100 py-2 last:border-0">
+      {/* Con `display:flex` el `summary` pierde su triángulo, y en móvil no hay
+          `hover` que diga que la fila se despliega (revisión del 2.12). */}
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-2 text-xs">
+        <span aria-hidden="true" className="text-slate-400 transition-transform group-open:rotate-90">▸</span>
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ESTADO[e.estado]}`}>{e.estado.toUpperCase()}</span>
         <span className="font-medium text-slate-800">{etiqueta(e.categoria, { mayuscula: true })}</span>
         <span className="tabular-nums text-slate-600">
-          {e.valor === null ? '—' : esFraccion ? fmtPct(e.valor, 1) : `${fmtNum(e.valor, 2)}×`}
+          {/* De su lado de los umbrales de la regla: con decimales fijos, 0,996
+              frente a «≥ 1 bueno» salía «NORMAL · 1,00×» (revisión 7). */}
+          {e.valor === null ? '—' : esFraccion ? fmtPct(e.valor, decimalesFrente(e.valor, umbrales, true)) : `${fmtNum(e.valor, decimalesFrente(e.valor, umbrales))}×`}
         </span>
+        {/* El FCF también puede dar el AVISO (< 0,6), y su cifra no salía en la
+            fila: «AVISO · 0,996×» sin causa a la vista (revisión 8). */}
+        {e.categoria === 'conversion_caja' && typeof e.fcf_sobre_beneficio === 'number' && (
+          <span className="tabular-nums text-slate-500">
+            · FCF/beneficio {fmtFrente(e.fcf_sobre_beneficio, typeof e.umbral?.fcf_debil === 'number' ? [e.umbral.fcf_debil] : [])}×
+          </span>
+        )}
         <span className="text-slate-400">{e.periodo ? `ejercicio ${e.periodo}` : ''}</span>
         {e.persistente && <span className="rounded bg-red-100 px-1 text-[10px] text-red-800">persistente</span>}
       </summary>
@@ -64,25 +96,45 @@ function Fila({ e }: { e: EvidenciaCalidad }) {
 }
 
 export function CalidadSection({ symbol }: { symbol: string }) {
-  const [datos, setDatos] = useState<CalidadBeneficios | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Cargando, fallo con su motivo y «Reintentar»: lo mismo que el resto de la
+  // app (ítem 2.1). Antes el fallo salía como un mensaje suelto, sin decir qué
+  // era lo que no había cargado. Un 404 es que EDGAR no la tiene (desde que la
+  // ruta da 502 si EDGAR no respondió): ausencia, sin «Reintentar» (segunda
+  // revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.calidad(symbol)), symbol)
+  return (
+    <BloqueDatos carga={carga} que="la calidad de beneficios" ausente={(m) => m}>
+      {(datos) => <Calidad datos={datos} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setDatos(null)
-    setError(null)
-    api.calidad(symbol).then(setDatos, (e: Error) => setError(e.message))
-  }, [symbol])
+// De qué regla salen los umbrales de cada columna de «Evolución». Los valores
+// vienen de la evidencia, no de aquí: con decimales fijos, la fila del mismo
+// ejercicio decía «1,00×» bajo un «0,996×» y «0,60×» con un AVISO por < 0,6
+// (revisión 8).
+const UMBRALES_DE_COLUMNA: Record<string, [categoria: string, claves: string[]]> = {
+  cfo_sobre_beneficio: ['conversion_caja', ['bueno', 'aviso']],
+  fcf_sobre_beneficio: ['conversion_caja', ['fcf_debil']],
+  sbc_sobre_ingresos: ['sbc', ['normal', 'aviso']],
+  brecha_cobros: ['cuentas_por_cobrar', ['normal', 'aviso']],
+  brecha_inventario: ['inventario', ['normal', 'aviso']],
+}
 
-  if (error) return <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{error}</p>
-  if (!datos) return <p className="text-sm text-slate-400">Cargando calidad de beneficios…</p>
+function umbralesDeColumna(evidencias: EvidenciaCalidad[], columna: string): number[] {
+  const [categoria, claves] = UMBRALES_DE_COLUMNA[columna] ?? ['', []]
+  const umbral = evidencias.find((e) => e.categoria === categoria)?.umbral ?? {}
+  return claves.map((k) => umbral[k]).filter((u): u is number => typeof u === 'number')
+}
 
+function Calidad({ datos }: { datos: CalidadBeneficios }) {
   const columnas = ['cfo_sobre_beneficio', 'fcf_sobre_beneficio', 'sbc_sobre_ingresos', 'dias_de_cobro', 'brecha_cobros', 'brecha_inventario']
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">
-            Calidad de beneficios ({datos.ejercicio}): {GLOBAL[datos.global] ?? datos.global}
+            Calidad de beneficios{datos.ejercicio ? ` (${datos.ejercicio})` : ''}: {GLOBAL[datos.global] ?? datos.global}
           </h2>
           {datos.puntuacion && (
             <span className="text-[11px] text-slate-400">
@@ -90,6 +142,9 @@ export function CalidadSection({ symbol }: { symbol: string }) {
             </span>
           )}
         </div>
+        {/* Un DESCONOCIDA dice por qué (sin estados financieros…): antes el motivo
+            llegaba y no se pintaba, y salía «Calidad de beneficios (): DESCONOCIDA». */}
+        {datos.motivo && <p className="mt-1 text-[11px] text-amber-800">{datos.motivo}</p>}
         <p className="mt-1 text-[11px] text-slate-500">{datos.regla_global}</p>
         <div className="mt-2">
           {datos.evidencias.map((e) => (
@@ -104,9 +159,9 @@ export function CalidadSection({ symbol }: { symbol: string }) {
           <h2 className="mb-2 text-sm font-semibold text-slate-800">Evolución</h2>
           {[['Ejercicios', datos.historia], ['Trimestres', datos.trimestral ?? []]].map(([titulo, filas]) =>
             (filas as Record<string, number | string | null>[]).length ? (
-              <div key={titulo as string} className="mb-3 overflow-x-auto">
+              <MarcoTabla key={titulo as string} etiqueta={`Evolución: ${(titulo as string).toLowerCase()}`} className="mb-3">
                 <div className="text-[10px] uppercase tracking-wide text-slate-400">{titulo as string}</div>
-                <table className="w-full text-right text-xs tabular-nums">
+                <table className={`${TABLA_COMPACTA} text-right text-xs tabular-nums`}>
                   <thead className="text-[10px] text-slate-400">
                     <tr>
                       <th className="text-left">Periodo</th>
@@ -126,7 +181,13 @@ export function CalidadSection({ symbol }: { symbol: string }) {
                           const v = f[c] as number | null | undefined
                           return (
                             <td key={c} className="text-slate-600">
-                              {v == null ? '—' : c === 'dias_de_cobro' ? fmtNum(v, 0) : c.includes('beneficio') ? `${fmtNum(v, 2)}×` : fmtPct(v, 1)}
+                              {v == null
+                                ? '—'
+                                : c === 'dias_de_cobro'
+                                  ? fmtNum(v, 0)
+                                  : c.includes('beneficio')
+                                    ? `${fmtFrente(v, umbralesDeColumna(datos.evidencias, c))}×`
+                                    : fmtFrente(v, umbralesDeColumna(datos.evidencias, c), { pct: true })}
                             </td>
                           )
                         })}
@@ -134,7 +195,7 @@ export function CalidadSection({ symbol }: { symbol: string }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </MarcoTabla>
             ) : null,
           )}
         </section>

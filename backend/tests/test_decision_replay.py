@@ -85,7 +85,8 @@ def test_cambiar_la_tesis_actual_no_modifica_la_instantanea(session_factory, ser
         s.add(tesis)
         s.commit()
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen",
-                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}))
+                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18},
+                            created_at=tesis.created_at))
         s.commit()
         snap, _ = _congelar(s, servicio)
         congelada = sn.reproducir(snap)["secciones"]["tesis"]
@@ -93,7 +94,7 @@ def test_cambiar_la_tesis_actual_no_modifica_la_instantanea(session_factory, ser
         tesis.title, tesis.body_md = "Otra cosa", "Ya no creo en servicios."
         tesis.updated_at = AHORA + timedelta(days=2)
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="x",
-                            config={"palabras": ["recall"]}))
+                            config={"palabras": ["recall"]}, created_at=AHORA + timedelta(days=2)))
         s.commit()
         despues = sn.reproducir(s.get(DecisionSnapshot, snap.id))["secciones"]["tesis"]
     assert despues == congelada
@@ -122,13 +123,74 @@ def test_con_las_noticias_caidas_la_tesis_no_se_congela_intacta(session_factory,
         s.add(tesis)
         s.commit()
         s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall",
-                            config={"palabras": ["recall"]}))
+                            config={"palabras": ["recall"]}, created_at=tesis.created_at))
         s.commit()
         snap, r = _congelar(s, servicio)
         congelada = sn.reproducir(snap)["secciones"]["tesis"]
     assert r["analisis"]["noticias"]["estado"] == "desconocido"
     assert congelada["estado"] == "sin_comprobar"
     assert congelada["disparadores"][0]["medible"] is False
+
+
+def _tesis_con_recall(s):
+    inst = Instrument(symbol="AAPL", name="Apple")
+    s.add(inst)
+    s.commit()
+    hace = datetime.now(timezone.utc) - timedelta(days=30)
+    tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                   created_at=hace, updated_at=hace)
+    s.add(tesis)
+    s.commit()
+    s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                        created_at=hace))
+    s.commit()
+
+
+def _titular(texto, horas, resumen=""):
+    return {"headline": texto, "summary": resumen, "url": f"u{horas}",
+            "published_at": (datetime.now(timezone.utc) - timedelta(hours=horas)).isoformat()}
+
+
+@pytest.mark.parametrize("noticias", [
+    # Doce titulares en la ventana y «recall» en el más antiguo: la pantalla
+    # enseña diez, pero la tesis tiene que mirarlos todos.
+    [_titular(f"Noticia neutra {i}", 2 + i) for i in range(11)] + [_titular("Big recall announced", 200)],
+    # La palabra solo en el resumen: la lista de la pantalla no lleva resumen.
+    [_titular("Apple anuncia cambios", 3, resumen="The company issued a recall of chargers")],
+], ids=["mas_de_diez", "solo_en_el_resumen"])
+def test_la_tesis_del_analisis_mira_las_mismas_noticias_que_vigilancia(session_factory, noticias):
+    """El análisis le pasaba a la tesis la lista recortada para la pantalla (diez,
+    sin resumen) y congelaba «intacta» mientras Vigilancia la daba por cruzada
+    (revisión de M1). El corte de la ventana usa el reloj real, así que aquí
+    el análisis es de ahora."""
+    ahora = datetime.now(timezone.utc) - timedelta(minutes=5)
+    sv = ServicioFalso(ahora).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base(), noticias=noticias)
+    with session_factory() as s:
+        _tesis_con_recall(s)
+        r = analizar_y_congelar("AAPL", sv, s, ahora=ahora, con_pares=False)
+    assert len(r["analisis"]["noticias"]["items"]) <= 10
+    assert r["analisis"]["tesis"]["estado"] == "puntos_cruzados"
+
+
+def test_unas_noticias_viejas_de_la_cache_no_dan_la_tesis_por_intacta(session_factory):
+    """Con todas las fuentes caídas se sirve la última copia, de hasta horas: no
+    cubre la ventana entera, así que «ningún titular» no se puede afirmar."""
+    ahora = datetime.now(timezone.utc) - timedelta(minutes=5)
+    sv = ServicioFalso(ahora).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base(),
+                                      noticias=[_titular("Resultados en línea", 5)])
+    original = sv.get
+
+    def viejas(tipo, **kw):
+        r = original(tipo, **kw)
+        return {**r, "estado": "viejo", "antiguedad_segundos": 3 * 3600} if tipo == "news" else r
+
+    sv.get = viejas
+    with session_factory() as s:
+        _tesis_con_recall(s)
+        r = analizar_y_congelar("AAPL", sv, s, ahora=ahora, con_pares=False)
+    assert r["analisis"]["noticias"]["estado"] == "viejo"
+    assert r["analisis"]["tesis"]["estado"] == "sin_comprobar"
+    assert "copia guardada hace 3 h" in r["analisis"]["tesis"]["disparadores"][0]["detalle"]
 
 
 def test_no_entra_una_noticia_publicada_despues_del_analisis(session_factory, servicio):
@@ -377,3 +439,118 @@ def test_en_vivo_la_barra_de_hoy_descargada_antes_si_entra(session_factory, serv
         a = analisis_empresa.analizar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=5), con_pares=False)
     # El histórico se obtuvo a las 14:35 (`as_of`) y se analiza a las 14:40.
     assert a["mercado"]["historico"]["hasta"] == AHORA.date().isoformat()
+
+
+def test_un_punto_anadido_despues_no_cruza_la_tesis_de_entonces(session_factory):
+    """Revisión de A4 (la misma clase): añadir un punto no toca `updated_at`, y uno
+    añadido el 15 de octubre cruzaba en la reconstrucción del 12 de septiembre
+    una tesis que entonces no tenía puntos. (Un punto de métrica y no de
+    noticias: la ventana de noticias de `thesis_watch` va con el reloj real.)"""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        # Margen operativo del 20 %: un punto «< 50 %» salta.
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen operativo < 50 %",
+                            config={"metrica": "operating_margin", "op": "lt", "umbral": 0.5},
+                            created_at=AHORA + timedelta(days=33)))
+        s.commit()
+        fund = {"_periodos": financieros_base()}
+        entonces = seccion_tesis(s, inst, fund, [], AHORA)
+        luego = seccion_tesis(s, inst, fund, [], AHORA + timedelta(days=34))
+    assert entonces["estado"] == "sin_puntos"
+    assert luego["estado"] == "puntos_cruzados"
+
+
+def test_lo_descargado_durante_el_analisis_no_se_retira_en_el_replay(session_factory, servicio):
+    """Revisión de 2f8d84b: el análisis aceptaba con el margen de descarga una
+    cotización fechada unos segundos después de `ahora` (yfinance la fecha al
+    descargarla), pero al congelar quedaba como «futura» y el replay retiraba
+    el precio con que se había decidido."""
+    servicio.quotes["AAPL"]["as_of"] = (AHORA + timedelta(seconds=2)).isoformat()
+    with session_factory() as s:
+        snap, r = _congelar(s, servicio)
+        replay = sn.reproducir(snap)
+    assert r["analisis"]["mercado"]["precio"]["valor"] == 104.0
+    assert (snap.contexto["analisis"]["anomalias_temporales"]["futuras"]) == []
+    assert replay["proteccion_anticipacion"]["retiradas_por_fecha_futura"] == []
+    assert replay["secciones"]["mercado"]["precio"]["valor"] == 104.0 and replay["completo"]
+
+
+def test_la_cotizacion_de_otro_dia_si_se_retira_y_la_puntuacion_de_pares_lleva_el_margen():
+    marcas = [{"dato": "precio", "publicado": (AHORA + timedelta(days=1)).isoformat(), "obtenido_en": None},
+              {"dato": "puntuación", "publicado": (AHORA + timedelta(seconds=3)).isoformat(), "obtenido_en": None},
+              {"dato": "noticia: x", "publicado": (AHORA + timedelta(seconds=3)).isoformat(), "obtenido_en": None}]
+    futuras = [m["dato"] for m in sn.anomalias_temporales(marcas, AHORA)["futuras"]]
+    assert futuras == ["precio", "noticia: x"]
+
+
+def test_la_barra_de_hoy_descargada_durante_el_analisis_entra_como_si_viniera_de_la_cache(session_factory, servicio):
+    """Revisión de 2f8d84b: la barra (o el filing) de hoy entraba si venía de la
+    caché y no si se descargaba en ese momento, unos segundos después de `ahora`."""
+    from app.analisis_empresa import seccion_mercado
+
+    tarde = AHORA.replace(hour=21, minute=30)
+    servicio.historias["AAPL"].append({"ts": tarde.date().isoformat(), "close": 110.0})
+    del servicio.quotes["AAPL"]
+    servicio.ahora = tarde + timedelta(seconds=1)  # el histórico se fecha al descargarlo
+    durante, _ = seccion_mercado(servicio, "AAPL", tarde)
+    servicio.ahora = tarde - timedelta(minutes=1)  # el mismo histórico, de la caché
+    cache, _ = seccion_mercado(servicio, "AAPL", tarde)
+    assert durante["historico"]["hasta"] == cache["historico"]["hasta"] == tarde.date().isoformat()
+    assert durante["precio"]["valor"] == cache["precio"]["valor"] == 110.0
+
+
+def test_la_ventana_de_noticias_de_la_tesis_acaba_en_el_ahora_del_analisis(session_factory):
+    """Revisión 3: el corte de la ventana usaba el reloj de la máquina, y una
+    tesis reconstruida al 12 de septiembre con un titular del 11 salía «intacta»
+    (el titular quedaba fuera de los 14 días de hoy)."""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Servicios", body_md="Crece en servicios.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="recall",
+                            config={"palabras": ["recall"]}, created_at=tesis.created_at))
+        s.commit()
+        noticias = [{"headline": "Apple anuncia un recall de cargadores", "summary": "",
+                     "published_at": (AHORA - timedelta(days=1)).isoformat()}]
+        r = seccion_tesis(s, inst, {}, noticias, AHORA)
+    assert r["estado"] == "puntos_cruzados"
+
+
+def test_la_ficha_lleva_el_aviso_de_un_punto_sin_unidad(session_factory):
+    """Revisión 5: `seccion_tesis` copiaba solo algunos campos de cada punto, y el
+    aviso de la doble lectura de un punto sin unidad no llegaba ni a la ficha ni
+    a la instantánea: solo a Vigilancia."""
+    from app.analisis_empresa import seccion_tesis
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", name="Apple")
+        s.add(inst)
+        s.commit()
+        tesis = Thesis(instrument_id=inst.id, title="Deuda", body_md="Poca deuda.",
+                       created_at=AHORA - timedelta(days=30), updated_at=AHORA - timedelta(days=30))
+        s.add(tesis)
+        s.commit()
+        # Guardado 0,0001 por el formulario viejo («D/E > 0,01»): con cualquier D/E
+        # razonable salta con las dos lecturas, y hay que decir la duda.
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="D/E alto",
+                            config={"metrica": "debt_to_equity", "op": "gt", "umbral": 0.0001},
+                            created_at=tesis.created_at))
+        s.commit()
+        periodos = [{**p, "equity": 1000.0} for p in financieros_base()]  # D/E 0,3
+        r = seccion_tesis(s, inst, {"_periodos": periodos}, [], AHORA)
+    punto = r["disparadores"][0]
+    assert punto["salta"] is True and "puede ser 0,01 escrito por ti" in punto["aviso"]

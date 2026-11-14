@@ -1,0 +1,686 @@
+"""Auditoría del 19 oct: el efectivo y las lecturas del coste de oportunidad,
+reconstruidos a una fecha, no pueden mirar el futuro.
+
+A2: `efectivo_usd` convertía con el ÚLTIMO tipo de la serie, aunque fuera
+posterior a la fecha de la decisión.
+
+A4: una anotación de efectivo contaba en cuanto su saldo estaba fechado antes de
+la decisión, aunque se hubiera escrito después; y mandaba la última FILA, así que
+anotar un saldo antiguo tapaba el de hoy.
+
+A5: la lectura congelada de una posición era la más reciente de la base y, si
+era posterior a la fecha pedida, no había lectura, aunque hubiera una anterior.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.db.engine import get_session
+from app.db.models import CashBalance
+from app.main import app
+from app.oportunidad import _lectura_congelada, efectivo_usd
+from app.routers.empresa import analizar_y_congelar
+from app.routers.signals import _detalle_efectivo
+from tests.fakes_empresa import AHORA, ServicioFalso, financieros_base
+
+DECISION = datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+ANOTADO = datetime(2026, 9, 11, 15, 0, tzinfo=timezone.utc)
+
+
+def _cad(session_factory, serie, ahora=DECISION):
+    with session_factory() as s:
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        return efectivo_usd(s, {"fx_series": {"CAD": serie}}, ahora)
+
+
+def test_el_caso_de_la_auditoria_convierte_con_el_tipo_de_entonces(session_factory):
+    e = _cad(session_factory, [(date(2026, 9, 11), 1.30), (date(2026, 9, 14), 1.50)])
+    assert e["estado"] == "valido"
+    assert e["usd"] == 100.0
+    assert e["detalle"][0]["tipo_fecha"] == "2026-09-11" and e["detalle"][0]["tipo_por_usd"] == 1.30
+
+
+def test_el_tipo_fechado_el_mismo_dia_de_la_decision_no_se_conocia(session_factory):
+    # FRED publica el tipo de un día después: a las 15:00 del 12 el del 12 no
+    # estaba (regla común de `punto_en_el_tiempo`).
+    e = _cad(session_factory, [(date(2026, 9, 11), 1.30), (date(2026, 9, 12), 1.50)])
+    assert e["usd"] == 100.0
+
+
+def test_sin_ningun_tipo_conocido_a_esa_fecha_el_efectivo_es_desconocido(session_factory):
+    e = _cad(session_factory, [(date(2026, 9, 14), 1.50)])
+    assert e["usd"] is None and e["estado"] == "desconocido"
+    assert "sin tipo de cambio conocido a esa fecha" in e["motivo"]
+
+
+def test_un_tipo_viejo_se_usa_pero_se_dice(session_factory):
+    e = _cad(session_factory, [(date(2026, 8, 20), 1.30)])
+    assert e["usd"] == 100.0
+    assert e["estado"] == "viejo"
+    assert "20 ago 2026" in e["motivo"]
+    nota = _detalle_efectivo(e["detalle"])
+    assert "al tipo de cambio del 20 ago 2026" in nota
+
+
+def test_un_tipo_reciente_no_lleva_aviso(session_factory):
+    e = _cad(session_factory, [(date(2026, 9, 10), 1.30)])
+    assert e["estado"] == "valido" and "motivo" not in e
+    assert "tipo de cambio" not in _detalle_efectivo(e["detalle"])
+
+
+def _utc(mes, dia, hora=12):
+    return datetime(2026, mes, dia, hora, 0, tzinfo=timezone.utc)
+
+
+def _usd(session_factory, *anotaciones):
+    with session_factory() as s:
+        for importe, saldo_del, anotado_el in anotaciones:
+            s.add(CashBalance(moneda="USD", importe=importe, as_of=saldo_del, registrado_en=anotado_el))
+        s.commit()
+
+
+def _vale(session_factory, ahora):
+    with session_factory() as s:
+        return efectivo_usd(s, {}, ahora)["usd"]
+
+
+def test_un_saldo_anotado_hoy_con_fecha_atrasada_no_existia_antes_de_anotarlo(session_factory):
+    _usd(session_factory, (5000.0, _utc(9, 1), _utc(10, 19)))
+    assert _vale(session_factory, _utc(9, 12)) is None  # el 12 de septiembre nadie lo había escrito
+    assert _vale(session_factory, _utc(10, 20)) == 5000.0
+
+
+def test_manda_el_saldo_mas_reciente_no_la_ultima_fila(session_factory):
+    # El 10 de octubre: 10.000. El 15 se anota, para la historia, que el 1 había 8.000.
+    _usd(session_factory, (10000.0, _utc(10, 10), _utc(10, 10)), (8000.0, _utc(10, 1), _utc(10, 15)))
+    assert _vale(session_factory, _utc(10, 20)) == 10000.0
+    assert _vale(session_factory, _utc(10, 12)) == 10000.0
+    assert _vale(session_factory, _utc(10, 5)) is None
+
+
+def test_con_el_mismo_saldo_la_anotada_despues_corrige(session_factory):
+    _usd(session_factory, (10000.0, _utc(10, 10), _utc(10, 10, 13)), (9500.0, _utc(10, 10), _utc(10, 11)))
+    assert _vale(session_factory, _utc(10, 20)) == 9500.0
+    assert _vale(session_factory, _utc(10, 10, 23)) == 10000.0
+
+
+def test_la_pantalla_de_efectivo_ensena_el_mismo_saldo_que_usan_los_calculos(session_factory):
+    _usd(session_factory, (10000.0, _utc(10, 10), _utc(10, 10)), (8000.0, _utc(10, 1), _utc(10, 15)))
+
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = sesion
+    try:
+        saldos = TestClient(app).get("/api/portfolio/efectivo").json()["saldos"]
+    finally:
+        app.dependency_overrides.clear()
+    assert [x["importe"] for x in saldos] == [10000.0]
+
+
+def _cliente(session_factory):
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = sesion
+    return TestClient(app)
+
+
+def _anotar(cliente, importe, as_of=None):
+    cuerpo = {"moneda": "USD", "importe": importe} | ({"as_of": as_of} if as_of else {})
+    r = cliente.post("/api/portfolio/efectivo", json=cuerpo)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_un_saldo_de_hoy_anotado_solo_con_el_dia_manda(session_factory):
+    # Revisión de A4: «2026-10-20» se guardaba como su medianoche y perdía contra
+    # los 10.000 anotados esa mañana; el POST respondía 200 y seguían mandando.
+    cliente = _cliente(session_factory)
+    try:
+        _anotar(cliente, 10000.0)
+        nueva = _anotar(cliente, 1000.0, datetime.now(timezone.utc).date().isoformat())
+        saldos = cliente.get("/api/portfolio/efectivo").json()["saldos"]
+    finally:
+        app.dependency_overrides.clear()
+    assert nueva["vigente"] is True and nueva["nota"] is None
+    assert [x["importe"] for x in saldos] == [1000.0]
+    assert _vale(session_factory, datetime.now(timezone.utc)) == 1000.0
+
+
+def test_un_saldo_de_un_dia_pasado_cuenta_al_final_de_ese_dia_y_avisa_si_no_manda(session_factory):
+    cliente = _cliente(session_factory)
+    ayer = datetime.now(timezone.utc).date() - timedelta(days=1)
+    try:
+        _anotar(cliente, 10000.0)
+        vieja = _anotar(cliente, 1000.0, ayer.isoformat())
+        saldos = cliente.get("/api/portfolio/efectivo").json()["saldos"]
+    finally:
+        app.dependency_overrides.clear()
+    assert datetime.fromisoformat(vieja["as_of"]) == datetime.combine(ayer, datetime.max.time(), tzinfo=timezone.utc)
+    assert vieja["vigente"] is False
+    assert "no es el saldo vigente" in vieja["nota"] and "10.000,00\u00a0USD" in vieja["nota"]
+    assert [x["importe"] for x in saldos] == [10000.0]
+
+
+def test_un_saldo_unos_minutos_adelantado_se_ve_en_cuanto_se_anota(session_factory):
+    # Revisión de A4: el margen de 5 minutos es por el reloj de quien llama;
+    # guardado tal cual, la pantalla decía «Sin efectivo anotado» esos minutos.
+    cliente = _cliente(session_factory)
+    try:
+        r = _anotar(cliente, 5000.0, (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat())
+        efectivo = cliente.get("/api/portfolio/efectivo").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert datetime.fromisoformat(r["as_of"]) <= datetime.now(timezone.utc)
+    assert [x["importe"] for x in efectivo["saldos"]] == [5000.0] and efectivo["nota"] is None
+
+
+def test_una_fecha_que_no_es_fecha_se_rechaza(session_factory):
+    cliente = _cliente(session_factory)
+    try:
+        malas = [cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": f}).status_code for f in ("ayer", "2026-13-01")]
+        # Mañana en UTC es el hoy de alguien al este y cuenta como hoy; pasado
+        # mañana ya es el futuro para cualquiera.
+        pasado = (datetime.now(timezone.utc).date() + timedelta(days=2)).isoformat()
+        futura = cliente.post("/api/portfolio/efectivo", json={"importe": 1.0, "as_of": pasado})
+    finally:
+        app.dependency_overrides.clear()
+    assert malas == [422, 422] and futura.status_code == 422 and "en UTC" in futura.json()["detail"]
+
+
+def test_una_lectura_posterior_no_esconde_la_anterior_valida(session_factory):
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    antes, despues = AHORA - timedelta(days=2), AHORA + timedelta(days=3)
+    with session_factory() as s:
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=antes, con_pares=False)["instantanea"]
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=despues, con_pares=False)["instantanea"]
+        assert primera["id"] != segunda["id"]
+        entonces = _lectura_congelada(s, "AAPL", AHORA)
+        luego = _lectura_congelada(s, "AAPL", despues + timedelta(hours=1))
+        nunca = _lectura_congelada(s, "AAPL", antes - timedelta(days=1))
+    assert entonces["lectura_de"] == primera["creado_en"]
+    assert luego["lectura_de"] == segunda["creado_en"]
+    assert nunca == {}
+
+
+# --- Hermanos de A2 y A5: la cartera del contexto, reconstruida a una fecha --------
+
+
+def _posicion(s, symbol, cantidad=10, coste=100.0, abierta=None, cerrada=None, moneda="USD"):
+    from app.db.models import Instrument, Position
+
+    inst = Instrument(symbol=symbol, name=symbol, sector="Tech", currency=moneda)
+    s.add(inst)
+    s.flush()
+    s.add(Position(instrument_id=inst.id, quantity=cantidad, cost_basis=coste,
+                   opened_at=abierta or AHORA - timedelta(days=60), closed_at=cerrada,
+                   realized_pnl=0.0 if cerrada else None))
+    s.commit()
+
+
+def test_una_posicion_cerrada_despues_sigue_en_la_cartera_de_ese_dia(session_factory):
+    # Revisión de A5: se filtraba en SQL por `closed_at IS NULL` y MSFT, abierta
+    # el 12 y cerrada el 14, faltaba del capital y de los comparables del 12.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT", cerrada=AHORA + timedelta(days=2))
+        entonces = contexto_cartera.construir(s, servicio, ahora=AHORA)
+        luego = contexto_cartera.construir(s, servicio, ahora=AHORA + timedelta(days=3))
+    assert [p["symbol"] for p in entonces["posiciones"]] == ["MSFT"]
+    assert entonces["total_usd"] == 3000.0
+    assert luego["posiciones"] == []
+
+
+def test_la_reconstruccion_valora_con_el_cierre_de_entonces_no_con_la_cotizacion_de_hoy(session_factory):
+    # Revisión de A5: la reconstrucción del 12 pesaba MSFT con la cotización
+    # del 15 (300); entonces el último cierre conocido era el del 11.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3)).empresa("MSFT", precio=300.0, score=None)
+    servicio.cache.set("price_history_long", {"symbol": "MSFT"}, {"bars": [
+        {"ts": "2026-09-10", "close": 200.0}, {"ts": "2026-09-11", "close": 210.0},
+        {"ts": "2026-09-14", "close": 300.0}]})
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["precio"] == 210.0 and p["precio_estado"] == "viejo" and p["valor_usd"] == 2100.0
+
+
+def test_la_posicion_y_el_efectivo_en_cad_se_convierten_con_el_mismo_tipo(session_factory):
+    # Revisión de A2: la posición iba al último tipo de la serie (1,50, del 14) y
+    # el efectivo al de entonces (1,30): dos tipos para el mismo CAD.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=130.0, score=None, moneda="CAD")
+    servicio.macro["DEXCAUS"] = [{"ts": "2026-09-11", "value": "1.30"}, {"ts": "2026-09-14", "value": "1.50"}]
+    with session_factory() as s:
+        _posicion(s, "SHOP.TO", cantidad=1, moneda="CAD")
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        ctx = contexto_cartera.construir(s, servicio, ahora=DECISION)
+        efectivo = efectivo_usd(s, ctx, DECISION)
+    assert ctx["posiciones"][0]["valor_usd"] == 100.0
+    assert efectivo["usd"] == 100.0
+
+
+def test_lo_descargado_durante_el_analisis_no_es_informacion_futura():
+    # Una cotización pedida durante el análisis lleva la hora de la descarga,
+    # posterior al `ahora` con que empezó: se tiraba como futura y se decidía
+    # con el cierre de ayer, «viejo».
+    from app.analisis_empresa import seccion_mercado
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=100.0, score=None)
+    servicio.quotes["SHOP.TO"]["as_of"] = (AHORA + timedelta(seconds=2)).isoformat()
+    fresca, _ = seccion_mercado(servicio, "SHOP.TO", AHORA)
+    servicio.quotes["SHOP.TO"]["as_of"] = (AHORA + timedelta(days=1)).isoformat()
+    futura, _ = seccion_mercado(servicio, "SHOP.TO", AHORA)
+    assert fresca["estado"] == "valido" and fresca["precio"]["valor"] == 100.0
+    assert futura["estado"] == "viejo" and futura["precio"]["valor"] != 100.0
+
+
+def test_una_instantanea_posterior_no_rompe_el_antiduplicado(session_factory):
+    # Revisión de A5: el antiduplicado miraba la instantánea más reciente aunque
+    # fuera posterior a `ahora`; con una del día siguiente en la base, cada
+    # análisis igual congelaba una copia nueva, inmutable e imborrable.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(days=1), con_pares=False)
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=5), con_pares=False)
+    assert primera["instantanea"]["nueva"] is True
+    assert segunda["instantanea"]["nueva"] is False
+    assert segunda["instantanea"]["id"] == primera["instantanea"]["id"]
+
+
+def test_una_instantanea_posterior_del_mismo_dia_no_rompe_el_antiduplicado(session_factory):
+    # Revisión 4: dentro del día se comparaba con la de `creado_en` más alto. Con
+    # una de las 16:35 (reloj adelantado, otra huella) en la base, cada análisis
+    # igual de las 14:35 en adelante congelaba otra copia inmutable.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        servicio.senal("AAPL", 0.9)
+        adelantada = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        ids = [analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=m), con_pares=False)["instantanea"]
+               for m in (0, 5, 10)]
+    assert ids[0]["nueva"] is True and ids[0]["id"] != adelantada["instantanea"]["id"]
+    assert [i["nueva"] for i in ids[1:]] == [False, False]
+    assert {i["id"] for i in ids} == {ids[0]["id"]}
+
+
+def test_dos_solapados_con_huellas_distintas_no_dejan_una_copia_del_vigente(session_factory):
+    # Revisión 5: B (dato nuevo) empieza en T+20 s y congela primero; A (dato
+    # viejo) empezó en T y congela después. Comparando solo con la última por
+    # `id` (A), un tercer análisis igual que B congelaba una copia idéntica.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        b = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=20), con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        c = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=60), con_pares=False)
+    assert c["instantanea"]["nueva"] is False and c["instantanea"]["id"] == b["instantanea"]["id"]
+
+
+def test_una_adelantada_del_mismo_dia_no_se_traga_un_cambio_material(session_factory):
+    # Revisión 6: X adelantada (16:35, señal 0,9), Y a las 14:35 (0,6) y a las
+    # 14:45 vuelve el 0,9: la última por `creado_en` era X, futura, coincidía, y
+    # la decisión de las 14:45 no se congelaba.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        servicio.senal("AAPL", 0.9)
+        x = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        servicio.senal("AAPL", 0.6)
+        y = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        z = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=10), con_pares=False)
+    assert y["instantanea"]["nueva"] is True
+    assert z["instantanea"]["nueva"] is True
+    assert z["instantanea"]["id"] not in (x["instantanea"]["id"], y["instantanea"]["id"])
+
+
+def test_una_adelantada_congelada_la_ultima_tampoco_se_traga_la_decision(session_factory):
+    # Revisión 7: con el orden más natural (reloj bien, adelantado, corregido) la
+    # adelantada era la última por `id` y seguía ganando.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        y = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+        servicio.senal("AAPL", 0.9)
+        x = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+        z = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(minutes=10), con_pares=False)
+    assert z["instantanea"]["nueva"] is True
+    assert z["instantanea"]["id"] not in (x["instantanea"]["id"], y["instantanea"]["id"])
+
+
+def _idea_con_efectivo_en_cad(session_factory, serie):
+    from app import oportunidad
+
+    analisis = {"symbol": "IDEA", "sector": "Tech", "decision": {"action": "comprar", "levels": {"peso_bruto_pct": 4.0}},
+                "mercado": {"vol_diaria_pct": 1.5, "precio": {"moneda": "USD"}}, "senal": {"score": 0.6}}
+    ctx = {"posiciones": [], "series": {}, "total_usd": None, "mercado": None, "fx_series": {"CAD": serie}}
+    with session_factory() as s:
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        return oportunidad.evaluar(s, analisis, ctx, None, DECISION)
+
+
+def test_un_efectivo_convertido_con_un_tipo_viejo_lo_dice_el_veredicto(session_factory):
+    # Revisión de A2: el estado «viejo» se quedaba en `efectivo` y la ficha
+    # decía «Hay efectivo… no hace falta vender nada» sin más.
+    r = _idea_con_efectivo_en_cad(session_factory, [(date(2026, 8, 20), 1.30)])
+    assert r["efectivo"]["estado"] == "viejo"
+    assert r["veredicto"]["accion"] == "COMPRAR_CON_EFECTIVO"
+    assert "Ojo con el efectivo" in r["veredicto"]["motivo"] and "20 ago 2026" in r["veredicto"]["motivo"]
+
+
+def test_un_efectivo_anotado_sin_tipo_a_esa_fecha_no_pide_que_lo_anotes(session_factory):
+    # Revisión de A2: con el efectivo anotado y la serie empezando después, el
+    # veredicto pedía «Anota tu efectivo».
+    r = _idea_con_efectivo_en_cad(session_factory, [(date(2026, 9, 14), 1.50)])
+    assert r["efectivo"]["estado"] == "desconocido"
+    assert "Anota tu efectivo" not in r["veredicto"]["motivo"]
+    assert "sin tipo de cambio conocido a esa fecha" in r["veredicto"]["motivo"]
+
+
+def test_sin_cotizacion_hoy_la_reconstruccion_usa_el_cierre_de_entonces(session_factory):
+    # Revisión de 2f8d84b: el respaldo al último cierre solo entraba si HOY había
+    # cotización; una posición deslistada salía «sin precio» en la reconstrucción.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3))
+    servicio.cache.set("price_history_long", {"symbol": "XYZ"}, {"bars": [
+        {"ts": "2026-09-10", "close": 38.0}, {"ts": "2026-09-11", "close": 40.0}]})
+    with session_factory() as s:
+        _posicion(s, "XYZ", cerrada=AHORA + timedelta(days=2))
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["precio"] == 40.0 and p["precio_estado"] == "viejo" and p["valor_usd"] == 400.0
+
+
+def test_en_vivo_sin_cotizacion_la_posicion_queda_fuera_y_no_entra_con_un_cierre_viejo(session_factory):
+    # Revisión 4: el respaldo al último cierre también entraba en vivo. Con XYZ
+    # sin cotización y un cierre de hace nueve días en caché, la ficha y la
+    # contribución al riesgo la pesaban a 200 (total 3000) sin decirlo, mientras
+    # /api/portfolio la dejaba fuera (total 1000): dos totales para la misma cartera.
+    from app import contexto_cartera
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("AAA", precio=100.0, score=None)
+    viejo = (ahora - timedelta(days=9)).date().isoformat()
+    servicio.cache.set("price_history_long", {"symbol": "XYZ"}, {"bars": [{"ts": viejo, "close": 200.0}]})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ")
+        ctx = contexto_cartera.construir(s, servicio)
+    xyz = next(p for p in ctx["posiciones"] if p["symbol"] == "XYZ")
+    assert ctx["total_usd"] == 1000.0
+    assert xyz["peso"] is None and "sin precio" in xyz["motivo"]
+
+
+def test_con_una_posicion_sin_valorar_la_ficha_no_suma_el_efectivo_ni_calla(session_factory):
+    # Revisión 5: desde que en vivo la posición sin cotización queda fuera, la
+    # ficha sumaba los 1.000 USD de efectivo a una cartera vacía: «Hay efectivo
+    # (100,0 %) … no hace falta vender nada», riesgo «sin_cartera», y XYZ (unos
+    # 100.000 USD) no salía en ningún sitio. Hoy ya no lo suma desde M3.
+    from app import analisis_empresa
+    from app.analysis.coste_de_oportunidad import COMPRAR_CON_EFECTIVO, INDETERMINADO
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    assert a["decision"]["action"] == "comprar"
+    veredicto = a["coste_oportunidad"]["veredicto"]
+    assert veredicto["accion"] != COMPRAR_CON_EFECTIVO
+    assert veredicto["accion"] == INDETERMINADO and "XYZ" in veredicto["motivo"]
+    assert a["riesgo"]["estado"] == "desconocido" and "XYZ" in a["riesgo"]["motivo"]
+
+
+def test_sin_efectivo_anotado_las_posiciones_sin_valorar_tambien_se_nombran(session_factory):
+    # Revisión 6: el aviso solo salía con efectivo convertible; sin anotar, el
+    # veredicto pedía «Anota tu efectivo» y XYZ no aparecía en ningún sitio, y el
+    # riesgo, medido sobre la parte valorada, decía «pesa el 100 %» sin avisar.
+    from app import analisis_empresa
+    from tests.fakes_empresa import barras
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    servicio.empresa("AAA", precio=100.0, score=None)
+    ayer = ahora.date() - timedelta(days=1)
+    for simbolo in ("AAA", "SPY", "CCC"):
+        servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(ayer, n=300)})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ", cantidad=1000)
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    co = a["coste_oportunidad"]
+    assert "XYZ" in co["veredicto"]["motivo"] and "XYZ" in co["sizing"]["aviso_cartera"]
+    assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
+
+
+def test_el_aviso_de_cartera_parcial_no_afirma_una_direccion_ni_se_repite(session_factory):
+    # Revisión 7: decía siempre «cota superior» (con la que falta en otro sector,
+    # el tamaño se quedaba corto), lo añadía a una «evitar» sin tamaño y, con
+    # efectivo anotado, nombraba dos veces la misma lista.
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+
+    def ficha(s, score):
+        servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=score, periodos=financieros_base())
+        servicio.empresa("AAA", precio=100.0, score=None)
+        return analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]
+
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        # Sin ninguna valorada no hay nada que pese de más: los topes no ven nada
+        # y el tamaño sí es una cota superior (revisión 8).
+        sola = ficha(s, 0.6)["veredicto"]["motivo"]
+        _posicion(s, "AAA")
+        compra, evitar = ficha(s, 0.6), ficha(s, -0.6)
+    assert "cota superior" in sola and "pesan de más" not in sola
+    motivo = compra["veredicto"]["motivo"]
+    assert motivo.count("XYZ") == 1 and "puede quedarse corto o pasarse" in motivo and "cota superior" not in motivo
+    assert "tamaño" not in evitar["veredicto"]["motivo"] and "aviso_cartera" not in (evitar.get("sizing") or {})
+
+
+def test_el_riesgo_nombra_tambien_las_posiciones_sin_historico(session_factory):
+    # Revisión 7: XYZ con precio pero sin histórico en caché tenía peso, el aviso
+    # solo miraba las sin precio y la ficha la contaba como volatilidad cero.
+    from app import analisis_empresa
+    from tests.fakes_empresa import barras
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    servicio.empresa("AAA", precio=100.0, score=None)
+    servicio.empresa("XYZ", precio=100.0, score=None)
+    ayer = ahora.date() - timedelta(days=1)
+    for simbolo in ("AAA", "SPY", "CCC"):
+        servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(ayer, n=300)})
+    with session_factory() as s:
+        _posicion(s, "AAA")
+        _posicion(s, "XYZ", cantidad=1000)
+        a = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)
+    assert a["riesgo"]["estado"] == "valido" and "XYZ" in a["riesgo"]["aviso"]
+    # Y el tope de correlación sin comprobar llega al veredicto (revisión 7).
+    assert "Tope por correlación. Solo se pudieron medir" in a["coste_oportunidad"]["veredicto"]["motivo"]
+
+
+def test_la_propia_empresa_sin_valorar_tiene_el_riesgo_desconocido():
+    # Revisión 6: si era la única posición, salía «sin cartera».
+    from app.analisis_empresa import seccion_riesgo
+
+    ctx = {"posiciones": [{"symbol": "CCC", "peso": None, "motivo": "sin tipo de cambio para CAD"}],
+           "series": {}, "mercado": None, "sin_peso": [{"symbol": "CCC", "motivo": "sin tipo de cambio para CAD"}]}
+    r = seccion_riesgo(None, None, "CCC", {}, {}, AHORA, ctx, None)
+    assert r["estado"] == "desconocido" and r["en_cartera"] is True and "CAD" in r["motivo"]
+
+
+def test_una_cotizacion_posterior_sin_cierre_anterior_lo_dice(session_factory):
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA + timedelta(days=3)).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        p = contexto_cartera.construir(s, servicio, ahora=AHORA)["posiciones"][0]
+    assert p["peso"] is None and "la cotización es posterior" in p["motivo"]
+
+
+def test_las_cotizaciones_se_piden_antes_que_el_historico_largo(session_factory):
+    # Revisión de 2f8d84b: el histórico largo de todas las posiciones se pedía
+    # primero y consumía el margen de descarga de las cotizaciones.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("MSFT", precio=300.0, score=None)
+    with session_factory() as s:
+        _posicion(s, "MSFT")
+        contexto_cartera.construir(s, servicio, ahora=AHORA, descargar=True)
+    tipos = [t for t, _ in servicio.llamadas]
+    assert tipos.index("quote") < tipos.index("price_history_long")
+
+
+def test_un_tipo_de_cambio_fuera_de_banda_deja_fuera_la_posicion_y_el_efectivo(session_factory):
+    # Revisión de 2f8d84b: la serie solo comprueba su mediana y `_tipo_en` no
+    # miraba la banda: un último punto de 13 en vez de 1,30 daba 10 USD sin aviso.
+    from app import contexto_cartera
+
+    servicio = ServicioFalso(AHORA).empresa("SHOP.TO", precio=130.0, score=None, moneda="CAD")
+    servicio.macro["DEXCAUS"] = [{"ts": f"2026-09-0{d}", "value": "1.30"} for d in range(1, 10)] + [
+        {"ts": "2026-09-10", "value": "13.0"}]
+    with session_factory() as s:
+        _posicion(s, "SHOP.TO", cantidad=1, moneda="CAD")
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        ctx = contexto_cartera.construir(s, servicio, ahora=DECISION)
+        efectivo = efectivo_usd(s, ctx, DECISION)
+    assert ctx["posiciones"][0]["peso"] is None and "leída del revés" in ctx["posiciones"][0]["motivo"]
+    assert efectivo["usd"] is None and "leída del revés" in efectivo["motivo"]
+
+
+def test_un_punto_fuera_de_banda_no_convierte_la_serie_de_la_candidata(session_factory):
+    # Revisión 4: `_tipo_en` rechazaba el 13 para el efectivo, pero
+    # `convertir_serie` lo usaba para la serie en dólares de la candidata en CAD:
+    # el riesgo salía «valido» con la volatilidad de la cartera cien veces mayor.
+    # Un punto fuera de banda es como un día sin publicar: vale el anterior.
+    from app import analisis_empresa
+    from app.db.models import Instrument, Position
+    from tests.fakes_empresa import barras
+
+    def riesgo(s, ultimo):
+        servicio = ServicioFalso(AHORA).empresa("AAA", precio=100.0, score=None)
+        servicio.empresa("SHOP.TO", precio=130.0, score=0.6, moneda="CAD", periodos=financieros_base())
+        for simbolo in ("AAA", "SPY"):
+            servicio.cache.set("price_history_long", {"symbol": simbolo}, {"bars": barras(date(2026, 9, 11), n=300)})
+        servicio.macro["DEXCAUS"] = [{"ts": (date(2026, 1, 1) + timedelta(days=i)).isoformat(), "value": "1.30"}
+                                     for i in range(252)] + [{"ts": "2026-09-10", "value": ultimo}]
+        return analisis_empresa.analizar("SHOP.TO", servicio, s, ahora=DECISION, con_pares=False)["riesgo"]
+
+    with session_factory() as s:
+        inst = Instrument(symbol="AAA", name="AAA", sector="Tech", currency="USD")
+        s.add(inst)
+        s.flush()
+        s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=90.0, opened_at=AHORA - timedelta(days=60)))
+        # El efectivo en CAD trae la serie del CAD al contexto de la cartera.
+        s.add(CashBalance(moneda="CAD", importe=130.0, as_of=ANOTADO, registrado_en=ANOTADO))
+        s.commit()
+        bien, mal = riesgo(s, "1.30"), riesgo(s, "13.0")
+    assert bien["volatilidad_cartera_despues"] is not None
+    for campo in ("volatilidad_cartera_despues", "contribucion", "riesgo_por_peso"):
+        assert mal[campo] == bien[campo], campo
+
+
+def test_el_hoy_de_quien_esta_al_este_de_utc_cuenta_como_hoy(session_factory):
+    # Revisión 3: en Madrid, entre las 00:00 y la 01:00, su fecha de hoy es la de
+    # mañana en UTC y daba 422 «fechado en el futuro».
+    cliente = _cliente(session_factory)
+    try:
+        manana = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+        r = _anotar(cliente, 1000.0, manana)
+    finally:
+        app.dependency_overrides.clear()
+    assert r["vigente"] is True and datetime.fromisoformat(r["as_of"]) <= datetime.now(timezone.utc)
+
+
+def test_una_posicion_unos_minutos_adelantada_existe_en_cuanto_se_anota():
+    # Revisión 3, hermano del efectivo: se guardaba tal cual y la posición no
+    # existía para el análisis ni para el riesgo durante esos minutos.
+    from app.routers.portfolio import _fecha_de_apertura
+
+    fecha = _fecha_de_apertura((datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat())
+    assert fecha <= datetime.now(timezone.utc)
+
+
+def test_la_fecha_de_apertura_de_manana_en_utc_es_el_hoy_de_quien_esta_al_este():
+    # Revisión 4, hermano del efectivo: en Madrid de 00:00 a 01:00 su fecha de
+    # hoy daba 422 al abrir una posición y 200 al anotar el efectivo.
+    from app.routers.portfolio import _fecha_de_apertura
+
+    hoy = datetime.now(timezone.utc).date()
+    assert _fecha_de_apertura((hoy + timedelta(days=1)).isoformat()) <= datetime.now(timezone.utc)
+    with pytest.raises(ValueError, match="en UTC, es el"):
+        _fecha_de_apertura((hoy + timedelta(days=2)).isoformat())
+
+
+def test_dos_analisis_solapados_no_dejan_dos_instantaneas_iguales(session_factory):
+    # Revisión 3: el que empezó después (T+20 s) congela antes; el que empezó en
+    # T ya no la veía («no existía en ahora») y congelaba una copia idéntica.
+    servicio = ServicioFalso(AHORA).empresa("AAPL", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        segunda = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA + timedelta(seconds=20), con_pares=False)
+        primera = analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
+    assert segunda["instantanea"]["nueva"] is True
+    assert primera["instantanea"]["nueva"] is False and primera["instantanea"]["id"] == segunda["instantanea"]["id"]
+
+
+def test_con_la_cartera_vacia_no_hay_parejas_que_comprobar(session_factory):
+    """Revisión 8: sin posiciones, `dimensionar` solo ve la candidata (0 parejas
+    posibles) y el veredicto de toda compra avisaba de «Solo se pudieron medir 0
+    de 0 parejas: el tope por correlación NO se ha comprobado del todo»."""
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(hours=1),
+                          registrado_en=ahora - timedelta(hours=1)))
+        s.commit()
+        c = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]
+    assert c["veredicto"]["accion"] is not None
+    assert "0 de 0" not in c["veredicto"]["motivo"] and "Tope por" not in c["veredicto"]["motivo"]
+
+
+
+def test_sin_efectivo_y_con_posiciones_sin_valorar_no_pide_anotarlo(session_factory):
+    """Revisión 9: «Anota tu efectivo para saber si de verdad no cabe», y anotado
+    seguía sin sumarse; sin nada que revisar, «la lista de abajo» no existía."""
+    from app import analisis_empresa
+
+    ahora = datetime.now(timezone.utc)
+    servicio = ServicioFalso(ahora).empresa("CCC", precio=104.0, score=0.6, periodos=financieros_base())
+    with session_factory() as s:
+        _posicion(s, "XYZ", cantidad=1000)
+        motivo = analisis_empresa.analizar("CCC", servicio, s, con_pares=False)["coste_oportunidad"]["veredicto"]["motivo"]
+    assert "Anota tu efectivo" not in motivo and "aunque lo anotaras no se sumaría" in motivo
+    assert "la lista de abajo" not in motivo

@@ -30,7 +30,8 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import datetime, timedelta, timezone
-from app.formato import fmt_num, plural
+from app import datos
+from app.formato import decimales_frente, fmt_antiguedad, fmt_num, fmt_pct, plural
 
 OPERADORES = {
     "lt": ("cae por debajo de", lambda v, u: v < u),
@@ -59,11 +60,67 @@ CRECIMIENTOS = {
     "fcf_cagr": "Crecimiento del flujo de caja libre (CAGR)",
 }
 
+# Las que son una fracción y se leen en %: un margen de 0,21 es un 21 %. Las demás
+# (deuda/capital, ratio corriente, cobertura de intereses) son «veces»: un ratio
+# corriente de 1,2 es 1,2. Antes no se distinguía: el formulario pedía todo en %
+# y dividía entre 100, así que «ratio corriente < 1» se guardaba como 0,01 y el
+# punto no saltaba nunca; y el detalle escribía «0,210 … por debajo de 0,180»
+# junto al «< 18 %» del título (revisión del 2.12).
+EN_PORCENTAJE = frozenset({"operating_margin", "net_margin", "gross_margin", "fcf_margin", "roe", "roic",
+                           *CRECIMIENTOS})
+# El umbral más alto que tiene sentido escribir para cada métrica en «veces». Un
+# punto sin `unidad` guardada se lee también ×100 (el formulario viejo dividía
+# entre 100) solo si esa lectura cabe aquí. Con un tope común de 100, un
+# «Deuda/capital > 0,5» legítimo se leía también como 50 veces de apalancamiento,
+# una cifra que nadie vigila, y con D/E 0,6 un punto CRUZADO quedaba sin comprobar
+# (revisión 4). Un 0,02 sigue siendo dudoso: puede ser 0,02 o 2.
+TOPE_LEGADO = {"debt_to_equity": 10.0, "current_ratio": 10.0, "interest_coverage": 30.0}
+
+
+def escribir_cifras(metrica: str | None, valor: float, *umbrales: float, ceros: bool = True) -> list[str]:
+    """`valor` y sus umbrales en la unidad de la métrica, con los decimales justos
+    para que ninguna cifra cambie de lado: cada umbral se escribe entero y el
+    valor nunca se escribe igual que un umbral distinto ni como cero sin serlo.
+    Con dos decimales fijos, una cobertura de 2,997 frente a «< 3» decía
+    «Cobertura de intereses = 3,00: … con 3,00, sí», y un ratio corriente de
+    0,996 «= 1,00; salta si cae por debajo de 1,00» (revisión 5). Con los
+    decimales de siempre (uno en %, dos en «veces») basta casi siempre, y
+    entonces se escribe como siempre."""
+    en_pct = unidad_de(metrica) == "pct"
+    decimales = decimales_frente(valor, umbrales, en_pct)
+    con_ceros = ceros and decimales == (1 if en_pct else 2)
+    if en_pct:
+        return [fmt_pct(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
+    return [fmt_num(v, decimales, ceros=con_ceros) for v in (valor, *umbrales)]
+
+
+def _de_su_lado(v: float, umbral: float | None) -> float:
+    """`v` a cuatro decimales, salvo que el redondeo lo deje en el umbral o al otro
+    lado: 0,99996 frente a «< 1» se servía 1,0 y la serie de Vigilancia escribía
+    «→ 1,00» bajo un detalle que decía 0,99996 (revisión 7). Entonces, entero."""
+    r = round(v, 4)
+    if umbral is None or v == umbral:
+        return r
+    return r if (r < umbral) == (v < umbral) and r != umbral else v
+
+
+def unidad_de(clave: str | None) -> str:
+    """«pct» si la métrica se lee en porcentaje; «veces» si es un ratio."""
+    return "pct" if clave in EN_PORCENTAJE else "veces"
+
 # Ventana de noticias que se mira. Más atrás sería repetir avisos ya vistos.
 DIAS_NOTICIAS = 14
 # Un titular tiene que traer la palabra entera, no como parte de otra: buscar
 # «cae» dentro de «cadena» convertiría el vigilante en un generador de ruido.
 _NO_PALABRA = r"(?:^|[^0-9a-záéíóúüñ])"
+
+
+def copia_vieja(antiguedad_segundos, ahora: datetime) -> str:
+    """«copia guardada hace 3 h»: por qué una lista de noticias no cubre la
+    ventana entera (todas las fuentes fallaron y se sirve la última copia)."""
+    if antiguedad_segundos is None:
+        return "copia guardada de antigüedad desconocida"
+    return f"copia guardada {fmt_antiguedad(ahora - timedelta(seconds=antiguedad_segundos), ahora)}"
 
 
 def _normalizar(texto: str) -> str:
@@ -92,17 +149,58 @@ def _comprobar_umbral(valor: float | None, config: dict, etiqueta: str) -> dict 
             ),
         }
     texto_op, prueba = OPERADORES[op]
+    metrica = config.get("metrica")
+    en_pct = unidad_de(metrica) == "pct"
     salta = prueba(valor, umbral)
-    return {
+    aviso = None
+    # ×100 redondeado: en coma flotante 0,07 × 100 es 7,000000000000001, y con
+    # una cobertura de 7 exacta las dos lecturas de «< 7» «discrepaban» (revisión 4).
+    escrito = round(umbral * 100, 9)
+    tope = TOPE_LEGADO.get(config.get("metrica"))
+    if not en_pct and config.get("unidad") is None and tope is not None and abs(escrito) <= tope:
+        # Un punto en «veces» sin unidad guardada: el formulario viejo lo pedía
+        # todo en % y dividía entre 100, así que lo guardado puede ser lo escrito
+        # o su centésima parte. Se lee de las dos formas. Si coinciden, ese es el
+        # veredicto (un punto cruzado con las dos no puede quedar sin comprobar),
+        # con un aviso de la duda. Si no, queda SIN COMPROBAR y se dice qué daría
+        # cada una: antes un corte por valor (≤ 0,1) dejaba sin comprobar también
+        # los umbrales nuevos y legítimos y daba por «no cruzados» los viejos de
+        # 0,15 (revisión 3). Los puntos nuevos llevan `unidad` y se leen tal cual.
+        # Aquí, con todas las cifras enteras: con dos decimales el motivo decía
+        # «Deuda / capital = 0,01: con 0,01 saltaría» (revisión 4).
+        otra = prueba(valor, escrito)
+        v_txt, u_txt, e_txt = escribir_cifras(metrica, valor, umbral, escrito, ceros=False)
+        lecturas = (f"Punto guardado sin unidad, y el formulario viejo guardaba los ratios divididos entre 100: "
+                    f"el umbral guardado, {u_txt}, puede ser {e_txt} escrito por ti.")
+        if otra != salta:
+            return {
+                "salta": False,
+                "medible": False,
+                "motivo": (
+                    f"{lecturas} {etiqueta} = {v_txt}: con {u_txt} {'saltaría' if salta else 'no saltaría'} "
+                    f"y con {e_txt}, {'sí' if otra else 'no'}. Queda sin comprobar hasta que lo quites y lo "
+                    "crees de nuevo."
+                ),
+            }
+        if escrito != umbral:
+            aviso = (f"{lecturas} Con las dos lecturas {'salta' if salta else 'no salta'}; para quitar la duda, "
+                     "quítalo y créalo de nuevo.")
+
+    # El umbral entero (0,015, no «0,02»; revisión 4) y el valor de su lado.
+    v_txt, u_txt = escribir_cifras(metrica, valor, umbral)
+    resultado = {
         "salta": salta,
         "medible": True,
-        "valor": round(valor, 4),
+        "valor": _de_su_lado(valor, umbral),
         "umbral": umbral,
         "detalle": (
-            f"{etiqueta} = {fmt_num(valor, 3)}; el punto salta si {texto_op} {fmt_num(umbral, 3)}."
+            f"{etiqueta} = {v_txt}; el punto salta si {texto_op} {u_txt}."
             + ("" if salta else " Todavía no lo cruza.")
         ),
     }
+    if aviso:
+        resultado["aviso"] = aviso
+    return resultado
 
 
 def evaluar_metrica(config: dict, ratios: list[dict]) -> dict:
@@ -118,7 +216,8 @@ def evaluar_metrica(config: dict, ratios: list[dict]) -> dict:
     # de caídas no es lo mismo que cruzarlo tras un año malo aislado.
     serie = [r.get(clave) for r in ratios[-4:] if r.get(clave) is not None]
     if len(serie) >= 3:
-        resultado["serie"] = [round(v, 4) for v in serie]
+        umbral = datos.numero(config.get("umbral"))
+        resultado["serie"] = [_de_su_lado(v, umbral) for v in serie]
         resultado["tendencia"] = (
             "bajando" if serie[-1] < serie[0] else "subiendo" if serie[-1] > serie[0] else "plana"
         )
@@ -131,7 +230,10 @@ def evaluar_crecimiento(config: dict, crecimiento: dict) -> dict:
     return _comprobar_umbral(crecimiento.get(clave), config, etiqueta)
 
 
-def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS) -> dict:
+def evaluar_noticia(
+    config: dict, noticias: list[dict] | None, dias: int = DIAS_NOTICIAS, incompletas: str | None = None,
+    ahora: datetime | None = None,
+) -> dict:
     """Palabras clave en titulares. Búsqueda de palabras, no comprensión.
 
     Se declara en cada resultado, porque la diferencia con los otros dos tipos es
@@ -143,6 +245,10 @@ def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_
     vacía. Antes las dos llegaban como `[]`: con la fuente caída el punto contaba
     como comprobado («Ninguno de los 0 titulares…») y la tesis salía intacta
     justo cuando no se había podido mirar.
+
+    `incompletas` (p. ej. «copia guardada hace 3 h») dice que la lista no cubre
+    la ventana entera. Una coincidencia salta igual —ante la duda, avisar—, pero
+    «ningún titular» no se puede afirmar: faltan los más recientes.
     """
     palabras = [p for p in (config.get("palabras") or []) if p.strip()]
     if not palabras:
@@ -158,7 +264,11 @@ def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_
             ),
         }
 
-    corte = datetime.now(timezone.utc) - timedelta(days=dias)
+    # La ventana acaba en el `ahora` del análisis, no en el reloj de la máquina:
+    # una tesis reconstruida al 12 de septiembre con un titular del 11 salía
+    # «intacta» porque el titular quedaba fuera de los 14 días de hoy: un punto
+    # no mirado contado como no cruzado (revisión 3).
+    corte = (ahora or datetime.now(timezone.utc)) - timedelta(days=dias)
     coincidencias = []
     revisados = 0
     for n in noticias:
@@ -189,6 +299,16 @@ def evaluar_noticia(config: dict, noticias: list[dict] | None, dias: int = DIAS_
                 }
             )
 
+    if incompletas and not coincidencias:
+        return {
+            "salta": False,
+            "medible": False,
+            "titulares_revisados": revisados,
+            "motivo": (
+                f"Las noticias son una {incompletas}: faltan los titulares más recientes, "
+                "así que no se puede decir que ninguno contenga esas palabras."
+            ),
+        }
     return {
         "salta": bool(coincidencias),
         "medible": True,
@@ -222,7 +342,8 @@ def evaluar(disparador: dict, datos: dict) -> dict:
         r = evaluar_crecimiento(config, datos.get("crecimiento") or {})
     elif kind == "noticia":
         # Sin `or []`: una clave ausente o None es un fallo de descarga, no cero titulares.
-        r = evaluar_noticia(config, datos.get("noticias"))
+        r = evaluar_noticia(config, datos.get("noticias"), incompletas=datos.get("noticias_incompletas"),
+                            ahora=datos.get("ahora"))
     else:
         r = {"salta": False, "medible": False, "motivo": f"Tipo desconocido: {kind}"}
     return {**disparador, **r}
@@ -263,13 +384,26 @@ def _resumen(saltan: int, sin_medir: int, total: int) -> str:
             "una señal de venta: es que tú, cuando pensabas con más calma, dijiste "
             "que esto importaba. Toca releer la tesis."
         )
+    elif sin_medir == total:
+        # Ninguno comprobado: decir «no se ha cruzado» era contar UNKNOWN como
+        # PASS en el texto, bajo la insignia «sin medir» (revisión 4).
+        partes.append(
+            ("El único punto de invalidación no se pudo comprobar" if total == 1
+             else f"Los {total} puntos de invalidación no se pudieron comprobar")
+            + " (falta un dato o el punto hay que rehacerlo; cada uno dice por qué) — que no es lo mismo que estar bien."
+        )
+        return " ".join(partes)
+    elif sin_medir:
+        comprobados = total - sin_medir
+        partes.append("El único punto comprobado no se ha cruzado." if comprobados == 1
+                      else f"Ninguno de los {comprobados} puntos comprobados se ha cruzado.")
     else:
         partes.append("El único punto de invalidación no se ha cruzado." if total == 1
                       else f"Ninguno de los {total} puntos de invalidación se ha cruzado.")
     if sin_medir:
         partes.append(
-            f"{sin_medir} {plural(sin_medir, 'no se pudo comprobar', 'no se pudieron comprobar')} por falta de datos — que no es "
-            "lo mismo que estar bien."
+            f"{sin_medir} {plural(sin_medir, 'no se pudo comprobar', 'no se pudieron comprobar')} (falta un dato o el "
+            "punto hay que rehacerlo; cada uno dice por qué) — que no es lo mismo que estar bien."
         )
     return " ".join(partes)
 
@@ -296,7 +430,10 @@ def instantanea(
             else None
         ),
         "disparadores_saltando": [
-            {"descripcion": d.get("descripcion"), "detalle": d.get("detalle")}
+            # Con su aviso: la duda de un punto sin unidad se perdía al congelar
+            # (revisión 5).
+            {"descripcion": d.get("descripcion"), "detalle": d.get("detalle"),
+             **({"aviso": d["aviso"]} if d.get("aviso") else {})}
             for d in vigilancia.get("disparadores", [])
             if d.get("salta")
         ],

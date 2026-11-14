@@ -215,8 +215,9 @@ def _tesis(s):
     s.add(t)
     s.commit()
     s.add(ThesisTrigger(thesis_id=t.id, kind="metrica", descripcion="margen operativo < 18 %",
-                        config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}))
-    s.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]}))
+                        config={"metrica": "operating_margin", "op": "lt", "umbral": 0.18}, created_at=t.created_at))
+    s.add(ThesisTrigger(thesis_id=t.id, kind="noticia", descripcion="recall", config={"palabras": ["recall"]},
+                        created_at=t.created_at))
     s.commit()
 
 
@@ -245,6 +246,85 @@ def test_capturar_antes_registrar_despues_y_leer(session_factory, servicio):
     # 18,5 % sigue por encima del 18 %, pero desde el 20 % previo: debilitada.
     assert impacto["margen operativo < 18 %"]["estado"] == "debilitado"
     assert impacto["recall"]["estado"] == "sin_resolver"
+
+
+def test_el_consenso_descargado_durante_la_captura_se_registra(session_factory, servicio):
+    """Revisión 4: `capturar` fija `ahora` y después descarga el calendario,
+    que el proveedor fecha con la hora de la descarga, segundos después. Sin el
+    margen común de lo descargado durante el cálculo, `_guardar` lanzaba un
+    ValueError y «Capturar expectativas» daba 500 con la caché fría. Se guarda
+    como conocido en `ahora`: nunca posterior a su propio registro."""
+    servicio.ahora = AHORA + timedelta(seconds=2)
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        cap = svc.capturar(s, servicio, e, AHORA)
+        assert {("consenso", "revenue"), ("consenso", "eps_diluted")} <= {
+            (x["fuente_tipo"], x["metrica"]) for x in cap["registradas"]}
+        consenso = s.query(Expectation).filter_by(fuente_tipo="consenso").all()
+        assert consenso and all(svc._a_instante(x.informacion_hasta) == AHORA for x in consenso)
+        # Fuera del margen sí es información posterior: no se registra.
+        servicio.ahora = AHORA + timedelta(hours=1)
+        e2 = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q4", fecha_prevista="2026-10-30", ahora=AHORA)
+        with pytest.raises(ValueError, match="posterior a su registro"):
+            svc.capturar(s, servicio, e2, AHORA)
+
+
+def test_la_ruta_de_capturar_con_el_reloj_real(session_factory):
+    """La misma captura por la API, con el reloj real: antes, 500. Y una
+    información de la fuente fuera del margen es un 422 que lo explica, no un 500."""
+    from fastapi.testclient import TestClient
+
+    from app.deps import get_service
+    from app.main import app
+
+    class AlDescargar(ServicioFalso):
+        # Como Finnhub: el calendario lleva la hora de la descarga.
+        adelanto = timedelta(0)
+
+        def get(self, tipo, **kw):
+            r = super().get(tipo, **kw)
+            if tipo == "earnings_calendar":
+                r = {**r, "as_of": (datetime.now(timezone.utc) + self.adelanto).isoformat()}
+            return r
+
+    servicio = AlDescargar(datetime.now(timezone.utc))
+    fecha = (datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat()
+    servicio.calendario = [{"symbol": "AAPL", "date": fecha, "eps_estimate": 1.2, "revenue_estimate": 115.0,
+                            "eps_actual": None, "revenue_actual": None}]
+    app.dependency_overrides[get_service] = lambda: servicio
+    try:
+        with TestClient(app) as c:
+            ids = [c.post("/api/expectativas/eventos", json={"symbol": "AAPL", "tipo": "earnings", "periodo": p,
+                                                              "fecha_prevista": fecha}).json()["id"]
+                   for p in ("2031-Q1", "2031-Q2")]
+            r = c.post(f"/api/expectativas/eventos/{ids[0]}/capturar")
+            assert r.status_code == 200, r.text
+            assert {"revenue", "eps_diluted"} <= {x["metrica"] for x in r.json()["registradas"]
+                                                  if x["fuente_tipo"] == "consenso"}
+            servicio.adelanto = timedelta(hours=1)
+            r = c.post(f"/api/expectativas/eventos/{ids[1]}/capturar")
+            assert r.status_code == 422 and "posterior a su registro" in r.json()["detail"]
+            # Y la otra ruta que captura (revisión 5: su 422 no tenía test).
+            r = c.post("/api/expectativas/AAPL/proximos-resultados")
+            assert r.status_code == 422 and "posterior a su registro" in r.json()["detail"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_una_anotacion_a_mano_no_recibe_el_margen_ni_una_fecha_inventada(session_factory):
+    """Revisión 5: el margen de lo descargado durante la captura se aplicaba
+    también a lo anotado a mano, y una fecha ilegible («31/12/2026») se leía como
+    «ahora»: las dos se guardaban como sabidas en el registro, en una fila
+    inmutable. Antes de la revisión 4 eran un 422, y vuelven a serlo."""
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        base = {"metrica": "revenue", "valor": 115.0, "fuente": "mi estimación"}
+        with pytest.raises(ValueError, match="ilegible"):
+            svc.registrar_manual(s, e, {**base, "informacion_hasta": "31/12/2026"}, AHORA)
+        with pytest.raises(ValueError, match="posterior a su registro"):
+            svc.registrar_manual(s, e, {**base, "informacion_hasta": (AHORA + timedelta(minutes=4)).isoformat()}, AHORA)
+        assert s.query(Expectation).count() == 0
+        assert svc.registrar_manual(s, e, {**base, "informacion_hasta": "2026-09-30"}, AHORA) is True
 
 
 def test_capturar_cuando_el_resultado_ya_se_conoce_se_niega(session_factory, servicio):
@@ -375,7 +455,9 @@ def test_un_consenso_en_otra_escala_no_se_registra_y_se_dice(session_factory, se
         cap = svc.capturar(s, servicio, e, AHORA)
         consenso = {x.metrica: x for x in s.query(Expectation).filter_by(fuente_tipo="consenso")}
     assert "revenue" not in consenso
-    assert any("revenue con escala dudosa" in m and "(1.027 veces, fuera de 0,2–5)" in m for m in cap["sin_fuente"])
+    # Con etiquetas y la fecha para una persona (revisión 5: «revenue» y «2026-06-30»).
+    assert any("ingresos con escala dudosa" in m and "(1.027 veces, fuera de 0,2–5)" in m
+               and "cerrado el 30 jun 2026" in m for m in cap["sin_fuente"])
     # El BPA, en su escala, entra con la comprobación a la vista.
     assert consenso["eps_diluted"].detalle["escala"]["estado"] == "ok"
     assert consenso["eps_diluted"].detalle["escala"]["periodo_referencia"] == "2026-06-30"
@@ -392,7 +474,7 @@ def test_un_guidance_en_otra_escala_que_los_trimestres_no_entra(session_factory,
         e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
         cap = svc.capturar(s, servicio, e, AHORA)
         assert s.query(Expectation).filter_by(fuente_tipo="guidance").count() == 0
-    assert any(m.startswith("guidance: revenue con escala dudosa") for m in cap["sin_fuente"])
+    assert any(m.startswith("guidance de la dirección: ingresos con escala dudosa") for m in cap["sin_fuente"])
 
 
 def test_la_escala_sin_referencia_o_con_perdidas_no_se_juzga():
@@ -406,3 +488,108 @@ def test_la_escala_sin_referencia_o_con_perdidas_no_se_juzga():
     assert ev.comprobar_escala({"metrica": "revenue", "valor": 0.0}, qs)["estado"] == "dudosa"
     # Céntimos frente a dólares en el BPA: ×100.
     assert ev.comprobar_escala({"metrica": "eps_diluted", "valor": 112.0}, qs)["estado"] == "dudosa"
+
+
+def test_el_resumen_del_analisis_solo_lee_lo_registrado_entonces(session_factory, servicio):
+    """Revisión de A4 (la misma clase, otra tabla): `evaluar` volvía a leer todas
+    las filas, así que el análisis del 3 de noviembre veía el guidance anotado
+    el 5 y contaba las expectativas del evento siguiente anotadas el 10."""
+    with session_factory() as s:
+        _tesis(s)
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        svc.capturar(s, servicio, e, AHORA)
+        servicio.financials["AAPL"]["quarters"].append(
+            trimestre(2026, 3, "2026-10-30", revenue=118.0, operating_income=118.0 * 0.185,
+                      gross_profit=118.0 * 0.45, eps_diluted=1.25))
+        servicio.ahora = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        svc.registrar_reales(s, servicio, e, servicio.ahora)
+        s.add(EventActual(event_id=e.id, metrica="guidance", fuente="10-Q", publicado="2026-11-05",
+                          registrado_en=datetime(2026, 11, 5, tzinfo=timezone.utc), detalle={"direccion": "baja"}))
+        siguiente = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q4", fecha_prevista="2027-01-30", ahora=AHORA)
+        s.add(Expectation(event_id=siguiente.id, metrica="revenue", fuente_tipo="usuario", fuente="yo", valor=120.0,
+                          informacion_hasta=datetime(2026, 11, 10, tzinfo=timezone.utc),
+                          registrado_en=datetime(2026, 11, 10, tzinfo=timezone.utc)))
+        s.commit()
+        entonces = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 3, tzinfo=timezone.utc))
+        luego = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 11, tzinfo=timezone.utc))
+    assert entonces["ultimo"]["guidance"] is None and entonces["proximo"]["expectativas"] == 0
+    assert luego["ultimo"]["guidance"] == "baja" and luego["proximo"]["expectativas"] == 1
+
+
+def test_el_impacto_en_la_tesis_del_resumen_solo_cuenta_los_puntos_de_entonces(session_factory, servicio):
+    """Revisión 3: ningún test cubría el filtro de puntos de `evaluar(…, ahora)`:
+    sin él, un punto creado el 20 de noviembre salía en el resumen del día 3."""
+    with session_factory() as s:
+        _tesis(s)
+        tesis = s.query(Thesis).one()
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        svc.capturar(s, servicio, e, AHORA)
+        servicio.financials["AAPL"]["quarters"].append(
+            trimestre(2026, 3, "2026-10-30", revenue=118.0, operating_income=118.0 * 0.185,
+                      gross_profit=118.0 * 0.45, eps_diluted=1.25))
+        servicio.ahora = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        svc.registrar_reales(s, servicio, e, servicio.ahora)
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="noticia", descripcion="demanda (añadido el 20-nov)",
+                            config={"palabras": ["demanda"]}, created_at=datetime(2026, 11, 20, tzinfo=timezone.utc)))
+        s.commit()
+        entonces = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 3, tzinfo=timezone.utc))
+        luego = svc.resumen_para_analisis(s, "AAPL", datetime(2026, 11, 21, tzinfo=timezone.utc))
+    puntos = lambda r: {i["punto"] for i in r["ultimo"]["impacto_en_tesis"]}  # noqa: E731
+    assert "demanda (añadido el 20-nov)" not in puntos(entonces)
+    assert "demanda (añadido el 20-nov)" in puntos(luego)
+
+
+def test_un_punto_de_la_tesis_anadido_despues_no_fija_una_expectativa_de_antes(session_factory, servicio):
+    with session_factory() as s:
+        _tesis(s)
+        tesis = s.query(Thesis).one()
+        s.add(ThesisTrigger(thesis_id=tesis.id, kind="metrica", descripcion="margen bruto < 40 %",
+                            config={"metrica": "gross_margin", "op": "lt", "umbral": 0.40},
+                            created_at=AHORA + timedelta(days=10)))
+        s.commit()
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        cap = svc.capturar(s, servicio, e, AHORA)
+    reglas = {x["metrica"] for x in cap["registradas"] if x["fuente_tipo"] == "reglas"}
+    assert "operating_margin" in reglas and "gross_margin" not in reglas
+
+
+# --- Revisión 6 -------------------------------------------------------------------
+
+
+def test_una_hora_con_otra_zona_se_guarda_en_utc(session_factory):
+    """«14:04+02:00» se guardaba como las 14:04 sin zona y se releía dos horas
+    después de su propio registro, en una fila inmutable."""
+    from datetime import timezone as tz
+
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        hora = (AHORA - timedelta(minutes=1)).astimezone(tz(timedelta(hours=2))).isoformat()
+        svc.registrar_manual(s, e, {"metrica": "revenue", "valor": 115.0, "fuente": "mi estimación",
+                                    "informacion_hasta": hora}, AHORA)
+        fila = s.query(Expectation).one()
+        assert svc._a_instante(fila.informacion_hasta) == AHORA - timedelta(minutes=1)
+
+
+def test_el_motivo_de_un_evento_conocido_lleva_la_fecha_para_una_persona():
+    # Revisión 6: el 409 de «Capturar expectativas» decía «(2026-08-01)».
+    v = ev.validez_temporal({"registrado_en": "2026-08-05T10:00:00+00:00"}, "2026-08-01")
+    assert v["valida"] is False and "(1 ago 2026)" in v["motivo"] and "2026-08-01" not in v["motivo"]
+
+
+def test_una_escala_mucho_menor_no_se_escribe_como_cero_veces():
+    # Revisión 6: un guidance de 115 frente a 94.930 millones decía «(0 veces, …)».
+    r = ev.comprobar_escala({"metrica": "revenue", "valor": 115.0},
+                            [{"revenue": 94_930_000_000.0, "end_date": "2026-06-30"}])
+    assert r["estado"] == "dudosa"
+    assert "(0 veces" not in r["motivo"] and "94.930.000.000" in r["motivo"]
+    bpa = ev.comprobar_escala({"metrica": "eps_diluted", "valor": 0.00004}, [{"eps_diluted": 1.52, "end_date": "2026-06-30"}])
+    assert bpa["motivo"].startswith("0,00004 frente a 1,52")
+
+
+def test_la_proporcion_junto_al_borde_de_la_banda_no_se_escribe_igual_que_el():
+    # Revisión 7: «(0,02 veces, fuera de 0,02–50)» con 0,03 frente a 1,5015.
+    r = ev.comprobar_escala({"metrica": "eps_diluted", "valor": 0.03}, [{"eps_diluted": 1.5015, "end_date": "2026-06-30"}])
+    assert r["estado"] == "dudosa" and "(0,02 veces" not in r["motivo"] and "(0,01998 veces" in r["motivo"]
+    # Y lejos del borde, tres cifras significativas, nunca «0 veces».
+    lejos = ev.comprobar_escala({"metrica": "revenue", "valor": 115.0}, [{"revenue": 94_930_000_000.0, "end_date": "2026-06-30"}])
+    assert "(0 veces" not in lejos["motivo"] and "(0,00000000121 veces" in lejos["motivo"]

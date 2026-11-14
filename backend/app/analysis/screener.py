@@ -40,7 +40,7 @@ DEFAULT_PRESETS = [
         "logic_md": (
             "Busca empresas baratas por beneficios (P/E ≤ 18) que no dependan de "
             "deuda (deuda/capital ≤ 1) y con liquidez de corto plazo sana (ratio "
-            "corriente ≥ 1.2) y rentabilidad real (ROE ≥ 10 %). La trampa clásica "
+            "corriente ≥ 1,2) y rentabilidad real (ROE ≥ 10\u00a0%). La trampa clásica "
             "del value es comprar barato lo que está barato por algo: el balance "
             "filtra parte de esas trampas."
         ),
@@ -54,7 +54,7 @@ DEFAULT_PRESETS = [
     {
         "name": "Crecimiento a precio razonable (GARP)",
         "logic_md": (
-            "Crecimiento de ingresos ≥ 8 % anual (5A) con ROE ≥ 12 %, pero sin "
+            "Crecimiento de ingresos ≥ 8\u00a0% anual (5A) con ROE ≥ 12\u00a0%, pero sin "
             "pagar cualquier múltiplo: P/E ≤ 25. La idea de Lynch: crecimiento sí, "
             "pero comprado con disciplina de precio."
         ),
@@ -67,8 +67,8 @@ DEFAULT_PRESETS = [
     {
         "name": "Dividendos sostenibles",
         "logic_md": (
-            "Rentabilidad por dividendo ≥ 2.5 % respaldada por margen neto ≥ 8 % y "
-            "deuda contenida (deuda/capital ≤ 1.5). Un dividendo alto sin margen ni "
+            "Rentabilidad por dividendo ≥ 2,5\u00a0% respaldada por margen neto ≥ 8\u00a0% y "
+            "deuda contenida (deuda/capital ≤ 1,5). Un dividendo alto sin margen ni "
             "balance detrás es un recorte anunciado."
         ),
         "filters": {

@@ -105,6 +105,79 @@ export function fmtDinero(
 }
 
 /**
+ * Los decimales de un precio por acción, como `decimales_precio` en el backend.
+ * Desde 1, dos; por debajo, los que den cuatro cifras significativas: con dos
+ * fijos, el stop de 0,004 de una acción de céntimos salía «0,00» (auditoría del
+ * 19 oct). El exponente sale de la representación más corta, como en Python.
+ */
+export function decimalesPrecio(valor: number): number {
+  const a = Math.abs(valor)
+  if (a >= 1 || a === 0) return 2
+  const exponente = Number(a.toExponential().split('e')[1])
+  return Math.min(20, Math.max(2, 3 - exponente))
+}
+
+/** Un precio por acción o un nivel: 150 → «150,00»; 0,004 → «0,004». */
+export function fmtPrecio(
+  valor: Num,
+  moneda?: string | null,
+  { signo = false }: { signo?: boolean } = {},
+): string {
+  if (!finito(valor)) return GUION
+  const cifra = conSigno(valor, esEs(valor, 2, decimalesPrecio(valor)), signo)
+  return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
+}
+
+/** Un valor por acción ya redondeado a cifras significativas (el rango del DCF):
+ *  147 → «147»; 0,00347 → «0,00347». Gemelo de `fmt_valor_redondo`. */
+export function fmtValorRedondo(valor: Num, moneda?: string | null): string {
+  if (!finito(valor)) return GUION
+  const cifra = fmtNum(valor, decimalesPrecio(valor), { ceros: false })
+  return moneda ? `${cifra}${ESPACIO_DURO}${moneda}` : cifra
+}
+
+/** Los decimales con que `valor` no cambia de lado frente a sus umbrales.
+ *  Gemelo de `decimales_frente`: compara lo que de verdad se escribe. */
+export function decimalesFrente(valor: number, umbrales: number[], pct = false): number {
+  const escribir = (v: number, d: number) => (pct ? fmtPct(v, d, { ceros: false }) : fmtNum(v, d, { ceros: false }))
+  const base = pct ? 1 : 2
+  for (let d = base; d < base + 7; d++) {
+    if (umbrales.some((u) => escribir(u, d) !== escribir(u, 9))) continue
+    if (umbrales.some((u) => valor !== u && escribir(valor, d) === escribir(u, d))) continue
+    if (valor !== 0 && escribir(valor, d) === escribir(0, d)) continue
+    return d
+  }
+  return base + 6
+}
+
+/** Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996 frente
+ *  a «< 1» → «0,996», no «1,00» (revisión 6). Con una lista, frente a todos: la
+ *  puntuación -0,3496 salía «-0,35» junto a «≥ +0,35» y «-0,3496» junto a
+ *  «≤ -0,35» (revisión 8). Gemelo de `fmt_frente`. */
+export function fmtFrente(
+  valor: Num,
+  umbral: Num | Num[],
+  { pct = false, ceros = true, signo = false }: { pct?: boolean; ceros?: boolean; signo?: boolean } = {},
+): string {
+  if (!finito(valor)) return GUION
+  const umbrales = (Array.isArray(umbral) ? umbral : [umbral]).filter(finito)
+  if (!umbrales.length) return pct ? fmtPct(valor, 1, { signo }) : fmtNum(valor, 2, { signo })
+  const d = decimalesFrente(valor, umbrales, pct)
+  const conCeros = ceros && d === (pct ? 1 : 2)
+  return pct ? fmtPct(valor, d, { ceros: conCeros, signo }) : fmtNum(valor, d, { ceros: conCeros, signo })
+}
+
+/** Un valor calculado con supuestos, con `cifras` cifras significativas y sin
+ *  decimales desde las centenas: 170,63 → «171»; 0,05328 → «0,0533». Gemelo de
+ *  `fmt_cifras` (la matriz de sensibilidad del DCF; revisión 5). */
+export function fmtCifras(valor: Num, cifras = 3): string {
+  if (!finito(valor)) return GUION
+  if (valor === 0) return fmtNum(0, 0)
+  const exponente = Number(Math.abs(valor).toExponential().split('e')[1])
+  return fmtNum(valor, Math.max(0, cifras - 1 - exponente), { ceros: false })
+}
+
+/**
  * El valor de un `<input type="number">`: el navegador lo exige con punto
  * decimal y sin miles («12.5»), sea cual sea el idioma. No es texto para leer;
  * está aquí para que sea el único `toFixed` del código.
@@ -149,13 +222,20 @@ function aFecha(valor: string | Date | null | undefined): Fecha | null {
 
 /**
  * «6 oct 2026» o, con `hora`, «12 sept 2026, 10:35 ET». Un día suelto no se
- * mueve de zona. Un instante se pasa a `zona` (la del navegador si no se da) y,
- * si es la de una bolsa, se rotula. Lo que no se lee como fecha, tal cual.
+ * mueve de zona. Un instante se pasa a `zona` (UTC si no se da, como el gemelo
+ * de Python) y, si es la de una bolsa, se rotula. Lo que no se lee como fecha,
+ * tal cual.
  */
 export function fmtFecha(
   valor: string | Date | null | undefined,
-  { hora = false, zona }: { hora?: boolean; zona?: string } = {},
+  { hora = false, zona: zonaPedida }: { hora?: boolean; zona?: string } = {},
 ): string {
+  // Sin zona, UTC, como el gemelo de Python: con la hora local del navegador y
+  // sin rótulo, la misma instantánea salía «14:35 UTC» en el Historial y «16:35»
+  // en «Qué cambió» (revisión del 2.12); y sin hora el día también era el local,
+  // así que en Madrid las 23:30 UTC del 12 salían «13 sept» sin hora y «12 sept,
+  // 23:30 UTC» con ella (revisión 3).
+  const zona = zonaPedida ?? 'UTC'
   if (valor === null || valor === undefined || valor === '') return GUION
   const f = aFecha(valor)
   if (!f) return String(valor)

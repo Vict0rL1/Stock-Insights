@@ -31,6 +31,7 @@ os.environ["DATABASE_PATH"] = os.path.join(tempfile.mkdtemp(prefix="export-"), "
 
 import time_machine  # noqa: E402
 
+from app.analysis.markets import parametros_lista_diaria  # noqa: E402
 from tests.fakes_empresa import trimestre  # noqa: E402
 from tests.fixtures import extremos as ex  # noqa: E402
 from tests.fixtures.servicio_pantallas import ServicioPantallas  # noqa: E402
@@ -82,7 +83,7 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
                     seg.capturar(s, sv, e, antes)
             sv.ahora = ex.AHORA
             sv.quotes[symbol].update(price=92.0, as_of=ex.AHORA.isoformat())
-            sv.cache.set("daily_picks", {"v": 6, "market": "us_sp500"}, {"signals": [], "as_of": ex.AHORA.isoformat()})
+            sv.cache.set("daily_picks", parametros_lista_diaria("us_sp500"), {"signals": [], "as_of": ex.AHORA.isoformat()})
             sv.financials[symbol]["quarters"].append(
                 trimestre(2026, 2, "2026-07-30", revenue=310.0, operating_income=310.0 * 0.12, gross_profit=124.0,
                           net_income=31.0, eps_diluted=0.051, cfo=40.0, capex=15.0))
@@ -100,9 +101,12 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
         _pedir(c, rutas, "/api/portfolio/contribucion?descargar=false")
         _pedir(c, rutas, "/api/portfolio/efectivo")
         # La cabecera de la ficha, el informe, la valoración y la cartera: lo que
-        # pinta el test de fugas además de las secciones de arriba.
+        # pinta el test de fugas además de las secciones de arriba. La cabecera
+        # pide los estados de EDGAR cuando faltan cotización, perfil y
+        # fundamentales (VACIA), para no dar por inexistente a quien sí los tiene.
         for url in (f"/api/stocks/{symbol}/quote", f"/api/stocks/{symbol}/profile",
                     f"/api/stocks/{symbol}/fundamentals", f"/api/stocks/{symbol}/history?range=1Y",
+                    f"/api/stocks/{symbol}/financials",
                     "/api/meta/llm", f"/api/deep-dive/{symbol}?history_years=10",
                     f"/api/stocks/{symbol}/valuation/defaults", "/api/portfolio",
                     "/api/portfolio/historial?descargar=false"):

@@ -8,7 +8,7 @@ puedas leer el informe entero sin gastar nada en Claude.
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_compacto, fmt_num, fmt_pct
+from app.formato import fmt_compacto, fmt_num, fmt_pct, fmt_precio
 from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
 from datetime import datetime, timedelta, timezone
@@ -113,12 +113,25 @@ def deep_dive(
     """
     symbol = validar_simbolo(symbol)
 
-    financials = _safe(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502. Antes `_safe` se
+    # tragaba los dos y un EDGAR caído se leía como «no registrada en la SEC»,
+    # así que la ficha no podía tratar el 404 como ausencia (segunda revisión
+    # del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError as exc:
+        financials, motivo = None, str(exc)
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
+    else:
+        motivo = "sin ejercicios anuales"
     if financials is None or not financials.get("periods"):
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Sin estados financieros para {symbol} en SEC EDGAR. El informe "
+                f"Sin estados financieros para {symbol} en SEC EDGAR ({motivo}). El informe "
                 "necesita histórico auditado; EDGAR solo cubre empresas "
                 "registradas en la SEC (no aplica a cotizadas extranjeras sin ADR)."
             ),
@@ -240,7 +253,7 @@ def _dcf_defaults(periods: list[dict], quote: dict | None) -> dict | None:
         "shares_outstanding": shares,
         "current_price": (quote or {}).get("price"),
         "note": (
-            "Supuestos de partida derivados del histórico, acotados al 15 % de "
+            "Supuestos de partida derivados del histórico, acotados al 15\u00a0% de "
             "crecimiento. Edítalos en la pestaña Valoración: el resultado es muy "
             "sensible a la tasa de descuento y al crecimiento terminal."
         ),
@@ -327,7 +340,7 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
 Sector: {business.get('sector') or 'desconocido'}
 Ingresos último ejercicio ({business.get('latest_fiscal_year')}): {fmt_compacto(business.get('latest_revenue'))}
 Años de histórico disponibles: {business.get('years_of_history')}
-Precio actual: {fmt_num(report.get('price'))}
+Precio actual: {fmt_precio(report.get('price'))}
 
 CRECIMIENTO
 CAGR ingresos {ventana}: {pct(growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}

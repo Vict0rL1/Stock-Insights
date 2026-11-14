@@ -38,9 +38,12 @@ comparación. Un `if not precio` no protege de ninguno de los dos.
 from __future__ import annotations
 
 import math
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+
+from app.formato import decimales_precio
 
 
 class Estado(str, Enum):
@@ -160,6 +163,34 @@ def precio(valor: Any) -> float | None:
     """
     f = numero(valor)
     return f if f is not None and f > 0 else None
+
+
+def redondear_precio(valor: Any, hacia: str | None = None) -> float | None:
+    """Un precio o un nivel listo para servirse: dos decimales desde 1 y cuatro
+    cifras significativas por debajo (`formato.decimales_precio`), o `None`.
+
+    `round(x, 2)` hacía 0,0 del stop de 0,004 de una acción de céntimos, y
+    0,0 del precio de 0,003: el stop no se perforaba nunca y la venta no salía
+    (auditoría del 19 oct). Solo para lo que se SIRVE; lo que decide compara
+    con el valor sin redondear. Desde 1 da lo mismo que `round(x, 2)`.
+
+    `hacia` («arriba» o «abajo») lleva al tick en esa dirección un umbral que se
+    escribe junto a «en o por encima de» o «en o por debajo de», para que lo
+    escrito sea cierto: al más cercano, el umbral de entrada de 102,00408 se
+    servía como 102,00 y un cierre de 102,00 seguía en «vigilar» (revisión 4)."""
+    f = numero(valor)
+    if f is None:
+        return None
+    decimales = decimales_precio(f)
+    if hacia is None:
+        return round(f, decimales)
+    # En decimal, desde la representación más corta del número, sin multiplicar
+    # en coma flotante: 1,1 × 100 es 110,00000000000001 y el techo daba 1,11; y
+    # podar ese ruido redondeando a seis decimales podaba también el del propio
+    # umbral, que la regla sí compara (14,280000000000001 se escribía 14,28 y un
+    # cierre de 14,28 no compraba; revisión 5).
+    paso = Decimal(1).scaleb(-decimales)
+    return float(Decimal(repr(f)).quantize(paso, rounding=ROUND_CEILING if hacia == "arriba" else ROUND_FLOOR))
 
 
 def porcentaje(valor: Any, maximo: float = 1000.0) -> float | None:

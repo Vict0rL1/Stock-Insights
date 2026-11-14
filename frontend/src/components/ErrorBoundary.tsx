@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { MarcoTabla } from './MarcoTabla'
 
 interface Props {
   children: ReactNode
@@ -42,9 +43,13 @@ export class ErrorBoundary extends Component<Props, State> {
             persiste, pulsa «Actualizar» en la vista Hoy para recalcular la lista
             desde cero.
           </p>
-          <pre className="mt-3 overflow-x-auto rounded-lg bg-amber-100 p-3 text-[11px] text-amber-900">
-            {this.state.error.message}
-          </pre>
+          {/* En el marco de las tablas: con scroll horizontal y sin foco, con
+              teclado no se leía el final de un mensaje largo (revisión 3). */}
+          <MarcoTabla etiqueta="Mensaje del error" className="mt-3 rounded-lg">
+            <pre className="w-max min-w-full bg-amber-100 p-3 text-[11px] text-amber-900">
+              {this.state.error.message}
+            </pre>
+          </MarcoTabla>
           <button
             onClick={() => window.location.reload()}
             className="mt-3 rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"

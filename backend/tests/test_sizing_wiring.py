@@ -110,7 +110,7 @@ def test_una_miniatura_demasiado_corta_no_produce_una_correlacion_inventada():
 
 def test_la_cartera_abierta_llega_al_dimensionador_con_su_peso_y_su_sector():
     señales = [señal("A", 1.0, "Tech", last=50.0), señal("B", 1.0, "Salud", last=100.0)]
-    cartera, aviso = _cartera_actual(
+    cartera, aviso, _ = _cartera_actual(
         señales,
         {"A": {"quantity": 60, "cost_basis": 40.0}, "B": {"quantity": 10, "cost_basis": 90.0}},
     )
@@ -124,13 +124,14 @@ def test_la_cartera_abierta_llega_al_dimensionador_con_su_peso_y_su_sector():
 def test_una_posicion_que_este_barrido_no_cubre_se_declara():
     """Un tope calculado sobre media cartera es peor que ninguno si no sabes que
     le falta la otra mitad."""
-    cartera, aviso = _cartera_actual(
+    cartera, aviso, _ = _cartera_actual(
         [señal("A", 1.0, "Tech", last=50.0)],
         {"A": {"quantity": 10}, "BTC-USD": {"quantity": 1}},
     )
     assert [p["symbol"] for p in cartera] == ["A"]
     assert "BTC-USD" in aviso
-    assert "concentración real es mayor" in aviso
+    # La misma frase que la ficha, sin dirección (revisión 8).
+    assert "puede quedarse corto o pasarse" in aviso and "concentración real es mayor" not in aviso
 
 
 def test_el_sector_que_ya_tienes_recorta_las_ideas_nuevas_del_mismo_sector():
@@ -166,9 +167,10 @@ def test_con_efectivo_anotado_los_pesos_de_hoy_son_sobre_el_capital():
     oportunidad ya lo usaba: la misma idea salía con dos tamaños."""
     señales = [señal("A", 1.0, "Tech", last=50.0), señal("B", 1.0, "Salud", last=100.0)]
     posiciones = {"A": {"quantity": 60}, "B": {"quantity": 10}}
-    cartera, _ = _cartera_actual(señales, posiciones, efectivo_usd=1000.0)
+    cartera, _, base = _cartera_actual(señales, posiciones, efectivo_usd=1000.0)
     # A 3.000, B 1.000 y 1.000 de efectivo: 60 % / 20 % del capital.
     assert {p["symbol"]: p["peso_pct"] for p in cartera} == {"A": 60.0, "B": 20.0}
+    assert base == "capital"
 
 
 def test_la_nota_del_tamano_dice_sobre_que_se_miden_los_pesos():
@@ -187,10 +189,26 @@ def test_la_nota_del_tamano_dice_sobre_que_se_miden_los_pesos():
     assert con_efectivo["sizing"]["invertido_pct"] >= sin_efectivo["sizing"]["invertido_pct"]
 
 
+def test_con_el_efectivo_anotado_pero_sin_tipo_hoy_no_pide_que_lo_anotes():
+    """Revisión 3: con 1.000 CAD anotados y sin serie de CAD, la nota decía «no
+    hay efectivo anotado… Puedes anotarlo en Cartera» y el motivo se perdía."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, "Tech") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Tech", last=100.0))
+    r = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}},
+                                  efectivo_motivo="efectivo en CAD sin tipo de cambio: no se supone 1:1")
+    nota = r["sizing"]["nota"]
+    assert "el efectivo está anotado" in nota and "CAD sin tipo de cambio" in nota
+    assert "Puedes anotarlo" not in nota
+    # Sin efectivo anotado, la frase de siempre.
+    assert "Puedes anotarlo" in _lista_corta_dimensionada(
+        señales, {"VIEJA": {"quantity": 10}}, efectivo_motivo="no hay efectivo anotado")["sizing"]["nota"]
+
+
 def test_hoy_lee_el_efectivo_anotado_y_no_supone_un_tipo_de_cambio(session_factory):
     """La lista de Hoy usa la misma conversión que el coste de oportunidad: una
     moneda sin tipo deja el efectivo desconocido (y Hoy mide sobre lo
-    invertido), nunca 1:1."""
+    invertido), nunca 1:1. Y se lee también sin posiciones: si no, la nota
+    decía «no hay efectivo anotado» a quien lo tiene todo en efectivo."""
     from datetime import datetime, timedelta, timezone
 
     from app.db.models import CashBalance
@@ -199,13 +217,80 @@ def test_hoy_lee_el_efectivo_anotado_y_no_supone_un_tipo_de_cambio(session_facto
 
     sv = ServicioFalso(AHORA)
     ayer = datetime.now(timezone.utc) - timedelta(days=1)
-    abiertas = {"A": {"quantity": 1}}
     with session_factory() as s:
-        assert _efectivo_para_hoy(s, sv, abiertas) is None  # sin anotar: desconocido
+        assert _efectivo_para_hoy(s, sv)["usd"] is None  # sin anotar: desconocido
         s.add(CashBalance(moneda="USD", importe=2500.0, as_of=ayer))
         s.commit()
-        assert _efectivo_para_hoy(s, sv, {}) is None  # sin cartera no cambia ningún peso
-        assert _efectivo_para_hoy(s, sv, abiertas) == 2500.0
+        leido = _efectivo_para_hoy(s, sv)
+        assert leido["usd"] == 2500.0 and leido["detalle"][0]["moneda"] == "USD"
         s.add(CashBalance(moneda="CAD", importe=1000.0, as_of=ayer))
         s.commit()
-        assert _efectivo_para_hoy(s, sv, abiertas) is None  # FRED sin serie de CAD
+        assert _efectivo_para_hoy(s, sv)["usd"] is None  # FRED sin serie de CAD
+
+
+def test_un_fallo_al_leer_el_efectivo_no_cuesta_la_lista(session_factory, monkeypatch):
+    """Un 200 ilegible de FRED subía como ValueError y tumbaba Hoy entera con un
+    500 después de puntuar todo el mercado (revisión de M3)."""
+    from app import oportunidad
+    from app.routers.signals import _efectivo_para_hoy
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    def revienta(*_a, **_k):
+        raise ValueError("Expecting value: line 1 column 1")
+
+    monkeypatch.setattr(oportunidad, "efectivo_con_cambio", revienta)
+    with session_factory() as s:
+        r = _efectivo_para_hoy(s, ServicioFalso(AHORA))
+    assert r["usd"] is None and "no se pudo leer" in r["motivo"]
+
+
+def test_con_posiciones_sin_valorar_el_efectivo_no_infla_la_liquidez():
+    """Sumar todo el efectivo a media cartera inventaba liquidez y aflojaba los
+    topes: el lado no prudente. Con algo sin valorar se mide sin el efectivo."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, "Tech") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Tech", last=100.0))
+    posiciones = {"VIEJA": {"quantity": 10}, "BTC-USD": {"quantity": 1}}
+
+    sin = _lista_corta_dimensionada(señales, posiciones)
+    con = _lista_corta_dimensionada(señales, posiciones, efectivo_usd=20000.0)
+
+    assert con["sizing"]["base_cartera"] == "invertido_parcial"
+    assert con["sizing"]["ya_invertido_pct"] == sin["sizing"]["ya_invertido_pct"] == 100.0
+    assert con["sizing"]["pesos"] == sin["sizing"]["pesos"]
+    assert "sin sumar el efectivo anotado" in con["sizing"]["nota"]
+
+
+def test_la_nota_dice_que_efectivo_se_uso_y_de_cuando():
+    """El efectivo afloja los topes; se ve la cifra y su fecha, y la respuesta
+    (y con ella la instantánea) dice sobre qué base se midió."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, "Tech") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Tech", last=100.0))
+    detalle = [{"moneda": "USD", "importe": 1000.0, "usd": 1000.0, "as_of": "2026-10-03T12:00:00Z"}]
+    r = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}}, efectivo_usd=1000.0, efectivo_detalle=detalle)
+    assert r["sizing"]["base_cartera"] == "capital"
+    assert r["sizing"]["efectivo"] == {"usd": 1000.0, "detalle": detalle}
+    assert "(efectivo anotado: 1.000,00\u00a0USD, del 3 oct 2026)." in r["sizing"]["nota"]
+
+
+def test_la_nota_de_la_base_no_contradice_al_aviso_de_cartera_parcial():
+    """Revisión 9: sin efectivo anotado, con la única posición fuera del barrido,
+    el aviso decía «el tamaño es una cota superior» y la nota del mismo panel
+    «los topes aprietan antes de lo debido… Puedes anotarlo en Cartera»."""
+    sola = _lista_corta_dimensionada([señal("A", 1.2)], {"BTC-USD": {"quantity": 1}})["sizing"]
+    assert "cota superior" in sola["aviso_cartera"] and "cota superior" in sola["nota"]
+    assert "antes de lo debido" not in sola["nota"] and "Puedes anotarlo" not in sola["nota"]
+    con_valorada = _lista_corta_dimensionada(
+        [señal("A", 1.2), señal("B", 0.2, last=50.0)], {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}}
+    )["sizing"]
+    assert "puede quedarse corto o pasarse" in con_valorada["nota"]
+    assert "antes de lo debido" not in con_valorada["nota"]
+
+
+def test_sin_candidatas_el_aviso_no_habla_de_un_tamano():
+    """Revisión 9: «Hoy no hay candidatas que dimensionar» y, al lado, «el tamaño
+    puede quedarse corto o pasarse»."""
+    mantener = {**señal("B", 0.2, last=50.0), "decision": {"action": "mantener", "levels": {}}}
+    for ranked in ([], [mantener]):
+        s = _lista_corta_dimensionada(ranked, {"B": {"quantity": 10}, "BTC-USD": {"quantity": 1}})["sizing"]
+        assert not s["pesos"]
+        assert "BTC-USD" in s["aviso_cartera"] and "tamaño" not in s["aviso_cartera"]

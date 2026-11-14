@@ -431,6 +431,57 @@ def test_el_pnl_realizado_de_una_cerrada_en_cad_se_da_en_dolares(session_factory
     assert d["summary"]["realized_pnl"] == pytest.approx(200.0, rel=1e-3)
 
 
+def test_un_tipo_fuera_de_banda_el_dia_de_compra_o_de_venta_no_se_usa(session_factory):
+    """Revisión 5: el filtro de puntos fuera de banda (revisión 4) en el P&L
+    realizado y en el coste al tipo de compra no tenía test. Un 13 suelto el día
+    de la venta daba un realizado de −694 USD en vez de +200; el día de la
+    compra, un coste de 77 USD en vez de 800. Cuenta como un día sin publicar."""
+    from datetime import date, timedelta
+
+    compra = date.today() - timedelta(days=300)
+    venta = date.today() - timedelta(days=50)
+
+    def con_punto_malo(malo):
+        class ConSerie(FakeService):
+            def get(self, data_type, **kw):
+                if data_type == "macro":
+                    pts, d = [], compra - timedelta(days=5)
+                    while d <= date.today():
+                        v = "13.0" if d == malo else "1.25" if d < venta - timedelta(days=10) else "1.37"
+                        pts.append({"ts": d.isoformat(), "value": v})
+                        d += timedelta(days=1)
+                    return {"series_id": kw["series_id"], "source": "fake", "points": pts}
+                return super().get(data_type, **kw)
+        return ConSerie
+
+    d = _cartera_con_cerrada(session_factory, con_punto_malo(venta)({}), "CAD", compra, venta, 100.0, 370.0)
+    assert d["summary"]["realized_pnl"] == pytest.approx(200.0, rel=1e-3)
+
+    session = session_factory()
+    inst = Instrument(symbol="SHOP", name="SHOP", sector="Tech", currency="CAD")
+    session.add(inst)
+    session.flush()
+    session.add(Position(instrument_id=inst.id, quantity=10, cost_basis=100.0,
+                         opened_at=datetime.combine(compra, datetime.min.time(), timezone.utc)))
+    session.commit()
+    session.close()
+
+    def override_session():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_service] = lambda: con_punto_malo(compra)({"SHOP": (110.0, "CAD")})
+    app.dependency_overrides[get_session] = override_session
+    try:
+        abierta = next(p for p in TestClient(app).get("/api/portfolio").json()["positions"] if p["symbol"] == "SHOP")
+    finally:
+        app.dependency_overrides.clear()
+    assert abierta["invested_base"] == pytest.approx(800.0, rel=1e-3)
+
+
 def test_una_cerrada_sin_moneda_no_entra_en_el_realizado(session_factory):
     from datetime import date, timedelta
 

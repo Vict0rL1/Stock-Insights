@@ -3,7 +3,7 @@
  * La tabla de casos es la MISMA que prueba `backend/tests/test_formato.py`: los
  * dos lados tienen que escribir la misma cadena, carácter a carácter.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import casos from './formato.casos.json'
 import * as formato from './formato'
 
@@ -14,6 +14,11 @@ const FUNCIONES: Record<string, (args: unknown[], op: Record<string, unknown>) =
   fmt_pct: ([v, d], op) =>
     formato.fmtPct(cifra(v), d as number | undefined, { signo: op.signo as boolean, enPuntos: op.en_puntos as boolean, ceros: op.ceros as boolean | undefined }),
   fmt_dinero: ([v, m, d], op) => formato.fmtDinero(cifra(v), m as string | null, d as number | undefined, op),
+  fmt_precio: ([v, m], op) => formato.fmtPrecio(cifra(v), m as string | undefined, op),
+  fmt_valor_redondo: ([v], op) => formato.fmtValorRedondo(cifra(v), op.moneda as string | undefined),
+  fmt_cifras: ([v], op) => formato.fmtCifras(cifra(v), op.cifras as number | undefined),
+  fmt_frente: ([v, u], op) =>
+    formato.fmtFrente(cifra(v), Array.isArray(u) ? u.map(cifra) : cifra(u), { pct: op.pct as boolean | undefined, signo: op.signo as boolean | undefined }),
   fmt_compacto: ([v, m]) => formato.fmtCompacto(cifra(v), m as string | undefined),
   fmt_fecha: ([v], op) => formato.fmtFecha(v as string | null, op),
   plural: ([n, s, p]) => formato.plural(n as number, s as string, p as string),
@@ -43,6 +48,19 @@ describe('formato compartido con el backend', () => {
         expect(FUNCIONES[funcion](args, op)).toBe(esperado)
       })
   }
+
+  it('un instante sin zona da el mismo día con hora y sin ella, también fuera de UTC', () => {
+    // Revisión 3: sin hora se usaba la zona del navegador; los tests corren en
+    // UTC y no lo veían. En Madrid, las 23:30 UTC del 12 salían «13 sept».
+    vi.stubEnv('TZ', 'Europe/Madrid')
+    try {
+      expect(new Date('2026-09-12T23:30:00Z').getDate()).toBe(13) // la zona cambió de verdad
+      expect(formato.fmtFecha('2026-09-12T23:30:00Z')).toBe('12 sept 2026')
+      expect(formato.fmtFecha('2026-09-12T23:30:00Z', { hora: true })).toBe('12 sept 2026, 23:30\u00a0UTC')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 
   it('el cero negativo de la tabla llega como cero negativo', () => {
     expect(tabla.fmt_num.some(([[v]]) => Object.is(v, -0))).toBe(true)

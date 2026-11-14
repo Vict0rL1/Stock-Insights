@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '../api/client'
+import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   AnalisisResponse,
   Comparacion,
@@ -10,10 +11,10 @@ import type {
   Extraccion,
   FilingRef,
   SerieGuidance,
-  WatchlistItem,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtDinero, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 /** Enlace al documento en la SEC. Cada dato de esta pantalla sale de uno, y sin
  *  el enlace el análisis sería una opinión anónima sobre una empresa. */
@@ -191,7 +192,7 @@ function FichaComparacion({ c }: { c: Comparacion }) {
             Calculada por el código a partir de las dos cifras extraídas, no por
             el modelo.
           </p>
-          <div className="mt-2 overflow-x-auto">
+          <MarcoTabla etiqueta="Variación del guidance" className="mt-2">
             <table className="w-full min-w-[480px] text-sm">
               <thead className="text-[10px] uppercase tracking-wide text-slate-400">
                 <tr className="border-b border-slate-200">
@@ -236,7 +237,7 @@ function FichaComparacion({ c }: { c: Comparacion }) {
                 ))}
               </tbody>
             </table>
-          </div>
+          </MarcoTabla>
         </div>
       )}
 
@@ -395,21 +396,12 @@ function SerieEnElTiempo({ series }: { series: SerieGuidance[] }) {
 export function EarningsPage() {
   const [symbol, setSymbol] = useState('')
   const [entrada, setEntrada] = useState('')
-  const [seguidas, setSeguidas] = useState<string[]>([])
   const [disponibles, setDisponibles] = useState<EarningsDisponibles | null>(null)
   const [historial, setHistorial] = useState<EarningsHistorial | null>(null)
   const [coste, setCoste] = useState<CosteEstimado | null>(null)
   const [resultado, setResultado] = useState<AnalisisResponse | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    // «Para cada empresa seguida»: las de la watchlist salen como atajos.
-    api.watchlist().then(
-      (w) => setSeguidas(w.items.map((i: WatchlistItem) => i.symbol)),
-      () => setSeguidas([]),
-    )
-  }, [])
 
   const cargar = useCallback(async (s: string) => {
     setBusy('cargando')
@@ -483,7 +475,7 @@ export function EarningsPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) cargar(s)
+            if (s) void cargar(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -503,27 +495,13 @@ export function EarningsPage() {
           {error && <span className="text-sm text-red-600">{error}</span>}
         </form>
 
-        {seguidas.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate-400">De tu watchlist:</span>
-            {seguidas.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setEntrada(s)
-                  cargar(s)
-                }}
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  symbol === s
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <AtajosWatchlist
+          actual={symbol}
+          elegir={(s) => {
+            setEntrada(s)
+            void cargar(s)
+          }}
+        />
       </section>
 
       {disponibles && (

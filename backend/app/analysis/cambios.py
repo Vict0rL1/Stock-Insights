@@ -22,7 +22,10 @@ import hashlib
 import json
 
 from app import datos
-from app.formato import fmt_num, plural
+from app.analysis.decision import REGLAS_DE_PRECIO
+from app.analysis.thesis_watch import escribir_cifras
+from app.etiquetas import etiqueta
+from app.formato import fmt_frente, fmt_num, fmt_precio, plural
 
 # --- Umbrales de materialidad --------------------------------------------------
 #
@@ -221,6 +224,9 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
     escribiste—; uno que deja de saltar vuelve a confirmarse; uno que se acerca
     a su umbral más de un punto se ha deteriorado aunque no lo cruce; y uno que
     deja de poder medirse se ha vuelto un riesgo nuevo, porque ya no vigila nada.
+    Ese motivo lleva el porqué: sin él, una caída de las noticias se leía como
+    «Nuevos riesgos: Si hay un recall», como si el recall hubiera aparecido
+    (revisión de M1).
     """
     previos = {d.get("id"): d for d in antes.get("disparadores") or []}
     salida = {"confirmados": [], "deteriorados": [], "invalidaciones": [], "nuevos_riesgos": [],
@@ -232,24 +238,35 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
         if p is None:
             salida["nuevos_riesgos"].append({"punto": texto, "motivo": "punto de invalidación nuevo"})
             continue
+        aviso = f" {d['aviso']}" if d.get("aviso") else ""
         if d.get("salta") and not p.get("salta"):
-            salida["invalidaciones"].append({"punto": texto, "detalle": d.get("detalle")})
+            salida["invalidaciones"].append({"punto": texto, "detalle": f"{d.get('detalle')}{aviso}"})
         elif p.get("salta") and not d.get("salta") and d.get("medible"):
             salida["confirmados"].append({"punto": texto, "detalle": "vuelve a cumplirse: " + str(d.get("detalle"))})
         elif p.get("medible") and not d.get("medible"):
-            salida["nuevos_riesgos"].append({"punto": texto, "motivo": "ya no se puede medir: deja de vigilar"})
+            porque = d.get("detalle") or d.get("motivo")
+            salida["nuevos_riesgos"].append({
+                "punto": texto,
+                "motivo": f"ya no se puede medir ({porque}): deja de vigilar" if porque
+                else "ya no se puede medir: deja de vigilar",
+            })
         elif not d.get("salta") and d.get("medible") and p.get("medible"):
             va, vb, u = datos.numero(p.get("valor")), datos.numero(d.get("valor")), datos.numero(d.get("umbral"))
             if va is not None and vb is not None and u is not None:
                 dist_antes, dist_ahora = abs(va - u), abs(vb - u)
+                # En la unidad del punto: «0,213 → 0,190, umbral 0,180» junto a
+                # «< 18 %», el fallo que Vigilancia ya no tenía (revisión 5).
+                metrica = (d.get("config") or {}).get("metrica")
+                a_txt, u_txt = escribir_cifras(metrica, va, u)
+                b_txt, _ = escribir_cifras(metrica, vb, u)
                 if dist_antes - dist_ahora >= 0.01:
                     salida["deteriorados"].append(
                         {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
-                         "detalle": f"se acerca a su umbral ({fmt_num(va, 3)} → {fmt_num(vb, 3)}, umbral {fmt_num(u, 3)})"})
+                         "detalle": f"se acerca a su umbral ({a_txt} → {b_txt}, umbral {u_txt}){aviso}"})
                 elif dist_ahora - dist_antes >= 0.01:
                     salida["confirmados"].append(
                         {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
-                         "detalle": f"se aleja de su umbral ({fmt_num(va, 3)} → {fmt_num(vb, 3)})"})
+                         "detalle": f"se aleja de su umbral ({a_txt} → {b_txt}){aviso}"})
     destino = {"invalidado": "invalidaciones", "debilitado": "deteriorados", "confirmado": "confirmados"}
     for i in impacto_evento or []:
         if i.get("estado") in destino:
@@ -292,6 +309,16 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
                               "antes": {"resultado": p.get("resultado"), "papel": p.get("papel"), **(p.get("datos") or {})},
                               "ahora": None})
 
+    # La puntuación, frente a los umbrales de TODAS sus reglas de las dos trazas:
+    # frente al suyo, de 0,40 a -0,3504 se explicaba «≤ -0,35: cumple (-0,3504
+    # frente a -0,35)» y, justo después, «≥ +0,35: no cumple (-0,35 frente a
+    # +0,35)» (revisión 9).
+    umbrales_puntuacion = sorted({
+        u for r in [*ra.values(), *rb.values()]
+        if str(r.get("id", "")).startswith("puntuacion")
+        and isinstance(u := (r.get("datos") or {}).get("umbral"), (int, float))
+    })
+
     explicacion = []
     if bool(pos_antes) != bool(pos_ahora):
         explicacion.append(
@@ -302,10 +329,24 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
     for c in cambiaron:
         if c["antes"] is None or c["ahora"] is None:
             continue
-        def leer(x):
+        # Un precio con `fmt_precio`: con los dos decimales y el signo de la
+        # puntuación, la venta de una acción de céntimos se explicaba «no cumple
+        # (+0,01 frente a 0,00) → cumple (0,00 frente a 0,00)», el stop a cero
+        # del fallo A1 (revisión 4).
+        # La puntuación, de su lado del umbral: con dos decimales, 0,3504 → 0,3496
+        # se explicaba «cumple (+0,35 frente a +0,35) → no cumple (+0,35 frente a
+        # +0,35)» (revisión 7).
+        def leer(x, precio=c["regla"] in REGLAS_DE_PRECIO):
             v, u = x.get("valor"), x.get("umbral")
-            num = f" ({_fmt(v)} frente a {_fmt(u)})" if v is not None and u is not None else ""
-            return f"{x['resultado'].replace('_', ' ')}{num}"
+            if v is None or u is None:
+                return etiqueta(x["resultado"])
+            if precio:
+                return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
+            if isinstance(v, (int, float)) and isinstance(u, (int, float)):
+                frente = umbrales_puntuacion if c["regla"].startswith("puntuacion") and umbrales_puntuacion else u
+                return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, frente, signo=True)} frente a "
+                        f"{fmt_frente(u, u, signo=True)})")
+            return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
         explicacion.append(f"«{c['texto']}»: {leer(c['antes'])} → {leer(c['ahora'])}.")
     if not cambiaron and a_accion != b_accion:
         explicacion.append("Ninguna regla cambió de resultado: la diferencia viene de una instantánea sin traza (anterior a la traza de reglas).")

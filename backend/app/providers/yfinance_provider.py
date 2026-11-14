@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 import math
 
+from app import datos
+from app.analysis.decision import vol_diaria_pct
 from app.providers.base import (
     BASIC_FUNDAMENTAL_KEYS,
     DataNotFoundError,
@@ -76,30 +78,33 @@ def _price_summary(closes) -> dict | None:
         paso = (len(valores) - 1) / (SPARK_POINTS - 1)
         spark = [valores[round(i * paso)] for i in range(SPARK_POINTS)]
 
+    # Los precios con `datos.redondear_precio`, no con `round(x, 2)`: una acción
+    # de céntimos que cerraba a 0,003 salía con `last` 0,0, el motor la daba
+    # por «sin precio» y su stop no se vigilaba (auditoría del 19 oct).
+    precio = datos.redondear_precio
+
+    # Las medias, enteras como `last`: con ellas decide el motor. Redondeada a dos
+    # decimales, la de 1,0054 salía 1,01 y el umbral de entrada (media + 2 %)
+    # pasaba de 1,0255 a 1,03, lo que cambiaba comprar por vigilar (revisión 3).
+    # La pantalla las escribe con `fmtPrecio`.
     def media(n: int) -> float | None:
-        return round(sum(valores[-n:]) / n, 2) if len(valores) >= n else None
+        return datos.numero(sum(valores[-n:]) / n) if len(valores) >= n else None
 
     sma50, sma200 = media(50), media(200)
 
     # Volatilidad diaria de los últimos ~3 meses: es lo que dimensiona el stop.
     # Un stop igual para una utility y para una biotech no protege de nada.
-    ventana = valores[-63:]
-    retornos = [
-        ventana[i] / ventana[i - 1] - 1
-        for i in range(1, len(ventana))
-        if ventana[i - 1]
-    ]
-    vol_diaria = None
-    if len(retornos) >= 20:
-        medio = sum(retornos) / len(retornos)
-        varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-        vol_diaria = round(math.sqrt(varianza) * 100, 3)
+    vol_diaria = vol_diaria_pct(valores)
 
     return {
-        "last": round(last, 2),
+        # El cierre tal cual, sin redondear: es lo que el motor compara con el
+        # stop. Redondeado a dos decimales, un stop de 1,8165 con el cierre en
+        # 1,8155 se comparaba con 1,82 y la venta no salía (revisión de A1). La
+        # pantalla lo escribe con `fmtPrecio`.
+        "last": datos.numero(last),
         "change_pct": round((last / prev - 1) * 100, 2) if prev else None,
-        "low_52w": round(low, 2),
-        "high_52w": round(high, 2),
+        "low_52w": precio(low),
+        "high_52w": precio(high),
         # Dónde está el precio dentro de su rango anual: 0 = mínimo, 1 = máximo.
         "range_position": round((last - low) / (high - low), 3) if high > low else None,
         "sma50": sma50,
@@ -109,7 +114,7 @@ def _price_summary(closes) -> dict | None:
         "above_sma200": (last > sma200) if sma200 else None,
         "daily_vol_pct": vol_diaria,
         "drawdown_pct": round((last / high - 1) * 100, 2) if high else None,
-        "spark": [round(v, 2) for v in spark],
+        "spark": [precio(v) for v in spark],
         "points": len(valores),
     }
 
@@ -289,10 +294,23 @@ class YFinanceProvider(DataProvider):
                     )
 
         if not contratos:
-            raise DataNotFoundError(f"yfinance: sin contratos utilizables para {symbol}")
+            # Hay vencimientos listados y ninguno trajo un contrato: eso es un
+            # fallo (un 429 a mitad, una respuesta vacía), no «no cotiza
+            # opciones». Antes era DataNotFoundError, y la ficha decía «AAPL no
+            # cotiza opciones» sin «Reintentar» (segunda revisión del 2.1). Lo
+            # que no cotiza opciones ya salió arriba: sin vencimientos.
+            raise ProviderError(
+                f"yfinance: {symbol} tiene {len(expiraciones)} vencimientos y no llegó ningún contrato "
+                f"({len(fallidos)} {'falló' if len(fallidos) == 1 else 'fallaron'})"
+            )
         if spot is None:
-            # El bloque `underlying` no siempre viene; la cotización sí.
-            spot = self.get_quote(symbol).get("price")
+            # El bloque `underlying` no siempre viene; la cotización sí. Si
+            # tampoco, el spot queda desconocido y la ruta responde 502: antes
+            # ese «sin cotización» subía como «no cotiza opciones».
+            try:
+                spot = self.get_quote(symbol).get("price")
+            except DataNotFoundError:
+                spot = None
 
         return {
             "symbol": symbol.upper(),

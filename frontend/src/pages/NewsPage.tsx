@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api/client'
-import type { Interpretation, NewsFeed, NewsItem } from '../api/types'
-import { SourceBadge } from '../components/SourceBadge'
-import { fmtFecha } from '../lib/formato'
-import { useLlmStatus } from '../lib/llm'
+import type { Interpretation, NewsItem } from '../api/types'
+import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
+import { fmtFecha, ZONA_MERCADO } from '../lib/formato'
+import { useLlmEstado, useLlmStatus } from '../lib/llm'
 import { primerSimbolo } from '../lib/simbolos'
+import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA } from '../components/ia/ContenidoIA'
 
 function AiInterpretation({ data }: { data: Interpretation }) {
@@ -46,7 +47,9 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
 
   return (
     <li className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* En móvil, el botón de IA debajo: a la derecha con `shrink-0`, dejaba al
+          titular y al resumen la mitad de la tarjeta (ítem 2.12). */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0">
           <a
             href={item.url}
@@ -57,7 +60,7 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
             {item.headline}
           </a>
           <div className="mt-0.5 text-xs text-slate-400">
-            {item.source ?? '—'} · {fmtFecha(item.published_at, { hora: true })}
+            {item.source ?? '—'} · {fmtFecha(item.published_at, { hora: true, zona: ZONA_MERCADO })}
             {item.related ? ` · ${item.related}` : ''}
           </div>
           {item.summary && (
@@ -69,7 +72,7 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
             onClick={interpret}
             disabled={busy}
             title="Llama al API de Claude (una vez por noticia; luego queda en caché)"
-            className="shrink-0"
+            className="shrink-0 self-start"
           >
             {busy ? 'Interpretando…' : '¿Por qué importa? (IA)'}
           </BotonIA>
@@ -84,15 +87,13 @@ function NewsCard({ item, symbol }: { item: NewsItem; symbol: string | null }) {
 export function NewsPage() {
   const [symbolInput, setSymbolInput] = useState('')
   const [symbol, setSymbol] = useState<string | null>(null)
-  const [feed, setFeed] = useState<NewsFeed | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const llm = useLlmStatus()
-
-  useEffect(() => {
-    setFeed(null)
-    setError(null)
-    api.news(symbol).then(setFeed, (e) => setError(e.message))
-  }, [symbol])
+  // Un `useEffect` sin descarte: si la respuesta del feed general llegaba
+  // después de la de AAPL, la pisaba bajo «Noticias · AAPL». Y el fallo salía
+  // suelto, sin «Reintentar» (revisión del 2.1).
+  const feed = useDato(() => api.news(symbol), symbol ?? 'general')
+  // Sin estado de la IA no se afirma una causa: «sin ANTHROPIC_API_KEY» salía
+  // también cuando solo había fallado la consulta, o mientras cargaba.
+  const { status: llm, error: errorIa } = useLlmEstado()
 
   return (
     <div className="space-y-4">
@@ -123,30 +124,28 @@ export function NewsPage() {
         El feed viene de la API de noticias (cacheado 15 min).{' '}
         {llm?.configured
           ? 'La interpretación por IA solo se genera cuando la pides, queda etiquetada en morado y se guarda para no repetir el gasto.'
-          : 'La capa de IA está desactivada: sin ANTHROPIC_API_KEY no hay interpretación de noticias, el resto de la app funciona igual.'}
+          : llm
+            ? 'La capa de IA está desactivada: sin ANTHROPIC_API_KEY no hay interpretación de noticias, el resto de la app funciona igual.'
+            : errorIa
+              ? `No se pudo comprobar la capa de IA (${errorIa}): mientras tanto no se ofrecen interpretaciones.`
+              : null}
       </p>
 
-      {error && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          {error}
-        </p>
-      )}
-      {!feed && !error && <p className="text-sm text-slate-400">Cargando noticias…</p>}
-      {feed && (
-        <>
-          <div className="flex justify-end">
-            <SourceBadge data={feed} />
-          </div>
-          {feed.items.length === 0 && (
-            <p className="text-sm text-slate-400">Sin noticias en el periodo.</p>
-          )}
-          <ul className="space-y-3">
-            {feed.items.map((item) => (
-              <NewsCard key={item.url} item={item} symbol={symbol} />
-            ))}
-          </ul>
-        </>
-      )}
+      <BloqueDatos carga={feed} que="las noticias">
+        {(f) => (
+          <>
+            <div className="flex justify-end">
+              <EstadoDato data={f} />
+            </div>
+            {f.items.length === 0 && <p className="text-sm text-slate-400">Sin noticias en el periodo.</p>}
+            <ul className="space-y-3">
+              {f.items.map((item) => (
+                <NewsCard key={item.url} item={item} symbol={symbol} />
+              ))}
+            </ul>
+          </>
+        )}
+      </BloqueDatos>
     </div>
   )
 }

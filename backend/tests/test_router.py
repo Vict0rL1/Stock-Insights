@@ -105,6 +105,21 @@ def test_data_not_found_de_una_fuente_no_corta_la_cadena(session_factory):
     assert b.calls == 1
 
 
+def test_si_ninguna_lo_tiene_el_motivo_es_el_de_las_fuentes(session_factory):
+    """Segunda revisión del 2.1: el 404 decía «'quote' no existe en ninguna
+    fuente (a, b)», un código interno que la ficha enseñaba como la explicación
+    («Sin estados financieros: 'financials' no existe…»). Ahora lleva lo que
+    dijo cada fuente, que es lo útil («no está registrado en la SEC»)."""
+    a = FakeProvider("a", [DataNotFoundError("a: X no está registrado en la SEC")])
+    b = FakeProvider("b", [DataNotFoundError("b: sin cotización para X")])
+    router = make_router(session_factory, {"a": a, "b": b})
+
+    with pytest.raises(DataNotFoundError) as excinfo:
+        router.fetch("quote", symbol="X")
+    assert str(excinfo.value) == "a: X no está registrado en la SEC · b: sin cotización para X"
+    assert "'quote'" not in str(excinfo.value)
+
+
 def test_error_agregado_si_todo_falla(session_factory):
     a = FakeProvider("a", [RateLimitError("límite")])
     b = FakeProvider("b", [ProviderError("caído")])

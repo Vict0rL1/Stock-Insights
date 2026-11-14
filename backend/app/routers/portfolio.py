@@ -11,8 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import datos, vigilancia
+from app import punto_en_el_tiempo as pit
 from app.analysis import alertas, fx, historial as hist, portfolio_risk
-from app.analysis.decision import _stop_pct
+from app.analysis.decision import _stop_pct, vol_diaria_pct
 from app.analysis.risk_budget import presupuesto_de_riesgo
 from app.analysis.sizing import con_caida_esperada, peor_ventana
 from app.analysis.portfolio import (
@@ -34,7 +35,7 @@ from app.db.models import (
     WatchlistItem,
 )
 from app.deps import get_service
-from app.formato import fmt_fecha, fmt_num
+from app.formato import decimales_precio, fmt_dinero, fmt_fecha, fmt_frente, fmt_num, plural
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import Simbolo, validar_simbolo
@@ -72,31 +73,69 @@ def get_or_create_instrument(session: Session, symbol: str, service=None) -> Ins
 
 
 
-def _volatilidad_de(service: MarketDataService, symbol: str) -> float | None:
-    """Volatilidad diaria desde el histórico ya cacheado. Nunca descarga nada.
+# Una copia caducada de más de un día ya no es «unas horas»: el margen de
+# rescate de la caché llega a 7 días, y tras cinco sesiones de caída el stop de
+# la cartera (medido con la copia vieja) daba perforado y el de la ficha no
+# (revisión 9).
+VENCIDO_MAX_SEGUNDOS = 24 * 3600
+SESIONES_HISTORICO = 252
 
-    Si no está en caché se devuelve None y el stop cae al valor medio de su
-    clase: preferible a gastar una llamada por posición cada vez que se abre
-    el portafolio.
-    """
+
+def _historico_cacheado(service: MarketDataService, symbol: str) -> list[dict]:
+    """Las barras diarias guardadas de un símbolo, sin descargar nada: el
+    histórico de un año vigente, el largo vigente (lo baja la propia Cartera
+    para el riesgo y el minigráfico; se recorta al último año) o el de un año
+    caducado hace menos de un día. Uno solo para el stop y el estrés: con
+    lectores distintos, la misma fila tenía el stop medido y salía «sin
+    histórico» en el estrés (revisión 9)."""
     cache = getattr(service, "cache", None)
     if cache is None:
-        return None
-    history = cache.get(
-        "price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252}
-    )
-    bars = (history or {}).get("bars") or []
-    cierres = [b["close"] for b in bars[-64:] if b.get("close")]
-    if len(cierres) < 21:
-        return None
-    retornos = [
-        cierres[i] / cierres[i - 1] - 1 for i in range(1, len(cierres)) if cierres[i - 1]
-    ]
-    if len(retornos) < 20:
-        return None
-    medio = sum(retornos) / len(retornos)
-    varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-    return (varianza ** 0.5) * 100
+        return []
+    params = {"symbol": symbol, "interval": "1day", "outputsize": SESIONES_HISTORICO}
+    for tipo, p in (("price_history", params), ("price_history_long", {"symbol": symbol})):
+        barras = (cache.get(tipo, p) or {}).get("bars") or []
+        if barras:
+            return barras[-SESIONES_HISTORICO:]
+    vencido = getattr(cache, "get_vencido", None)
+    copia = vencido("price_history", params) if vencido is not None else None
+    if copia and (copia.get("antiguedad_segundos") or 0) <= VENCIDO_MAX_SEGUNDOS:
+        return (copia.get("bars") or [])[-SESIONES_HISTORICO:]
+    return []
+
+
+def _volatilidad_de(
+    service: MarketDataService, symbol: str, *, descargar: bool = False, abierta: datetime | None = None
+) -> float | None:
+    """Volatilidad diaria del stop, del mismo histórico que la ficha.
+
+    Al listar no descarga nada (sería una llamada por posición cada vez que se
+    abre la cartera): lo que haya guardado (`_historico_cacheado`). Con solo la
+    caché vigente, pasadas las 6 h del histórico el stop caía al punto medio de
+    la clase: 83,5 en la cartera y 75,0 en la ficha con la misma posición
+    (revisión 8). Al ABRIR una posición sí descarga, una vez: ese stop se congela
+    y después no se puede bajar. Un rescate de las fuentes caídas (`viejo`) no
+    vale para congelarlo.
+
+    `abierta`: con una apertura atrasada, solo los cierres que se conocían
+    entonces; con los de hoy, un lote abierto hace 100 días en calma recibía el
+    stop de la agitación de después (75,0 en vez de 92,0; revisión 9).
+
+    None si no hay histórico: el stop cae entonces al punto medio de su clase, y
+    quien llama lo dice (`stop_por_clase`).
+    """
+    if descargar:
+        try:
+            history = service.get("price_history", symbol=symbol, interval="1day", outputsize=SESIONES_HISTORICO)
+        except (DataNotFoundError, AllProvidersFailedError):
+            return None
+        if (history or {}).get("estado") == "viejo":
+            return None
+        bars = (history or {}).get("bars") or []
+        if abierta is not None:
+            bars = [b for b in bars if pit.barra_disponible(b.get("ts"), abierta, history.get("as_of"))]
+    else:
+        bars = _historico_cacheado(service, symbol)
+    return vol_diaria_pct([b["close"] for b in bars if b.get("close")])
 
 
 def _series_cacheadas(
@@ -104,21 +143,16 @@ def _series_cacheadas(
 ) -> dict[str, list[tuple[date, float]]]:
     """Cierres diarios de la caché, para estresar la cartera. Nunca descarga.
 
-    Misma disciplina que `_volatilidad_de`: si el histórico no está guardado, esa
-    posición no entra en el estrés en vez de gastar una llamada por posición cada
-    vez que se abre el portafolio. `peor_ventana` solo cruza fechas comunes, así
-    que una posición ausente encoge el histórico compartido pero no lo falsea.
+    El mismo lector que el stop (`_historico_cacheado`): si no hay histórico
+    guardado, esa posición no entra en el estrés en vez de gastar una llamada
+    por posición cada vez que se abre el portafolio, y se nombra. `peor_ventana`
+    solo cruza fechas comunes, así que una posición ausente encoge el histórico
+    compartido pero no lo falsea.
     """
-    cache = getattr(service, "cache", None)
-    if cache is None:
-        return {}
     salida: dict[str, list[tuple[date, float]]] = {}
     for symbol in symbols:
-        history = cache.get(
-            "price_history", {"symbol": symbol, "interval": "1day", "outputsize": 252}
-        )
         puntos = []
-        for bar in (history or {}).get("bars") or []:
+        for bar in _historico_cacheado(service, symbol):
             cierre, ts = bar.get("close"), bar.get("ts")
             if not cierre or not ts:
                 continue
@@ -129,6 +163,38 @@ def _series_cacheadas(
         if len(puntos) >= 60:
             salida[symbol] = puntos
     return salida
+
+
+def _cobertura_estres(pesos: dict[str, float], series: dict[str, list], motivos: dict[str, str] | None = None) -> dict:
+    """Qué parte del dinero entra en el estrés y qué posiciones se quedan fuera,
+    cada una con su motivo (`motivos`; por defecto, sin histórico guardado).
+
+    `peor_ventana` repondera sobre las que tienen serie: con XYZ (el 91 % del
+    dinero) sin histórico en caché, la «peor caída» era la de AAA sola y la
+    respuesta no nombraba a XYZ (revisión 8). El estrés de crisis ya decía qué
+    fracción cubre y qué falta; este también. Sin ninguna medida no hay «resto»
+    que reponderar (revisión 9).
+    """
+    motivos = motivos or {}
+    total = sum(pesos.values())
+    fuera = sorted(s for s in pesos if s not in series)
+    if not total:
+        return {"cobertura_peso": None, "sin_historico": fuera, "aviso_sin_historico": None}
+    cubierto = sum(v for s, v in pesos.items() if s in series) / total
+    aviso = None
+    if fuera:
+        cuales = "; ".join(
+            f"{s}, {motivos.get(s, 'sin histórico guardado (o con menos de 60 sesiones)')}" for s in fuera[:5]
+        )
+        if not cubierto:
+            aviso = f"No mide ninguna posición: {cuales}."
+        else:
+            aviso = (
+                f"Mide solo el {fmt_frente(cubierto, 1, pct=True)} del dinero: "
+                f"{plural(len(fuera), 'queda fuera', 'quedan fuera')} {cuales}. El resto se repondera como si "
+                "fuera toda la cartera: la caída es la de esa parte, no la tuya."
+            )
+    return {"cobertura_peso": round(cubierto, 4), "sin_historico": fuera, "aviso_sin_historico": aviso}
 
 
 PUNTOS_SPARK = 32
@@ -162,7 +228,10 @@ def _spark_cacheado(
     if len(cierres) < PUNTOS_SPARK:
         return None
     paso = (len(cierres) - 1) / (PUNTOS_SPARK - 1)
-    return [round(cierres[round(i * paso)], 2) for i in range(PUNTOS_SPARK)]
+    # `redondear_precio`, como el minigráfico de Yahoo: con `round(x, 2)`, una
+    # posición de céntimos que caía de 0,004 a 0,003 eran 32 ceros, una línea
+    # plana y en verde (revisión de A1).
+    return [datos.redondear_precio(cierres[round(i * paso)]) for i in range(PUNTOS_SPARK)]
 
 
 def _precio_y_divisa(service: MarketDataService, symbol: str) -> tuple[float | None, str | None]:
@@ -186,6 +255,7 @@ def _cotizacion(service: MarketDataService, symbol: str) -> tuple[float | None, 
     return q.get("price"), q.get("currency"), {
         "estado": q.get("estado", "valido"),
         "antiguedad_segundos": q.get("antiguedad_segundos"),
+        "publicado": q.get("as_of"),
     }
 
 
@@ -208,7 +278,7 @@ def _realizado_en_base(cerradas: list[dict], series: dict) -> tuple[float | None
         if moneda == fx.BASE:
             p["realized_pnl_base"] = pnl
         else:
-            serie = series.get(moneda) or []
+            serie = fx.puntos_en_banda(moneda, series.get(moneda))
             fechas, valores = [f for f, _ in serie], [v for _, v in serie]
             try:
                 t_compra = hist._vigente(fechas, valores, date.fromisoformat(p["opened_at"][:10]))
@@ -242,7 +312,7 @@ def _coste_al_tipo_de_compra(posiciones: list[dict], series: dict) -> None:
         moneda = p.get("currency")
         if moneda == fx.BASE or p.get("invested") is None or p.get("invested_base") is None:
             continue
-        serie = series.get(moneda) or []
+        serie = fx.puntos_en_banda(moneda, series.get(moneda))
         tipo = None
         try:
             abierto = date.fromisoformat(str(p.get("opened_at"))[:10])
@@ -268,6 +338,14 @@ def _utc_iso(cuando) -> str | None:
     return utc.isoformat() if utc else None
 
 
+def _tecleado(valor: float) -> str:
+    """Un precio que escribió la persona, para repetírselo en un mensaje: hasta
+    cuatro decimales, como siempre, y los que haga falta por debajo de 1. Con
+    `fmt_num(…, 4)`, un stop de 0,00004 se repetía como «0» («No se puede bajar
+    el stop de 0 a 0»; revisión de A1)."""
+    return fmt_num(valor, max(4, decimales_precio(valor)), ceros=False)
+
+
 def _moneda_segura(valor) -> str | None:
     try:
         return fx.normalizar(valor)
@@ -275,8 +353,20 @@ def _moneda_segura(valor) -> str | None:
         return None
 
 
+def _divisa_de_cerrada(divisa: str | None) -> dict:
+    """La divisa de una posición cerrada y, si no se puede convertir, por qué.
+
+    Una cerrada en peniques salía «moneda desconocida», cuando se sabe cuál es:
+    lo que no se puede es convertirla (revisión de A3). Queda fuera del realizado
+    en la base (`_realizado_en_base`: no hay tipo para «GBX») con su motivo."""
+    try:
+        return {"currency": fx.normalizar(divisa), "sin_convertir": None}
+    except fx.SinTipo as exc:
+        return {"currency": fx.codigo(divisa), "sin_convertir": str(exc)}
+
+
 def _moneda_legible(valor) -> str | None:
-    return valor.strip().upper() if isinstance(valor, str) and valor.strip() else None
+    return fx.codigo(valor)
 
 
 def _resolver_divisa(
@@ -487,12 +577,23 @@ def _fecha_de_apertura(valor: str | None) -> datetime | None:
         ) from None
     if fecha.tzinfo is None:
         fecha = fecha.replace(tzinfo=timezone.utc)
-    if fecha > datetime.now(timezone.utc) + timedelta(minutes=5):
+    ahora = datetime.now(timezone.utc)
+    if len(valor) == 10 and fecha.date() == ahora.date() + timedelta(days=1):
+        # El día suelto de mañana en UTC solo puede ser el hoy de alguien al este:
+        # en Madrid, de 00:00 a 01:00, su fecha de hoy daba 422 aquí y 200 en el
+        # efectivo. Cuenta como hoy, como allí (revisión 4).
+        return ahora
+    if fecha > ahora + timedelta(minutes=5):
         raise ValueError(
-            "La fecha de apertura está en el futuro. Una compra que aún no ha "
-            "ocurrido descoloca la curva histórica y el tipo de cambio de compra."
+            f"La fecha de apertura está en el futuro (hoy, en UTC, es el {fmt_fecha(ahora.date())}). "
+            "Una compra que aún no ha ocurrido descoloca la curva histórica y el tipo de cambio de compra."
         )
-    return fecha
+    # El margen es por el reloj de quien llama: guardada unos minutos en el
+    # futuro, la posición no existía para el análisis ni para el riesgo durante
+    # esos minutos (revisión 3, hermano del efectivo). En UTC antes de guardar:
+    # SQLite pierde la zona y una hora con +02:00 se releía dos horas en el
+    # futuro, fuera del análisis y del antiduplicado (revisión 5).
+    return min(fecha.astimezone(timezone.utc), ahora)
 
 
 class PositionCreate(BaseModel):
@@ -521,7 +622,7 @@ class PositionCreate(BaseModel):
         coste = info.data.get("cost_basis")
         if v is not None and coste is not None and v >= coste:
             raise ValueError(
-                f"El stop ({fmt_num(v, 4, ceros=False)}) tiene que estar por debajo del coste ({fmt_num(coste, 4, ceros=False)}): "
+                f"El stop ({_tecleado(v)}) tiene que estar por debajo del coste ({_tecleado(coste)}): "
                 "un stop por encima no protege de ninguna caída."
             )
         return v
@@ -558,7 +659,7 @@ def create_position(
                     status_code=409,
                     detail=(
                         f"Posición duplicada: ya hay una de {instrument.symbol} con "
-                        f"{fmt_num(body.quantity, 4, ceros=False)} acciones a {fmt_num(body.cost_basis, 4, ceros=False)}, "
+                        f"{fmt_num(body.quantity, 4, ceros=False)} acciones a {_tecleado(body.cost_basis)}, "
                         f"abierta el {fmt_fecha(abierta, hora=True, zona='UTC')} (#{gemela.id}). Si de verdad "
                         "es un segundo lote, repite con `confirmar_duplicado: true`."
                     ),
@@ -566,11 +667,24 @@ def create_position(
 
     # El stop se fija AHORA, con la volatilidad de hoy, y no se vuelve a
     # recalcular: recalcularlo cada día lo alejaba justo en las caídas.
+    # Un stop tecleado, en la rejilla de precios y hacia arriba (nunca más lejos
+    # de lo que se tecleó): fuera de ella, 51.000,109 se servía 51.000,10 y un
+    # cierre de 51.000,105 «perforaba» un stop escrito por debajo (revisión 6).
+    # Si al subirlo llegara al coste, se queda como se tecleó.
     stop = body.stop
+    if stop is not None:
+        en_rejilla = datos.redondear_precio(stop, hacia="arriba")
+        stop = en_rejilla if en_rejilla < body.cost_basis else stop
+    stop_por_clase = False
     if stop is None and body.cost_basis > 0:
         clase = "cripto" if instrument.symbol.endswith("-USD") else "accion"
-        vol = _volatilidad_de(service, instrument.symbol)
-        stop = round(body.cost_basis * (1 - _stop_pct(vol, clase) / 100), 4)
+        # Abierta antes de hoy, con lo que se sabía entonces (revisión 9).
+        atrasada = opened_at.date() < datetime.now(timezone.utc).date()
+        vol = _volatilidad_de(service, instrument.symbol, descargar=True, abierta=opened_at if atrasada else None)
+        stop_por_clase = vol is None
+        # Con `round(…, 4)`, el stop de una posición a 0,00005 se guardaba como
+        # 0,0: «sin stop», y se volvía a calcular cada día (auditoría del 19 oct).
+        stop = datos.redondear_precio(body.cost_basis * (1 - _stop_pct(vol, clase) / 100))
     position = Position(
         instrument_id=instrument.id,
         quantity=body.quantity,
@@ -581,7 +695,10 @@ def create_position(
     session.add(position)
     thesis_id = _guardar_tesis(session, instrument.id, body.tesis)
     session.commit()
-    return {"id": position.id, "symbol": instrument.symbol, "thesis_id": thesis_id}
+    return {"id": position.id, "symbol": instrument.symbol, "thesis_id": thesis_id,
+            # Sin histórico ni descargándolo: el stop guardado es el punto medio
+            # de su clase, no uno medido (revisión 8).
+            "stop_por_clase": stop_por_clase}
 
 
 class StopUpdate(BaseModel):
@@ -608,12 +725,13 @@ def fijar_stop(position_id: int, body: StopUpdate, session: Session = Depends(ge
         raise HTTPException(
             status_code=409,
             detail=(
-                f"No se puede bajar el stop de {fmt_num(actual, 4, ceros=False)} a {fmt_num(body.stop, 4, ceros=False)}. Bajar un stop "
+                f"No se puede bajar el stop de {_tecleado(actual)} a {_tecleado(body.stop)}. Bajar un stop "
                 "es alejarlo justo cuando el precio se acerca: el control que protege "
                 "la posición deja de hacerlo. Si la tesis cambió, cierra la posición."
             ),
         )
-    anterior, position.stop = actual, body.stop
+    # En la rejilla y hacia arriba, como al abrir (revisión 6).
+    anterior, position.stop = actual, datos.redondear_precio(body.stop, hacia="arriba")
     session.commit()
     return {"id": position.id, "stop": position.stop, "anterior": anterior}
 
@@ -665,9 +783,7 @@ def get_portfolio(
                     "realized_pnl": position.realized_pnl,
                     "opened_at": _utc_iso(position.opened_at),
                     "closed_at": _utc_iso(position.closed_at),
-                    "currency": _moneda_segura(
-                        _resolver_divisa(session, service, instrument, None)
-                    ),
+                    **_divisa_de_cerrada(_resolver_divisa(session, service, instrument, None)),
                 }
             )
             continue
@@ -683,11 +799,17 @@ def get_portfolio(
         # El stop FIJADO al abrir manda. Solo las posiciones anteriores a ese
         # cambio (sin stop guardado) lo recalculan, y se marca.
         stop_fijado = datos.precio(position.stop)
+        vol = None
         if stop_fijado is not None:
-            stop = round(stop_fijado, 2)
-        else:
+            stop = stop_fijado
+        elif position.cost_basis and position.cost_basis > 0:
             vol = _volatilidad_de(service, instrument.symbol)
-            stop = round(position.cost_basis * (1 - _stop_pct(vol, clase) / 100), 2)
+            stop = datos.redondear_precio(position.cost_basis * (1 - _stop_pct(vol, clase) / 100))
+        else:
+            # Coste 0 (un regalo, un spin-off): sin coste no hay stop anclado a
+            # él, como al abrirla; se servía 0,0 «punto medio de su clase»
+            # (revisión 9).
+            stop = None
         open_positions.append(
             {
                 "id": position.id,
@@ -698,6 +820,9 @@ def get_portfolio(
                 "opened_at": _utc_iso(position.opened_at),
                 "stop": stop,
                 "stop_fijado_al_abrir": stop_fijado is not None,
+                # Recalculado sin histórico: el punto medio de su clase, no un
+                # stop medido. Fijarlo así sería congelar un supuesto (revisión 8).
+                "stop_por_clase": stop_fijado is None and stop is not None and vol is None,
                 "price": price,
                 "precio_estado": estado_precio["estado"] if price is not None else "desconocido",
                 "precio_antiguedad_segundos": estado_precio["antiguedad_segundos"],
@@ -710,11 +835,16 @@ def get_portfolio(
     # CONVERTIR ANTES DE SUMAR. Hasta aquí `market_value` está cada uno en su
     # moneda; sumarlos directamente daba un total creíble y equivocado, y de ese
     # total cuelgan los pesos, la concentración y el presupuesto de riesgo.
-    monedas = {m for p in open_positions if (m := fx.normalizar(p.get("currency")))}
-    monedas |= {p["currency"] for p in closed if p.get("currency")}
+    # `_moneda_segura`, no `fx.normalizar`: una posición en peniques (GBX, ZAC,
+    # ILA) hacía saltar `SinTipo` aquí y la cartera entera daba un 500
+    # (auditoría del 19 oct). `convertir_cartera` la deja visible, fuera del
+    # total y con su motivo.
+    monedas = {m for p in open_positions if (m := _moneda_segura(p.get("currency")))}
+    monedas |= {p["currency"] for p in closed if p.get("currency") and not p.get("sin_convertir")}
     tipos, series_fx, _ = _fx_completo(service, monedas)
     realizado_base, realizado_fuera = _realizado_en_base(closed, series_fx)
     divisas = fx.convertir_cartera(open_positions, tipos)
+    abiertas_por_id = {o["id"]: o for o in open_positions}
     _coste_al_tipo_de_compra(divisas["posiciones"], series_fx)
     efectos = [p["efecto_divisa_base"] for p in divisas["posiciones"]
                if p.get("efecto_divisa_base") is not None]
@@ -742,10 +872,28 @@ def get_portfolio(
     # disponible. No son escenarios inventados: son los pesos que tienes hoy
     # aplicados al pasado que hay guardado, con sus fechas y con el aviso de qué
     # crisis quedan fuera de la cobertura.
-    estres = peor_ventana(
-        {p["symbol"]: p["market_value"] for p in convertidas if p.get("market_value")},
-        _series_cacheadas(service, [p["symbol"] for p in convertidas]),
-    )
+    # Por símbolo y sumando sus lotes: con el diccionario por comprensión, el
+    # último lote pisaba a los anteriores.
+    pesos_estres: dict[str, float] = {}
+    for p in convertidas:
+        if p.get("market_value"):
+            pesos_estres[p["symbol"]] = pesos_estres.get(p["symbol"], 0.0) + p["market_value"]
+    # En dólares, como los pesos y como el estrés de crisis de `/riesgo`: con los
+    # cierres en su moneda, una acción canadiense plana mientras el CAD caía de
+    # 1,30 a 1,70 «no perdía nada», y en dólares había caído un 23,5 % (revisión 9).
+    from app.contexto_cartera import convertir_serie
+
+    monedas_estres = {p["symbol"]: p.get("currency") for p in convertidas}
+    series_estres: dict[str, list[tuple[date, float]]] = {}
+    motivos_estres: dict[str, str] = {}
+    for symbol, serie in _series_cacheadas(service, list(pesos_estres)).items():
+        en_usd = convertir_serie(serie, monedas_estres.get(symbol), series_fx)
+        if en_usd and len(en_usd) >= 60:
+            series_estres[symbol] = en_usd
+        else:
+            motivos_estres[symbol] = f"sin tipo de cambio de {monedas_estres.get(symbol) or 'su moneda'} para pasarlo a dólares"
+    estres = {**peor_ventana(pesos_estres, series_estres),
+              **_cobertura_estres(pesos_estres, series_estres, motivos_estres)}
     return {
         "positions": [
             {**p, "market_value_base": p.get("market_value_base"),
@@ -755,11 +903,13 @@ def get_portfolio(
         + [
             # Las que no se pudieron convertir siguen visibles en la tabla —con
             # su importe en su moneda— pero fuera de todos los totales.
-            {**next(o for o in open_positions if o["symbol"] == s_["symbol"]),
+            # Por id, no por símbolo: dos lotes en peniques del mismo símbolo
+            # salían como el primero dos veces, y el segundo no se podía cerrar.
+            {**abiertas_por_id[s_["id"]],
              "market_value_base": None, "invested_base": None,
              "sin_convertir": s_["motivo"]}
             for s_ in divisas["sin_convertir"]
-            if any(o["symbol"] == s_["symbol"] for o in open_positions)
+            if s_.get("id") in abiertas_por_id
         ],
         "closed_positions": closed,
         "divisas": {k: v for k, v in divisas.items() if k != "posiciones"},
@@ -1027,17 +1177,16 @@ def historial_de_cartera(
     posiciones, symbols, monedas, sin_moneda = [], [], set(), []
     for position, instrument in filas:
         _, divisa = _precio_y_divisa(service, instrument.symbol)
-        try:
-            moneda = fx.normalizar(_resolver_divisa(session, service, instrument, divisa))
-        except fx.SinTipo:
-            moneda = None
+        moneda = _resolver_divisa(session, service, instrument, divisa)
         if moneda is None:
             # Sin moneda no entra en la curva: suponer dólar dibujaría una
             # posición canadiense un 37 % más grande de lo que es. Pasa igual
             # a `historial`, que la excluye y la nombra en el aviso de pantalla.
             sin_moneda.append(instrument.symbol)
-        else:
-            monedas.add(moneda)
+        elif convertible := _moneda_segura(moneda):
+            # Una en céntimos (GBX) va tal cual: `historial` la excluye con ese
+            # motivo, no con «moneda desconocida» (revisión de A3).
+            monedas.add(convertible)
         symbols.append(instrument.symbol)
         posiciones.append(
             {
@@ -1120,12 +1269,21 @@ def riesgo_de_cartera(
     ]
     total = sum(p["market_value"] for p in con_precio)
     if not con_precio or not total:
+        # Si hay precio pero nada se pudo convertir (toda la cartera en peniques,
+        # o sin tipo de cambio), decirlo con su motivo: «Ninguna posición tiene
+        # precio» era falso (revisión 3).
+        fuera = divisas["sin_convertir"]
         return {
             "disponible": False,
             "nota": (
+                "Ninguna posición se puede pesar en dólares: "
+                + "; ".join(f"{s['symbol']}, {s['motivo']}" for s in fuera[:4])
+                if fuera else
                 "Ninguna posición tiene precio ahora mismo, así que no hay pesos "
                 "con los que ponderar nada."
             ),
+            "sin_precio": sin_precio,
+            "sin_convertir": fuera,
         }
 
     symbols = [p["symbol"] for p in con_precio]
@@ -1204,40 +1362,83 @@ def riesgo_de_cartera(
 class EfectivoAnotar(BaseModel):
     moneda: str = Field("USD", min_length=3, max_length=8)
     importe: float = Field(ge=0, allow_inf_nan=False)
-    as_of: str | None = Field(None, description="Fecha del saldo (ISO); por defecto, ahora")
+    as_of: str | None = Field(
+        None, description=("Fecha del saldo (ISO): con hora, o un día UTC (hoy o mañana en UTC = ahora; uno pasado, "
+                           "su final); por defecto, ahora")
+    )
     nota: str | None = None
 
 
 @router.post("/efectivo")
 def anotar_efectivo(body: EfectivoAnotar, session: Session = Depends(get_session)):
     """Anota el efectivo disponible en una moneda. Se guarda la historia; manda
-    la última anotación. Sin anotación, el efectivo es desconocido, no cero."""
+    el saldo más reciente (`oportunidad._ultimas_anotaciones`). Sin anotación, el
+    efectivo es desconocido, no cero."""
     from app.db.models import CashBalance
 
+    from app.oportunidad import _ultimas_anotaciones
+
     moneda = _moneda_legible(body.moneda)
-    try:
-        cuando = datetime.fromisoformat(body.as_of.replace("Z", "+00:00")) if body.as_of else datetime.now(timezone.utc)
-    except ValueError:
-        raise HTTPException(status_code=422, detail=f"Fecha inválida: {body.as_of!r}") from None
-    if cuando.tzinfo is None:
-        cuando = cuando.replace(tzinfo=timezone.utc)
-    if cuando > datetime.now(timezone.utc) + timedelta(minutes=5):
-        raise HTTPException(status_code=422, detail="Un saldo no puede estar fechado en el futuro.")
+    ahora = datetime.now(timezone.utc)
+    leida = pit.marca(body.as_of) if body.as_of else (ahora, True)
+    if leida is None:
+        raise HTTPException(status_code=422, detail=f"Fecha inválida: {body.as_of!r}")
+    momento, con_hora = leida
+    if con_hora:
+        # SQLite guarda la hora de pared sin zona y se relee como UTC: un saldo de
+        # hace un minuto en +02:00 quedaba fechado dos horas en el futuro y el punto
+        # en el tiempo lo descartaba (revisión de M3).
+        cuando = momento.astimezone(timezone.utc)
+    else:
+        # Un día suelto es el saldo de ESE día, no su medianoche: como medianoche
+        # perdía siempre contra un saldo con hora anotado antes ese mismo día, y
+        # `POST {importe: 1000, as_of: hoy}` respondía 200 mientras mandaban los
+        # 10.000 de la mañana (revisión de A4). Hoy, la hora del registro; un día
+        # pasado, su último instante (lo que `punto_en_el_tiempo` da por sabido).
+        # El día es el UTC, como todo el backend; el de mañana en UTC solo puede
+        # ser el hoy de alguien al este (en Madrid, de 00:00 a 01:00 daba 422):
+        # cuenta como hoy (revisión 3).
+        cuando = ahora if momento in (ahora.date(), ahora.date() + timedelta(days=1)) else pit.fin_del_dia(momento)
+    if cuando > ahora + timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail=(
+            f"Un saldo no puede estar fechado en el futuro (hoy, en UTC, es el {fmt_fecha(ahora.date())})."))
+    # El margen es por el desfase del reloj de quien llama, no para fechar en el
+    # futuro: guardado tal cual, la pantalla decía «Sin efectivo anotado» durante
+    # esos minutos (revisión de A4).
+    cuando = min(cuando, ahora)
     fila = CashBalance(moneda=moneda, importe=body.importe, as_of=cuando, nota=body.nota)
     session.add(fila)
     session.commit()
-    return {"id": fila.id, "moneda": moneda, "importe": fila.importe, "as_of": _utc_iso(fila.as_of)}
+    # Anotar un saldo antiguo (para la historia) no tapa uno más reciente, y la
+    # respuesta lo dice: antes era un 200 mudo con el saldo de antes al mando.
+    vigente = next(c for c in _ultimas_anotaciones(session, datetime.now(timezone.utc)) if c.moneda == moneda)
+    nota = None
+    if vigente.id != fila.id:
+        # Sin suponer que era «para la historia»: al oeste de UTC, de noche, el
+        # día de hoy de quien lo anota es el de ayer en UTC (revisión 3).
+        nota = (
+            f"Anotado con fecha del {fmt_fecha(_utc_iso(fila.as_of))} (el día se lee en UTC), pero no es el "
+            f"saldo vigente: manda el de {fmt_fecha(_utc_iso(vigente.as_of), hora=True)} "
+            f"({fmt_dinero(vigente.importe, moneda)}), más reciente. Si es tu saldo de hoy, anótalo sin fecha."
+        )
+    return {
+        "id": fila.id,
+        "moneda": moneda,
+        "importe": fila.importe,
+        "as_of": _utc_iso(fila.as_of),
+        "vigente": vigente.id == fila.id,
+        "nota": nota,
+    }
 
 
 @router.get("/efectivo")
 def ver_efectivo(session: Session = Depends(get_session)):
-    from sqlalchemy import func
+    # La misma vigencia que usan Hoy y el coste de oportunidad: con la última
+    # fila (`max(id)`), un saldo antiguo anotado después salía aquí como el de
+    # hoy mientras los cálculos usaban el otro (auditoría del 19 oct).
+    from app.oportunidad import _ultimas_anotaciones
 
-    from app.db.models import CashBalance
-
-    filas = session.execute(
-        select(CashBalance).where(CashBalance.id.in_(select(func.max(CashBalance.id)).group_by(CashBalance.moneda)))
-    ).scalars().all()
+    filas = sorted(_ultimas_anotaciones(session, datetime.now(timezone.utc)), key=lambda c: c.moneda)
     return {
         "saldos": [{"moneda": c.moneda, "importe": c.importe, "as_of": _utc_iso(c.as_of), "nota": c.nota} for c in filas],
         "nota": None if filas else "Sin efectivo anotado: el motor de coste de oportunidad lo trata como DESCONOCIDO.",

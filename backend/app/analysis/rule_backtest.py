@@ -5,7 +5,8 @@ El backtest de `backtest.py` responde a una pregunta distinta y más estrecha:
 **modelo de factores**, y está bien resuelta.
 
 Pero eso no es lo que ejecuta la app. La app aplica reglas: entra solo si además
-el precio está sobre su media de 200 sesiones, pone un stop dimensionado por
+el precio está en o por encima de su media de 200 sesiones + 2 % (la banda del
+motor, `decision._umbral_entrar`), pone un stop dimensionado por
 volatilidad, un objetivo al doble, y sale por lo que llegue antes. Ninguna de
 esas piezas aparecía en el backtest anterior, así que **el sistema que de verdad
 se usa nunca se había medido**.
@@ -38,6 +39,7 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
+from app import datos
 from app.analysis.backtest import (
     BACKTESTABLE_WEIGHTS,
     _closest_bar,
@@ -46,7 +48,7 @@ from app.analysis.backtest import (
     momentum_12_1,
     point_in_time_period,
 )
-from app.analysis.decision import _stop_pct
+from app.analysis.decision import BANDA_TENDENCIA_ENTRAR_PCT, _stop_pct, _umbral_entrar, vol_diaria_pct
 from app.analysis.factors import (
     build_raw_factors,
     composite_score,
@@ -74,7 +76,6 @@ DIVISA_PCT = 1.50         # conversión CAD→USD en un bróker canadiense típi
 
 MAX_SESIONES = 252    # un año: si no salta stop ni objetivo, se cierra y se cuenta
 SESIONES_SMA = 200
-MIN_BARRAS_VOL = 63
 
 
 def costes_por_lado(con_divisa: bool = True) -> float:
@@ -121,20 +122,11 @@ def _sma(serie: list[tuple[date, float]], as_of: date, n: int) -> float | None:
 
 
 def _vol_diaria_pct(serie: list[tuple[date, float]], as_of: date) -> float | None:
-    """Volatilidad diaria point-in-time: la misma que dimensiona el stop en vivo."""
-    previos = [c for d, c in serie if d <= as_of][-(MIN_BARRAS_VOL + 1):]
-    if len(previos) < MIN_BARRAS_VOL:
-        return None
-    retornos = [
-        previos[i] / previos[i - 1] - 1
-        for i in range(1, len(previos))
-        if previos[i - 1]
-    ]
-    if len(retornos) < 20:
-        return None
-    medio = sum(retornos) / len(retornos)
-    varianza = sum((r - medio) ** 2 for r in retornos) / (len(retornos) - 1)
-    return (varianza ** 0.5) * 100
+    """Volatilidad diaria point-in-time: la misma que dimensiona el stop en vivo,
+    sobre los cierres hasta `as_of`. Era otra medida (64 cierres sin redondear,
+    mínimo 63) y el stop simulado salía distinto del de en vivo en más de la mitad
+    de las fechas (revisión 8)."""
+    return vol_diaria_pct([c for d, c in serie if d <= as_of])
 
 
 def simular_operacion(
@@ -181,9 +173,9 @@ def simular_operacion(
 
     return {
         "entrada_fecha": entrada_fecha.isoformat(),
-        "entrada": round(entrada, 2),
+        "entrada": datos.redondear_precio(entrada),
         "salida_fecha": salida_fecha.isoformat(),
-        "salida": round(salida, 2),
+        "salida": datos.redondear_precio(salida),
         "motivo": motivo,
         "sesiones": (salida_fecha - entrada_fecha).days,
         "stop_pct": stop_pct,
@@ -299,8 +291,12 @@ def run_rule_backtest(
             if score < favorable_min:
                 continue
             if exigir_tendencia:
-                sma = entrada["sma200"]
-                if sma is None or entrada["precio"] <= sma:
+                # El umbral del motor, con su banda (media + 2 %): con «precio >
+                # media», el backtest abría operaciones que `decide` deja en
+                # «vigilar», y «calibrada» salía de compras que la app no hace
+                # (revisión 4).
+                entrar = _umbral_entrar(entrada["sma200"])
+                if entrar is None or entrada["precio"] < entrar:
                     descartes["sin_tendencia"] += 1
                     continue
 
@@ -344,6 +340,9 @@ def _resumen(
             # La configuración describe la ejecución, no el resultado: sin ella
             # no se sabe qué se probó cuando no salió ninguna operación.
             "filtro_tendencia": exigir_tendencia,
+            # Desde la revisión 4 la entrada lleva la banda del motor; los
+            # guardados sin esta clave entraban con «precio > media».
+            "banda_tendencia_pct": BANDA_TENDENCIA_ENTRAR_PCT if exigir_tendencia else None,
             "umbral": favorable_min,
             "nota": (
                 "Ninguna operación cumplió las condiciones en el periodo. Sin "
@@ -355,9 +354,12 @@ def _resumen(
     ganadoras = [o for o in operaciones if o["ganadora"]]
     perdedoras = [o for o in operaciones if not o["ganadora"]]
     netos = [o["neto_pct"] for o in operaciones]
-    media_gana = sum(o["neto_pct"] for o in ganadoras) / len(ganadoras) if ganadoras else 0.0
+    # Sin operaciones de un lado no hay media de ese lado: un 0,0 se pintaba
+    # «+0,00 %» en verde como media de unas ganadoras que no existían
+    # (revisión de M2). Ausente ≠ cero.
+    media_gana = sum(o["neto_pct"] for o in ganadoras) / len(ganadoras) if ganadoras else None
     media_pierde = (
-        sum(o["neto_pct"] for o in perdedoras) / len(perdedoras) if perdedoras else 0.0
+        sum(o["neto_pct"] for o in perdedoras) / len(perdedoras) if perdedoras else None
     )
     tasa = len(ganadoras) / n
     bajo, alto = wilson_interval(len(ganadoras), n)
@@ -378,8 +380,8 @@ def _resumen(
         "tasa_acierto": round(tasa, 4),
         "tasa_acierto_ic": [round(bajo, 4), round(alto, 4)],
         "esperanza_pct": round(esperanza, 3),
-        "media_ganadora_pct": round(media_gana, 2),
-        "media_perdedora_pct": round(media_pierde, 2),
+        "media_ganadora_pct": round(media_gana, 2) if media_gana is not None else None,
+        "media_perdedora_pct": round(media_pierde, 2) if media_pierde is not None else None,
         "factor_beneficio": (
             round(ganancia_bruta / perdida_bruta, 2) if perdida_bruta else None
         ),
@@ -398,6 +400,7 @@ def _resumen(
         "coste_total_por_operacion_pct": round(2 * coste_lado, 2),
         "desglose_costes": desglose_de_costes(coste_lado > COMISION_PCT + HORQUILLA_PCT + DESLIZAMIENTO_PCT),
         "filtro_tendencia": exigir_tendencia,
+        "banda_tendencia_pct": BANDA_TENDENCIA_ENTRAR_PCT if exigir_tendencia else None,
         "umbral": favorable_min,
         "descartes": descartes,
         "operaciones": operaciones[-200:],

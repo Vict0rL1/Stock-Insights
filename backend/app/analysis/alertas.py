@@ -27,7 +27,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from app.formato import fmt_num, plural
+from app.formato import fmt_num, fmt_precio, plural
 
 OPERADORES = {
     "lt": ("por debajo de", lambda precio, umbral: precio < umbral),
@@ -114,9 +114,11 @@ def evaluar(
         "precio": precio,
         "umbral": umbral,
         "motivo": (
-            f"{alerta.get('symbol')} a {fmt_num(precio)}, {etiqueta} {fmt_num(umbral)}"
+            # `fmt_precio`: con dos decimales fijos, una acción de 0,003 con la
+            # alerta en 0,004 decía «a 0,00, por debajo de 0,00» (revisión de A1).
+            f"{alerta.get('symbol')} a {fmt_precio(precio)}, {etiqueta} {fmt_precio(umbral)}"
             if cumple
-            else f"{alerta.get('symbol')} a {fmt_num(precio)}; el umbral es {fmt_num(umbral)}"
+            else f"{alerta.get('symbol')} a {fmt_precio(precio)}; el umbral es {fmt_precio(umbral)}"
         ),
         "comprobado_en": ahora.isoformat(),
     }

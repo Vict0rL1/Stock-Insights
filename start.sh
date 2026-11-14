@@ -123,11 +123,11 @@ BACKEND_PID=$!
 
 # Espera a que el backend responda antes de seguir.
 for _ in $(seq 1 40); do
-  if curl -s http://localhost:8000/api/meta/health >/dev/null 2>&1; then break; fi
+  if curl -sf http://localhost:8000/api/meta/health >/dev/null 2>&1; then break; fi
   sleep 0.5
 done
 
-if ! curl -s http://localhost:8000/api/meta/health >/dev/null 2>&1; then
+if ! curl -sf http://localhost:8000/api/meta/health >/dev/null 2>&1; then
   printf '%s✗ El backend no arrancó. Últimas líneas del log:%s\n' "$RED" "$RESET"
   tail -20 /tmp/bolsa-backend.log
   exit 1

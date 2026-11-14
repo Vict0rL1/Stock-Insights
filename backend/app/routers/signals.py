@@ -28,7 +28,7 @@ from app.analysis.backtest import (
 from app.analysis import experiments
 from app.analysis.rule_backtest import rebalance_dates_mensuales, run_rule_backtest
 from app.analysis.shortlist import construir_lista_corta
-from app.analysis.sizing import dimensionar
+from app.analysis.sizing import aviso_cartera_parcial, dimensionar
 from app.analysis.factors import (
     DEFAULT_WEIGHTS,
     build_raw_factors,
@@ -38,6 +38,7 @@ from app.analysis.factors import (
 )
 from app.analysis.signal import (
     FAVORABLE_MIN,
+    LABEL_THRESHOLDS,
     UNFAVORABLE_MAX,
     build_signal,
     calibrate,
@@ -49,6 +50,7 @@ from app.analysis.markets import (
     MIN_SECTOR_SIZE,
     list_markets,
     load_market,
+    parametros_lista_diaria,
     universes_meta,
 )
 from app.analysis.universes import get_universe, list_universes
@@ -56,7 +58,8 @@ from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import Instrument, LlmOutput, Position, WatchlistItem
 from app.deps import get_llm, get_service
-from app.formato import fmt_num, fmt_pct, plural
+from app.formato import fmt_dinero, fmt_fecha, fmt_num, fmt_pct, plural
+from app.registro import log
 from app.llm.base import LLMProvider, LLMUnavailableError
 from app.llm.signal_llm import explain_signal, extract_events, sentiment_from_events
 from app.providers.base import DataNotFoundError
@@ -157,12 +160,16 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
 def _lista_corta_dimensionada(
     ranked: list[dict], posiciones: dict[str, dict] | None = None,
     efectivo_usd: float | None = None,
+    efectivo_detalle: list[dict] | None = None,
+    efectivo_motivo: str | None = None,
 ) -> dict:
     """La lista corta, con el tamaño decidido sobre el conjunto.
 
-    `efectivo_usd`: el efectivo anotado, ya en dólares, o None si no se conoce.
-    Con él, los pesos de lo que ya tienes son sobre el capital total, como en el
-    coste de oportunidad; sin él, sobre lo invertido, y la nota lo dice.
+    `efectivo_usd`: el efectivo anotado, ya en dólares, o None si no se conoce;
+    `efectivo_detalle`: de qué anotaciones sale (moneda, importe, fecha). Con él,
+    los pesos de lo que ya tienes son sobre el capital total, como en el coste
+    de oportunidad; sin él, sobre lo invertido. La respuesta dice qué base se
+    usó y con qué efectivo, y la instantánea lo congela.
 
     El peso que trae cada decisión es BRUTO: lo que su stop permitiría mirando
     esa empresa sola. Aquí se aplica lo que solo se puede saber viendo la
@@ -188,14 +195,27 @@ def _lista_corta_dimensionada(
         for s in corta["ideas"]
     ]
     candidatas = [c for c in candidatas if c["peso_bruto_pct"]]
-    cartera, aviso_cartera = _cartera_actual(ranked, posiciones or {}, efectivo_usd)
+    cartera, aviso_cartera, base = _cartera_actual(ranked, posiciones or {}, efectivo_usd, con_tamano=bool(candidatas))
+    from app.oportunidad import SIN_ANOTAR
+
+    sin_cambio = None
+    if base == "invertido" and efectivo_usd is None and efectivo_motivo and efectivo_motivo != SIN_ANOTAR:
+        # Anotado pero sin tipo de cambio: la nota decía «no hay efectivo anotado…
+        # Puedes anotarlo en Cartera» y se perdía el motivo (revisión 3).
+        base, sin_cambio = "invertido_sin_cambio", f"({efectivo_motivo})"
     interesan = {c["symbol"] for c in candidatas} | {p["symbol"] for p in cartera}
 
     corta["sizing"] = dimensionar(
         candidatas,
         retornos=_retornos_desde_spark(ranked, interesan),
         cartera=cartera,
-        base_cartera="capital" if efectivo_usd is not None else "invertido",
+        base_cartera=base,
+        detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else sin_cambio,
+        parcial=aviso_cartera is not None,
+    )
+    corta["sizing"]["base_cartera"] = base
+    corta["sizing"]["efectivo"] = (
+        {"usd": efectivo_usd, "detalle": efectivo_detalle or []} if efectivo_usd is not None else None
     )
     if aviso_cartera:
         corta["sizing"]["aviso_cartera"] = aviso_cartera
@@ -269,9 +289,28 @@ def _retornos_desde_spark(
     return salida
 
 
+def _detalle_efectivo(detalle: list[dict] | None) -> str | None:
+    """«(efectivo anotado: 10.000 USD, del 3 oct 2026)» para la nota del tamaño.
+
+    El efectivo afloja los topes; uno anotado hace un año los afloja igual. Sin
+    decidir aquí si eso es demasiado viejo (sería un umbral nuevo), al menos se
+    ve la cifra y su fecha (revisión de M3).
+    """
+    if not detalle:
+        return None
+    # Un tipo de cambio viejo se dice con su fecha (auditoría del 19 oct): la
+    # cifra en dólares depende de él tanto como del importe.
+    partes = [
+        f"{fmt_dinero(d.get('importe'), d.get('moneda'))}, del {fmt_fecha(d.get('as_of'))}"
+        + (f", al tipo de cambio del {fmt_fecha(d.get('tipo_fecha'))}" if d.get("tipo_fresco") is False else "")
+        for d in detalle
+    ]
+    return f"(efectivo anotado: {'; '.join(partes)})"
+
+
 def _cartera_actual(
-    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None
-) -> tuple[list[dict], str | None]:
+    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None, *, con_tamano: bool = True
+) -> tuple[list[dict], str | None, str]:
     """Las posiciones abiertas, con peso y sector, para que los topes las cuenten.
 
     Con efectivo anotado (`efectivo_usd`, en dólares), el peso es sobre el
@@ -287,7 +326,7 @@ def _cartera_actual(
     peor que ninguno si no sabes que le falta la otra mitad.
     """
     if not posiciones:
-        return [], None
+        return [], None, "capital" if efectivo_usd is not None else "invertido"
 
     por_simbolo = {s["symbol"]: s for s in ranked}
     valoradas: list[dict] = []
@@ -309,19 +348,30 @@ def _cartera_actual(
         )
 
     total = sum(p["valor"] for p in valoradas)
-    capital = total + efectivo_usd if total and efectivo_usd is not None else total
+    # El efectivo solo se suma si toda la cartera está valorada. Con posiciones
+    # fuera del barrido (otro mercado, sin precio), sumar TODO el efectivo a
+    # MEDIA cartera inventa una liquidez que no existe y afloja los topes: el
+    # lado no prudente (revisión de M3). Entonces se mide sobre lo valorado, que
+    # sobreestima la concentración, y la nota lo dice.
+    if efectivo_usd is None:
+        base = "invertido"
+    elif sin_valorar:
+        base = "invertido_parcial"
+    else:
+        base = "capital"
+    capital = total + efectivo_usd if base == "capital" and efectivo_usd is not None else total
     aviso = None
     if sin_valorar:
+        # La misma frase que la ficha: aquí decía «Tu concentración real es mayor»
+        # al lado de la nota «el tamaño puede quedarse corto o pasarse», y sin
+        # ninguna valorada no hay nada que pese de más (revisión 8).
         muestra = ", ".join(sorted(sin_valorar)[:5])
-        aviso = (
-            f"{len(sin_valorar)} {plural(len(sin_valorar), 'posición abierta no entra', 'posiciones abiertas no entran')} "
-            f"en los topes por sector y correlación ({muestra}): este barrido no "
-            f"{plural(len(sin_valorar), 'la cubre o no tiene', 'las cubre o no tienen')} precio. "
-            "Tu concentración real es mayor que la que se ve "
-            "aquí."
+        aviso = aviso_cartera_parcial(
+            len(sin_valorar), f"{muestra}: fuera de este barrido o sin precio", hay_valoradas=bool(total),
+            con_tamano=con_tamano,
         )
     if not total:
-        return [], aviso
+        return [], aviso, base
 
     return [
         {
@@ -331,32 +381,70 @@ def _cartera_actual(
             "vol_anual_pct": p["vol_anual_pct"],
         }
         for p in valoradas
-    ], aviso
+    ], aviso, base
 
 
-def _efectivo_para_hoy(
-    session: Session, service: MarketDataService, posiciones: dict[str, dict]
-) -> float | None:
-    """El efectivo anotado en dólares, o None si no se conoce.
+def _efectivo_para_hoy(session: Session, service: MarketDataService) -> dict:
+    """El efectivo anotado, en dólares y con su detalle, o `usd: None`.
 
-    Solo hace falta con posiciones abiertas: sin cartera, el efectivo no cambia
-    ningún peso. Una moneda sin tipo de cambio deja el total desconocido (no se
-    supone 1:1) y Hoy mide entonces sobre lo invertido, diciéndolo.
+    Se lee siempre, también sin posiciones: si no, la nota decía «no hay efectivo
+    anotado» a quien lo tiene todo en efectivo (revisión de M3). Una moneda sin
+    tipo de cambio deja el total desconocido (no se supone 1:1). Y nada de esto
+    puede costar la lista: un fallo inesperado al leerlo se registra y Hoy mide
+    sobre lo invertido, diciéndolo.
     """
-    if not posiciones:
-        return None
     from app.oportunidad import efectivo_con_cambio
 
-    return efectivo_con_cambio(session, service, datetime.now(timezone.utc))["usd"]
+    try:
+        return efectivo_con_cambio(session, service, datetime.now(timezone.utc))
+    except Exception:  # noqa: BLE001 — sin efectivo, Hoy sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo leer el efectivo anotado")
+        return {"usd": None, "estado": "desconocido", "motivo": "no se pudo leer el efectivo anotado"}
 
 
-def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> dict | None:
-    """Último backtest de reglas VÁLIDO. Convierte «razonable» en «probada».
+def _frase_validacion(reglas: dict | None) -> str:
+    """Lo que el pie de Hoy dice de las reglas, con el mismo veredicto que cada
+    fila (`decision._confianza`). Antes decía siempre «aún no están validadas…
+    ejecuta el backtest» aunque las filas dijeran «calibrada» o «refutada»
+    (revisión de M2)."""
+    from app.analysis.decision import _confianza
+
+    conf = _confianza(reglas)
+    if conf == "calibrada":
+        return ("En el backtest de reglas superaron a comprar a ciegas; haber "
+                "funcionado antes no garantiza que funcionen ahora.")
+    if conf == "refutada":
+        return ("El backtest de reglas dice que perdían dinero o ganaban menos que "
+                "comprar a ciegas: lo que ves es lo que dictan las reglas, no una "
+                "recomendación.")
+    if reglas and not reglas.get("fiable"):
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el último backtest tiene muy pocas operaciones para "
+                "concluir nada.")
+    if reglas:
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el backtest no tiene con qué compararlas (comprar a ciegas).")
+    return ("Las reglas son razonables pero aún no están validadas contra "
+            "histórico — ejecuta el backtest en Señales para saber si han funcionado.")
+
+
+def _stored_rule_backtest(
+    session: Session, hasta: datetime | None = None, clase: str = "accion"
+) -> dict | None:
+    """Último backtest de reglas VÁLIDO de esa clase de activo. Convierte
+    «razonable» en «probada» (o en «refutada»).
 
     Solo cuentan los que declaran su partición desarrollo/holdout. Los guardados
     antes del RC1 se calcularon sobre todas las fechas —holdout incluido— sin
     registrarlo, así que no pueden seguir validando decisiones: hasta que se
     ejecute un backtest nuevo, las reglas vuelven a figurar como no validadas.
+
+    Dos cosas más (revisión de M2): solo vale uno de la misma clase —un backtest
+    de cripto, solo momentum y stops de cripto, decidía si las reglas de
+    acciones estaban «calibradas»—, y entre ellos manda el último FIABLE: uno
+    corto lanzado después desde la interfaz (8 operaciones, «no sirve para
+    concluir nada») tapaba una refutación con 120 y quitaba el aviso rojo. Sin
+    ninguno fiable, el último (que deja las reglas sin calibrar).
     """
     import json
 
@@ -365,6 +453,7 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
         .where(LlmOutput.kind == "rule_backtest")
         .order_by(LlmOutput.created_at.desc())
     )
+    ultimo_no_fiable = None
     for record in session.execute(consulta).scalars():
         # Un análisis a una fecha pasada no puede apoyarse en un backtest
         # ejecutado después: su «calibrada» o «refutada» aún no se sabía.
@@ -374,9 +463,14 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
             contenido = json.loads(record.content_md)
         except json.JSONDecodeError:
             continue
-        if isinstance(contenido, dict) and contenido.get("particion"):
+        if not isinstance(contenido, dict) or not contenido.get("particion"):
+            continue
+        if contenido.get("clase", "accion") != clase:
+            continue
+        if contenido.get("fiable"):
             return contenido
-    return None
+        ultimo_no_fiable = ultimo_no_fiable or contenido
+    return ultimo_no_fiable
 
 
 def _proximos_resultados(service: MarketDataService, dias: int = 7) -> dict[str, str]:
@@ -785,6 +879,10 @@ def score_universe(
 
     return {
         "signals": rank_universe(signals),
+        # Las fronteras de la etiqueta («favorable», «neutral»…): con ellas se
+        # escribe la puntuación sin dejarla en una (0,3496 salía «+0,35 neutral» y
+        # 0,3504 «+0,35 favorable»; revisión 9).
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "unavailable": unavailable,
         "calibrated": calibration is not None,
         "weights": DEFAULT_WEIGHTS,
@@ -890,6 +988,7 @@ def scan_universe(
             {"symbol": s["symbol"], "score": s["score"], "label": s["label"], "rank": s.get("rank")}
             for s in ranked
         ],
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "scored": len(raw_by_symbol),
         "requested": len(symbols),
         "unavailable": unavailable,
@@ -978,7 +1077,7 @@ def _today(
             status_code=404, detail=f"Mercado desconocido: {market}"
         ) from None
 
-    cache_params = {"v": 6, "market": market}
+    cache_params = parametros_lista_diaria(market)
     if not refresh:
         cached = service.cache.get("daily_picks", cache_params)
         # Una respuesta guardada por una versión anterior de la app puede no
@@ -997,10 +1096,13 @@ def _today(
     from app.contexto_cartera import posiciones_para_decidir
 
     posiciones = posiciones_para_decidir(session)
+    # El efectivo anotado (migración 0008) entra en los pesos de lo que ya
+    # tienes, igual que en el coste de oportunidad (M3).
+    efectivo = _efectivo_para_hoy(session, service)
 
     # Si hay un backtest de reglas guardado, cada decisión puede decir si su
     # sistema está probado, refutado o solo es razonable.
-    reglas = _stored_rule_backtest(session)
+    reglas = _stored_rule_backtest(session, clase=market_data.get("asset_class", "accion"))
     # Una sola llamada cacheada 12 h cubre el mercado entero.
     resultados = _proximos_resultados(service)
 
@@ -1095,7 +1197,10 @@ def _today(
         # 98 candidatas no son 98 oportunidades. La lista corta ordena por
         # convicción y recorta a unas pocas: es la diferencia entre un filtro
         # y una recomendación.
-        "shortlist": _lista_corta_dimensionada(ranked, posiciones, _efectivo_para_hoy(session, service, posiciones)),
+        "shortlist": _lista_corta_dimensionada(
+            ranked, posiciones, efectivo["usd"], efectivo.get("detalle"),
+            efectivo_motivo=efectivo.get("motivo"),
+        ),
         "counts": {
             "favorables": n_favorables,
             "neutrales": len(ranked) - n_favorables - n_desfavorables,
@@ -1130,10 +1235,8 @@ def _today(
             "Cada acción sale de reglas mecánicas escritas, no de una "
             "predicción: 'Comprar' significa que la empresa puntúa mejor que "
             "sus comparables de sector y que el precio acompaña, no que vaya a "
-            "subir. Las reglas son razonables pero aún no están validadas "
-            "contra histórico — ejecuta el backtest en Señales para saber si "
-            "han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu "
-            "cartera por operación; ajústalo a tu situación."
+            "subir. " + _frase_validacion(reglas) + " El tamaño sugerido asume "
+            "arriesgar un 1\u00a0% de tu cartera por operación; ajústalo a tu situación."
         ),
     }
 
@@ -1267,7 +1370,8 @@ def run_rules_backtest(
 
     `/backtest` valida el **modelo de factores**: si la puntuación ordena mejor
     que la mediana. Este endpoint valida el **sistema que se ejecuta**: entrar
-    solo por encima de la media de 200 sesiones, con stop por volatilidad,
+    solo en o por encima de la media de 200 sesiones + 2 % (la banda del motor),
+    con stop por volatilidad,
     objetivo al doble y salida por lo que llegue antes — neto de costes.
 
     Son preguntas distintas y una puede salir bien con la otra mal.

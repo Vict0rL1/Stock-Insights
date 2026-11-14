@@ -6,8 +6,9 @@ export interface Sourced {
   as_of: string
   cached: boolean
   fetched_at: string | null
-  /** `viejo` = todas las fuentes fallaron y se sirve la última copia. */
-  estado?: 'valido' | 'viejo'
+  /** Los cuatro estados de `app/datos.py`. `viejo` = todas las fuentes fallaron
+   *  y se sirve la última copia; `desconocido` y `error` los pinta `EstadoDato`. */
+  estado?: 'valido' | 'viejo' | 'desconocido' | 'error'
   /** Por qué es viejo, si lo es. */
   aviso?: string | null
   antiguedad_segundos?: number | null
@@ -399,6 +400,8 @@ export interface PortfolioPosition {
   stop?: number | null
   /** true = fijado al abrir; false = recalculado (posición anterior al RC1). */
   stop_fijado_al_abrir?: boolean
+  /** Recalculado sin histórico: el punto medio de su clase, no un stop medido. */
+  stop_por_clase?: boolean
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -410,7 +413,7 @@ export interface DivisasDeCartera {
   base: string
   mezcla_de_divisas: boolean
   monedas: Record<string, number>
-  sin_convertir: { symbol?: string; moneda?: string; motivo: string }[]
+  sin_convertir: { id?: number | null; symbol?: string; moneda?: string | null; motivo: string }[]
   tipos_usados: Record<string, { por_usd: number; fecha: string | null; serie: string }>
   /** Ganancia (+) o pérdida (−) en la base causada solo por el tipo de cambio desde la compra. */
   efecto_divisa_base?: number | null
@@ -424,8 +427,18 @@ export interface ClosedPosition {
   symbol: string
   quantity: number
   cost_basis: number
+  /** En la moneda de la posición (`currency`), no en la base. */
   realized_pnl: number | null
+  opened_at: string
   closed_at: string
+  /** La API la manda desde el RC1; el tipo no la tenía y el P&L realizado salía sin
+   *  código con dos divisas (ítem 2.1). `null` = desconocida, no se supone dólar. */
+  currency: string | null
+  /** El realizado convertido a la base, si se pudo convertir. */
+  realized_pnl_base?: number | null
+  /** Por qué no se puede convertir aunque se sepa la moneda (en céntimos, GBX):
+   *  antes salía «moneda desconocida» (revisión de A3). */
+  sin_convertir?: string | null
 }
 
 export interface Allocation {
@@ -451,6 +464,11 @@ export interface Estres {
   cobertura?: string
   años_cubiertos?: number
   aviso_cobertura?: string
+  /** Fracción del dinero que entra en el estrés (0–1); el resto no tiene histórico. */
+  cobertura_peso?: number | null
+  /** Las posiciones que se quedan fuera, por nombre. */
+  sin_historico?: string[]
+  aviso_sin_historico?: string | null
 }
 
 export interface Portfolio {
@@ -596,6 +614,8 @@ export interface QuantSignal {
 
 export interface SignalResponse {
   signals: QuantSignal[]
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   unavailable: { symbol: string; reason: string }[]
   calibrated: boolean
   weights: Record<string, number>
@@ -614,6 +634,8 @@ export interface UniverseInfo {
 
 export interface ScanResponse {
   universe_key: string
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   universe_name: string
   universe_description: string
   top: QuantSignal[]
@@ -809,6 +831,9 @@ export interface ControlDeRiesgo {
   limite: 'posición' | 'sector' | 'correlación' | 'volatilidad'
   aplicado: boolean
   motivo: string | null
+  /** Solo el de correlación. 0: una sola idea y nada en cartera, no hay nada que comprobar. */
+  parejas_medidas?: number
+  parejas_posibles?: number
 }
 
 export interface Shortlist {
@@ -1058,8 +1083,9 @@ export interface RuleBacktestResponse {
   tasa_acierto?: number
   tasa_acierto_ic?: [number, number]
   esperanza_pct?: number
-  media_ganadora_pct?: number
-  media_perdedora_pct?: number
+  /** `null` si no hubo operaciones de ese lado: ausente, no un 0. */
+  media_ganadora_pct?: number | null
+  media_perdedora_pct?: number | null
   factor_beneficio?: number | null
   peor_operacion_pct?: number
   mejor_operacion_pct?: number
@@ -1604,9 +1630,12 @@ export interface VigilanciaResponse {
   aviso_sin_disparadores: string | null
 }
 
+/** «pct»: se escribe en % y se guarda como fracción; «veces»: un ratio, tal cual. */
+export type UnidadMetrica = 'pct' | 'veces'
+
 export interface MetricasVigilables {
-  metricas: { clave: string; etiqueta: string; alto_mejor: boolean }[]
-  crecimientos: { clave: string; etiqueta: string }[]
+  metricas: { clave: string; etiqueta: string; alto_mejor: boolean; unidad?: UnidadMetrica }[]
+  crecimientos: { clave: string; etiqueta: string; unidad?: UnidadMetrica }[]
   operadores: { clave: string; etiqueta: string }[]
   nota: string
 }
@@ -1627,7 +1656,7 @@ export interface DecisionRegistrada {
   contexto: {
     precio: number | null
     tesis: { id: number; titulo: string; creada: string } | null
-    disparadores_saltando: { descripcion: string; detalle?: string }[]
+    disparadores_saltando: { descripcion: string; detalle?: string; aviso?: string }[]
     /** Desde el 9-oct-2026; las decisiones anteriores no lo traen. */
     disparadores_sin_comprobar?: { descripcion: string; motivo?: string | null }[]
     disparadores_totales: number
@@ -2063,6 +2092,9 @@ export interface RiesgoEnCartera {
   volatilidad_cartera_despues?: number
   motivo?: string
   nota?: string
+  /** Con posiciones sin precio o sin histórico: el riesgo se mide solo sobre las
+   *  que tienen las dos cosas, y esto nombra las que faltan con su motivo. */
+  aviso?: string
 }
 
 export interface EvidenciaCalidad {
@@ -2191,6 +2223,8 @@ export interface AnalisisEmpresaResponse {
   cambios: CambiosAnalisis
   analisis: AnalisisEmpresa
   instantanea: { id: number; nueva: boolean; origen: string; creado_en: string } | null
+  /** Por qué no se congeló aunque se pidiera (ninguna fuente conoce el símbolo). */
+  sin_congelar?: string | null
   anterior: { id: number; creado_en: string; accion: string } | null
 }
 
@@ -2205,6 +2239,8 @@ export interface DecisionHistorica {
   score: number | null
   reglas_version: string
   replay: boolean
+  /** Los de su propia traza (con posición, solo el de vender); vacío si no la guardó. */
+  umbrales_puntuacion?: number[]
 }
 
 export interface ReplayDecision {

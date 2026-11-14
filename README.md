@@ -88,6 +88,32 @@ http://localhost:8000/docs. Los logs quedan en `/tmp/bolsa-backend.log` y
 cambió (compara un hash), y libera los puertos 8000 y 5173 si quedaron
 ocupados por una ejecución anterior que no cerró bien.
 
+El backend escucha solo en 127.0.0.1 y, además, solo atiende a una cabecera
+`Host` de esta máquina (`localhost`, `127.0.0.1`, `[::1]`); cualquier otra es un
+400. Escuchar en local no basta: con *DNS rebinding*, una web puede hacer que su
+dominio resuelva a 127.0.0.1 y llamar a la API con su propio `Host`. Para usar
+otro nombre, `ALLOWED_HOSTS` en `.env` (lista JSON): lo que pongas se **añade** a
+los de esta máquina, que siguen siempre (el proxy de Vite llama como `localhost`).
+
+Tampoco atiende a otras webs abiertas en el mismo navegador: una petición cuyo
+`Origin` no es la interfaz (`CORS_ORIGINS`, el Vite de `localhost:5173`) ni el
+propio backend, o que sin `Origin` llega marcada `Sec-Fetch-Site: cross-site` o
+`same-site` (o, sin ninguna de las dos, con un `Referer` de otra web), es un 403.
+`Sec-Fetch-Site: same-origin`, que pone el navegador, siempre pasa: abierta como
+`localhost`, `127.0.0.1` o `[::1]`, la interfaz por el proxy de Vite funciona en
+cualquier puerto. Para abrirla con un nombre de `ALLOWED_HOSTS`, Vite también tiene
+que aceptarlo: por defecto solo escucha en `localhost` y rechaza otro `Host` antes de
+llegar al proxy («Blocked request»), así que hace falta `server.allowedHosts` (y
+`server.host` si el nombre no resuelve a 127.0.0.1) en `frontend/vite.config.ts`. Por
+http, con ese nombre el navegador no manda Fetch Metadata y se miran el `Origin` o el
+`Referer`: valen los puertos de `CORS_ORIGINS` (el 5173 de Vite por defecto); con Vite
+en otro puerto, añade ese origen a `CORS_ORIGINS`, o hasta las lecturas dan 403. CORS solo impide *leer* la respuesta:
+sin esto, un `<img>` de cualquier web congelaba análisis en tu historial y gastaba
+la cuota de los proveedores. Límite: a un nombre de `ALLOWED_HOSTS` en http el
+navegador no le manda Fetch Metadata, y una petición sin `Origin` ni `Referer` pasa;
+con `localhost` no hay ese hueco. `start.sh` da el backend por arrancado solo si `/api/meta/health`
+responde sin error (`curl -sf`).
+
 ### La base de datos se migra sola (desde el RC1)
 
 Al arrancar, la app pone `backend/data/app.db` al día con Alembic, y **si no
@@ -154,7 +180,7 @@ cd frontend && npm run build               # type-check estricto + build
 
 ### Capturas de pantalla
 
-Todas las pantallas, a 1440 px y a 390 px, con datos ficticios (nunca tu base):
+Todas las pantallas, a 1440 px, a 820 px (tableta) y a 390 px, con datos ficticios (nunca tu base):
 
 ```bash
 cd frontend && npm run capturas -- /ruta/de/salida               # todos los escenarios
@@ -166,6 +192,12 @@ puerto 8077) con el paquete de casos extremos y el reloj congelado, así que dos
 pasadas del mismo código dan las mismas imágenes. Escenarios: normal, cartera vacía,
 día sin candidatas, empresa sin datos y contenido de IA visible. La primera vez:
 `npx playwright install chromium`.
+
+A 820 y a 390 px la pasada **falla** (sale con código 1) si una pantalla desborda en
+horizontal, si un contenedor con `overflow-x: hidden` recorta texto o si parte un texto
+palabra a palabra; a 390 fotografía además el menú de móvil abierto y la
+navegación desde él. Los clics son normales, no «a la fuerza»: si algo tapa un botón,
+es un fallo de la pantalla.
 
 ### Validación con datos reales
 
@@ -449,15 +481,23 @@ cambia — no hay criterio discrecional escondido.
 | Condición | Acción |
 |---|---|
 | Puntuación ≤ −0,35 | **Evitar** — queda por detrás de sus comparables de sector |
-| Puntuación ≥ +0,35 **y** cotiza sobre su media de 200 sesiones | **Comprar** |
-| Puntuación ≥ +0,35 pero por debajo de la media de 200 | **Vigilar** — buena empresa en tendencia bajista |
+| Puntuación ≥ +0,35 **y** cierra en o por encima de su media de 200 sesiones + 2 % | **Comprar** |
+| Puntuación ≥ +0,35 pero por debajo de la media de 200 + 2 % | **Vigilar** — buena empresa sin la tendencia a favor (bajo la media o aún dentro de la banda) |
 | Entre ambos umbrales | **Sin acción** |
 
 El filtro de la media de 200 sesiones es el que evita el error caro de este
 tipo de modelo: comprar algo *barato porque sigue cayendo*. Una empresa puede
 puntuar excelente en valor precisamente porque el mercado la está descontando
 por algo que los estados financieros aún no reflejan. La regla no la descarta,
-la manda a **Vigilar** y espera a que el precio recupere la media.
+la manda a **Vigilar** y espera a que el precio supere la media con margen.
+
+La banda (`BANDA_TENDENCIA_ENTRAR_PCT` y `BANDA_TENDENCIA_SALIR_PCT` en
+`decision.py`) evita que un precio que oscila alrededor de la media cambie de
+acción cada día: para entrar hay que cerrar en o por encima de la media + 2 %, y
+para reducir, en o por debajo de la media − 1 %. Entre las dos, la acción no
+cambia por la tendencia. Los umbrales que se escriben se redondean hacia el lado
+en que la frase es cierta: «Comprar cuando cierre en o por encima de 102,01» con
+un umbral exacto de 102,00408.
 
 «Sin acción» es un estado propio y no un sinónimo de «Vigilar»: casi la mitad
 del S&P 500 cae en la franja neutral, y meterla en la lista de espera la
@@ -471,7 +511,7 @@ Portafolio):
 |---|---|
 | Puntuación ≤ −0,35 | **Vender** — la razón por la que la compraste ya no se sostiene |
 | Precio ≤ stop calculado sobre **tu precio de coste** | **Vender** |
-| Cotiza bajo su media de 200 sesiones | **Reducir** |
+| Cierra en o por debajo de su media de 200 sesiones − 1 % | **Reducir** |
 | Resto | **Mantener**, con tu P&L sobre el precio de compra |
 
 ### Los niveles: stop, objetivo y tamaño
@@ -497,7 +537,8 @@ Toda propuesta de compra viene con su salida ya definida. Se calculan así:
   cartera**. Stop lejano → posición pequeña. Así una idea equivocada cuesta lo
   mismo que cualquier otra, y el tamaño lo fija el riesgo en vez de la
   convicción. Es un **porcentaje de la cartera, no un número de acciones**: la
-  app no sabe cuánto dinero tienes y no va a fingir que sí.
+  app solo sabe el dinero que tienes si anotas el efectivo en Cartera (más abajo,
+  «Tamaño de posición»), y no va a fingir que sí.
 
 Cada fila desplegada muestra además **cuándo actuar**: la lista de
 disparadores que ejecutan o cancelan la idea (comprar en este rango, salir
@@ -540,9 +581,11 @@ resultado se guarda igual que desde la interfaz, así que al terminar la vista
 
 El segundo es el que valida lo que la app realmente ejecuta, y es una
 **simulación por eventos**: en cada fecha se puntúa el universo con datos
-point-in-time, se abre posición en las que cumplen las reglas, y cada operación
-se sigue sesión a sesión hasta que salta el stop, toca el objetivo o vence el
-año. Tres decisiones lo gobiernan:
+point-in-time, se abre posición en las que cumplen las reglas (la misma
+tendencia que el motor, con su banda: media + 2 %; hasta la revisión 4 entraba con
+«precio > media», y los backtests guardados antes, sin `banda_tendencia_pct`, se
+calcularon así), y cada operación se sigue sesión a sesión hasta que salta el
+stop, toca el objetivo o vence el año. Tres decisiones lo gobiernan:
 
 - **Se entra al cierre siguiente a la señal.** Comprar al precio del día en que
   se conoce la señal es comprar con información que aún no tenías. Es el error
@@ -636,7 +679,8 @@ ETFs) usa lo que sí predice el resultado de un ETF:
    gane o pierda el fondo. Se muestra en dinero —«75 al año por cada 10.000
    invertidos»— porque «0,75 %» no significa nada a simple vista. Sin símbolo
    de moneda: es una proporción, y vale igual para un fondo en dólares.
-2. **La tendencia.** El mismo filtro de la media de 200 sesiones.
+2. **La tendencia.** El mismo filtro de la media de 200 sesiones que las acciones, con
+   su banda: compra en o por encima de la media + 2 %, y dentro de la banda espera.
 3. **El tamaño.** Por debajo de 100 M de patrimonio hay riesgo real de liquidación, y si
    cierran el fondo te devuelven el dinero cuando a ellos les conviene.
 
@@ -698,7 +742,16 @@ tienes se mide sobre tu capital total —posiciones más el efectivo anotado en
 Cartera (migración 0008), con la misma conversión que el coste de oportunidad—,
 y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
 valor de las posiciones abiertas: tu concentración real es entonces menor y los
-topes aprietan antes de lo debido, y la nota lo dice; y las posiciones que un barrido no cubre
+topes aprietan antes de lo debido, y la nota lo dice. Si hay posiciones que el
+barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
+cartera inventaría liquidez) y la nota no afirma ninguna dirección: las que
+faltan aflojan los topes de su sector y las valoradas pesan de más, así que el
+tamaño puede quedarse corto o pasarse; sin ninguna valorada, los topes no ven
+nada y el tamaño es una cota superior. La nota dice qué efectivo se usó y de qué fecha (y
+la del tipo de cambio si tiene más de una semana; nunca se usa uno posterior), y
+la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
+cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
+tras anotar efectivo o abrir una posición, «Actualizar» la recalcula; y las posiciones que un barrido no cubre
 (otro mercado, sin precio) quedan fuera de los topes, lo cual se avisa en vez de
 dejar que un tope calculado sobre media cartera pase por completo.
 
@@ -746,6 +799,15 @@ Y si el histórico común no llega a la ventana pedida, la peor ventana sale
 semanas viajaba rotulado como «peor 12 meses», y un número mal rotulado es peor
 que ninguno porque se compara con otros que sí significan lo que dicen.
 
+Las posiciones sin histórico guardado (o con menos de 60 sesiones) no entran, y
+el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
+(`estres.cobertura_peso`) y cuáles se quedan fuera (`sin_historico`, cada una con
+su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
+silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
+en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
+«no perdía nada»), y el histórico se lee igual que para el stop: el de un año
+vigente, el largo o el de un año caducado hace menos de un día.
+
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
 llamaba ningún endpoint**. Hoy `/api/portfolio` las sirve y el portafolio las
@@ -785,6 +847,19 @@ umbral de margen es enorme y no se ve.
 **Solo se vigilan métricas del NEGOCIO.** No hay múltiplos en el catálogo:
 vigilar el P/E sería vigilar la cotización, y para eso están las alertas de
 precio. Un punto de invalidación habla de la empresa.
+
+**Cada métrica en su unidad.** El catálogo (`GET /api/theses/vigilancia/metricas`) dice
+la `unidad` de cada una: los márgenes, el ROE, el ROIC y los crecimientos son `pct` (se
+escriben en %, «18», y se guardan como fracción, 0,18); deuda/capital, ratio corriente y
+cobertura de intereses son `veces` (un ratio corriente de 1,2 se escribe y se guarda 1,2).
+Antes el formulario lo pedía todo en % y dividía entre 100: «ratio corriente < 1» se
+guardaba como 0,01 y el punto no saltaba nunca. Los puntos nuevos guardan su `unidad`. Uno
+en `veces` sin `unidad` guardada se lee de las dos formas, tal cual y ×100, solo si la
+lectura ×100 cabe en la métrica (`TOPE_LEGADO`: hasta 10 veces en deuda/capital y ratio
+corriente, hasta 30 en cobertura; un «D/E > 0,5» no puede ser 50 veces y se lee tal cual): si
+coinciden, ese es el resultado, con un aviso de la duda; si no, queda **sin comprobar** y dice
+qué daría cada una, hasta que lo quites y lo crees de nuevo. La nota de la tesis solo dice «no
+se ha cruzado» de los puntos que sí se comprobaron.
 
 ### Que un punto salte NO es una señal de venta
 
@@ -913,7 +988,8 @@ aportes ni ventas**, que es el único comparable con un índice.
 ### Tres decisiones más que deciden si la curva miente
 
 1. **Es el valor de las posiciones ABIERTAS, no el de tu cuenta.** La app no
-   lleva saldo en efectivo, así que un cierre hace bajar la línea — y eso es una
+   lleva la cuenta del efectivo (el que anotas es una foto, no un saldo que se
+   mueva con cada venta), así que un cierre hace bajar la línea — y eso es una
    retirada, no una pérdida. Se dice en cada respuesta y se marca cada fecha.
 2. **El cambio es el de CADA DÍA, no el de hoy.** Convertir el histórico al tipo
    actual convertiría un movimiento de divisa en uno de la acción. Hay un test
@@ -968,7 +1044,13 @@ siguiente fuente) y al convertir.
 Sin tipo, la posición queda **fuera del total** y se nombra en pantalla con su
 motivo, en vez de convertirse a la par o sumarse a pelo. Un total parcial que se
 sabe parcial sirve; uno que se cree completo, no. La divisa, por cierto, siempre
-venía en la cotización y el portafolio se quedaba solo con el precio.
+venía en la cotización y el portafolio se quedaba solo con el precio. Lo mismo una
+cotización en peniques o centavos (GBX, ZAC, ILA): se ve, fuera del total, con el
+motivo («son céntimos de GBP, no una moneda»), sin suponer que un penique es una libra.
+Yahoo los escribe con minúscula («GBp» son peniques; «GBP», libras): todo código de
+moneda que llega se lee con `fx.codigo`, nunca con un `upper()` a ciegas. La fila cuenta
+como otra divisa (los importes llevan su código) y la curva y las cerradas dicen el
+mismo motivo.
 
 ## Tres gráficos que enseñan lo que un número esconde
 
@@ -1961,8 +2043,10 @@ convicción) que el dimensionador usa como entrada declarada. Nada de esto usa u
 LLM, salvo el resumen opcional del diff y el guidance extraído de filings, que
 van marcados.
 
-Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales)
-y **0008** (efectivo anotado). Se aplican solas al arrancar, como las anteriores.
+Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales),
+**0008** (efectivo anotado) y **0009** (vacía la moneda «GBP» que el código anterior
+guardaba por los peniques «GBp» de Londres; se vuelve a aprender del proveedor). Se
+aplican solas al arrancar, como las anteriores.
 
 ## Estado
 

@@ -64,11 +64,9 @@ def _quote(payload: dict) -> dict:
         if campo in saneado:
             saneado[campo] = datos.numero(saneado[campo])
 
-    moneda = saneado.get("currency")
-    if isinstance(moneda, str) and moneda.strip():
-        saneado["currency"] = moneda.strip().upper()
-    elif moneda is not None:
-        saneado["currency"] = None
+    # `fx.codigo` y no `upper()`: el «GBp» (peniques) de Yahoo salía «GBP» (libras).
+    if saneado.get("currency") is not None:
+        saneado["currency"] = fx.codigo(saneado["currency"])
     return saneado
 
 
@@ -211,8 +209,19 @@ def _sanear_periodos(periodos: list, clave_id: str) -> tuple[list[dict], int]:
     return limpios, descartadas
 
 
+def _cadena_opciones(p: dict) -> dict:
+    """Una cadena sin precio de la acción no sirve para nada relativo: es un
+    fallo, y como fallo no se cachea. Devuelta con `spot: None`, se guardaba una
+    hora y «Reintentar» leía la misma cadena rota aunque Yahoo ya diera precio
+    (tercera pasada de la revisión del 2.1)."""
+    if datos.numero(p.get("spot")) is None:
+        raise PayloadInvalido("la cadena de opciones llegó sin precio de la acción")
+    return p
+
+
 VALIDADORES = {
     "financials": _financieros,
+    "options_chain": _cadena_opciones,
     "quote": _quote,
     "price_history": _barras,
     "price_history_long": _barras,

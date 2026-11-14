@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../../lib/formato'
-import { SourceBadge } from '../SourceBadge'
+import { fmtCifras, fmtCompacto, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/formato'
+import { ausenteSi404, useDato } from '../../lib/useDato'
+import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
+import { MarcoTabla } from '../MarcoTabla'
 
 type ScenarioName = 'bear' | 'base' | 'bull'
 
@@ -26,40 +28,56 @@ function numeroOVacio(texto: string): number | null {
   return texto.trim() !== '' && Number.isFinite(v) ? v : null
 }
 
+/** Los supuestos de partida, sacados de los datos. Lo que no se sabe va vacío. */
+function inputsIniciales(d: ValuationDefaults): Inputs {
+  // Sin crecimiento sugerido (el backend no puede medirlo con menos de dos
+  // ejercicios o con extremos negativos), el crecimiento va vacío. Antes se
+  // rellenaba con un 5 % que no se decía en ningún sitio, en los tres
+  // escenarios (ítem 2.1).
+  const g = d.suggested_growth_capped
+  const crecimiento = (desde: (g: number) => number) => (g === null ? '' : pctInput(desde(g)))
+  return {
+    base_fcf: d.base_fcf !== null ? String(Math.round(d.base_fcf)) : '',
+    // Deuda desconocida = campo vacío, nunca '0': con cero la empresa se
+    // valoraba como si no debiera nada. Hay que escribirla para calcular.
+    net_debt: d.net_debt !== null ? String(Math.round(d.net_debt)) : '',
+    shares_outstanding:
+      d.shares_outstanding !== null ? String(Math.round(d.shares_outstanding)) : '',
+    years: '5',
+    scenarios: {
+      bear: { growth: crecimiento((x) => Math.max(x - 0.03, -0.05)), wacc: '11.0', terminal: '2.0' },
+      base: { growth: crecimiento((x) => x), wacc: '10.0', terminal: '2.5' },
+      bull: { growth: crecimiento((x) => x + 0.03), wacc: '9.0', terminal: '3.0' },
+    },
+  }
+}
+
 export function ValuationSection({ symbol }: { symbol: string }) {
-  const [defaults, setDefaults] = useState<ValuationDefaults | null>(null)
-  const [inputs, setInputs] = useState<Inputs | null>(null)
+  // Un fallo al traer los valores de partida es un fallo, con «Reintentar»: antes
+  // decía «No hay datos para prellenar el DCF», como si faltaran (ítem 2.1). Un
+  // 404 sí es que faltan (sin estados de EDGAR), y se dice así (revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.valuationDefaults(symbol)), symbol)
+  // Al cambiar de símbolo el bloque vuelve a «cargando» y `Dcf` se monta de
+  // nuevo con los supuestos del nuevo: nada del anterior se queda en los campos.
+  return (
+    <BloqueDatos carga={carga} que="los valores de partida del DCF" ausente={(m) => `No hay datos para prellenar el DCF: ${m}`}>
+      {(defaults) => <Dcf symbol={symbol} defaults={defaults} />}
+    </BloqueDatos>
+  )
+}
+
+function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults }) {
+  const [inputs, setInputs] = useState<Inputs>(() => inputsIniciales(defaults))
   const [result, setResult] = useState<DcfResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    setDefaults(null)
-    setInputs(null)
-    setResult(null)
-    setError(null)
-    api.valuationDefaults(symbol).then((d) => {
-      setDefaults(d)
-      const g = d.suggested_growth_capped ?? 0.05
-      setInputs({
-        base_fcf: d.base_fcf !== null ? String(Math.round(d.base_fcf)) : '',
-        // Deuda desconocida = campo vacío, nunca '0': con cero la empresa se
-        // valoraba como si no debiera nada. Hay que escribirla para calcular.
-        net_debt: d.net_debt !== null ? String(Math.round(d.net_debt)) : '',
-        shares_outstanding:
-          d.shares_outstanding !== null ? String(Math.round(d.shares_outstanding)) : '',
-        years: '5',
-        scenarios: {
-          bear: { growth: pctInput(Math.max(g - 0.03, -0.05)), wacc: '11.0', terminal: '2.0' },
-          base: { growth: pctInput(g), wacc: '10.0', terminal: '2.5' },
-          bull: { growth: pctInput(g + 0.03), wacc: '9.0', terminal: '3.0' },
-        },
-      })
-    }, (e) => setError(e.message))
-  }, [symbol])
+  // Sin un crecimiento escrito en cada escenario no se calcula: con el campo
+  // vacío no hay supuesto que valorar (salía un NaN hacia el backend).
+  const faltaCrecimiento = (['bear', 'base', 'bull'] as ScenarioName[]).some(
+    (n) => numeroOVacio(inputs.scenarios[n].growth) === null,
+  )
 
   const run = async () => {
-    if (!inputs) return
     setBusy(true)
     setError(null)
     try {
@@ -89,15 +107,6 @@ export function ValuationSection({ symbol }: { symbol: string }) {
     }
   }
 
-  if (error && !inputs)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        No hay datos para prellenar el DCF: {error}
-      </p>
-    )
-  if (!defaults || !inputs)
-    return <p className="text-sm text-slate-400">Calculando valores de partida…</p>
-
   const setScenario = (name: ScenarioName, field: 'growth' | 'wacc' | 'terminal', value: string) =>
     setInputs({
       ...inputs,
@@ -115,7 +124,7 @@ export function ValuationSection({ symbol }: { symbol: string }) {
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-700">DCF por escenarios</h2>
-          <SourceBadge data={defaults} />
+          <EstadoDato data={defaults} />
         </div>
         <p className="mb-3 text-xs text-slate-500">
           {defaults.note} Crecimiento histórico (<Ventana anos={defaults.historical_growth.years} />): ingresos{' '}
@@ -170,6 +179,7 @@ export function ValuationSection({ symbol }: { symbol: string }) {
                 <input
                   className={inputCls}
                   value={inputs.scenarios[name].growth}
+                  placeholder={defaults.suggested_growth_capped === null ? 'sin histórico: escríbelo' : undefined}
                   onChange={(e) => setScenario(name, 'growth', e.target.value)}
                 />
               </label>
@@ -193,6 +203,11 @@ export function ValuationSection({ symbol }: { symbol: string }) {
           ))}
         </div>
 
+        {defaults.suggested_growth_capped === null && (
+          <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+            Sin crecimiento histórico con el que precargarlo: escribe el tuyo en cada escenario para calcular.
+          </p>
+        )}
         {defaults.net_debt === null && (
           <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
             El filing no trae deuda a largo ni a corto plazo: la deuda neta es desconocida. Sin
@@ -209,7 +224,7 @@ export function ValuationSection({ symbol }: { symbol: string }) {
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={run}
-            disabled={busy || !inputs.base_fcf || numeroOVacio(inputs.net_debt) === null}
+            disabled={busy || !inputs.base_fcf || numeroOVacio(inputs.net_debt) === null || faltaCrecimiento}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
           >
             {busy ? 'Calculando…' : 'Calcular rango de valor'}
@@ -239,13 +254,13 @@ export function ValuationSection({ symbol }: { symbol: string }) {
                   <div className="text-xs text-slate-500">{etiqueta(name, { mayuscula: true })}</div>
                   <div className="text-2xl font-semibold tabular-nums text-slate-900">
                     {sc.value_per_share !== null
-                      ? fmtNum(sc.value_per_share)
+                      ? fmtPrecio(sc.value_per_share)
                       : fmtCompacto(sc.equity_value)}
                   </div>
                   <div className="text-xs text-slate-500">
                     {vs !== null && (
                       <>
-                        {fmtPct(vs)} vs. precio actual ({fmtNum(result.current_price)}) ·{' '}
+                        {fmtPct(vs)} vs. precio actual ({fmtPrecio(result.current_price)}) ·{' '}
                       </>
                     )}
                     terminal pesa {fmtPct(sc.terminal_weight)}
@@ -260,7 +275,7 @@ export function ValuationSection({ symbol }: { symbol: string }) {
               <h3 className="mb-1 text-xs font-semibold text-slate-600">
                 Sensibilidad (escenario base): valor/acción según WACC × crecimiento
               </h3>
-              <div className="overflow-x-auto">
+              <MarcoTabla etiqueta="Sensibilidad del valor por acción">
                 <table className="text-xs tabular-nums">
                   <thead>
                     <tr>
@@ -278,14 +293,18 @@ export function ValuationSection({ symbol }: { symbol: string }) {
                         <td className="p-1 text-slate-400">{fmtPct(row.discount_rate, 0)}</td>
                         {row.values.map((v, i) => (
                           <td key={i} className="p-1 text-right text-slate-700">
-                            {v !== null ? fmtNum(v, 0) : '·'}
+                            {/* Sin decimales, cualquier acción por debajo de 0,50 salía
+                                «0» en todas las celdas (revisión 4); con los de un precio,
+                                «170,63», una precisión que el método no tiene y que no
+                                cabía a 390 px (revisión 5). Tres cifras significativas. */}
+                            {v !== null ? fmtCifras(v) : '·'}
                           </td>
                         ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </MarcoTabla>
               <p className="mt-2 text-xs text-slate-400">
                 Si la matriz se mueve mucho entre celdas vecinas, el valor central es poco
                 robusto: la incertidumbre es información, no un defecto.

@@ -215,6 +215,10 @@ def congelar_lista_diaria(session: Session, payload: dict, origen: str, ahora: d
             "controles", "todos_los_limites_aplicados", "recortes", "escala_aplicada",
             "vol_estimada_pct", "objetivo_vol_pct", "clusters", "cartera_actual",
             "aviso_cartera", "invertido_total_pct",
+            # Sobre qué se midieron los pesos y con qué efectivo: sin esto, dos
+            # instantáneas antes y después de anotar efectivo tenían pesos no
+            # comparables sin forma de saberlo (revisión de M3).
+            "base_cartera", "efectivo",
         )
     }
     mercado = {
@@ -292,11 +296,22 @@ def huella_material(analisis: dict) -> str:
     })
 
 
+# Lo que el análisis pide durante el propio cálculo y fecha con la hora de la
+# descarga: la cotización y la puntuación contra pares. El análisis las acepta
+# con `pit.descargado_a_tiempo`; aquí, la misma regla, o al congelar quedaban
+# como «futuras» y el replay retiraba el precio con que se decidió (revisión de
+# 2f8d84b).
+DESCARGADOS_EN_EL_CALCULO = frozenset({"precio", "puntuación"})
+
+
 def anomalias_temporales(marcas: list[dict], decision_ts) -> dict:
     """Comprueba cada marca contra el momento de la decisión. No modifica nada."""
     futuras, sin_fecha = [], []
     for m in marcas or []:
-        r = pit.disponible_en(m.get("publicado"), decision_ts, m.get("obtenido_en"))
+        if m.get("dato") in DESCARGADOS_EN_EL_CALCULO:
+            r = pit.descargado_a_tiempo(m.get("publicado"), decision_ts)
+        else:
+            r = pit.disponible_en(m.get("publicado"), decision_ts, m.get("obtenido_en"))
         if r is False:
             futuras.append(m)
         elif r is None:
@@ -316,13 +331,38 @@ def congelar_analisis(session: Session, analisis: dict, ahora: datetime) -> tupl
     symbol = limpio["symbol"]
     fecha = ahora.astimezone(timezone.utc).date().isoformat()
 
-    ultimo = session.execute(
+    # La última DEL MISMO DÍA, en el orden en que se congelaron (`id`). Con la más
+    # reciente de la base, una posterior (un reloj adelantado que se corrigió, un
+    # análisis fechado) era de otro día y cada análisis igual congelaba una copia
+    # imborrable (revisión de A5); filtrando por «ya existía en `ahora`», dos
+    # análisis solapados (el que empezó después congela antes) dejaban dos copias
+    # idénticas (revisión 3); y por `creado_en`, una del mismo día a una hora
+    # posterior y con otra huella ganaba siempre y cada análisis igual volvía a
+    # congelar (revisión 4).
+    # Y también la última por `creado_en`: con dos análisis solapados de huellas
+    # distintas, el que empezó antes congela después, y un tercero igual al que
+    # empezó después (el dato vigente) se comparaba solo con el viejo y dejaba
+    # una copia idéntica (revisión 5). Vale cualquiera de las dos que coincida.
+    del_dia = (
         select(DecisionSnapshot)
-        .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"))
-        .order_by(DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc())
-    ).scalars().first()
-    if ultimo is not None and ultimo.fecha == fecha and (ultimo.contexto or {}).get("huella_material") == huella_m:
-        return ultimo, False
+        .where(DecisionSnapshot.symbol == symbol, DecisionSnapshot.origen.like(f"{ORIGEN_ANALISIS}:%"),
+               DecisionSnapshot.fecha == fecha)
+    )
+    # La de `creado_en`, solo entre las que ya existían en `ahora` (con el margen
+    # de un solape): una adelantada horas por un reloj que se corrigió se
+    # tragaba un cambio material y la ficha decía «sin cambios» con una hora
+    # futura (revisión 6).
+    # Y la de `id`, igual: si la adelantada se congeló la última (reloj bien,
+    # adelantado y corregido), era la última por `id` y seguía ganando (revisión 7).
+    def ya_existia(orden):
+        return next((s for s in session.execute(del_dia.order_by(*orden)).scalars()
+                     if pit.descargado_a_tiempo(s.creado_en, ahora) is not False), None)
+
+    por_id = ya_existia((DecisionSnapshot.id.desc(),))
+    por_hora = ya_existia((DecisionSnapshot.creado_en.desc(), DecisionSnapshot.id.desc()))
+    for ultimo in (por_id, por_hora):
+        if ultimo is not None and (ultimo.contexto or {}).get("huella_material") == huella_m:
+            return ultimo, False
 
     # Lo que llegara fechado después de la decisión se anota al congelar: la
     # instantánea guarda lo que el sistema vio, pero el replay no lo enseñará
@@ -512,6 +552,20 @@ def _retirar_futuro(a: dict, futuras: set[str], momento) -> list[str]:
 
 
 # --- Reconstruir -----------------------------------------------------------
+
+
+def umbrales_de_puntuacion(snap: DecisionSnapshot) -> list[float]:
+    """Los umbrales de puntuación con que se tomó esa decisión, de su traza: con
+    una posición abierta solo cuenta el de vender. El historial escribía todas
+    las filas frente a los dos, y una «mantener» con 0,3496 decía «+0,3496»
+    mientras su replay y sus razones decían «+0,35» (revisión 9). Vacío si la
+    instantánea no guardó la traza."""
+    ctx = snap.contexto or {}
+    fuente = ctx.get("analisis") if ctx.get("esquema") == ESQUEMA_ANALISIS else ctx.get("senal")
+    reglas = ((fuente or {}).get("decision") or {}).get("reglas") or []
+    return [r["datos"]["umbral"] for r in reglas
+            if isinstance(r, dict) and str(r.get("id", "")).startswith("puntuacion")
+            and isinstance((r.get("datos") or {}).get("umbral"), (int, float))]
 
 
 def reconstruir(snap: DecisionSnapshot, resultados: list[DecisionOutcome] | None = None) -> dict:

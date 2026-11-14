@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
+import { api, ApiError } from '../api/client'
+import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio } from '../lib/formato'
+import { leerNumero } from '../lib/entrada'
+import { mensajeDeError, useDato } from '../lib/useDato'
+import { MarcoTabla } from '../components/MarcoTabla'
+
+const ESCENARIOS = ['bear', 'base', 'bull'] as const
+
+/** Un 404 al borrar es que ya no existía (otro clic, otra pestaña): no es un
+ *  fallo que enseñar (segunda revisión del 2.1). */
+function yaNoExistia(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404
+}
 
 
 function OutcomeChip({ scenario }: { scenario: ScenarioRecord }) {
@@ -67,7 +79,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
       </div>
 
       {record.scenarios.length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <MarcoTabla etiqueta="Escenarios de la tesis" className="mt-4">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
@@ -93,13 +105,13 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
                     {fmtFecha(s.created_at)} ({s.days_elapsed} d)
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.price_at_creation !== null ? fmtNum(s.price_at_creation) : '—'}
+                    {fmtPrecio(s.price_at_creation)}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.value_mid !== null ? fmtNum(s.value_mid) : '—'}
+                    {s.value_mid !== null ? fmtPrecio(s.value_mid) : '—'}
                   </td>
                   <td className="px-2 py-1.5 tabular-nums">
-                    {s.current_price !== null ? fmtNum(s.current_price) : '—'}
+                    {fmtPrecio(s.current_price)}
                   </td>
                   <td
                     className={`px-2 py-1.5 tabular-nums ${
@@ -115,24 +127,35 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
     </section>
   )
 }
 
 export function ThesesPage() {
-  const [theses, setTheses] = useState<ThesisRecord[]>([])
-  const [record, setRecord] = useState<TrackRecord | null>(null)
+  // La lista hacía `setError(e.message)`, y ese error solo se pintaba dentro
+  // del formulario de «Nueva tesis», cerrado por defecto: con la base caída la
+  // pantalla decía «Sin tesis guardadas» y parecía que las tesis se habían
+  // perdido (revisión del 2.1).
+  const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
+  // El registro de aciertos hacía `() => setRecord(null)`: si fallaba, el panel
+  // desaparecía y no se sabía si era un fallo o que aún no había nada (ítem 2.1).
+  const registro = useDato(() => api.trackRecord(), 'registro')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ symbol: '', title: '', body: '', invalidation: '' })
   const [error, setError] = useState<string | null>(null)
+  // Borrar y «+ Escenario» hacían `await` sin capturar: un rechazo no decía
+  // nada y la tesis seguía ahí como si no se hubiera pedido (revisión del 2.1).
+  const [fallo, setFallo] = useState<string | null>(null)
 
-  const load = useCallback(() => {
-    api.theses().then((d) => setTheses(d.theses), (e) => setError(e.message))
-    api.trackRecord().then(setRecord, () => setRecord(null))
-  }, [])
-  useEffect(load, [load])
+  // Tras una acción: la lista y el registro, sin vaciar lo que se ve mientras
+  // llegan. Al montar no hace falta: `useDato` ya los pide (antes el registro
+  // se pedía dos veces, y cada vez cotizaba todos los símbolos).
+  const load = () => {
+    tesis.refrescar()
+    registro.refrescar()
+  }
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -153,19 +176,50 @@ export function ThesesPage() {
   }
 
   const addScenario = async (thesisId: number) => {
-    const kind = window.prompt('Escenario (bear / base / bull):', 'base')
-    if (!kind || !['bear', 'base', 'bull'].includes(kind)) return
+    // El prompt pedía los códigos en inglés («bear / base / bull») y la
+    // pantalla los enseña como «bajista / base / alcista»: escribir lo que se
+    // ve salía sin decir nada. Y «12,5» se guardaba como 12 (segunda revisión
+    // del 2.1). Cancelar sigue sin decir nada; escribir mal, no.
+    const nombres = ESCENARIOS.map((k) => etiqueta(k))
+    const escrito = window.prompt(`Escenario (${nombres.join(' / ')}):`, etiqueta('base'))
+    if (escrito === null) return
+    const buscado = escrito.trim().toLowerCase()
+    const kind = ESCENARIOS.find((k) => k === buscado || etiqueta(k).toLowerCase() === buscado)
+    if (!kind) {
+      setFallo(`«${escrito}» no es un escenario: escribe ${nombres.join(', ')}.`)
+      return
+    }
     const raw = window.prompt('Valor intrínseco estimado por acción:')
-    if (!raw) return
-    const value = parseFloat(raw)
-    if (Number.isNaN(value)) return
-    const result = await api.addScenario(thesisId, {
-      kind: kind as 'bear' | 'base' | 'bull',
-      assumptions: {},
-      value_mid: value,
-    })
-    if (result.warning) window.alert(result.warning)
-    load()
+    if (raw === null) return
+    const value = leerNumero(raw)
+    if (value === null) {
+      setFallo(`«${raw}» no es un número: escribe el valor por acción, p. ej. 12,5.`)
+      return
+    }
+    setFallo(null)
+    try {
+      const result = await api.addScenario(thesisId, {
+        kind,
+        assumptions: {},
+        value_mid: value,
+      })
+      if (result.warning) window.alert(result.warning)
+      load()
+    } catch (err) {
+      setFallo(`No se pudo añadir el escenario: ${mensajeDeError(err)}`)
+    }
+  }
+
+  const borrar = async (thesis: ThesisRecord) => {
+    if (!window.confirm(`¿Borrar la tesis «${thesis.title}»?`)) return
+    setFallo(null)
+    try {
+      await api.deleteThesis(thesis.id)
+      load()
+    } catch (err) {
+      if (yaNoExistia(err)) load()
+      else setFallo(`No se pudo borrar la tesis: ${mensajeDeError(err)}`)
+    }
   }
 
   const inputCls =
@@ -218,85 +272,92 @@ export function ThesesPage() {
         </form>
       )}
 
-      {record && <TrackRecordPanel record={record} />}
+      <BloqueDatos carga={registro} que="el registro de aciertos">
+        {(r) => <TrackRecordPanel record={r} />}
+      </BloqueDatos>
 
-      {theses.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
-          Sin tesis guardadas. Escribe una antes de comprar: la app la fechará y te la enseñará
-          después junto al resultado real.
+      {fallo && (
+        <p role="alert" className="text-sm text-red-600">
+          {fallo}
         </p>
       )}
 
-      <div className="space-y-3">
-        {theses.map((thesis) => (
-          <article key={thesis.id} className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-slate-800">
-                  <Link to={`/ticker/${thesis.symbol}`} className="hover:underline">
-                    {thesis.symbol}
-                  </Link>
-                  <span className="ml-2 font-normal">{thesis.title}</span>
-                </h2>
-                <div className="text-xs text-slate-400">
-                  Escrita el {fmtFecha(thesis.created_at, { hora: true })} · {fmtAntiguedad(thesis.created_at)}
-                  {thesis.current_price !== null && ` · precio hoy ${fmtNum(thesis.current_price)}`}
-                </div>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <button
-                  onClick={() => addScenario(thesis.id)}
-                  className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                >
-                  + Escenario
-                </button>
-                <button
-                  onClick={async () => {
-                    if (window.confirm(`¿Borrar la tesis «${thesis.title}»?`)) {
-                      await api.deleteThesis(thesis.id)
-                      load()
-                    }
-                  }}
-                  className="text-xs text-slate-400 hover:text-red-600"
-                >
-                  Borrar
-                </button>
-              </div>
+      <BloqueDatos carga={tesis} que="las tesis">
+        {(theses) =>
+          theses.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+                Sin tesis guardadas. Escribe una antes de comprar: la app la fechará y te la enseñará
+                después junto al resultado real.
+              </p>
+          ) : (
+            <div className="space-y-3">
+              {theses.map((thesis) => (
+                <article key={thesis.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-semibold text-slate-800">
+                        <Link to={`/ticker/${thesis.symbol}`} className="hover:underline">
+                          {thesis.symbol}
+                        </Link>
+                        <span className="ml-2 font-normal">{thesis.title}</span>
+                      </h2>
+                      <div className="text-xs text-slate-400">
+                        Escrita el {fmtFecha(thesis.created_at, { hora: true })} · {fmtAntiguedad(thesis.created_at)}
+                        {thesis.current_price !== null && ` · precio hoy ${fmtPrecio(thesis.current_price)}`}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        onClick={() => addScenario(thesis.id)}
+                        className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                      >
+                        + Escenario
+                      </button>
+                      <button
+                        onClick={() => borrar(thesis)}
+                        className="text-xs text-slate-400 hover:text-red-600"
+                      >
+                        Borrar
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{thesis.body_md}</p>
+
+                  {thesis.invalidation_criteria && (
+                    <div className="mt-2 rounded-lg border-l-2 border-amber-400 bg-amber-50 px-3 py-2">
+                      <div className="text-xs font-semibold text-amber-800">
+                        Qué me haría cambiar de opinión
+                      </div>
+                      <p className="text-sm text-amber-900">{thesis.invalidation_criteria}</p>
+                    </div>
+                  )}
+
+                  {thesis.scenarios.length > 0 && (
+                    <ul className="mt-3 space-y-1.5">
+                      {thesis.scenarios.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                        >
+                          <span className="text-slate-700">
+                            <b>{etiqueta(s.kind, { mayuscula: true })}</b>
+                            {s.value_mid !== null && ` · valor estimado ${fmtPrecio(s.value_mid)}`}
+                            {s.price_at_creation !== null &&
+                              ` · precio entonces ${fmtPrecio(s.price_at_creation)}`}
+                            <span className="ml-2 text-xs text-slate-400">hace {s.days_elapsed} d</span>
+                          </span>
+                          <OutcomeChip scenario={s} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
+              ))}
             </div>
-
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{thesis.body_md}</p>
-
-            {thesis.invalidation_criteria && (
-              <div className="mt-2 rounded-lg border-l-2 border-amber-400 bg-amber-50 px-3 py-2">
-                <div className="text-xs font-semibold text-amber-800">
-                  Qué me haría cambiar de opinión
-                </div>
-                <p className="text-sm text-amber-900">{thesis.invalidation_criteria}</p>
-              </div>
-            )}
-
-            {thesis.scenarios.length > 0 && (
-              <ul className="mt-3 space-y-1.5">
-                {thesis.scenarios.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
-                  >
-                    <span className="text-slate-700">
-                      <b>{etiqueta(s.kind, { mayuscula: true })}</b>
-                      {s.value_mid !== null && ` · valor estimado ${fmtNum(s.value_mid)}`}
-                      {s.price_at_creation !== null &&
-                        ` · precio entonces ${fmtNum(s.price_at_creation)}`}
-                      <span className="ml-2 text-xs text-slate-400">hace {s.days_elapsed} d</span>
-                    </span>
-                    <OutcomeChip scenario={s} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        ))}
-      </div>
+          )
+        }
+      </BloqueDatos>
     </div>
   )
 }

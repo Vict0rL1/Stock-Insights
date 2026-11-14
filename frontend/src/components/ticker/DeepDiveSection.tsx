@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type {
   DeepDiveNarrative,
   DeepDiveReport,
+  LlmStatus,
   MultipleStats,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
+import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
 import { Ventana } from '../Ventana'
@@ -67,8 +70,10 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       <div className="mt-3 space-y-4">
         {Object.entries(report.valuation.multiples).map(([key, stats]) => (
           <div key={key}>
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
+            {/* Con `gap` y el rótulo sin encoger: a 390 px el motivo ocupaba todo
+                el ancho y se leía «P/ESolo 10 observaciones…» (ítem 2.12). */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+              <span className="shrink-0 font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
               {stats.available ? (
                 <span className="tabular-nums text-slate-600">
                   actual{' '}
@@ -102,7 +107,7 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       {report.valuation.cheapness_score !== null && (
         <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
           Índice de baratura frente a su historia:{' '}
-          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100 % = lo más barata que
+          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100&nbsp;% = lo más barata que
           ha estado en el periodo).
         </p>
       )}
@@ -119,38 +124,37 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
 }
 
 export function DeepDiveSection({ symbol }: { symbol: string }) {
-  const [report, setReport] = useState<DeepDiveReport | null>(null)
-  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Un 404 es que EDGAR no tiene sus estados (desde que la ruta da 502 si EDGAR
+  // no respondió): ausencia, sin «Reintentar» (segunda revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.deepDive(symbol)), symbol)
   const llm = useLlmStatus()
+  // Al cambiar de símbolo el bloque vuelve a «cargando» e `Informe` se monta de
+  // nuevo: la narrativa del anterior no se queda bajo el informe del nuevo.
+  return (
+    <BloqueDatos carga={carga} que="el informe" ausente={(m) => m}>
+      {(report) => <Informe symbol={symbol} report={report} llm={llm} />}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setReport(null)
-    setNarrative(null)
-    setError(null)
-    api.deepDive(symbol).then(setReport, (e) => setError(e.message))
-  }, [symbol])
+function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveReport; llm: LlmStatus | null }) {
+  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
+  // El fallo de la narrativa es de la narrativa: antes sustituía la sección
+  // entera y el informe calculado desaparecía por un 503 de la IA (ítem 2.1).
+  const [errorNarrativa, setErrorNarrativa] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   const writeNarrative = async () => {
-    if (!report) return
     setBusy(true)
+    setErrorNarrativa(null)
     try {
       setNarrative(await api.deepDiveNarrative(symbol, report))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error')
+      setErrorNarrativa(mensajeDeError(e))
     } finally {
       setBusy(false)
     }
   }
-
-  if (error)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        {error}
-      </p>
-    )
-  if (!report) return <p className="text-sm text-slate-400">Elaborando el informe…</p>
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
 
@@ -320,7 +324,7 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
                     {etiqueta(kind, { mayuscula: true })}
                   </div>
                   <div className="text-xl font-semibold tabular-nums">
-                    {fmtNum(sc.value_per_share)}
+                    {fmtPrecio(sc.value_per_share)}
                   </div>
                   <div className="text-xs text-slate-500">
                     {vs !== null && `${fmtPct(vs)} vs. precio · `}terminal{' '}
@@ -368,7 +372,7 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
           ) : (
             <ul className="mt-2 space-y-1 text-sm">
               {report.catalysts.map((c, i) => (
-                <li key={i} className="flex justify-between border-b border-slate-100 py-1">
+                <li key={i} className="flex justify-between gap-3 border-b border-slate-100 py-1">
                   <span className="text-slate-700">
                     {c.url ? (
                       <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
@@ -379,7 +383,8 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
                     )}
                     <span className="ml-2 text-xs text-slate-400">{c.detail}</span>
                   </span>
-                  <span className="shrink-0 text-xs text-slate-400">{c.when ?? '—'}</span>
+                  {/* Con `fmtFecha`: salía «2026-10-06» en crudo. */}
+                  <span className="shrink-0 text-xs text-slate-400">{fmtFecha(c.when)}</span>
                 </li>
               ))}
             </ul>
@@ -402,6 +407,9 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
             <BotonIA onClick={writeNarrative} disabled={busy} className="mt-2 px-3 text-sm">
               {busy ? 'Redactando…' : 'Redactar informe (IA)'}
             </BotonIA>
+            {errorNarrativa && (
+              <p className="mt-2 text-sm text-red-700">No se pudo redactar el informe: {errorNarrativa}</p>
+            )}
           </>
         ) : (
           <BloqueIA modelo={narrative.model} aviso={narrative.disclaimer}>

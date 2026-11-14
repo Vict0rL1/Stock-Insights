@@ -101,6 +101,9 @@ def capturar(evento_id: int, session: Session = Depends(get_session),
         return svc.capturar(session, service, _evento(session, evento_id))
     except svc.EventoConocido as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except ValueError as exc:
+        # Una fuente fechada después de la captura: se explica, no es un 500.
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 @router.post("/eventos/{evento_id}/expectativas")
@@ -152,4 +155,6 @@ def proximos_resultados(symbol: SimboloRuta, dias: int = Query(90, ge=1, le=180)
         captura = svc.capturar(session, service, e)
     except svc.EventoConocido as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     return {"evento": svc.serializar_evento(e), "captura": captura}

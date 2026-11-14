@@ -17,6 +17,7 @@ from app.providers.base import (
     RateLimitError,
     iso_utc,
 )
+from app.registro import log
 
 BASE_URL = "https://api.twelvedata.com"
 
@@ -42,7 +43,11 @@ class TwelveDataProvider(DataProvider):
             raise RateLimitError("twelvedata: rate limit alcanzado")
         if resp.status_code != 200:
             raise ProviderError(f"twelvedata: HTTP {resp.status_code}")
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            # Como en Finnhub: un 200 que no es JSON es un fallo del proveedor.
+            raise ProviderError("twelvedata: respuesta no es JSON") from exc
         # Twelve Data devuelve errores como 200 con status="error" en el body.
         if isinstance(data, dict) and data.get("status") == "error":
             code = data.get("code")
@@ -50,7 +55,11 @@ class TwelveDataProvider(DataProvider):
             if code == 429:
                 raise RateLimitError(f"twelvedata: {message}")
             if code in (400, 404) and "not found" in message.lower():
-                raise DataNotFoundError(f"twelvedata: {message}")
+                # Su texto («**symbol** not found: X. Please specify it…») va en
+                # inglés y llega a la pantalla como motivo de la ausencia desde
+                # que el 404 lleva lo que dijo cada fuente (tercera pasada).
+                log("proveedor").info("twelvedata: %s", message)
+                raise DataNotFoundError("twelvedata: no tiene ese símbolo")
             raise ProviderError(f"twelvedata: {message or code}")
         return data
 

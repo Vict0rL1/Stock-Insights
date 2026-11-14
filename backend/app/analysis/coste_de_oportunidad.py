@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 
 from app import datos
+from app.analysis.sizing import RECORTE_SIN_HUECO_DE_RIESGO
 from app.etiquetas import etiqueta
 from app.formato import fmt_pct, plural
 
@@ -174,11 +175,17 @@ def evaluar(
     tipo_impositivo: float | None = None,
     max_posicion: float | None = None,
     recortes: list[str] | None = None,
+    aviso_efectivo: str | None = None,
 ) -> dict:
     """La comparación entera. Todo en FRACCIONES del capital total.
 
     `recortes`: lo que el dimensionador dijo al recortar esta idea; si la deja
     en 0 %, el veredicto cita QUÉ límite lo hizo en vez de enumerarlos todos.
+
+    `aviso_efectivo`: por qué el efectivo ANOTADO es desconocido (sin tipo de
+    cambio a esa fecha) o viejo (un tipo de hace semanas). El veredicto lo dice:
+    antes pedía «Anota tu efectivo» con el efectivo anotado, y con un tipo de
+    hace tres semanas daba «hay efectivo» sin más (revisión de A2).
     """
     base = {"candidata": {**candidata, "atractivo": atractivo(candidata)},
             "parametros": parametros(), "generado_por": "app"}
@@ -198,15 +205,21 @@ def evaluar(
         # del dato.
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": None}, "veredicto": {
             "accion": INDETERMINADO,
-            "motivo": ("Sin efectivo anotado, la cartera se mide como invertida al 100 % y así la idea no cabe. "
+            "motivo": (f"Con el efectivo desconocido ({aviso_efectivo}), la cartera se mide como invertida al "
+                       "100\u00a0% y así la idea no cabe: es una conclusión del supuesto, no del dato."
+                       if aviso_efectivo else
+                       "Sin efectivo anotado, la cartera se mide como invertida al 100\u00a0% y así la idea no cabe. "
                        "Anota tu efectivo para saber si de verdad no cabe."),
         }}
     if tamano_maximo <= 0:
-        porque = " ".join(r for r in recortes or [] if "0 %" in r or candidata.get("symbol", "") in r)
+        porque = " ".join(r for r in recortes or []
+                          if r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) or candidata.get("symbol", "") in r)
         return {**base, "tamano": {"maximo_permitido": 0.0, "efectivo_disponible": round(efectivo, 4)}, "veredicto": {
             "accion": NO_TRADE,
-            "motivo": "No cabe: los límites de la cartera le dejan 0 %. " + (
-                porque or "Ninguno de los límites (posición, sector, correlación, volatilidad) deja hueco."),
+            "motivo": "No cabe: los límites de la cartera le dejan 0\u00a0%. " + (
+                porque or "Ninguno de los límites (posición, sector, correlación, volatilidad) deja hueco.")
+                # Los pesos se miden sobre un capital con ese efectivo dentro.
+                + (f" Ojo con el efectivo: {aviso_efectivo}." if aviso_efectivo else ""),
         }}
 
     tamano = {"maximo_permitido": round(tamano_maximo, 4)}
@@ -220,7 +233,8 @@ def evaluar(
     if necesidad == 0:
         return {**base, "tamano": tamano, "veredicto": {
             "accion": COMPRAR_CON_EFECTIVO,
-            "motivo": f"Hay efectivo ({fmt_pct(efectivo)}) para el tamaño permitido ({fmt_pct(tamano_maximo)}): no hace falta vender nada.",
+            "motivo": f"Hay efectivo ({fmt_pct(efectivo)}) para el tamaño permitido ({fmt_pct(tamano_maximo)}): no hace falta vender nada."
+                      + (f" Ojo con el efectivo: {aviso_efectivo}." if aviso_efectivo else ""),
         }}
 
     a_cand = base["candidata"]["atractivo"]["puntos"]
@@ -258,24 +272,31 @@ def evaluar(
         revisables.append(fila)
     revisables.sort(key=lambda f: (-f["prioridad"]["puntos"], -(f["mejora"] or 0)))
 
-    veredicto = _veredicto(candidata, revisables, necesidad)
+    veredicto = _veredicto(candidata, revisables, necesidad, aviso_efectivo)
     if efectivo and necesidad:
         # Con lo que hay se puede comprar una parte sin vender nada; el resto es
         # lo que exige la comparación.
         veredicto["parcial_con_efectivo"] = round(efectivo, 4)
         veredicto["motivo"] += (f" Con el efectivo disponible ({fmt_pct(efectivo)}) puedes comprar esa "
                                 "parte sin tocar nada.")
+    if efectivo is not None and aviso_efectivo:
+        veredicto["motivo"] += f" Ojo con el efectivo: {aviso_efectivo}."
     return {**base, "tamano": tamano, "candidatos_a_revisar": revisables, "veredicto": veredicto}
 
 
-def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None) -> dict:
+def _veredicto(candidata: dict, revisables: list[dict], necesidad: float | None, aviso_efectivo: str | None = None) -> dict:
     elegibles = [f for f in revisables if f.get("elegible")]
     superan = [f for f in elegibles if f.get("supera_umbral")]
     if necesidad is None:
         return {
             "accion": INDETERMINADO,
-            "motivo": ("Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
-                       "Anota tu efectivo. Si no tuvieras nada, la lista de abajo dice qué se revisaría primero."),
+            # «La lista de abajo», solo si hay lista: sin posiciones que revisar la
+            # tabla ni se pinta (revisión 9).
+            "motivo": (f"Efectivo desconocido ({aviso_efectivo}): no se puede saber si comprar esta idea exige "
+                       "vender algo." if aviso_efectivo else
+                       "Efectivo desconocido: no se puede saber si comprar esta idea exige vender algo. "
+                       "Anota tu efectivo.")
+                      + (" Si no tuvieras nada, la lista de abajo dice qué se revisaría primero." if revisables else ""),
             "si_no_hubiera_efectivo": superan[0]["symbol"] if superan else None,
         }
     if superan:
