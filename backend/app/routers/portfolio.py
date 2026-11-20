@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app import datos, vigilancia
 from app import punto_en_el_tiempo as pit
 from app.analysis import alertas, fx, historial as hist, portfolio_risk
-from app.analysis.decision import CIERRES_VOL, _stop_pct, vol_diaria_pct
+from app.analysis.decision import CIERRES_VOL, _stop_pct, stop_perforado, vol_diaria_pct
 from app.analysis.risk_budget import presupuesto_de_riesgo
 from app.analysis.sizing import con_caida_esperada, peor_ventana
 from app.analysis.portfolio import (
@@ -92,31 +92,43 @@ def _edad_segundos(cache, payload: dict) -> float:
     return ((ahora() if callable(ahora) else datetime.now(timezone.utc)) - instante[0]).total_seconds()
 
 
-def _historico_cacheado(service: MarketDataService, symbol: str) -> list[dict]:
-    """Las barras diarias guardadas de un símbolo, del último año y sin
-    descargar nada, de la copia más reciente que tenga como mucho un día: el
-    histórico de un año vigente, el mismo caducado hace menos de un día o el
-    largo (que baja la propia Cartera para el riesgo) si se descargó hace menos
-    de un día. Uno solo para el stop, el estrés y el minigráfico: con lectores
-    distintos, la misma fila tenía el stop medido y salía «sin histórico» en el
-    estrés (revisión 9). El largo vive 7 días en la caché, y antes de la copia
+def _copias_cacheadas(service: MarketDataService, symbol: str, *, con_largo: bool) -> dict[str, list[dict]]:
+    """Las copias guardadas de un símbolo que valen ahora, sin descargar nada:
+    «año», el histórico de un año vigente o el mismo caducado hace menos de un
+    día, y «largo», el que baja la propia Cartera para el riesgo, si se descargó
+    hace menos de un día. El largo vive 7 días en la caché, y antes de la copia
     de un año de hace 7 h se servía uno de hace 6 días: la Cartera daba el stop
-    perforado y la ficha no (revisión 10)."""
+    perforado y la ficha no (revisión 10). Sin `con_largo`, el largo solo se lee
+    si no hay copia de un año."""
     cache = getattr(service, "cache", None)
     if cache is None:
-        return []
+        return {}
+    copias: dict[str, list[dict]] = {}
     params = {"symbol": symbol, "interval": "1day", "outputsize": SESIONES_HISTORICO}
     vigente = cache.get("price_history", params)
     if vigente and vigente.get("bars"):
-        return vigente["bars"][-SESIONES_HISTORICO:]
-    vencido = getattr(cache, "get_vencido", None)
-    copia = vencido("price_history", params) if vencido is not None else None
-    if copia and copia.get("bars") and _edad_segundos(cache, copia) <= VENCIDO_MAX_SEGUNDOS:
-        return copia["bars"][-SESIONES_HISTORICO:]
-    largo = cache.get("price_history_long", {"symbol": symbol})
-    if largo and largo.get("bars") and _edad_segundos(cache, largo) <= VENCIDO_MAX_SEGUNDOS:
-        return largo["bars"][-SESIONES_HISTORICO:]
-    return []
+        copias["año"] = vigente["bars"]
+    else:
+        vencido = getattr(cache, "get_vencido", None)
+        copia = vencido("price_history", params) if vencido is not None else None
+        if copia and copia.get("bars") and _edad_segundos(cache, copia) <= VENCIDO_MAX_SEGUNDOS:
+            copias["año"] = copia["bars"]
+    if con_largo or not copias:
+        largo = cache.get("price_history_long", {"symbol": symbol})
+        if largo and largo.get("bars") and _edad_segundos(cache, largo) <= VENCIDO_MAX_SEGUNDOS:
+            copias["largo"] = largo["bars"]
+    return copias
+
+
+def _historico_cacheado(service: MarketDataService, symbol: str) -> list[dict]:
+    """Las barras diarias guardadas de un símbolo, del último año y sin
+    descargar nada, de la copia más reciente que tenga como mucho un día
+    (`_copias_cacheadas`): la de un año antes que el largo. Las mismas copias
+    para el stop, el estrés y el minigráfico: con lectores distintos, la misma
+    fila tenía el stop medido y salía «sin histórico» en el estrés (revisión 9).
+    El estrés no se queda en el año (`_series_cacheadas`)."""
+    copias = _copias_cacheadas(service, symbol, con_largo=False)
+    return (copias.get("año") or copias.get("largo") or [])[-SESIONES_HISTORICO:]
 
 
 def _barras_hasta(history: dict | None, abierta: datetime) -> list[dict]:
@@ -176,19 +188,29 @@ def _volatilidad_de(
 
 def _series_cacheadas(
     service: MarketDataService, symbols: list[str]
-) -> dict[str, list[tuple[date, float]]]:
+) -> tuple[dict[str, list[tuple[date, float]]], list[str]]:
     """Cierres diarios de la caché, para estresar la cartera. Nunca descarga.
 
-    El mismo lector que el stop (`_historico_cacheado`): si no hay histórico
+    Las mismas copias que el stop (`_copias_cacheadas`): si no hay histórico
     guardado, esa posición no entra en el estrés en vez de gastar una llamada
     por posición cada vez que se abre el portafolio, y se nombra. `peor_ventana`
     solo cruza fechas comunes, así que una posición ausente encoge el histórico
     compartido pero no lo falsea.
+
+    Pero entera y la más larga de las que valen, no recortada al año del stop:
+    con 252 sesiones como mucho, la ventana de 12 meses (que pide más de 252)
+    no cabía nunca y «Peor 12 meses seguidos» decía siempre que el histórico
+    no llegaba, mientras Cartera medía con dos años (revisión 12, visual).
+    Devuelve también las posiciones medidas sin un largo vigente: son las que
+    acortan el histórico común, y la nota lo dice.
     """
     salida: dict[str, list[tuple[date, float]]] = {}
+    sin_largo: list[str] = []
     for symbol in symbols:
+        copias = _copias_cacheadas(service, symbol, con_largo=True)
         puntos = []
-        for bar in _historico_cacheado(service, symbol):
+        # La más larga; a igualdad, la de un año, que es la más fresca.
+        for bar in max(copias.values(), key=len, default=[]):
             cierre, ts = bar.get("close"), bar.get("ts")
             if not cierre or not ts:
                 continue
@@ -198,7 +220,9 @@ def _series_cacheadas(
                 continue
         if len(puntos) >= 60:
             salida[symbol] = puntos
-    return salida
+            if "largo" not in copias:
+                sin_largo.append(symbol)
+    return salida, sin_largo
 
 
 def _cobertura_estres(pesos: dict[str, float], series: dict[str, list], motivos: dict[str, str] | None = None) -> dict:
@@ -788,6 +812,18 @@ def delete_position(position_id: int, session: Session = Depends(get_session)):
     return {"deleted": position_id}
 
 
+def _con_estado_del_stop(posiciones: list[dict]) -> None:
+    """Cada fila dice si su stop está perforado, con la regla del motor
+    (`decision.stop_perforado`, en o por debajo; en su moneda, sin convertir).
+
+    La tabla no enseñaba el stop: STOP, a 104 con el stop en 110, salía en verde
+    por su +15,6 % sobre el coste y nada decía que había que venderla (revisión
+    12, visual). None si falta el precio o el stop: no se sabe, que no es «intacto».
+    """
+    for p in posiciones:
+        p["stop_perforado"] = stop_perforado(p.get("price"), p.get("stop"))
+
+
 @router.get("")
 def get_portfolio(
     session: Session = Depends(get_session),
@@ -859,6 +895,8 @@ def get_portfolio(
             }
         )
 
+    _con_estado_del_stop(open_positions)
+
     # CONVERTIR ANTES DE SUMAR. Hasta aquí `market_value` está cada uno en su
     # moneda; sumarlos directamente daba un total creíble y equivocado, y de ese
     # total cuelgan los pesos, la concentración y el presupuesto de riesgo.
@@ -914,7 +952,8 @@ def get_portfolio(
     monedas_estres = {p["symbol"]: p.get("currency") for p in convertidas}
     series_estres: dict[str, list[tuple[date, float]]] = {}
     motivos_estres: dict[str, str] = {}
-    for symbol, serie in _series_cacheadas(service, list(pesos_estres)).items():
+    cacheadas, sin_largo = _series_cacheadas(service, list(pesos_estres))
+    for symbol, serie in cacheadas.items():
         en_usd = convertir_serie(serie, monedas_estres.get(symbol), series_fx)
         if en_usd and len(en_usd) >= 60:
             series_estres[symbol] = en_usd
@@ -922,6 +961,16 @@ def get_portfolio(
             motivos_estres[symbol] = f"sin tipo de cambio de {monedas_estres.get(symbol) or 'su moneda'} para pasarlo a dólares"
     estres = {**peor_ventana(pesos_estres, series_estres),
               **_cobertura_estres(pesos_estres, series_estres, motivos_estres)}
+    cortas = [s for s in sin_largo if s in series_estres]
+    if estres.get("suficiente") and estres.get("peor_ventana_pct") is None and cortas:
+        # Por qué no llega y cómo se alarga: sin decirlo, el Portafolio daba
+        # «no llega a 12 meses» y la Cartera medía dos años de las mismas
+        # posiciones (revisión 12, visual).
+        estres["peor_ventana_nota"] += (
+            f" De {', '.join(cortas[:5])}{'…' if len(cortas) > 5 else ''} solo hay guardado el último año "
+            f"(hasta {SESIONES_HISTORICO} sesiones): este estrés no descarga nada y usa el histórico largo "
+            "que baja Cartera («Descargar histórico completo») solo si se descargó hace menos de un día."
+        )
     return {
         "positions": [
             {**p, "market_value_base": p.get("market_value_base"),
@@ -1262,8 +1311,11 @@ def riesgo_de_cartera(
         .where(Position.closed_at.is_(None))
     ).all()
     if not rows:
+        # `sin_posiciones`: no hay nada que descargar, y la pantalla no ofrece la
+        # descarga (revisión 12, visual). Sin precio, en cambio, reintentar sí vale.
         return {
             "disponible": False,
+            "sin_posiciones": True,
             "nota": "No hay posiciones abiertas que analizar como cartera.",
         }
 
@@ -1513,6 +1565,12 @@ def contribucion_al_riesgo(
     from app import contexto_cartera
 
     ctx = contexto_cartera.construir(session, service, descargar=descargar)
+    if not ctx["posiciones"]:
+        # Con la cartera vacía decía «Ninguna posición abierta tiene precio y
+        # moneda conocidos», como si hubiera posiciones sin datos, y ofrecía
+        # descargar el histórico de nada (revisión 12, visual).
+        return {"disponible": False, "sin_posiciones": True, "posiciones": [], "desconocidas": [],
+                "nota": "No hay posiciones abiertas cuyo riesgo descomponer."}
     if not any(p.get("peso") for p in ctx["posiciones"]):
         return {"disponible": False, "posiciones": [], "desconocidas": ctx["sin_peso"],
                 "nota": "Ninguna posición abierta tiene precio y moneda conocidos: no hay pesos que descomponer."}

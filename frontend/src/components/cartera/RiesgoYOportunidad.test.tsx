@@ -134,4 +134,15 @@ describe('contribución al riesgo (ítem 2.1)', () => {
     soltar(new Response(JSON.stringify(base['/api/portfolio/contribucion?descargar=false'].json), { status: 200 }))
     expect(await screen.findByRole('button', { name: 'Descargar histórico y recalcular' })).toBeInTheDocument()
   })
+
+  it('con la cartera vacía no ofrece descargar el histórico de nada', async () => {
+    // Revisión 12, visual: sin ninguna posición se ofrecía «Descargar histórico y
+    // recalcular». Con posiciones sin precio sí sale: reintentar puede traerlo.
+    const vacia = { disponible: false, sin_posiciones: true, posiciones: [], desconocidas: [],
+      nota: 'No hay posiciones abiertas cuyo riesgo descomponer.' }
+    servir({ ...base, '/api/portfolio/contribucion?descargar=false': { status: 200, json: vacia } })
+    render(<ContribucionAlRiesgoPanel />)
+    expect(await screen.findByText('No hay posiciones abiertas cuyo riesgo descomponer.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Descargar histórico y recalcular' })).toBeNull()
+  })
 })

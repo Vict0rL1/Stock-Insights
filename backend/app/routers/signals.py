@@ -213,6 +213,9 @@ def _lista_corta_dimensionada(
         base_cartera=base,
         detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else sin_cambio,
         parcial=aviso_cartera is not None,
+        # Sin ninguna posición la nota no habla de «tus posiciones abiertas»
+        # (revisión 12, visual).
+        sin_posiciones=not posiciones,
     )
     corta["sizing"]["base_cartera"] = base
     corta["sizing"]["efectivo"] = (
@@ -1038,7 +1041,7 @@ def today(
     traza completa en el log del backend.
     """
     try:
-        return _today(market, refresh, budget, service, session)
+        payload = _today(market, refresh, budget, service, session)
     except HTTPException:
         raise  # 404/502 ya llevan su explicación
     except Exception as exc:  # noqa: BLE001 — se reporta, no se traga
@@ -1051,6 +1054,28 @@ def today(
                 "(/tmp/bolsa-backend.log)."
             ),
         ) from exc
+    # Fuera de `_today` y de su caché: el stop de tus posiciones se repasa en
+    # cada petición, también el de las que no están en este mercado.
+    payload["cartera"] = _repaso_de_stops(session, service, payload.get("signals") or [])
+    return payload
+
+
+def _repaso_de_stops(session: Session, service: MarketDataService, senales: list[dict]) -> dict:
+    """El stop de cada posición abierta (`contexto_cartera.stops_de_la_cartera`).
+
+    Un fallo aquí no cuesta la lista, pero tampoco se calla: sin repaso, la
+    pantalla no puede decir «nada urgente» (revisión 12, visual)."""
+    from app.contexto_cartera import stops_de_la_cartera
+
+    try:
+        return stops_de_la_cartera(session, service, senales)
+    except Exception:  # noqa: BLE001 — la lista sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo repasar el stop de la cartera")
+        return {
+            "abiertas": None, "en_lista": None, "posiciones": [],
+            "error": "No se pudo repasar el stop de tus posiciones: ninguna se ha comprobado "
+                     "(el motivo está en el log del backend).",
+        }
 
 
 def _today(

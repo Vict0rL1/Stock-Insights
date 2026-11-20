@@ -43,7 +43,7 @@ def _sin_comentarios(fuente: str) -> str:
 
 
 def test_el_glosario_prohibe_algo():
-    assert {"EPS", "FCF yield", "stop loss"} <= set(prohibidos())
+    assert {"EPS", "FCF yield", "stop loss", "free cash flow"} <= set(prohibidos())
 
 
 @pytest.fixture(scope="module")

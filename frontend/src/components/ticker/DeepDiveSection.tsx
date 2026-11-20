@@ -30,6 +30,9 @@ const SEVERITY_STYLES: Record<string, string> = {
 // La flecha es estilo; la palabra, su etiqueta.
 const FLECHA: Record<string, string> = { mejorando: '▲', 'deteriorándose': '▼', estable: '→' }
 
+/** «a, b y c», como `_lista` en el backend. */
+const enLista = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`)
+
 function Section({ title, reading, children }: { title: string; reading?: string; children?: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -158,6 +161,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
   }
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
+  const sinComprobar = report.riesgos_sin_comprobar ?? []
   // La cifra de la casilla, igual que en la lectura de encima: frente a las mismas
   // fronteras. Con decimales fijos, «cobertura de intereses 4,996× — ajustada»
   // llevaba al lado «Cobertura 5,0×», con holgada por encima de 5 (revisión 11).
@@ -179,6 +183,10 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
           )}
         </div>
         <p className="mt-2 text-sm">{verdict.summary}</p>
+        {/* De qué sale y qué no entra: el recuadro verde convivía sin decirlo con
+            un DCF muy por debajo del precio y con un trimestre que invalidaba la
+            tesis en «Qué cambió» (revisión 12, visual). */}
+        {verdict.alcance && <p className="mt-1 text-xs opacity-80">{verdict.alcance}</p>}
 
         <div className="mt-3">
           <div className="text-xs font-semibold">Qué rompería esta lectura</div>
@@ -247,7 +255,9 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
           </ul>
         </Section>
 
-        <Section title="Márgenes" reading={margins.reading}>
+        {/* Anuales, y de qué ejercicio: «21,0 %» a secas se leía como el de hoy
+            junto a un trimestre al 12,0 % en «Qué cambió» (revisión 12, visual). */}
+        <Section title={margins.ejercicio ? `Márgenes del ejercicio ${margins.ejercicio}` : 'Márgenes'} reading={margins.reading}>
           <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
             {(['gross_margin', 'operating_margin', 'net_margin'] as const).map((key) => (
               <div key={key}>
@@ -338,9 +348,12 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                   <div className="text-xl font-semibold tabular-nums">
                     {fmtPrecio(sc.value_per_share)}
                   </div>
+                  {/* Qué mide: «terminal 63,8 %» se leía como el crecimiento
+                      terminal, que en la pestaña Valoración es 2,0, 2,5 y 3,0
+                      (revisión 12, visual). */}
                   <div className="text-xs text-slate-500">
-                    {vs !== null && `${fmtPct(vs)} vs. precio · `}terminal{' '}
-                    {fmtPct(sc.terminal_weight)}
+                    {vs !== null && `${fmtPct(vs)} vs. precio · `}el valor terminal es el{' '}
+                    {fmtPct(sc.terminal_weight)} del valor de empresa
                   </div>
                 </div>
               )
@@ -354,9 +367,9 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
         <Section title="Riesgos detectados en los datos">
           {report.risks.length === 0 ? (
             <p className="mt-1 text-sm text-slate-400">
-              Ninguno de los umbrales del modelo se dispara. No significa ausencia de
-              riesgo: los riesgos cualitativos (competencia, regulación, gestión) no salen
-              de las cifras.
+              {sinComprobar.length ? 'Ninguno de los umbrales comprobados se dispara.' : 'Ninguno de los umbrales del modelo se dispara.'}{' '}
+              No significa ausencia de riesgo: los riesgos cualitativos (competencia, regulación,
+              gestión) no salen de las cifras.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -376,9 +389,19 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
               ))}
             </ul>
           )}
+          {/* Un umbral sin dato no se dispara, pero tampoco se ha mirado: «ninguno
+              se dispara» salía con la deuda/capital y la cobertura sin calcular
+              (revisión 12, visual). */}
+          {sinComprobar.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              Sin comprobar por falta de datos: {enLista(sinComprobar)}.
+            </p>
+          )}
         </Section>
 
-        <Section title="Catalizadores próximos (6-18 meses)">
+        {/* Lo que hay, no un plazo: «(6-18 meses)» encabezaba unos resultados a
+            24 días y los últimos filings, que ya pasaron (revisión 12, visual). */}
+        <Section title="Catalizadores y fechas a vigilar" reading={report.catalysts_note}>
           {report.catalysts.length === 0 ? (
             <p className="mt-1 text-sm text-slate-400">Ninguno identificado en los datos.</p>
           ) : (
@@ -395,8 +418,11 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                     )}
                     <span className="ml-2 text-xs text-slate-400">{c.detail}</span>
                   </span>
-                  {/* Con `fmtFecha`: salía «2026-10-06» en crudo. */}
-                  <span className="shrink-0 text-xs text-slate-400">{fmtFecha(c.when)}</span>
+                  {/* Con `fmtFecha`: salía «2026-10-06» en crudo. Y con su verbo: un
+                      filing ya presentado y unos resultados por venir se leían igual. */}
+                  <span className="shrink-0 text-xs text-slate-400">
+                    {c.when ? `${c.source === 'edgar' ? 'presentado el' : 'previsto el'} ${fmtFecha(c.when)}` : fmtFecha(c.when)}
+                  </span>
                 </li>
               ))}
             </ul>

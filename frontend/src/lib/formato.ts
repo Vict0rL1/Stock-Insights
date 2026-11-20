@@ -87,6 +87,18 @@ export function fmtPct(
   return `${fmtNum(enPuntos ? valor : valor * 100, decimales, { signo, ceros })}${ESPACIO_DURO}%`
 }
 
+/**
+ * El signo con que se LEE una cifra ya escrita por estas funciones: −1, 0 o 1.
+ * El verde de subida y el rojo de caída siguen a lo que pone, no al valor sin
+ * redondear: con `>= 0` un «0,00 %» salía en verde en Mercado, y un drawdown de
+ * «0,0 %» en rojo en Salud (revisión 12, visual). Lo que se escribe cero se lee
+ * cero, como el «-0,00» que ya no se escribe (V8); el «—» de un dato ausente, también.
+ */
+export function signoLeido(texto: string): -1 | 0 | 1 {
+  if (!/[1-9]/.test(texto)) return 0
+  return texto.trimStart().startsWith('-') ? -1 : 1
+}
+
 /** La forma que toca: «1 posición», «0 posiciones», «2 posiciones», nunca «posición(es)». */
 export function plural(n: number, singular: string, plural: string): string {
   return n === 1 || n === -1 ? singular : plural

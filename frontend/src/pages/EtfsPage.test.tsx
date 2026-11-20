@@ -29,9 +29,43 @@ describe('ETFs (revisión del 2.1)', () => {
       return new Response(JSON.stringify(json), { status: 200 })
     }))
     render(<MemoryRouter><EtfsPage /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText(/ETFs a comparar/), { target: { value: 'VOO, QQQ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Analizar y recomendar' }))
     const qqq = await screen.findByText(/^QQQ:/)
     expect(qqq.textContent).toContain('DATO VIEJO · yfinance · hace 3 días')
     expect(screen.getByText(/^VOO:/).textContent).not.toContain('VIEJO')
+  })
+})
+
+describe('la lista de ETFs (revisión 12, visual)', () => {
+  it('el campo llega vacío, con el límite y el ejemplo a la vista', () => {
+    render(<MemoryRouter><EtfsPage /></MemoryRouter>)
+    const campo = screen.getByLabelText(/ETFs a comparar/) as HTMLInputElement
+    // Llegaba relleno con «VOO, QQQ, VTI»: el texto de ayuda no se veía nunca y
+    // lo tecleado se pegaba detrás («VTIINDX»).
+    expect(campo.value).toBe('')
+    expect(campo.placeholder).toMatch(/^Hasta 4 ETFs .*por ejemplo: VOO, QQQ, VTI$/)
+    expect(screen.getByText(/hasta 4, separados por coma/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Analizar y recomendar' })).toBeDisabled()
+  })
+
+  it('el que no cabe se nombra, y solo se piden los que caben', async () => {
+    const pedidas: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      pedidas.push(decodeURIComponent(url))
+      const json = url.startsWith('/api/etfs/compare')
+        ? { etfs: [], overlaps: [], errors: {}, note: '' }
+        : { evaluados: [], recomendados: [], avisos: [], nota: '', errors: {}, aviso_solapamiento: '' }
+      return new Response(JSON.stringify(json), { status: 200 })
+    }))
+    render(<MemoryRouter><EtfsPage /></MemoryRouter>)
+    fireEvent.change(screen.getByLabelText(/ETFs a comparar/), { target: { value: 'VOO, QQQ, VTI, INDX, TOTX' } })
+    // Antes de pulsar: un `.slice(0, 4)` lo quitaba sin decir nada.
+    expect(screen.getByRole('status').textContent).toBe(
+      'Solo se comparan 4 a la vez: TOTX queda fuera. Quita alguno para elegir cuáles entran.')
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar y recomendar' }))
+    await vi.waitFor(() => expect(pedidas).toHaveLength(2))
+    expect(pedidas.every((u) => u.endsWith('symbols=VOO,QQQ,VTI,INDX'))).toBe(true)
   })
 })

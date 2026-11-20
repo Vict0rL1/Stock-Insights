@@ -22,7 +22,7 @@ import hashlib
 import json
 
 from app import datos
-from app.analysis.decision import REGLAS_DE_PRECIO
+from app.analysis.decision import _VALIDO, REGLAS_DE_PRECIO
 from app.analysis.thesis_watch import escribir_cifras
 from app.etiquetas import etiqueta
 from app.formato import fmt_frente, fmt_num, fmt_precio, plural
@@ -335,26 +335,11 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
     for c in cambiaron:
         if c["antes"] is None or c["ahora"] is None:
             continue
-        # Un precio con `fmt_precio`: con los dos decimales y el signo de la
-        # puntuación, la venta de una acción de céntimos se explicaba «no cumple
-        # (+0,01 frente a 0,00) → cumple (0,00 frente a 0,00)», el stop a cero
-        # del fallo A1 (revisión 4).
-        # La puntuación, de su lado del umbral: con dos decimales, 0,3504 → 0,3496
-        # se explicaba «cumple (+0,35 frente a +0,35) → no cumple (+0,35 frente a
-        # +0,35)» (revisión 7).
-        def leer(x, lado, precio=c["regla"] in REGLAS_DE_PRECIO):
-            v, u = x.get("valor"), x.get("umbral")
-            if v is None or u is None:
-                return etiqueta(x["resultado"])
-            if precio:
-                return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
-            if isinstance(v, (int, float)) and isinstance(u, (int, float)):
-                suyos = umbrales_puntuacion[lado]
-                frente = suyos if c["regla"].startswith("puntuacion") and suyos else u
-                return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, frente, signo=True)} frente a "
-                        f"{fmt_frente(u, u, signo=True)})")
-            return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
-        explicacion.append(f"«{c['texto']}»: {leer(c['antes'], 'antes')} → {leer(c['ahora'], 'ahora')}.")
+        explicacion.append(
+            f"«{c['texto']}»: {_leer_regla(c['antes'], c['regla'], umbrales_puntuacion['antes'])} → "
+            f"{_leer_regla(c['ahora'], c['regla'], umbrales_puntuacion['ahora'])}."
+        )
+    explicacion.extend(_explicar_sin_datos(ra, rb, umbrales_puntuacion["ahora"]))
     if not cambiaron and a_accion != b_accion:
         explicacion.append("Ninguna regla cambió de resultado: la diferencia viene de una instantánea sin traza (anterior a la traza de reglas).")
     return {
@@ -372,6 +357,63 @@ def comparar_decisiones(antes: dict, ahora: dict, pos_antes=None, pos_ahora=None
         "umbrales_puntuacion_ahora": umbrales_puntuacion["ahora"],
         "generado_por": "app",
     }
+
+
+def _leer_regla(x: dict, regla: str, suyos: list[float]) -> str:
+    """El resultado de una regla con su valor y su umbral. `suyos`: los umbrales de
+    puntuación de su traza.
+
+    Un precio con `fmt_precio`: con los dos decimales y el signo de la puntuación,
+    la venta de una acción de céntimos se explicaba «no cumple (+0,01 frente a
+    0,00) → cumple (0,00 frente a 0,00)», el stop a cero del fallo A1 (revisión 4).
+    La puntuación, de su lado del umbral: con dos decimales, 0,3504 → 0,3496 se
+    explicaba «cumple (+0,35 frente a +0,35) → no cumple (+0,35 frente a +0,35)»
+    (revisión 7)."""
+    v, u = x.get("valor"), x.get("umbral")
+    if v is None or u is None:
+        return etiqueta(x["resultado"])
+    if regla in REGLAS_DE_PRECIO:
+        return f"{etiqueta(x['resultado'])} ({fmt_precio(v)} frente a {fmt_precio(u)})"
+    if isinstance(v, (int, float)) and isinstance(u, (int, float)):
+        frente = suyos if regla.startswith("puntuacion") and suyos else u
+        return (f"{etiqueta(x['resultado'])} ({fmt_frente(v, frente, signo=True)} frente a "
+                f"{fmt_frente(u, u, signo=True)})")
+    return f"{etiqueta(x['resultado'])} ({_fmt(v)} frente a {_fmt(u)})"
+
+
+# Los papeles que explican la acción; «evaluada» e «informa» no la cambian.
+_PAPELES_QUE_EXPLICAN = ("decide", "a_favor", "bloquea", "modifica")
+
+
+def _que_faltaba(regla: dict) -> str:
+    """«una puntuación válida», «un precio válido ni una puntuación válida»."""
+    faltan = (regla.get("datos") or {}).get("faltan") or []
+    return " ni ".join(_VALIDO.get(f, f"{f} válido") for f in faltan) or "los datos mínimos"
+
+
+def _explicar_sin_datos(ra: dict, rb: dict, umbrales_ahora: list[float]) -> list[str]:
+    """Por qué un lado era «Sin datos», y qué decide ahora si el otro no lo es.
+
+    La traza de una decisión sin datos es una sola regla, «Precio y puntuación
+    válidos», y el resto no se evalúa: el cruce por reglas no tenía nada que
+    comparar y «Sin datos → Vigilar» salía sin un solo motivo, como si aquel
+    análisis no tuviera nada, cuando traía precio, P/E y márgenes y lo único
+    que faltaba era la puntuación (revisión 12, visual). El motivo es su
+    `faltan`."""
+    antes, ahora = ra.get("datos_minimos"), rb.get("datos_minimos")
+    if (antes is None) == (ahora is None):
+        return []
+    if ahora is not None:
+        return [f"Ahora no hay {_que_faltaba(ahora)} («{ahora.get('regla')}»: "
+                f"{etiqueta(ahora.get('resultado'))}) y el motor no puede decidir."]
+    lineas = [f"Antes no había {_que_faltaba(antes)} («{antes.get('regla')}»: "
+              f"{etiqueta(antes.get('resultado'))}) y el motor no podía decidir. Ahora la acción "
+              "sale de sus reglas:"]
+    for id_, r in rb.items():
+        if id_ not in ra and r.get("papel") in _PAPELES_QUE_EXPLICAN:
+            leida = _leer_regla({"resultado": r.get("resultado"), **(r.get("datos") or {})}, id_, umbrales_ahora)
+            lineas.append(f"«{r.get('regla')}»: no se evaluaba → {leida}.")
+    return lineas
 
 
 def _fmt(x) -> str:

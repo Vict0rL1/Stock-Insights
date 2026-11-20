@@ -16,7 +16,9 @@ const METRIC_ROWS: { key: string; label: string; kind: Kind }[] = [
   { key: 'revenue', label: 'Ingresos', kind: 'big' },
   { key: 'net_income', label: 'Beneficio neto', kind: 'big' },
   { key: 'eps_diluted', label: 'BPA diluido', kind: 'precio' },
-  { key: 'fcf', label: 'Free cash flow', kind: 'big' },
+  // Con el término del glosario: la fila salía «Free cash flow», en inglés, junto
+  // al «CAGR FCF» de encima y al «FCF» del resto de la ficha (revisión 12, visual).
+  { key: 'fcf', label: 'Flujo de caja libre (FCF)', kind: 'big' },
   { key: 'gross_margin', label: 'Margen bruto', kind: 'pct' },
   { key: 'operating_margin', label: 'Margen operativo', kind: 'pct' },
   { key: 'net_margin', label: 'Margen neto', kind: 'pct' },

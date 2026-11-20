@@ -18,6 +18,7 @@ tienes un 12 % en riesgo y todo va en la misma dirección, pierdes un 12 %.
 """
 
 from __future__ import annotations
+from app.analysis.decision import stop_perforado
 from app.formato import fmt_frente, fmt_pct, plural
 
 # Topes. Convención habitual entre gestores; ajustables y discutibles.
@@ -47,9 +48,10 @@ def riesgo_de_posicion(posicion: dict, total_cartera: float | None) -> dict | No
     precio = posicion.get("price")
     if not valor or not stop or not precio or not total_cartera:
         return None
-    if stop >= precio:
+    if stop_perforado(precio, stop):
         # Stop ya perforado: lo que arriesgas desde aquí no es la distancia al
-        # stop, es todo lo que queda. Decirlo así evita un falso alivio.
+        # stop, es todo lo que queda. Decirlo así evita un falso alivio. Con la
+        # regla del motor (en o por debajo), no con una comparación propia.
         perdida = valor
         nota = "stop ya perforado: en riesgo la posición entera"
     else:

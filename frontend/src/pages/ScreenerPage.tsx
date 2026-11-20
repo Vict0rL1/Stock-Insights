@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { FilterSpec, ScreenerPreset, ScreenResult } from '../api/types'
+import type { FilterSpec, ScreenCheck, ScreenerPreset, ScreenResult, ScreenRow } from '../api/types'
 import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtFrente, fmtNum, fmtPct } from '../lib/formato'
+import { decimalesFrente, fmtFrente, fmtNum, fmtPct, plural } from '../lib/formato'
+import { listaDeSimbolos } from '../lib/simbolos'
 import { useDato } from '../lib/useDato'
+
+/** El tope del backend (`MAX_UNIVERSE` en `routers/screener.py`). */
+const MAX_UNIVERSO = 25
 
 const PCT_METRICS = new Set([
   'roe', 'gross_margin', 'operating_margin', 'net_margin',
@@ -20,11 +24,32 @@ function fmtMetric(metric: string, value: number | null, umbral: number) {
   return fmtFrente(value, umbral, { pct: PCT_METRICS.has(metric) })
 }
 
+// El umbral como lo escribe el texto del preset: entero y sin ceros de relleno.
+// Con los decimales fijos de `fmtNum` y `fmtPct`, el texto decía «P/E ≤ 18» y
+// «ROE ≥ 10 %», y la pastilla de debajo «18,00» y «10,0 %» (revisión 12, visual).
+function fmtUmbral(metric: string, value: number) {
+  const pct = PCT_METRICS.has(metric)
+  const d = decimalesFrente(value, [value], pct)
+  return pct ? fmtPct(value, d, { ceros: false }) : fmtNum(value, d, { ceros: false })
+}
+
 function describeFilter(metric: string, spec: FilterSpec) {
   const label = etiqueta(metric, { mayuscula: true })
   const op = spec.op === 'gte' ? '≥' : '≤'
-  const value = PCT_METRICS.has(metric) ? fmtPct(spec.value) : fmtNum(spec.value)
-  return `${label} ${op} ${value}`
+  return `${label} ${op} ${fmtUmbral(metric, spec.value)}`
+}
+
+// Un dato que falta no se pinta como un suspenso: «Ratio corriente: —» salía en
+// rojo y la fila decía «No pasa» (revisión 12, visual).
+const ESTILO_CHECK: Record<ScreenCheck['estado'], string> = {
+  pasa: 'bg-white text-slate-600 ring-1 ring-slate-200',
+  no_pasa: 'bg-red-50 text-red-700 ring-1 ring-red-200',
+  sin_dato: 'border border-dashed border-slate-300 bg-slate-50 text-slate-500',
+}
+const ESTILO_FILA: Record<ScreenRow['estado'], string> = {
+  pasa: 'text-emerald-700',
+  sin_comprobar: 'text-slate-600',
+  no_pasa: 'text-slate-400',
 }
 
 export function ScreenerPage() {
@@ -43,13 +68,12 @@ export function ScreenerPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // El mismo `.slice` callado que en ETFs: el ticker 26 desaparecía sin que nada
+  // lo nombrara (revisión 12, visual).
+  const { simbolos: symbols, descartados } = listaDeSimbolos(universe, MAX_UNIVERSO)
+
   const run = async () => {
     if (!active) return
-    const symbols = universe
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 25)
     if (symbols.length === 0) return
     setBusy(true)
     setError(null)
@@ -114,7 +138,7 @@ export function ScreenerPage() {
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">
           Universo a evaluar{' '}
-          <span className="font-normal text-slate-400">(máx. 25 tickers, separados por coma)</span>
+          <span className="font-normal text-slate-400">(máx. {MAX_UNIVERSO} tickers, separados por coma)</span>
         </h2>
         <textarea
           value={universe}
@@ -132,14 +156,31 @@ export function ScreenerPage() {
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </div>
+        {descartados.length > 0 && (
+          <p role="status" className="mt-2 text-xs text-amber-800">
+            Solo se evalúan {MAX_UNIVERSO} a la vez: {descartados.join(', ')}{' '}
+            {plural(descartados.length, 'queda', 'quedan')} fuera.
+          </p>
+        )}
       </section>
 
       {result && (
         <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-2 flex items-baseline justify-between">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
             <h2 className="text-sm font-semibold text-slate-700">
-              {result.passed} de {result.evaluated} pasan el filtro
+              {result.passed} de {result.evaluated} {plural(result.passed, 'pasa', 'pasan')} el filtro
             </h2>
+            {/* «0 de 8 pasan» no separaba las que suspenden de las que no se
+                pudieron comprobar (revisión 12, visual). */}
+            <span className="text-xs text-slate-500">
+              {[
+                result.no_pasan > 0 && `${result.no_pasan} no ${plural(result.no_pasan, 'pasa', 'pasan')}`,
+                result.sin_comprobar > 0 &&
+                  `${result.sin_comprobar} sin comprobar (les falta un dato; no es un suspenso)`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
           </div>
           <p className="mb-3 text-xs text-slate-400">{result.note}</p>
 
@@ -158,28 +199,25 @@ export function ScreenerPage() {
                   >
                     {row.symbol}
                   </Link>
-                  <span
-                    className={`text-xs font-medium ${
-                      row.passes ? 'text-emerald-700' : 'text-slate-400'
-                    }`}
-                  >
-                    {row.passes ? 'Pasa' : 'No pasa'}
+                  <span className={`text-xs font-medium ${ESTILO_FILA[row.estado]}`}>
+                    {etiqueta(row.estado, { mayuscula: true })}
+                    {row.estado === 'sin_comprobar' &&
+                      ` · falta ${row.checks
+                        .filter((c) => c.estado === 'sin_dato')
+                        .map((c) => etiqueta(c.metric))
+                        .join(', ')}`}
                   </span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {row.checks.map((check) => (
                     <span
                       key={check.metric}
-                      title={`${etiqueta(check.metric, { mayuscula: true })}: ${fmtMetric(
-                        check.metric,
-                        check.actual,
-                        check.value,
-                      )}`}
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        check.passed
-                          ? 'bg-white text-slate-600 ring-1 ring-slate-200'
-                          : 'bg-red-50 text-red-700 ring-1 ring-red-200'
+                      title={`${etiqueta(check.metric, { mayuscula: true })}: ${
+                        check.estado === 'sin_dato'
+                          ? etiqueta(check.estado)
+                          : fmtMetric(check.metric, check.actual, check.value)
                       }`}
+                      className={`rounded-full px-2 py-0.5 text-xs ${ESTILO_CHECK[check.estado]}`}
                     >
                       {etiqueta(check.metric, { mayuscula: true })}:{' '}
                       {fmtMetric(check.metric, check.actual, check.value)}

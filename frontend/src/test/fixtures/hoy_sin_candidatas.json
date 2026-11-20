@@ -58,6 +58,36 @@
     "asset_class": "accion",
     "cached": false,
     "calibrated": false,
+    "cartera": {
+     "abiertas": 2,
+     "en_lista": 1,
+     "posiciones": [
+      {
+       "en_lista": false,
+       "estado": "sin_comprobar",
+       "moneda": "USD",
+       "motivo": "sin precio (ninguna fuente dio su cotización)",
+       "precio": null,
+       "precio_estado": "desconocido",
+       "stop": 18.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "CHIP"
+      },
+      {
+       "en_lista": true,
+       "estado": "por_encima",
+       "moneda": "USD",
+       "motivo": null,
+       "precio": 104.0,
+       "precio_estado": "valido",
+       "stop": 50.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "KO"
+      }
+     ]
+    },
     "complete": false,
     "counts": {
      "desfavorables": 34,
@@ -2518,6 +2548,36 @@
     "asset_class": "accion",
     "cached": false,
     "calibrated": false,
+    "cartera": {
+     "abiertas": 2,
+     "en_lista": 1,
+     "posiciones": [
+      {
+       "en_lista": false,
+       "estado": "sin_comprobar",
+       "moneda": "USD",
+       "motivo": "sin precio (ninguna fuente dio su cotización)",
+       "precio": null,
+       "precio_estado": "desconocido",
+       "stop": 18.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "CHIP"
+      },
+      {
+       "en_lista": true,
+       "estado": "por_encima",
+       "moneda": "USD",
+       "motivo": null,
+       "precio": 104.0,
+       "precio_estado": "valido",
+       "stop": 50.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "KO"
+      }
+     ]
+    },
     "complete": false,
     "counts": {
      "desfavorables": 64,

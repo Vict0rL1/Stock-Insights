@@ -56,4 +56,25 @@ describe('historial de decisiones', () => {
     expect(screen.getByText('+0,12')).toBeInTheDocument()
     expect(screen.getByText('+0,35')).toBeInTheDocument()
   })
+
+  it('el botón «Replay» queda fijo a la derecha del marco (revisión 12, visual)', async () => {
+    // A 820 px el replay, que es lo que se viene a hacer a esta pantalla, quedaba
+    // fuera del marco con solo su borde asomando; a 390, «Cuándo» y «Origen» lo
+    // empujaban fuera y nada lo decía.
+    const respuesta = {
+      symbol: 'ACME', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
+      decisiones: [{
+        id: 1, fecha: '2026-09-12', creado_en: '2026-09-12T14:35:00+00:00', origen: 'analisis:14:35:00',
+        accion: 'vigilar', precio: 92, moneda: 'USD', score: 0.6, reglas_version: 'v1', replay: true,
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 })))
+    render(<HistorialSection symbol="ACME" />)
+    const celda = (await screen.findByRole('button', { name: 'Replay' })).closest('td') as HTMLElement
+    expect(celda.parentElement?.lastElementChild).toBe(celda)
+    expect(celda.className.split(/\s+/)).toEqual(expect.arrayContaining(['sticky', 'right-0', 'z-10', 'bg-white']))
+    // Su cabecera también: sin fondo, «Puntuación» se vería pasar por debajo.
+    const cabecera = celda.closest('table')?.querySelector('thead tr')?.lastElementChild as HTMLElement
+    expect(cabecera.className.split(/\s+/)).toEqual(expect.arrayContaining(['sticky', 'right-0', 'bg-white']))
+  })
 })

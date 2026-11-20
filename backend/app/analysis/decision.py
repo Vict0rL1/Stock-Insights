@@ -97,6 +97,20 @@ def vol_diaria_pct(cierres: list[float]) -> float | None:
     return round(math.sqrt(varianza) * 100, 3)
 
 
+def stop_perforado(precio, stop) -> bool | None:
+    """La regla `stop_perforado`, sola: el precio EN o por debajo del stop.
+
+    None si falta el precio o el stop: no se sabe, que no es «intacto». Una sola
+    versión para el motor, el riesgo abierto y el repaso de toda la cartera que
+    hace Hoy: las posiciones fuera del mercado barrido no pasaban por el motor y
+    su stop no lo miraba nadie (STOP a 104 con el stop en 110 y Hoy diciendo
+    «nada urgente»; revisión 12, visual)."""
+    precio, stop = datos.precio(precio), datos.precio(stop)
+    if precio is None or stop is None:
+        return None
+    return precio <= stop
+
+
 def _stop_pct(vol_diaria_pct: float | None, clase: str = "accion") -> float:
     """Distancia del stop, dimensionada por la volatilidad y la clase de activo."""
     minimo, maximo = TOPES_STOP.get(clase, TOPES_STOP["accion"])
@@ -607,7 +621,7 @@ def _reglas_con_posicion(score, ultimo, stop, sobre_media, tendencia, desfavorab
         ),
         _regla(
             "stop_perforado", "Precio en o bajo el stop de la posición",
-            DESCONOCIDO if stop is None else CUMPLE if ultimo <= stop else NO_CUMPLE,
+            {None: DESCONOCIDO, True: CUMPLE, False: NO_CUMPLE}[stop_perforado(ultimo, stop)],
             efecto="vender", valor=ultimo, umbral=datos.redondear_precio(stop, hacia="abajo"),
         ),
         _regla(

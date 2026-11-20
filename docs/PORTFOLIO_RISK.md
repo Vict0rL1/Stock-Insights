@@ -21,6 +21,15 @@ Pesos y series en dólares, una sola vez, con las reglas de la cartera:
 
 Solo lee el histórico de la caché, salvo que se pida descargar.
 
+**El stop de cada posición, también fuera de la lista: `stops_de_la_cartera`.** Hoy
+lo pide en cada petición (`cartera` en `/api/signals/today`, fuera de la caché de
+la lista) para las posiciones abiertas que la lista del mercado no puntúa, que
+antes nadie miraba. La comparación es una sola, `decision.stop_perforado` (precio
+en o por debajo del stop; sin precio o sin stop, `None`: no se sabe), la misma del
+motor, del riesgo abierto (`risk_budget`) y de cada fila de `/api/portfolio`
+(`stop_perforado`), donde la tabla enseña el stop y el perforado en rojo. El
+panel de riesgo abierto nombra la posición que cuenta entera por su stop perforado.
+
 ## Contribución al riesgo: `portfolio_risk.contribucion_al_riesgo`
 
 Descomposición de Euler de la volatilidad (anualizada, retornos diarios en fechas
@@ -51,7 +60,10 @@ contribución. No es un modelo de factores y no lo finge.
 el resto): volatilidad antes y después, su contribución y su correlación.
 
 API: `GET /api/portfolio/contribucion?descargar=`. El análisis de empresa incluye
-la sección `riesgo` (lo que aporta si la tienes; lo que aportaría si no).
+la sección `riesgo` (lo que aporta si la tienes; lo que aportaría si no). Sin
+ninguna posición abierta, `/contribucion` y `/riesgo` responden `disponible: false`
+con `sin_posiciones: true`, y Cartera no ofrece descargar el histórico de nada; con
+posiciones sin precio no llevan esa marca, porque reintentar puede traerlo.
 
 ## Coste de oportunidad: `analysis/coste_de_oportunidad.py` + `app/oportunidad.py`
 

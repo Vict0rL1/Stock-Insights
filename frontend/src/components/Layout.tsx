@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigationType } from 'react-router-dom'
 import { ApiUsageBar } from './ApiUsageBar'
 
 // Agrupado por intención, no por orden de construcción: lo primero es la
@@ -80,8 +80,10 @@ function Marca({ lema = true }: { lema?: boolean }) {
  */
 export function Layout() {
   const [abierto, setAbierto] = useState(false)
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
+  const tipoNavegacion = useNavigationType()
   const [ruta, setRuta] = useState(pathname)
+  const rutaDesplazada = useRef(pathname)
   const boton = useRef<HTMLButtonElement>(null)
   const cerrar = useRef<HTMLButtonElement>(null)
   const cajon = useRef<HTMLElement>(null)
@@ -99,6 +101,21 @@ export function Layout() {
     setRuta(pathname)
     setAbierto(false)
   }
+  // Una pantalla nueva se abre por arriba (revisión 12, visual): la página no
+  // se recarga y el navegador conservaba el desplazamiento de la anterior, así
+  // que «Ver el análisis completo» desde la lista de Hoy abría la ficha unos
+  // 100 px más abajo, con la cabecera cortada. Solo al cambiar de ruta (no al
+  // cambiar de pestaña dentro de la ficha), y no en «Atrás»/«Adelante» (POP),
+  // donde volver a donde estabas es lo esperado. Con un ancla (#) que ya está
+  // en la página, a ella.
+  useEffect(() => {
+    if (rutaDesplazada.current === pathname) return
+    rutaDesplazada.current = pathname
+    if (tipoNavegacion === 'POP') return
+    const ancla = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null
+    if (ancla) ancla.scrollIntoView()
+    else window.scrollTo(0, 0)
+  }, [pathname, hash, tipoNavegacion])
   useEffect(() => {
     if (!abierto) {
       // También si el foco se quedó en el cajón ya oculto o se perdió (pulsar la

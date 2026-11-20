@@ -4,7 +4,8 @@ import { api } from '../api/client'
 import type { EtfComparison, EtfRecommendation } from '../api/types'
 import { EstadoDato } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtCompacto, fmtPct } from '../lib/formato'
+import { fmtCompacto, fmtPct, plural } from '../lib/formato'
+import { listaDeSimbolos } from '../lib/simbolos'
 import { COLUMNA_FIJA } from '../lib/tablas'
 import { MarcoTabla } from '../components/MarcoTabla'
 
@@ -77,20 +78,22 @@ function OverlapBar({ value }: { value: number }) {
   )
 }
 
+/** Los que compara el lado a lado del backend (`compare_etfs`). */
+const MAX_ETFS = 4
+
 export function EtfsPage() {
-  const [input, setInput] = useState('VOO, QQQ, VTI')
+  // Vacío, con el ejemplo en el texto de ayuda: llegaba relleno con «VOO, QQQ,
+  // VTI», así que el límite de cuatro (que solo decía el texto de ayuda) no se
+  // veía nunca, y lo tecleado se pegaba detrás («VTIINDX») (revisión 12, visual).
+  const [input, setInput] = useState('')
   const [data, setData] = useState<EtfComparison | null>(null)
   const [reco, setReco] = useState<EtfRecommendation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { simbolos: symbols, descartados } = listaDeSimbolos(input, MAX_ETFS)
 
   const compare = async (e: React.FormEvent) => {
     e.preventDefault()
-    const symbols = input
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 4)
     if (symbols.length === 0) return
     setBusy(true)
     setError(null)
@@ -114,19 +117,35 @@ export function EtfsPage() {
     <div className="space-y-4">
       <h1 className="text-lg font-semibold text-slate-800">ETFs</h1>
 
-      <form onSubmit={compare} className="flex flex-wrap gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Hasta 4 ETFs separados por coma (VOO, QQQ, VTI)"
-          className="w-96 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
-        />
-        <button
-          disabled={busy}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
-          {busy ? 'Analizando…' : 'Analizar y recomendar'}
-        </button>
+      <form onSubmit={compare} className="space-y-1.5">
+        {/* El límite, a la vista también con el campo escrito: el texto de
+            ayuda desaparece en cuanto se teclea (revisión 12, visual). */}
+        <label htmlFor="etfs-lista" className="block text-xs font-medium text-slate-500">
+          ETFs a comparar <span className="font-normal text-slate-400">(hasta {MAX_ETFS}, separados por coma)</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            id="etfs-lista"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={`Hasta ${MAX_ETFS} ETFs separados por coma, por ejemplo: VOO, QQQ, VTI`}
+            className="w-96 max-w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
+          />
+          <button
+            disabled={busy || symbols.length === 0}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? 'Analizando…' : 'Analizar y recomendar'}
+          </button>
+        </div>
+        {/* Los que no caben se nombran antes de pulsar: un `.slice(0, 4)` los
+            quitaba sin avisar y la grabación enseñaba un ETF en vez de tres. */}
+        {descartados.length > 0 && (
+          <p role="status" className="text-xs text-amber-800">
+            Solo se comparan {MAX_ETFS} a la vez: {descartados.join(', ')}{' '}
+            {plural(descartados.length, 'queda', 'quedan')} fuera. Quita alguno para elegir cuáles entran.
+          </p>
+        )}
       </form>
 
       {error && (

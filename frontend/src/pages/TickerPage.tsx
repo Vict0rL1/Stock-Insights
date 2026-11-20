@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { HistoryRange } from '../api/types'
 import { FundamentalsGrid } from '../components/FundamentalsGrid'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { FranjaDesplazable } from '../components/MarcoTabla'
 import { PriceChart } from '../components/PriceChart'
 import { BloqueDatos, EstadoDato, ErrorDeCarga } from '../components/EstadoDato'
 import { DeepDiveSection } from '../components/ticker/DeepDiveSection'
@@ -236,20 +237,27 @@ export function TickerPage() {
           </header>
 
           {hayEmpresa && (
-            <nav className="flex flex-wrap gap-1 border-b border-slate-200">
-              {TABS.map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  className={`-mb-px border-b-2 px-3 py-2 text-sm ${
-                    tab === id
-                      ? 'border-slate-900 font-medium text-slate-900'
-                      : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            // Por debajo de `md`, una sola fila que se desplaza: partidas, las
+            // once pestañas ocupaban cinco filas (unos 200 px) antes del
+            // contenido a 390 px (revisión 12, visual). En escritorio se parten
+            // como antes y la pestaña activa pisa la raya (`md:-mb-px`); en la
+            // franja no, que el píxel de más la haría desplazarse en vertical.
+            <nav aria-label="Secciones de la ficha" className="border-b border-slate-200">
+              <FranjaDesplazable className="flex gap-1 md:flex-wrap md:overflow-visible">
+                {TABS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => setTab(id)}
+                    className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm md:-mb-px ${
+                      tab === id
+                        ? 'border-slate-900 font-medium text-slate-900'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </FranjaDesplazable>
             </nav>
           )}
 

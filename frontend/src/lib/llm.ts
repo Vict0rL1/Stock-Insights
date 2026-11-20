@@ -11,11 +11,17 @@ let pending: Promise<LlmStatus> | null = null
 // lo conseguía, la barra seguía diciendo «IA sin comprobar» junto a unos
 // botones de IA que sí se ofrecían (revisión del 2.1).
 const oyentes = new Set<(s: LlmStatus) => void>()
+// El último estado conseguido, para que quien se monta después lo tenga desde
+// el primer pintado: `BotonIA` se desactiva mientras no sabe si la IA está
+// encendida, y sin esto cada botón nacía apagado un instante aunque el estado
+// ya se supiera desde que se abrió la app (revisión 12, visual).
+let conocido: LlmStatus | null = null
 
 function load(): Promise<LlmStatus> {
   if (pending === null) {
     pending = api.llmStatus().then(
       (s) => {
+        conocido = s
         oyentes.forEach((o) => o(s))
         return s
       },
@@ -38,7 +44,7 @@ function load(): Promise<LlmStatus> {
  * barra lateral no decía nada; ahora se distingue (ítem 2.1).
  */
 export function useLlmEstado(): { status: LlmStatus | null; error: string | null; reintentar: () => void } {
-  const [status, setStatus] = useState<LlmStatus | null>(null)
+  const [status, setStatus] = useState<LlmStatus | null>(conocido)
   const [error, setError] = useState<string | null>(null)
   const [intento, setIntento] = useState(0)
 

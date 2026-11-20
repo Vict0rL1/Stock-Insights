@@ -14,6 +14,8 @@ La parte pura (comparar, clasificar, calibrar) está en
 
 from __future__ import annotations
 
+import re
+from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -186,7 +188,33 @@ def _trimestres(service, symbol: str, ahora: datetime) -> list[dict]:
             if pit.disponible_en(q.get("filed_at"), ahora, obtenido) is not False]
 
 
+def _indice_trimestral(periodo: str | None) -> int | None:
+    """«2026-Q2» → un entero que sube de uno en uno por trimestre fiscal. Otra forma, None."""
+    m = re.fullmatch(r"(\d{4})-Q([1-4])", (periodo or "").strip())
+    return int(m.group(1)) * 4 + int(m.group(2)) - 1 if m else None
+
+
+def _mas_trimestres(fin: date, n: int) -> date:
+    """El cierre `n` trimestres después (o antes, con `n` negativo). Un cierre a fin
+    de mes sigue a fin de mes: del 30 sept, tres meses después es el 31 dic, no el 30."""
+    mes = fin.month + 3 * n
+    ano = fin.year + (mes - 1) // 12
+    mes = (mes - 1) % 12 + 1
+    ultimo_dia = monthrange(ano, mes)[1]
+    a_fin_de_mes = fin.day == monthrange(fin.year, fin.month)[1]
+    return date(ano, mes, ultimo_dia if a_fin_de_mes else min(fin.day, ultimo_dia))
+
+
 def _fin_objetivo(evento: CatalystEvent, trimestres: list[dict]) -> str | None:
+    """El cierre del trimestre que publica el evento: el que el modelo interno estima.
+
+    Antes era siempre «el siguiente al último conocido», sin mirar el periodo del
+    evento. Con el último publicado en 2025-Q4 (el 2026-Q1 sin publicar todavía) y
+    el evento de 2026-Q2, el modelo estimó el trimestre que cierra el 31 mar y la
+    pantalla lo comparó con el real de junio (revisión 12, visual). Ahora se
+    cuentan los trimestres fiscales que separan el último conocido del periodo del
+    evento; sin un periodo legible, el último cierre anterior a la fecha prevista.
+    Sin ninguna de las dos cosas no se sabe qué trimestre es, y no se supone."""
     if evento.periodo_fin:
         return evento.periodo_fin
     conocido = next((q for q in trimestres if q.get("periodo") == evento.periodo), None)
@@ -194,14 +222,20 @@ def _fin_objetivo(evento: CatalystEvent, trimestres: list[dict]) -> str | None:
         return conocido["end_date"]
     if not trimestres:
         return None
-    # El trimestre siguiente al último conocido: tres meses después de su cierre.
-    ultimo = date.fromisoformat(trimestres[-1]["end_date"])
-    mes = ultimo.month + 3
-    ano = ultimo.year + (mes - 1) // 12
-    mes = (mes - 1) % 12 + 1
-    from calendar import monthrange
-
-    return date(ano, mes, min(ultimo.day, monthrange(ano, mes)[1])).isoformat()
+    ultimo = trimestres[-1]
+    fin = date.fromisoformat(ultimo["end_date"])
+    desde, hasta = _indice_trimestral(ultimo.get("periodo")), _indice_trimestral(evento.periodo)
+    if desde is not None and hasta is not None:
+        return _mas_trimestres(fin, hasta - desde).isoformat()
+    if evento.fecha_prevista:
+        limite = date.fromisoformat(evento.fecha_prevista)
+        n = 0
+        while _mas_trimestres(fin, n + 1) <= limite:
+            n += 1
+        # Con n = 0 el evento llega antes de que cierre otro trimestre: publicaría
+        # uno ya conocido, y eso no se estima.
+        return _mas_trimestres(fin, n).isoformat() if n else None
+    return None
 
 
 def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime | None = None) -> dict:
@@ -276,7 +310,9 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
     for x in internas:
         anotar({**x, "fuente": "app: modelo interno v1", "informacion_hasta": trimestres[-1].get("filed_at") if trimestres else ahora,
                 "detalle": {**x["detalle"], "trimestre_objetivo_fin": fin}}, "modelo_interno")
-    if not internas:
+    if trimestres and fin is None:
+        sin.append("modelo interno: no se sabe qué trimestre publica el evento (sin periodo legible ni fecha prevista)")
+    elif not internas:
         sin.append("modelo interno: no hay trimestres suficientes para estimar")
 
     # 4) Reglas de la tesis: lo que la tesis exige del trimestre.
@@ -462,7 +498,7 @@ def calibracion(session: Session, symbol: str | None = None) -> dict:
     q = select(CatalystEvent)
     if symbol:
         q = q.where(CatalystEvent.symbol == symbol.upper())
-    pares = []
+    pares, otro_trimestre = [], 0
     for e in session.execute(q).scalars():
         reales = [serializar_real(r) for r in _reales(session, e.id)]
         if not reales:
@@ -475,12 +511,19 @@ def calibracion(session: Session, symbol: str | None = None) -> dict:
             sx = serializar_expectativa(x)
             if x.fuente_tipo == "reglas" or not ev.validez_temporal(sx, corte)["valida"]:
                 continue
+            # Una estimación de otro trimestre no dice nada de quien la hizo: el
+            # modelo interno «fallaba» un 25 % comparando su Q1 con el real del Q2
+            # (revisión 12, visual). Las filas viejas no se corrigen (son
+            # inmutables); se dejan fuera y se cuentan.
+            if ev.periodo_distinto(sx, por_metrica.get(x.metrica)) is not None:
+                otro_trimestre += 1
+                continue
             real = (por_metrica.get(x.metrica) or {}).get("valor")
             esperado = x.valor if x.valor is not None else (
                 (x.bajo + x.alto) / 2 if x.bajo is not None and x.alto is not None else (x.bajo if x.bajo is not None else x.alto))
             pares.append({"symbol": e.symbol, "metrica": x.metrica, "fuente_tipo": x.fuente_tipo,
                           "esperado": esperado, "real": real})
-    return ev.calibrar(pares)
+    return {**ev.calibrar(pares), "excluidos_otro_trimestre": otro_trimestre}
 
 
 def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dict:

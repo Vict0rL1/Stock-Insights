@@ -480,17 +480,22 @@ export function CarteraPage() {
             las preguntas cambian.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setDescargas((n) => n + 1)
-            riesgo.refrescar()
-          }}
-          disabled={cargando}
-          className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-        >
-          {cargando ? 'Descargando…' : 'Descargar histórico completo'}
-        </button>
+        {/* Sin ninguna posición no hay histórico que descargar: con la cartera
+            vacía se ofrecía igual (revisión 12, visual). Sin precio sí sale:
+            reintentar puede traerlo. */}
+        {!riesgo.datos?.sin_posiciones && (
+          <button
+            type="button"
+            onClick={() => {
+              setDescargas((n) => n + 1)
+              riesgo.refrescar()
+            }}
+            disabled={cargando}
+            className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+          >
+            {cargando ? 'Descargando…' : 'Descargar histórico completo'}
+          </button>
+        )}
       </div>
 
       {/* Riesgo por posición y coste de oportunidad: piden lo suyo y no dependen

@@ -57,6 +57,7 @@
      "reading": "Convierte el 121,2 % del beneficio en caja: el beneficio contable subestima la generación real."
     },
     "catalysts": [],
+    "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -255,7 +256,8 @@
       "net_margin": 0.15,
       "operating_margin": 0.21
      },
-     "reading": "Margen operativo del 21,0 %: márgenes sólidos.",
+     "ejercicio": "2025",
+     "reading": "Margen operativo anual del 21,0 % (ejercicio 2025): márgenes sólidos.",
      "trends": {
       "gross_margin": null,
       "net_margin": null,
@@ -264,6 +266,12 @@
     },
     "price": 104.0,
     "quant_signal": null,
+    "riesgos_sin_comprobar": [
+     "deuda/capital",
+     "cobertura de intereses",
+     "tendencia del margen operativo",
+     "valoración frente a su historia"
+    ],
     "risk_metrics": {
      "annualized_volatility": 0.0011747494915901335,
      "max_drawdown": {
@@ -321,7 +329,7 @@
       "pb": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: a los ejercicios publicados en esas fechas les falta el patrimonio neto (positivo) o el número de acciones."
       },
       "pe": {
        "available": false,
@@ -333,16 +341,23 @@
      "years_covered": 10
     },
     "verdict": {
+     "alcance": "Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia. No entran los trimestres publicados después ni el DCF precargado de más abajo.",
      "disclaimer": "Lectura conjunta de los datos, no una recomendación de compra o venta. Qué hacer depende de tu cartera, horizonte y tolerancia al riesgo, que el modelo no conoce. Un informe favorable sobre una empresa excelente sigue pudiendo ser una mala compra al precio equivocado.",
      "negatives": [],
      "positives": [
       "ingresos creciendo al 10,0 % anual",
-      "margen operativo del 21,0 %"
+      "margen operativo anual del 21,0 % (ejercicio 2025)"
      ],
      "quant_label": null,
      "quant_score": null,
+     "sin_comprobar": [
+      "valoración frente a su historia",
+      "tendencia del margen operativo",
+      "cobertura de intereses",
+      "Altman Z"
+     ],
      "stance": "constructiva",
-     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo del 21,0 %. En contra: sin señales de alarma en los datos.",
+     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo anual del 21,0 % (ejercicio 2025). En contra: nada entre lo que se pudo comprobar. Sin comprobar por falta de datos: valoración frente a su historia, tendencia del margen operativo, cobertura de intereses y Altman Z.",
      "what_would_change_it": [
       "Dos trimestres seguidos de caída del margen operativo.",
       "Que el crecimiento de ingresos se vuelva negativo de forma sostenida.",
@@ -2230,6 +2245,8 @@
   },
   "/api/expectativas/calibracion?symbol=PARC": {
    "json": {
+    "definiciones": "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea»; un rango se mide desde su centro.",
+    "excluidos_otro_trimestre": 0,
     "nota": "Cada fuente se calibra por separado: mezclar el consenso con el modelo interno daría la calibración de nadie. Con menos de 5 pares, el número describe la muestra, no a la fuente.",
     "pares": 0,
     "por_fuente": {}
@@ -2289,19 +2306,19 @@
      "tipos_usados": {}
     },
     "estres": {
-     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
      "aviso_sin_historico": null,
-     "años_cubiertos": 0.7,
-     "cobertura": "3 ene 2026 → 11 sept 2026",
+     "años_cubiertos": 1.4,
+     "cobertura": "10 abr 2025 → 11 sept 2026",
      "cobertura_peso": 1.0,
      "drawdown_desde": "2026-08-22",
      "drawdown_hasta": "2026-09-01",
      "max_drawdown_pct": -0.58,
-     "peor_ventana_desde": null,
-     "peor_ventana_hasta": null,
+     "peor_ventana_desde": "2025-09-04",
+     "peor_ventana_hasta": "2026-05-14",
      "peor_ventana_meses": 12,
-     "peor_ventana_nota": "El histórico común no llega a 12 meses, así que no hay ninguna ventana entera que medir. Se deja vacío en vez de recortar el periodo y seguir rotulándolo igual.",
-     "peor_ventana_pct": null,
+     "peor_ventana_nota": null,
+     "peor_ventana_pct": 5.23,
      "sin_historico": [],
      "suficiente": true
     },
@@ -2366,6 +2383,7 @@
       ],
       "stop": 50.0,
       "stop_fijado_al_abrir": true,
+      "stop_perforado": false,
       "stop_por_clase": false,
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
@@ -2424,6 +2442,7 @@
       ],
       "stop": 110.0,
       "stop_fijado_al_abrir": true,
+      "stop_perforado": false,
       "stop_por_clase": false,
       "symbol": "SHOP.TO",
       "unrealized_pct": 0.16666666666666666,
@@ -2455,9 +2474,9 @@
      "tope_pct": 6.0
     },
     "summary": {
-     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
      "max_drawdown_esperado_pct": -0.58,
-     "peor_ventana_pct": null,
+     "peor_ventana_pct": 5.23,
      "precios_viejos": [],
      "priced_positions": 1,
      "realizado_sin_convertir": [],

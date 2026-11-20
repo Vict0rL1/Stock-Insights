@@ -4,32 +4,51 @@ Filtros = {clave_métrica: {"op": "gte"|"lte", "value": float}}. Un dato
 ausente NUNCA pasa el filtro que lo requiere — no filtrar por lo que no se
 sabe — y el resultado detalla qué filtro falló para que la decisión sea
 auditable.
+
+Tampoco lo suspende: «sin dato» es su propio estado. Un ratio corriente que
+faltaba se pintaba en rojo como un suspenso y la fila decía «No pasa»: XOM, con
+P/E 12, deuda/capital 0,4 y ROE 19 %, salía igual que una empresa cara y
+endeudada, y «0 de 8 pasan» no separaba las que suspenden de las que no se
+pudieron comprobar (revisión 12, visual).
 """
 
 from __future__ import annotations
 
+from app import datos
+
 VALID_OPS = {"gte", "lte"}
+
+# El estado de cada comprobación y de cada empresa. `passed` y `passes` siguen
+# siendo el booleano fail-safe (True solo si se comprobó y cumple); el estado
+# dice por qué no: un suspenso con su dato, o un dato que falta.
+PASA, NO_PASA, SIN_DATO, SIN_COMPROBAR = "pasa", "no_pasa", "sin_dato", "sin_comprobar"
 
 
 def evaluate_filters(metrics: dict, filters: dict[str, dict]) -> dict:
-    """-> {passes: bool, checks: [{metric, op, value, actual, passed}]}"""
+    """-> {passes: bool, estado, checks: [{metric, op, value, actual, passed, estado}]}
+
+    El `estado` de la empresa es «pasa» si cumple todos los filtros; «no_pasa»
+    si suspende alguno con su dato, aunque le falte otro (ya no puede pasar), y
+    «sin_comprobar» si no suspende ninguno pero falta el dato de alguno."""
     checks = []
     for metric, spec in filters.items():
         op = spec.get("op")
         if op not in VALID_OPS:
             raise ValueError(f"Operador inválido para {metric}: {op}")
         threshold = float(spec["value"])
-        actual = metrics.get(metric)
+        # Un NaN tampoco es un dato: compararlo da False y saldría como suspenso.
+        actual = datos.numero(metrics.get(metric))
         if actual is None:
-            passed = False  # sin dato no hay veredicto favorable
+            estado = SIN_DATO  # sin dato no hay veredicto, ni a favor ni en contra
         elif op == "gte":
-            passed = actual >= threshold
+            estado = PASA if actual >= threshold else NO_PASA
         else:
-            passed = actual <= threshold
-        checks.append(
-            {"metric": metric, "op": op, "value": threshold, "actual": actual, "passed": passed}
-        )
-    return {"passes": all(c["passed"] for c in checks) if checks else True, "checks": checks}
+            estado = PASA if actual <= threshold else NO_PASA
+        checks.append({"metric": metric, "op": op, "value": threshold, "actual": actual,
+                       "passed": estado == PASA, "estado": estado})
+    estados = {c["estado"] for c in checks}
+    estado = NO_PASA if NO_PASA in estados else SIN_COMPROBAR if SIN_DATO in estados else PASA
+    return {"passes": estado == PASA, "estado": estado, "checks": checks}
 
 
 # Presets iniciales. Cada uno documenta su lógica (requisito de la app):

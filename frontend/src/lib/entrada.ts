@@ -1,3 +1,5 @@
+import { fmtNum } from './formato'
+
 /** Un número escrito por una persona, con la convención de la app: coma
  *  decimal y punto de miles («1.250,5»), o punto decimal si no hay duda
  *  («12.5»). Lo que no sea un número sin ambigüedad es `null`, nunca un número
@@ -18,4 +20,14 @@ export function leerNumero(texto: string): number | null {
   // miles, como la app lo escribe.)
   if (/^\d*\.\d+$/.test(s)) return signo * Number(s)
   return null
+}
+
+/** Un número en un campo que una persona va a editar, escrito como lo escribe
+ *  la app («8,1», «1.250.000») para que `leerNumero` lo lea de vuelta tal cual.
+ *  Ausente, el campo vacío: «—» no se puede editar y un «0» sería un dato que
+ *  nadie escribió. Los campos del DCF llevaban «8.1» (`toFixed`) junto a textos
+ *  con «10,0 %», se leían con `parseFloat` («8,5» calculaba con 8 sin avisar) y
+ *  el FCF de una empresa real salía como «108807000000» (revisión 12, visual). */
+export function textoDeCampo(valor: number | null | undefined, decimales: number): string {
+  return valor === null || valor === undefined || !Number.isFinite(valor) ? '' : fmtNum(valor, decimales)
 }

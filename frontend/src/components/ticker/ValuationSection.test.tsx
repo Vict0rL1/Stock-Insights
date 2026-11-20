@@ -43,7 +43,8 @@ describe('DCF sin crecimiento histórico', () => {
     servir(DEFAULTS)
     render(<ValuationSection symbol="ACME" />)
     expect(await screen.findByRole('button', { name: 'Calcular rango de valor' })).toBeEnabled()
-    expect(crecimientos()).toEqual(['8.1', '11.1', '14.1'])
+    // Con coma decimal, como el resto de la app (revisión 12, visual: «8.1»).
+    expect(crecimientos()).toEqual(['8,1', '11,1', '14,1'])
     expect(screen.queryByText(/Sin crecimiento histórico/)).toBeNull()
   })
 })
@@ -71,3 +72,77 @@ describe('el resultado del DCF', () => {
   })
 })
 
+
+describe('los campos del DCF, con la convención de la app', () => {
+  // Revisión 12, visual: los campos llevaban punto decimal («8.1», «11.0») junto
+  // a textos con «10,0 %», y se leían con `parseFloat`: «8,5» calculaba con 8 sin
+  // avisar y «1.250» era 1,25. El FCF y la deuda iban sin moneda y, con una
+  // empresa real, como «108807000000».
+  function servirYCapturar(defaults: Record<string, unknown>) {
+    const enviados: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_e: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        enviados.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+        return new Response(JSON.stringify({ symbol: 'ACME', current_price: 92, scenarios: {}, sensitivity: null }), { status: 200 })
+      }
+      return new Response(JSON.stringify(defaults), { status: 200 })
+    }))
+    return enviados
+  }
+
+  it('escribe los valores de partida con coma decimal, puntos de miles y la moneda en el rótulo', async () => {
+    servir({ ...DEFAULTS, moneda: 'USD', base_fcf: 108_807_000_000, net_debt: -12_345_000_000, shares_outstanding: 14_935_826_000 })
+    render(<ValuationSection symbol="ACME" />)
+    const fcf = (await screen.findByLabelText('FCF base (USD, año 2025)')) as HTMLInputElement
+    expect(fcf.value).toBe('108.807.000.000')
+    expect((screen.getByLabelText('Deuda neta (USD)') as HTMLInputElement).value).toBe('-12.345.000.000')
+    expect((screen.getByLabelText('Acciones en circulación') as HTMLInputElement).value).toBe('14.935.826.000')
+    expect(screen.getAllByLabelText('WACC / tasa de descuento (%)').map((i) => (i as HTMLInputElement).value)).toEqual(['11,0', '10,0', '9,0'])
+    expect(screen.getAllByLabelText('Crecimiento terminal (%)').map((i) => (i as HTMLInputElement).value)).toEqual(['2,0', '2,5', '3,0'])
+  })
+
+  it('lee «8,5» como 8,5 y «1.250» como mil doscientos cincuenta', async () => {
+    const enviados = servirYCapturar({ ...DEFAULTS, moneda: 'USD' })
+    render(<ValuationSection symbol="ACME" />)
+    const calcular = await screen.findByRole('button', { name: 'Calcular rango de valor' })
+    fireEvent.change(screen.getAllByLabelText('WACC / tasa de descuento (%)')[1], { target: { value: '8,5' } })
+    fireEvent.change(screen.getByLabelText('FCF base (USD, año 2025)'), { target: { value: '1.250' } })
+    fireEvent.click(calcular)
+    await vi.waitFor(() => expect(enviados).toHaveLength(1))
+    const cuerpo = enviados[0] as { base_fcf: number; scenarios: Record<string, { discount_rate: number }> }
+    expect(cuerpo.base_fcf).toBe(1250)
+    expect(cuerpo.scenarios.base.discount_rate).toBeCloseTo(0.085, 10)
+  })
+
+  it('lo que no se puede leer se dice y no se calcula con un número a medias', async () => {
+    const enviados = servirYCapturar({ ...DEFAULTS, moneda: 'USD' })
+    render(<ValuationSection symbol="ACME" />)
+    const calcular = await screen.findByRole('button', { name: 'Calcular rango de valor' })
+    fireEvent.change(screen.getAllByLabelText('Crecimiento terminal (%)')[0], { target: { value: '2,5x' } })
+    fireEvent.change(screen.getByLabelText('Años de proyección'), { target: { value: '5,5' } })
+    expect(calcular).toBeDisabled()
+    expect(screen.getByText(/^No se puede leer años de proyección \(«5,5»\), crecimiento terminal bajista \(«2,5x»\)\. Escribe/)).toBeInTheDocument()
+    fireEvent.click(calcular)
+    expect(enviados).toHaveLength(0)
+    // Un supuesto borrado tampoco se calcula, y se dice cuál falta.
+    fireEvent.change(screen.getAllByLabelText('Crecimiento terminal (%)')[0], { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Años de proyección'), { target: { value: '' } })
+    expect(calcular).toBeDisabled()
+    expect(screen.getByText('Para calcular falta: años de proyección.')).toBeInTheDocument()
+  })
+
+  it('cada caja de la fila de arriba deja su campo abajo, y el «(%)» no se queda solo', async () => {
+    // A 820 px, «FCF base (año 2025)» ocupa dos líneas y «Deuda neta» una: los
+    // campos de la misma fila quedaban a alturas distintas.
+    servir({ ...DEFAULTS, moneda: 'USD' })
+    render(<ValuationSection symbol="ACME" />)
+    const fcf = await screen.findByLabelText('FCF base (USD, año 2025)')
+    for (const campo of [fcf, screen.getByLabelText('Deuda neta (USD)'), screen.getByLabelText('Años de proyección')]) {
+      expect(campo.closest('label')!.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-col', 'justify-between']))
+    }
+    for (const rotulo of ['Crecimiento FCF', 'tasa de descuento', 'Crecimiento terminal']) {
+      const label = screen.getAllByText(new RegExp(rotulo))[0].closest('label')!
+      expect(label.textContent).toMatch(/\u00a0\(%/)
+    }
+  })
+})

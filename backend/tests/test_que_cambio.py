@@ -404,3 +404,37 @@ def test_con_posicion_el_historial_sirve_solo_el_umbral_de_vender(session_factor
         analizar_y_congelar("AAPL", servicio, s, ahora=AHORA, con_pares=False)
         snap = s.query(DecisionSnapshot).one()
         assert sn.umbrales_de_puntuacion(snap) == [-0.35]
+
+
+def test_sin_datos_a_vigilar_dice_que_faltaba_y_que_decide_ahora(session_factory):
+    """Revisión 12, visual: «Sin datos → Vigilar» salía sin un solo motivo, como
+    si el análisis anterior no tuviera nada, cuando traía precio, P/E y márgenes
+    y lo único que faltaba era la puntuación. La traza de entonces era una sola
+    regla y el cruce por reglas no tenía nada que comparar."""
+    sv = ServicioFalso(AHORA).empresa("AAPL", precio=92.0, score=None, periodos=financieros_base())
+    with session_factory() as s:
+        primero = analizar_y_congelar("AAPL", sv, s, ahora=AHORA, con_pares=False)
+        assert primero["analisis"]["decision"]["action"] == "sin_datos"
+        sv.senal("AAPL", 0.6)
+        segundo = analizar_y_congelar("AAPL", sv, s, ahora=AHORA + timedelta(hours=2), con_pares=False)
+    d = segundo["cambios"]["decision"]
+    assert (d["antes"], d["cambio"]) == ("sin_datos", True)
+    assert d["explicacion"][0] == (
+        "Antes no había una puntuación válida («Precio y puntuación válidos»: no cumple) y el motor "
+        "no podía decidir. Ahora la acción sale de sus reglas:"
+    )
+    # Y las reglas que deciden ahora, que antes no se evaluaron.
+    assert any(e.startswith("«Puntuación ≥ +0,35»: no se evaluaba → cumple (+0,60 frente a +0,35)")
+               for e in d["explicacion"][1:])
+
+
+def test_perder_la_puntuacion_dice_que_ahora_falta():
+    """Al revés también: «Vigilar → Sin datos» callaba que faltaba la puntuación."""
+    from app.analysis.decision import decide
+
+    precio = {"last": 92.0, "sma200": 94.78, "above_sma200": False, "daily_vol_pct": 1.2}
+    antes = decide({"symbol": "X", "score": 0.6}, precio)
+    ahora = decide({"symbol": "X", "score": None}, precio)
+    assert cambios.comparar_decisiones(antes, ahora)["explicacion"] == [
+        "Ahora no hay una puntuación válida («Precio y puntuación válidos»: no cumple) y el motor no puede decidir."
+    ]

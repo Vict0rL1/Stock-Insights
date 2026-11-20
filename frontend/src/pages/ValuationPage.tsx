@@ -9,7 +9,8 @@ import type {
   SupuestosEscenario,
   Valoracion,
 } from '../api/types'
-import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo, valorDeCampo } from '../lib/formato'
+import { leerNumero, textoDeCampo } from '../lib/entrada'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
 import { MarcoTabla } from '../components/MarcoTabla'
 
@@ -92,8 +93,21 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
   )
 }
 
-/** Los tres escenarios, cada uno con su rango y sus supuestos editables. */
-function Escenarios({
+const CAMPOS: [keyof SupuestosEscenario, string][] = [
+  ['growth_rate', 'Crecimiento FCF'],
+  ['discount_rate', 'WACC'],
+  ['terminal_growth', 'Perpetuidad'],
+]
+
+/** Los tres escenarios, cada uno con su rango y sus supuestos editables.
+ *
+ *  Los campos eran `type="number"` leídos con `Number(...)`: un campo borrado, o
+ *  un «8,5» que el navegador no acepta y entrega vacío, recalculaba con un 0 %
+ *  sin avisar. Ahora son texto con la coma de la app, leído con `leerNumero`
+ *  como el DCF de la ficha; lo que no se lee no llega a los supuestos y no deja
+ *  recalcular (revisión 12, visual). Se monta de nuevo con cada valoración
+ *  (`key`), así que lo escrito no sobrevive a otra respuesta. */
+export function Escenarios({
   data,
   supuestos,
   onCambiar,
@@ -107,6 +121,15 @@ function Escenarios({
   busy: boolean
 }) {
   const precio = data.entradas.precio_actual
+  const [textos, setTextos] = useState<Record<string, string>>({})
+  const nombreCampo = (clave: string) => {
+    const [escenario, campo] = clave.split('|')
+    return `${CAMPOS.find(([c]) => c === campo)?.[1] ?? campo} ${escenario}`
+  }
+  const vacios = Object.entries(textos).filter(([, t]) => t.trim() === '').map(([k]) => nombreCampo(k))
+  const ilegibles = Object.entries(textos)
+    .filter(([, t]) => t.trim() !== '' && leerNumero(t) === null)
+    .map(([k, t]) => `${nombreCampo(k)} («${t}»)`)
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-800">
@@ -169,31 +192,30 @@ function Escenarios({
               )}
 
               <div className="mt-2 grid grid-cols-3 gap-3">
-                {(
-                  [
-                    ['growth_rate', 'Crecimiento FCF'],
-                    ['discount_rate', 'WACC'],
-                    ['terminal_growth', 'Perpetuidad'],
-                  ] as [keyof SupuestosEscenario, string][]
-                ).map(([campo, etiqueta]) => (
-                  <label key={campo} className="block">
-                    <span className="block text-[10px] uppercase tracking-wide text-slate-400">
-                      {etiqueta}
-                    </span>
-                    <div className="flex items-baseline gap-1">
-                      <input
-                        type="number"
-                        step={0.1}
-                        value={valorDeCampo(s[campo] * 100, 1)}
-                        onChange={(ev) =>
-                          onCambiar(nombre, campo, Number(ev.target.value) / 100)
-                        }
-                        className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
-                      />
-                      <span className="text-xs text-slate-400">%</span>
-                    </div>
-                  </label>
-                ))}
+                {CAMPOS.map(([campo, etiqueta]) => {
+                  const clave = `${nombre}|${campo}`
+                  return (
+                    <label key={campo} className="block">
+                      <span className="block text-[10px] uppercase tracking-wide text-slate-400">
+                        {etiqueta}
+                      </span>
+                      <div className="flex items-baseline gap-1">
+                        <input
+                          inputMode="decimal"
+                          value={textos[clave] ?? textoDeCampo(s[campo] * 100, 1)}
+                          onChange={(ev) => {
+                            const texto = ev.target.value
+                            setTextos((prev) => ({ ...prev, [clave]: texto }))
+                            const n = texto.trim() === '' ? null : leerNumero(texto)
+                            if (n !== null) onCambiar(nombre, campo, n / 100)
+                          }}
+                          className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-slate-400">%</span>
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
 
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
@@ -204,13 +226,24 @@ function Escenarios({
         })}
       </div>
 
-      <button
-        onClick={onAplicar}
-        disabled={busy}
-        className="mt-3 rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {busy ? 'Calculando…' : 'Recalcular con mis supuestos'}
-      </button>
+      {ilegibles.length > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          No se puede leer {ilegibles.join(', ')}. Escribe el porcentaje como en el resto de la app, p.&nbsp;ej.
+          8,5: no se recalcula con un número a medias.
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          onClick={onAplicar}
+          disabled={busy || vacios.length > 0 || ilegibles.length > 0}
+          className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy ? 'Calculando…' : 'Recalcular con mis supuestos'}
+        </button>
+        {vacios.length > 0 && (
+          <span className="text-xs text-slate-500">Para recalcular falta: {vacios.join(', ')}.</span>
+        )}
+      </div>
     </section>
   )
 }
@@ -444,6 +477,9 @@ export function ValuationPage() {
   const [supuestos, setSupuestos] = useState<Record<string, SupuestosEscenario>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Cada valoración monta los escenarios de nuevo: lo escrito a medias en un
+  // campo no se queda encima de los supuestos que acaban de llegar.
+  const [version, setVersion] = useState(0)
 
   const correr = useCallback(
     async (s: string, escenarios?: Record<string, SupuestosEscenario>) => {
@@ -458,6 +494,7 @@ export function ValuationPage() {
             Object.entries(d.escenarios).map(([k, v]) => [k, { ...v.supuestos }]),
           ),
         )
+        setVersion((v) => v + 1)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error')
         setData(null)
@@ -516,6 +553,7 @@ export function ValuationPage() {
           {data.rango_global && <RangoGlobalPanel g={data.rango_global} />}
           <SensibilidadPanel s={data.sensibilidad} />
           <Escenarios
+            key={version}
             data={data}
             supuestos={supuestos}
             busy={busy}

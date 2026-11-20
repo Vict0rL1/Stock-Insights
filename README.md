@@ -36,8 +36,9 @@ precios y no ejecuta órdenes**.
   precio ancla; la vista de Tesis compara después cómo envejeció, con tasa de
   acierto y error mediano de estimación. Si el modelo falla seguido, se ve.
 - **Un dato ausente se muestra como "—", nunca como cero.** Un filtro del
-  screener nunca se aprueba por falta de datos; una posición sin precio no
-  vale cero, queda fuera de los totales y la UI lo dice.
+  screener nunca se aprueba por falta de datos, ni se suspende: la empresa
+  queda «sin comprobar» y se cuenta aparte de las que no pasan; una posición
+  sin precio no vale cero, queda fuera de los totales y la UI lo dice.
 
 ## Tema oscuro por inversión de paleta
 
@@ -330,7 +331,16 @@ permanente. Esa es la trampa de valor clásica, y la app la nombra.
 
 La sección **Lectura conjunta** sintetiza qué dicen los datos con su postura
 (constructiva / mixta / cautelosa), lo que juega a favor y en contra, y —
-siempre — **qué observaciones futuras romperían esa lectura**. Es contexto para
+siempre — **qué observaciones futuras romperían esa lectura**. Lo que mira y no
+pudo comprobar por falta del dato (la valoración frente a su historia, la
+cobertura de intereses, el Altman Z…) se nombra aparte (`sin_comprobar`): con
+algo sin comprobar, «en contra» dice «nada entre lo que se pudo comprobar», no
+«sin señales de alarma». Y dice su alcance (`alcance`): lee el último ejercicio
+anual y la valoración frente a su historia; los trimestres publicados después y
+el DCF precargado no entran en ella. Los riesgos hacen lo mismo con sus umbrales
+sin dato (`riesgos_sin_comprobar`), y los catalizadores dicen qué son
+(`catalysts_note`: resultados previstos a 120 días y los últimos documentos
+presentados), sin prometer un plazo. Es contexto para
 entender la empresa, no la decisión: quien dice comprar o vender es el motor de
 decisión de la vista **Hoy**, con sus reglas y sus niveles.
 
@@ -552,6 +562,19 @@ puede ser positiva si el stop ya está perforado. No hay zona de compra ni peso
 sugerido: no se propone entrar en algo que ya tienes, y menos si la acción es
 vender.
 
+**El stop de TODA tu cartera se repasa en Hoy, esté o no en el mercado elegido.**
+La lista solo decide sobre las empresas que puntúa; una posición de otro mercado
+(una canadiense en `.TO`, una que no está en el S&P 500) quedaba fuera y su stop
+no lo miraba nadie: la cabecera decía «Para vender 0 · nada urgente» con un stop
+perforado. Ahora `/api/signals/today` trae `cartera` —calculado en cada petición,
+fuera de la caché de la lista— con cada posición abierta, su precio (el de la
+lista si está en ella; si no, su cotización), su stop y su estado con la regla
+del motor (`perforado`: en o por debajo del stop; `por_encima`; o `sin_comprobar`
+con su motivo, sin precio o sin stop). Lo perforado sale arriba en rojo y cuenta
+en «Para vender»; lo que no se pudo comprobar sale en ámbar y «nada urgente» solo
+se dice si se miró todo. «En cartera» cuenta todas las abiertas y dice cuántas
+quedan fuera de la lista; «Mi cartera» las enseña aparte, con su stop.
+
 ### ¿Y funcionan? El backtest de reglas
 
 Hay **dos backtests** en la app porque hay dos preguntas, y una puede salir
@@ -747,7 +770,10 @@ barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
 cartera inventaría liquidez) y la nota no afirma ninguna dirección: las que
 faltan aflojan los topes de su sector y las valoradas pesan de más, así que el
 tamaño puede quedarse corto o pasarse; sin ninguna valorada, los topes no ven
-nada y el tamaño es una cota superior. La nota dice qué efectivo se usó y de qué fecha (y
+nada y el tamaño es una cota superior. Sin ninguna posición abierta no habla de
+«lo que ya tienes»: con efectivo, los pesos y la liquidez son porcentajes de ese
+efectivo; sin él (o sin tipo de cambio), de un capital que la app no conoce, y lo
+dice. La nota dice qué efectivo se usó y de qué fecha (y
 la del tipo de cambio si tiene más de una semana; nunca se usa uno posterior), y
 la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
 cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
@@ -805,11 +831,16 @@ el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
 su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
 silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
 en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
-«no perdía nada»), y el histórico se lee igual que para el stop y el minigráfico:
-el de un año vigente, el mismo caducado hace menos de un día o el largo si se
-descargó hace menos de un día. El largo vive 7 días en la caché: servirlo antes
-que una copia de un año de hace horas daba el stop perforado en la Cartera y no
-en la ficha.
+«no perdía nada»), y el histórico sale de las mismas copias que el stop y el
+minigráfico: el de un año vigente, el mismo caducado hace menos de un día o el
+largo si se descargó hace menos de un día. El largo vive 7 días en la caché:
+servirlo antes que una copia de un año de hace horas daba el stop perforado en la
+Cartera y no en la ficha. El stop y el minigráfico se quedan con el último año; el
+estrés toma entera la más larga de esas copias, porque recortado a 252 sesiones
+la peor ventana de 12 meses (que pide más de 252) no salía nunca. Si aun así no
+llega, la nota dice con cuántas sesiones mide, entre qué fechas, y qué posiciones
+solo tienen el año guardado: el largo lo baja Cartera («Descargar histórico
+completo») y aquí vale un día.
 
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
@@ -939,7 +970,8 @@ Dos decisiones que los hacen legibles en vez de decorativos:
 - **El RSI lleva escala FIJA 0-100.** Con escala automática, el eje se reajusta
   en cada rango y un RSI de 55 parece un extremo porque es el máximo de esa
   ventana. Con 0-100, la altura significa siempre lo mismo. Y las bandas 70/30
-  van dibujadas: un RSI sin ellas es una curva sin referencia.
+  van dibujadas: un RSI sin ellas es una curva sin referencia. En su eje solo
+  salen las bandas: las marcas automáticas caían en 75 y 25, debajo de ellas.
 - **El histograma del MACD va en verde o rojo según el signo**, porque el signo
   ES la señal y un solo color la escondería.
 
@@ -956,6 +988,15 @@ comportamientos que la documentación no menciona:
    subpaneles, el último en fijarse consigue su valor exacto mientras el otro se
    queda con el resto. Repartirlos a partes iguales no se puede; lo que sí se
    garantiza es que ninguno baje del mínimo legible.
+3. **Las opciones de la escala derecha de un panel se copian a las de la
+   gráfica**, y el panel que se crea después las hereda: la escala fija y sin
+   cifras del RSI acababa también en el MACD. Se fijan cuando ya existen todos.
+
+El gráfico no se queda con la página: la rueda y el arrastre vertical (también
+con el dedo) la desplazan; el gráfico se mueve arrastrando en horizontal y se
+amplía con dos dedos, arrastrando un eje o con los rangos. Con los bordes fijos
+la serie no deja un hueco a la derecha y la primera fecha del eje sale entera, y
+ninguna cifra de un eje sale cortada por el borde de su panel (revisión 12).
 
 ## El recorrido de la cartera, no solo el P&L de hoy
 
@@ -1571,6 +1612,12 @@ la parte más citable del análisis.
 coste estimado **sin llamar al modelo**. Un 10-Q largo cuesta bastante más que
 uno corto, y eso hay que saberlo antes, no en la factura.
 
+Sin `ANTHROPIC_API_KEY`, `coste` y `analizar` responden **503 con el motivo**,
+antes de descargar nada de EDGAR (antes era un 500: «Ver qué costaría» acababa
+en «Error HTTP 500»). La lista de reportes y el historial de los ya analizados
+no necesitan la IA y siguen funcionando; la pantalla avisa arriba de que la
+extracción la hace la IA y no ofrece «Ver qué costaría».
+
 Un documento que no cabe en el presupuesto **se declara y no se recorta**: un
 análisis sobre media sección parece completo, no lo es, y no lo dice en ninguna
 parte. La app propone el 8-K del mismo trimestre, que es mucho más corto.
@@ -1851,7 +1898,10 @@ ninguna de ellas** — un modelo de lenguaje predice tokens, no retornos:
    hacia abajo, cuál es la debilidad del análisis y qué la invalidaría.
 
 Todo lo generado por IA aparece con etiqueta morada, modelo usado y
-disclaimer, y se registra en `llm_outputs`.
+disclaimer, y se registra en `llm_outputs`. Su Markdown (`content_md`) se pinta
+con un subconjunto seguro —párrafos, negrita, cursiva, código, encabezados de
+`#` a `###` y listas—, como elementos de React (`components/ia/MarkdownIA.tsx`):
+el HTML que escriba el modelo se lee como texto, nunca se interpreta.
 
 #### Activarlo
 
@@ -1869,8 +1919,10 @@ estimación de coste antes de analizar un filing usa la tarifa del modelo
 configurado; para un modelo sin tarifa conocida dice que no se puede estimar.
 
 **Sin key la app funciona entera**: precios, fundamentales, valoración, salud,
-señales, backtest e informe cuantitativo no tocan el LLM — solo desaparecen
-los tres botones de interpretación escrita. Es la única API de pago del
+señales, backtest e informe cuantitativo no tocan el LLM — solo los botones
+que piden algo a la IA desaparecen o salen desactivados con el motivo a la
+vista (`BotonIA` consulta el estado de la IA), y Resultados avisa arriba de que
+su extracción la hace la IA. Es la única API de pago del
 proyecto (las demás tienen tier gratuito), así que solo corre cuando pulsas
 uno de esos botones, con `max_tokens` acotado, y el resultado se guarda por
 hash del prompt: repetir la misma consulta no vuelve a cobrar.

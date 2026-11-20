@@ -57,6 +57,7 @@
      "reading": "Sin datos de flujo de caja."
     },
     "catalysts": [],
+    "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -189,6 +190,7 @@
       "net_margin": null,
       "operating_margin": null
      },
+     "ejercicio": "2025",
      "reading": "Sin datos de márgenes.",
      "trends": {
       "gross_margin": null,
@@ -198,6 +200,14 @@
     },
     "price": null,
     "quant_signal": null,
+    "riesgos_sin_comprobar": [
+     "deuda/capital",
+     "cobertura de intereses",
+     "tendencia del margen operativo",
+     "crecimiento de los ingresos",
+     "valoración frente a su historia",
+     "máxima caída del último año"
+    ],
     "risk_metrics": null,
     "risks": [],
     "symbol": "VACIA",
@@ -243,30 +253,38 @@
       "fcf_yield": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       },
       "pb": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       },
       "pe": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       }
      },
      "reading": "Sin histórico suficiente para situar la valoración actual.",
      "years_covered": 10
     },
     "verdict": {
+     "alcance": "Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia. No entran los trimestres publicados después ni el DCF precargado de más abajo.",
      "disclaimer": "Lectura conjunta de los datos, no una recomendación de compra o venta. Qué hacer depende de tu cartera, horizonte y tolerancia al riesgo, que el modelo no conoce. Un informe favorable sobre una empresa excelente sigue pudiendo ser una mala compra al precio equivocado.",
      "negatives": [],
      "positives": [],
      "quant_label": null,
      "quant_score": null,
+     "sin_comprobar": [
+      "valoración frente a su historia",
+      "crecimiento de los ingresos",
+      "margen operativo",
+      "cobertura de intereses",
+      "Altman Z"
+     ],
      "stance": "mixta",
-     "summary": "Datos insuficientes para una lectura conjunta.",
+     "summary": "Datos insuficientes para una lectura conjunta. Sin comprobar por falta de datos: valoración frente a su historia, crecimiento de los ingresos, margen operativo, cobertura de intereses y Altman Z.",
      "what_would_change_it": [
       "Dos trimestres seguidos de caída del margen operativo.",
       "Que el crecimiento de ingresos se vuelva negativo de forma sostenida.",
@@ -1634,6 +1652,8 @@
   },
   "/api/expectativas/calibracion?symbol=VACIA": {
    "json": {
+    "definiciones": "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea»; un rango se mide desde su centro.",
+    "excluidos_otro_trimestre": 0,
     "nota": "Cada fuente se calibra por separado: mezclar el consenso con el modelo interno daría la calibración de nadie. Con menos de 5 pares, el número describe la muestra, no a la fuente.",
     "pares": 0,
     "por_fuente": {}
@@ -1709,8 +1729,9 @@
    "json": {
     "desconocidas": [],
     "disponible": false,
-    "nota": "Ninguna posición abierta tiene precio y moneda conocidos: no hay pesos que descomponer.",
-    "posiciones": []
+    "nota": "No hay posiciones abiertas cuyo riesgo descomponer.",
+    "posiciones": [],
+    "sin_posiciones": true
    },
    "status": 200
   },

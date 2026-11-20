@@ -15,3 +15,11 @@ export const TABLA_COMPACTA =
  *  comparador de ETFs y en los fundamentales a 390 px solo se veía el rótulo y
  *  las cifras quedaban fuera sin ninguna pista de que hubiera más. */
 export const COLUMNA_FIJA = 'sticky left-0 z-10 bg-white'
+
+/** La última columna fija a la derecha, para la acción de cada fila: a 820 px
+ *  el botón «Replay» del historial, que es lo que se viene a hacer a esa
+ *  pantalla, quedaba fuera del marco con solo su borde asomando (revisión 12,
+ *  visual). El fondo lo pone quien la usa (sin él se verían las columnas que
+ *  pasan por debajo): la fila resaltada lleva el suyo (`bg-slate-50`), y un
+ *  `bg-white` fijo aquí dejaba la celda fuera del resalte. */
+export const COLUMNA_FIJA_DERECHA = 'sticky right-0 z-10'

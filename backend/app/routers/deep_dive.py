@@ -8,7 +8,7 @@ puedas leer el informe entero sin gastar nada en Claude.
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_compacto, fmt_frente, fmt_num, fmt_pct, fmt_precio
+from app.formato import fmt_compacto, fmt_fecha, fmt_frente, fmt_num, fmt_pct, fmt_precio
 from app.llm.signal_llm import FRONTERAS_ETIQUETA
 from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.analysis.deep_dive import assemble, frente
+from app.analysis.deep_dive import VENTANA_RESULTADOS_DIAS, assemble, frente
 from app.analysis.health import ALTMAN_RIESGO, ALTMAN_SEGURA
 from app.analysis.factors import build_raw_factors, composite_score, family_scores, zscores
 from app.analysis.fundamentals import derive_ratio_series, growth_summary
@@ -35,6 +35,9 @@ from app.simbolos import SimboloRuta, validar_simbolo
 router = APIRouter(prefix="/api/deep-dive", tags=["deep-dive"])
 
 
+# «Qué vigilar», sin plazo: con «(6-18 meses)» la IA colocaba ahí unos
+# resultados a 24 días, lo mismo que el rótulo de la lista calculada (revisión
+# 12, visual).
 NARRATIVE_SYSTEM = """Eres un analista de renta variable escribiendo para un \
 estudiante de finanzas. Recibes un informe YA CALCULADO con cifras reales.
 
@@ -50,7 +53,7 @@ años de historia, factores ausentes).
   ## El negocio
   ## Lo que dicen los números
   ## Valoración
-  ## Qué vigilar (6-18 meses)
+  ## Qué vigilar
   ## Lectura final
 - En "Lectura final", sintetiza sin recomendar: di qué tendría que ser cierto \
 para que la tesis alcista funcione y qué la rompería.
@@ -182,7 +185,7 @@ def deep_dive(
         service,
         "earnings_calendar",
         start=today.isoformat(),
-        end=(today + timedelta(days=120)).isoformat(),
+        end=(today + timedelta(days=VENTANA_RESULTADOS_DIAS)).isoformat(),
     )
     earnings = [
         e for e in (calendar or {}).get("events", []) if e.get("symbol") == symbol
@@ -333,8 +336,17 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
     risks = "\n".join(
         f"- [{r['severity']}] {r['type']}: {r['evidence']}" for r in report.get("risks", [])
     )
+    # Previsto o ya presentado: la IA recibía los dos bajo «catalizadores
+    # próximos» y un 10-Q del mes pasado pasaba por un catalizador por venir
+    # (revisión 12, visual).
+    def cuando(c: dict) -> str:
+        if not c.get("when"):
+            return "sin fecha"
+        verbo = "presentado" if c.get("source") == "edgar" else "previsto"
+        return f"{verbo} el {fmt_fecha(c['when'])}"
+
     catalysts = "\n".join(
-        f"- {c['type']} ({c.get('when') or 'sin fecha'}): {c.get('detail')}"
+        f"- {c['type']} ({cuando(c)}): {c.get('detail')}"
         for c in report.get("catalysts", [])[:6]
     )
 
@@ -375,11 +387,13 @@ SEÑAL CUANTITATIVA (frente a sus pares)
 RIESGOS DETECTADOS EN LOS DATOS
 {risks or '- Ninguno relevante detectado'}
 
-CATALIZADORES PRÓXIMOS
+CATALIZADORES ({report.get('catalysts_note') or 'fechas sacadas de los datos'})
 {catalysts or '- Ninguno identificado'}
 
 VEREDICTO CALCULADO: postura {verdict.get('stance')}
 A favor: {'; '.join(verdict.get('positives', [])) or 'ninguno'}
 En contra: {'; '.join(verdict.get('negatives', [])) or 'ninguno'}
+Sin comprobar por falta de datos (no cuentan ni a favor ni en contra): {'; '.join(verdict.get('sin_comprobar') or []) or 'nada'}
+Alcance: {verdict.get('alcance') or 'sin indicar'}
 
 Escribe el informe."""

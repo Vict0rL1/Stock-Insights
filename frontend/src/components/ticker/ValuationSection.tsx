@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DcfResponse, ScenarioAssumptions, ValuationDefaults } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCifras, fmtCompacto, fmtPct, fmtPrecio, valorDeCampo } from '../../lib/formato'
+import { leerNumero, textoDeCampo } from '../../lib/entrada'
+import { fmtCifras, fmtCompacto, fmtPct, fmtPrecio } from '../../lib/formato'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Ventana } from '../Ventana'
@@ -19,16 +20,15 @@ interface Inputs {
 }
 
 function pctInput(value: number): string {
-  return valorDeCampo(value * 100, 1)
+  return textoDeCampo(value * 100, 1)
 }
 
-/** Un campo vacío o ilegible es «no sé», no cero. */
-function numeroOVacio(texto: string): number | null {
-  const v = parseFloat(texto)
-  return texto.trim() !== '' && Number.isFinite(v) ? v : null
-}
+const ESCENARIOS: ScenarioName[] = ['bear', 'base', 'bull']
+const CAMPOS_ESCENARIO = { growth: 'crecimiento FCF', wacc: 'WACC', terminal: 'crecimiento terminal' } as const
 
-/** Los supuestos de partida, sacados de los datos. Lo que no se sabe va vacío. */
+/** Los supuestos de partida, sacados de los datos. Lo que no se sabe va vacío.
+ *  Con la coma decimal y el punto de miles de la app: los campos llevaban «8.1»
+ *  y «108807000000» (revisión 12, visual). */
 function inputsIniciales(d: ValuationDefaults): Inputs {
   // Sin crecimiento sugerido (el backend no puede medirlo con menos de dos
   // ejercicios o con extremos negativos), el crecimiento va vacío. Antes se
@@ -37,19 +37,56 @@ function inputsIniciales(d: ValuationDefaults): Inputs {
   const g = d.suggested_growth_capped
   const crecimiento = (desde: (g: number) => number) => (g === null ? '' : pctInput(desde(g)))
   return {
-    base_fcf: d.base_fcf !== null ? String(Math.round(d.base_fcf)) : '',
+    base_fcf: textoDeCampo(d.base_fcf, 0),
     // Deuda desconocida = campo vacío, nunca '0': con cero la empresa se
     // valoraba como si no debiera nada. Hay que escribirla para calcular.
-    net_debt: d.net_debt !== null ? String(Math.round(d.net_debt)) : '',
-    shares_outstanding:
-      d.shares_outstanding !== null ? String(Math.round(d.shares_outstanding)) : '',
+    net_debt: textoDeCampo(d.net_debt, 0),
+    shares_outstanding: textoDeCampo(d.shares_outstanding, 0),
     years: '5',
     scenarios: {
-      bear: { growth: crecimiento((x) => Math.max(x - 0.03, -0.05)), wacc: '11.0', terminal: '2.0' },
-      base: { growth: crecimiento((x) => x), wacc: '10.0', terminal: '2.5' },
-      bull: { growth: crecimiento((x) => x + 0.03), wacc: '9.0', terminal: '3.0' },
+      bear: { growth: crecimiento((x) => Math.max(x - 0.03, -0.05)), wacc: pctInput(0.11), terminal: pctInput(0.02) },
+      base: { growth: crecimiento((x) => x), wacc: pctInput(0.1), terminal: pctInput(0.025) },
+      bull: { growth: crecimiento((x) => x + 0.03), wacc: pctInput(0.09), terminal: pctInput(0.03) },
     },
   }
+}
+
+/** Lo escrito en cada campo, leído con la convención de la app (`leerNumero`).
+ *  Con `parseFloat`, «8,5» era 8 y «1.250» era 1,25, y se calculaba sin avisar;
+ *  `parseInt('5,5') || 5` hacía lo mismo con los años (revisión 12, visual). Un
+ *  campo vacío es `null` («no sé»); uno que no se puede leer va a `ilegibles`
+ *  con su nombre y lo escrito, y no se calcula. */
+function leerInputs(inputs: Inputs) {
+  const ilegibles: string[] = []
+  const vacios: string[] = []
+  const leer = (texto: string, nombre: string, obligatorio = true): number | null => {
+    if (texto.trim() === '') {
+      if (obligatorio) vacios.push(nombre)
+      return null
+    }
+    const n = leerNumero(texto)
+    if (n === null) ilegibles.push(`${nombre} («${texto}»)`)
+    return n
+  }
+  // En el orden del formulario, para que el aviso los nombre como se ven.
+  const base_fcf = leer(inputs.base_fcf, 'FCF base')
+  const net_debt = leer(inputs.net_debt, 'deuda neta')
+  // Sin acciones se calcula igual: sale el valor de la empresa, no por acción.
+  const shares_outstanding = leer(inputs.shares_outstanding, 'acciones en circulación', false)
+  const years = leer(inputs.years, 'años de proyección')
+  if (years !== null && (!Number.isInteger(years) || years < 1)) ilegibles.push(`años de proyección («${inputs.years}»)`)
+  const scenarios = Object.fromEntries(
+    ESCENARIOS.map((n) => [
+      n,
+      Object.fromEntries(
+        (Object.keys(CAMPOS_ESCENARIO) as (keyof typeof CAMPOS_ESCENARIO)[]).map((campo) => [
+          campo,
+          leer(inputs.scenarios[n][campo], `${CAMPOS_ESCENARIO[campo]} ${etiqueta(n)}`),
+        ]),
+      ) as Record<keyof typeof CAMPOS_ESCENARIO, number | null>,
+    ]),
+  ) as Record<ScenarioName, Record<keyof typeof CAMPOS_ESCENARIO, number | null>>
+  return { base_fcf, net_debt, shares_outstanding, years, scenarios, ilegibles, vacios }
 }
 
 export function ValuationSection({ symbol }: { symbol: string }) {
@@ -71,34 +108,25 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
   const [result, setResult] = useState<DcfResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Sin un crecimiento escrito en cada escenario no se calcula: con el campo
-  // vacío no hay supuesto que valorar (salía un NaN hacia el backend).
-  const faltaCrecimiento = (['bear', 'base', 'bull'] as ScenarioName[]).some(
-    (n) => numeroOVacio(inputs.scenarios[n].growth) === null,
-  )
+  // Sin un supuesto escrito en cada campo no se calcula: con el campo vacío no
+  // hay supuesto que valorar (salía un NaN hacia el backend). Y lo que no se
+  // puede leer tampoco: antes se calculaba con lo que `parseFloat` sacara.
+  const leido = leerInputs(inputs)
+  const listo = leido.vacios.length === 0 && leido.ilegibles.length === 0
 
   const run = async () => {
+    const { base_fcf, years, net_debt, shares_outstanding } = leido
+    const scenarios: Record<string, ScenarioAssumptions> = {}
+    for (const name of ESCENARIOS) {
+      const { growth, wacc, terminal } = leido.scenarios[name]
+      if (growth === null || wacc === null || terminal === null) return
+      scenarios[name] = { growth_rate: growth / 100, discount_rate: wacc / 100, terminal_growth: terminal / 100 }
+    }
+    if (!listo || base_fcf === null || years === null || net_debt === null) return
     setBusy(true)
     setError(null)
     try {
-      const scenarios: Record<string, ScenarioAssumptions> = {}
-      for (const name of ['bear', 'base', 'bull'] as ScenarioName[]) {
-        const s = inputs.scenarios[name]
-        scenarios[name] = {
-          growth_rate: parseFloat(s.growth) / 100,
-          discount_rate: parseFloat(s.wacc) / 100,
-          terminal_growth: parseFloat(s.terminal) / 100,
-        }
-      }
-      const resp = await api.dcf(symbol, {
-        base_fcf: parseFloat(inputs.base_fcf),
-        years: parseInt(inputs.years, 10) || 5,
-        net_debt: numeroOVacio(inputs.net_debt),
-        shares_outstanding: inputs.shares_outstanding
-          ? parseFloat(inputs.shares_outstanding)
-          : null,
-        scenarios,
-      })
+      const resp = await api.dcf(symbol, { base_fcf, years, net_debt, shares_outstanding, scenarios })
       setResult(resp)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error en el cálculo')
@@ -118,6 +146,8 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
 
   const inputCls =
     'w-full rounded border border-slate-300 px-2 py-1 text-sm tabular-nums focus:border-sky-500 focus:outline-none'
+  const labelCls = 'flex flex-col justify-between gap-0.5 text-xs text-slate-500'
+  const moneda = defaults.moneda ?? null
 
   return (
     <div className="space-y-4">
@@ -132,36 +162,45 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
           {fmtPct(defaults.historical_growth.fcf_cagr)}.
         </p>
 
+        {/* Cada caja, una columna con el campo abajo del todo: a 820 px «FCF base
+            (año 2025)» y «Acciones en circulación» ocupan dos líneas y «Deuda
+            neta» una, y los campos de la misma fila quedaban a alturas distintas
+            (revisión 12, visual). La moneda va en el rótulo: el FCF y la deuda
+            iban sin unidad. */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <label className="text-xs text-slate-500">
-            FCF base (año {defaults.fiscal_year ?? '—'})
+          <label className={labelCls}>
+            FCF base ({moneda ? `${moneda}, ` : ''}año {defaults.fiscal_year ?? '—'})
             <input
               className={inputCls}
+              inputMode="decimal"
               value={inputs.base_fcf}
               onChange={(e) => setInputs({ ...inputs, base_fcf: e.target.value })}
             />
           </label>
-          <label className="text-xs text-slate-500">
-            Deuda neta
+          <label className={labelCls}>
+            Deuda neta{moneda ? ` (${moneda})` : ''}
             <input
               className={inputCls}
+              inputMode="decimal"
               value={inputs.net_debt}
               placeholder="desconocida: escríbela"
               onChange={(e) => setInputs({ ...inputs, net_debt: e.target.value })}
             />
           </label>
-          <label className="text-xs text-slate-500">
+          <label className={labelCls}>
             Acciones en circulación
             <input
               className={inputCls}
+              inputMode="decimal"
               value={inputs.shares_outstanding}
               onChange={(e) => setInputs({ ...inputs, shares_outstanding: e.target.value })}
             />
           </label>
-          <label className="text-xs text-slate-500">
+          <label className={labelCls}>
             Años de proyección
             <input
               className={inputCls}
+              inputMode="numeric"
               value={inputs.years}
               onChange={(e) => setInputs({ ...inputs, years: e.target.value })}
             />
@@ -169,32 +208,36 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          {(['bear', 'base', 'bull'] as ScenarioName[]).map((name) => (
+          {ESCENARIOS.map((name) => (
             <div key={name} className="rounded-lg border border-slate-200 p-3">
               <div className="mb-2 text-xs font-semibold text-slate-600">
                 {etiqueta(name, { mayuscula: true })}
               </div>
+              {/* Espacio duro antes del «(%)»: se quedaba solo en una línea. */}
               <label className="mb-1 block text-xs text-slate-500">
-                Crecimiento FCF (%/año)
+                Crecimiento FCF&nbsp;(%/año)
                 <input
                   className={inputCls}
+                  inputMode="decimal"
                   value={inputs.scenarios[name].growth}
                   placeholder={defaults.suggested_growth_capped === null ? 'sin histórico: escríbelo' : undefined}
                   onChange={(e) => setScenario(name, 'growth', e.target.value)}
                 />
               </label>
               <label className="mb-1 block text-xs text-slate-500">
-                WACC / tasa de descuento (%)
+                WACC / tasa de descuento&nbsp;(%)
                 <input
                   className={inputCls}
+                  inputMode="decimal"
                   value={inputs.scenarios[name].wacc}
                   onChange={(e) => setScenario(name, 'wacc', e.target.value)}
                 />
               </label>
               <label className="block text-xs text-slate-500">
-                Crecimiento terminal (%)
+                Crecimiento terminal&nbsp;(%)
                 <input
                   className={inputCls}
+                  inputMode="decimal"
                   value={inputs.scenarios[name].terminal}
                   onChange={(e) => setScenario(name, 'terminal', e.target.value)}
                 />
@@ -203,6 +246,12 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
           ))}
         </div>
 
+        {leido.ilegibles.length > 0 && (
+          <p className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+            No se puede leer {leido.ilegibles.join(', ')}. Escribe las cifras como en el resto de la app,
+            p.&nbsp;ej. 8,5 o 1.250.000, y los años en número entero: no se calcula con un número a medias.
+          </p>
+        )}
         {defaults.suggested_growth_capped === null && (
           <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
             Sin crecimiento histórico con el que precargarlo: escribe el tuyo en cada escenario para calcular.
@@ -224,11 +273,14 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={run}
-            disabled={busy || !inputs.base_fcf || numeroOVacio(inputs.net_debt) === null || faltaCrecimiento}
+            disabled={busy || !listo}
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
           >
             {busy ? 'Calculando…' : 'Calcular rango de valor'}
           </button>
+          {leido.vacios.length > 0 && (
+            <span className="text-xs text-slate-500">Para calcular falta: {leido.vacios.join(', ')}.</span>
+          )}
           {error && <span className="text-sm text-red-600">{error}</span>}
         </div>
       </section>
@@ -242,7 +294,7 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
             </span>
           </h2>
           <div className="grid gap-3 sm:grid-cols-3">
-            {(['bear', 'base', 'bull'] as ScenarioName[]).map((name) => {
+            {ESCENARIOS.map((name) => {
               const sc = result.scenarios[name]
               if (!sc) return null
               const vs =

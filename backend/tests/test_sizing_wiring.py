@@ -158,6 +158,29 @@ def test_sin_posiciones_abiertas_la_lista_corta_no_cambia_de_forma():
     assert all(i["peso_final_pct"] is not None for i in r["ideas"])
 
 
+def test_sin_posiciones_la_nota_no_habla_de_lo_que_ya_tienes():
+    """Revisión 12, visual: con la cartera vacía y sin efectivo, la nota decía que
+    «el peso de lo que ya tienes se mide sobre el valor de tus posiciones
+    abiertas… si guardas liquidez, tu concentración real es menor», y el panel
+    ponía «Liquidez 61,1 %» sin decir de qué capital."""
+    señales = [señal(f"S{i}", 1.2 - i * 0.01, f"Sec{i}") for i in range(4)]
+    vacia = _lista_corta_dimensionada(señales, {})["sizing"]
+    assert vacia["base_cartera"] == "invertido"  # el código no cambia: solo la frase
+    assert "posiciones abiertas, porque" not in vacia["nota"] and "si guardas liquidez" not in vacia["nota"]
+    assert "no tienes posiciones abiertas ni efectivo anotado" in vacia["nota"]
+    assert "la liquidez que queda" in vacia["nota"] and "no conoce tu capital" in vacia["nota"]
+
+    detalle = [{"moneda": "USD", "importe": 1000.0, "usd": 1000.0, "as_of": "2026-10-03T12:00:00Z"}]
+    con = _lista_corta_dimensionada(señales, {}, efectivo_usd=1000.0, efectivo_detalle=detalle)["sizing"]
+    assert "posiciones abiertas más el efectivo" not in con["nota"]
+    assert "tu capital es solo el efectivo (efectivo anotado: 1.000,00 USD, del 3 oct 2026):" in con["nota"]
+
+    sin_tipo = _lista_corta_dimensionada(
+        señales, {}, efectivo_motivo="efectivo en CAD sin tipo de cambio: no se supone 1:1")["sizing"]
+    assert "valor de tus posiciones" not in sin_tipo["nota"]
+    assert "no se pudo pasar a dólares (efectivo en CAD sin tipo de cambio" in sin_tipo["nota"]
+
+
 # --- El efectivo anotado (0008) también cuenta en Hoy ------------------------
 
 

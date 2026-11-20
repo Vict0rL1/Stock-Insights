@@ -36,3 +36,70 @@ describe('casillas del informe a fondo', () => {
     expect(screen.getByText(/^59,96\s%$/)).toBeInTheDocument()
   })
 })
+
+/** El informe del fixture con los campos que añade la revisión 12, en memoria. */
+function servirInforme(cambiar: (informe: Record<string, unknown> & InformeR12) => void) {
+  const rutas = structuredClone((empresaCompleta as unknown as { rutas: Rutas }).rutas)
+  cambiar(rutas['/api/deep-dive/ACME?history_years=10'].json as Record<string, unknown> & InformeR12)
+  vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+    const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+    const r = rutas[url]
+    return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+  }))
+}
+
+type InformeR12 = {
+  verdict: { alcance?: string }
+  margins: { ejercicio?: string | null }
+  risks: unknown[]
+  riesgos_sin_comprobar?: string[]
+  catalysts: { type: string; when: string | null; detail: string | null; source: string; url?: string }[]
+  catalysts_note?: string
+}
+
+describe('informe a fondo, revisión 12 (visual)', () => {
+  it('el DCF dice que la cifra es el peso del valor terminal', async () => {
+    // «terminal 63,8 %» se leía como el crecimiento terminal (2,0, 2,5 y 3,0
+    // en la pestaña Valoración).
+    servirInforme(() => {})
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText(/el valor terminal es el 63,8\s% del valor de empresa/, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('los márgenes dicen de qué ejercicio son, y la lectura conjunta su alcance', async () => {
+    servirInforme((informe) => {
+      informe.margins.ejercicio = '2025'
+      informe.verdict.alcance = 'Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia.'
+    })
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText('Márgenes del ejercicio 2025', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText(/^Lectura del ejercicio anual 2025/)).toBeInTheDocument()
+  })
+
+  it('un umbral de riesgo sin dato no pasa por comprobado', async () => {
+    servirInforme((informe) => {
+      informe.risks = []
+      informe.riesgos_sin_comprobar = ['deuda/capital', 'cobertura de intereses', 'valoración frente a su historia']
+    })
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText(/Ninguno de los umbrales comprobados se dispara/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText('Sin comprobar por falta de datos: deuda/capital, cobertura de intereses y valoración frente a su historia.')).toBeInTheDocument()
+    expect(screen.queryByText(/umbrales del modelo se dispara/)).not.toBeInTheDocument()
+  })
+
+  it('los catalizadores no prometen un plazo y dicen si la fecha ya pasó', async () => {
+    servirInforme((informe) => {
+      informe.catalysts = [
+        { type: 'Resultados', when: '2026-10-06', detail: 'Publicación de resultados', source: 'calendario' },
+        { type: '10-Q', when: '2026-08-01', detail: 'Documento presentado ante la SEC', source: 'edgar', url: 'https://example.com/q' },
+      ]
+      informe.catalysts_note = 'Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.'
+    })
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText('Catalizadores y fechas a vigilar', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByText(/6-18 meses/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Resultados previstos en los próximos 120 días/)).toBeInTheDocument()
+    expect(screen.getByText('previsto el 6 oct 2026')).toBeInTheDocument()
+    expect(screen.getByText('presentado el 1 ago 2026')).toBeInTheDocument()
+  })
+})

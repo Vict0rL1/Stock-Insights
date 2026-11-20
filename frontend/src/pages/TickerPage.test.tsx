@@ -141,6 +141,30 @@ describe('ficha de una empresa', () => {
     expect(document.body.textContent).not.toMatch(/0,06999/)
   })
 
+  it('en móvil las pestañas van en una fila que se desplaza, no en cinco (revisión 12, visual)', async () => {
+    // A 390 px las once pestañas, partidas, ocupaban unos 200 px antes del
+    // contenido. jsdom no aplica los puntos de corte: se comprueba que por
+    // debajo de `md` la fila no se parte y se desplaza en su franja (con la
+    // señal de que hay más, components/MarcoTabla.tsx), y que en escritorio sí.
+    servir({
+      '/api/stocks/ACME/quote': ok(cotizacion('ACME', -1.2)),
+      '/api/stocks/ACME/profile': ok(perfil('ACME', 'ACME Corp')),
+      '/api/stocks/ACME/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/ACME/history?range=1Y': falla(404, 'sin histórico'),
+    })
+    abrir('ACME')
+    const pestanas = await screen.findByRole('navigation', { name: 'Secciones de la ficha' })
+    const botones = within(pestanas).getAllByRole('button')
+    expect(botones).toHaveLength(11)
+    const franja = botones[0].parentElement as HTMLElement
+    const clases = franja.className.split(/\s+/)
+    expect(clases).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'md:flex-wrap', 'md:overflow-visible']))
+    expect(clases).not.toContain('flex-wrap')
+    expect(franja.hasAttribute('data-oculto-derecha')).toBe(true)
+    // Cada pestaña en una línea: partida, la franja tendría dos alturas.
+    for (const b of botones) expect(b.className.split(/\s+/)).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-nowrap']))
+  })
+
   it('una cotización que no carga se dice como fallo, con su motivo, y se puede reintentar', async () => {
     const rutas: Record<string, Respuesta> = {
       '/api/stocks/ACME/quote': falla(502, 'el proveedor no respondió'),

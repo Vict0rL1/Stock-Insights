@@ -58,6 +58,11 @@
     "asset_class": "accion",
     "cached": false,
     "calibrated": false,
+    "cartera": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "posiciones": []
+    },
     "complete": false,
     "counts": {
      "desfavorables": 34,
@@ -2349,7 +2354,7 @@
       "invertido_pct": 36.7,
       "invertido_total_pct": 36.7,
       "liquidez_pct": 63.3,
-      "nota": "El tamaño se decide sobre la cartera entera, no idea por idea: la misma empresa merece un peso distinto según qué más tengas. Los topes cuentan lo que YA tienes — con un 20 % en tecnología, una idea nueva del sector solo puede aspirar al 5 % que queda — y los pesos que salen aquí son lo que se AÑADE, no el peso final. La volatilidad solo se escala hacia ABAJO: escalar hacia arriba es apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos que conviene tener presentes: si la correlación entre dos posiciones no se pudo medir se asume 0,5 —es un supuesto, no un dato—, y el peso de lo que ya tienes se mide sobre el valor de tus posiciones abiertas, porque no hay efectivo anotado que sumar (o no se pudo pasar a dólares): si guardas liquidez, tu concentración real es menor y los topes aprietan antes de lo debido. Puedes anotarlo en Cartera.",
+      "nota": "El tamaño se decide sobre la cartera entera, no idea por idea: la misma empresa merece un peso distinto según qué más tengas. Los topes cuentan lo que YA tienes — con un 20 % en tecnología, una idea nueva del sector solo puede aspirar al 5 % que queda — y los pesos que salen aquí son lo que se AÑADE, no el peso final. La volatilidad solo se escala hacia ABAJO: escalar hacia arriba es apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos que conviene tener presentes: si la correlación entre dos posiciones no se pudo medir se asume 0,5 —es un supuesto, no un dato—, y no tienes posiciones abiertas ni efectivo anotado, así que la app no conoce tu capital: cada peso, y la liquidez que queda, es un porcentaje del dinero que dediques a la cartera, no un importe. Puedes anotar el efectivo en Cartera.",
       "objetivo_vol_pct": 12.0,
       "pesos": {
        "CVX": 5.0,
@@ -4784,6 +4789,11 @@
     "asset_class": "accion",
     "cached": false,
     "calibrated": false,
+    "cartera": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "posiciones": []
+    },
     "complete": false,
     "counts": {
      "desfavorables": 64,
@@ -7075,7 +7085,7 @@
       "invertido_pct": 40.0,
       "invertido_total_pct": 40.0,
       "liquidez_pct": 60.0,
-      "nota": "El tamaño se decide sobre la cartera entera, no idea por idea: la misma empresa merece un peso distinto según qué más tengas. Los topes cuentan lo que YA tienes — con un 20 % en tecnología, una idea nueva del sector solo puede aspirar al 5 % que queda — y los pesos que salen aquí son lo que se AÑADE, no el peso final. La volatilidad solo se escala hacia ABAJO: escalar hacia arriba es apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos que conviene tener presentes: si la correlación entre dos posiciones no se pudo medir se asume 0,5 —es un supuesto, no un dato—, y el peso de lo que ya tienes se mide sobre el valor de tus posiciones abiertas, porque no hay efectivo anotado que sumar (o no se pudo pasar a dólares): si guardas liquidez, tu concentración real es menor y los topes aprietan antes de lo debido. Puedes anotarlo en Cartera.",
+      "nota": "El tamaño se decide sobre la cartera entera, no idea por idea: la misma empresa merece un peso distinto según qué más tengas. Los topes cuentan lo que YA tienes — con un 20 % en tecnología, una idea nueva del sector solo puede aspirar al 5 % que queda — y los pesos que salen aquí son lo que se AÑADE, no el peso final. La volatilidad solo se escala hacia ABAJO: escalar hacia arriba es apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos que conviene tener presentes: si la correlación entre dos posiciones no se pudo medir se asume 0,5 —es un supuesto, no un dato—, y no tienes posiciones abiertas ni efectivo anotado, así que la app no conoce tu capital: cada peso, y la liquidez que queda, es un porcentaje del dinero que dediques a la cartera, no un importe. Puedes anotar el efectivo en Cartera.",
       "objetivo_vol_pct": 12.0,
       "pesos": {
        "DXCM": 10.0,

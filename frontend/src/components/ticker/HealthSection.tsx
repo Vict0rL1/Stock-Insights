@@ -1,7 +1,7 @@
 import { api } from '../../api/client'
-import type { Health, RiskResponse } from '../../api/types'
+import type { Health, RiskResponse, VentanaRiesgo } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, plural, signoLeido } from '../../lib/formato'
 import { Ausencia, ausenteSi404, useDato, type CargaConReintento } from '../../lib/useDato'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { DeudaParcial } from './DeudaParcial'
@@ -28,8 +28,41 @@ export function HealthSection({ symbol }: { symbol: string }) {
   )
 }
 
+/** «(1A)», y «parcial» si hay menos de un año de sesiones: el rótulo prometía
+ *  un año tuviera la serie lo que tuviera (revisión 12, visual). */
+function UnAno({ ventana }: { ventana: VentanaRiesgo }) {
+  return (
+    <>
+      (1A
+      {ventana.parcial && (
+        <span
+          className="ml-1 text-[10px] text-amber-800"
+          title={`Solo hay ${fmtNum(ventana.sesiones, 0)} ${plural(ventana.sesiones, 'sesión', 'sesiones')} de histórico; un año completo son ${fmtNum(ventana.pedidas, 0)}.`}
+        >
+          parcial
+        </span>
+      )}
+      )
+    </>
+  )
+}
+
+/** La ventana medida, con sus fechas. Era «Ventana: 1Y (barras diarias)», en
+ *  inglés y fija: no decía que la serie empezaba el 26 dic 2025 (revisión 12, visual). */
+function TextoVentana({ ventana: v }: { ventana: VentanaRiesgo }) {
+  return (
+    <>
+      Ventana: {fmtNum(v.sesiones, 0)} {plural(v.sesiones, 'sesión diaria', 'sesiones diarias')}
+      {v.desde && v.hasta ? `, del ${fmtFecha(v.desde)} al ${fmtFecha(v.hasta)}` : ''}
+      {v.parcial && <span className="text-amber-800"> · parcial: un año completo son {fmtNum(v.pedidas, 0)}</span>}.
+    </>
+  )
+}
+
 function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<RiskResponse | Ausencia> }) {
   const risk = riesgo.estado === 'listo' && !(riesgo.datos instanceof Ausencia) ? riesgo.datos : null
+  const dd = risk?.max_drawdown ?? null
+  const ddTexto = dd ? fmtPct(dd.max_drawdown) : '—'
   const z = health.altman_z
   const f = health.piotroski_f
 
@@ -121,7 +154,9 @@ function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<R
           {risk && (
             <>
               <div>
-                <dt className="text-xs text-slate-400">Beta vs. SPY (1A)</dt>
+                <dt className="text-xs text-slate-400">
+                  Beta vs. SPY <UnAno ventana={risk.ventana} />
+                </dt>
                 <dd className="text-lg font-semibold tabular-nums">
                   {risk.beta_vs_spy != null ? fmtNum(risk.beta_vs_spy) : '—'}
                 </dd>
@@ -133,10 +168,14 @@ function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<R
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-400">Máx. drawdown (1A)</dt>
-                {/* Sin dato, sin rojo: un guion rojo parece una caída. */}
-                <dd className={`text-lg font-semibold tabular-nums ${risk.max_drawdown ? 'text-red-600' : ''}`}>
-                  {risk.max_drawdown ? fmtPct(risk.max_drawdown.max_drawdown) : '—'}
+                <dt className="text-xs text-slate-400">
+                  Máx. drawdown <UnAno ventana={risk.ventana} />
+                </dt>
+                {/* Rojo solo si se lee una caída. Sin dato, un guion rojo parecía
+                    una caída; y un «0,0 %» en rojo era un cero pintado como
+                    alarma (revisión 12, visual). */}
+                <dd className={`text-lg font-semibold tabular-nums ${signoLeido(ddTexto) < 0 ? 'text-red-600' : ''}`}>
+                  {ddTexto}
                 </dd>
               </div>
             </>
@@ -157,12 +196,15 @@ function Salud({ health, riesgo }: { health: Health; riesgo: CargaConReintento<R
         {risk && (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
             <p>
-              {risk.max_drawdown && (
+              {/* Sin caída, el pico y el valle son el mismo día: «pico 26 dic 2025 →
+                  valle 26 dic 2025» no decía nada (revisión 12, visual). */}
+              {dd && dd.max_drawdown < 0 && (
                 <>
-                  Drawdown: pico {fmtFecha(risk.max_drawdown.peak)} → valle {fmtFecha(risk.max_drawdown.trough)}.{' '}
+                  Drawdown: pico {fmtFecha(dd.peak)} → valle {fmtFecha(dd.trough)}.{' '}
                 </>
               )}
-              Ventana: {risk.window}.
+              {dd && dd.max_drawdown >= 0 && <>Drawdown: ninguna caída desde un máximo en la ventana. </>}
+              <TextoVentana ventana={risk.ventana} />
             </p>
             {/* Beta, volatilidad y drawdown salen del histórico de precios, no de
                 EDGAR: llevan su propia fuente y fecha. */}

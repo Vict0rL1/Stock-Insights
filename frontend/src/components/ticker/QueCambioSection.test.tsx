@@ -103,3 +103,65 @@ describe('qué cambió', () => {
   })
 })
 
+describe('qué cambió, revisión 12 (visual)', () => {
+  type Analisis = {
+    instantanea: { nueva: boolean } | null
+    analisis: {
+      tesis: { titulo?: string; disparadores?: { salta: boolean }[] }
+      expectativas: { ultimo?: { impacto_en_tesis?: { punto: string; estado: string }[] } | null }
+    }
+    cambios: { categorias: Record<string, { clave: string; antes: unknown; ahora: unknown; absoluto?: number }[]> }
+  }
+
+  function servir(cambiar: (a: Analisis) => void) {
+    const rutas = structuredClone((empresaCompleta as unknown as { rutas: Rutas }).rutas)
+    cambiar(rutas['/api/empresa/ACME/analisis'].json as Analisis)
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const r = rutas[url]
+      return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+    }))
+    render(<MemoryRouter><QueCambioSection symbol="ACME" /></MemoryRouter>)
+  }
+
+  it('la diferencia en pp es la de las cifras que se leen', async () => {
+    // 0,3343 → 0,3006 se escribe «33,4 % → 30,1 %»: la diferencia que se lee es
+    // -3,3; con la de los valores sin redondear salía «(-3,4 pp)».
+    servir((a) => {
+      const fila = a.cambios.categorias.valoracion.find((c) => c.clave === 'dcf_inverso')!
+      Object.assign(fila, { antes: 0.3343, ahora: 0.3006, absoluto: -0.0337 })
+    })
+    expect(await screen.findByText('(-3,3 pp)')).toBeInTheDocument()
+    expect(screen.queryByText('(-3,4 pp)')).not.toBeInTheDocument()
+  })
+
+  it('una instantánea ya congelada no dice «sin cambios materiales» encima de los cambios', async () => {
+    servir((a) => {
+      a.instantanea = { ...a.instantanea!, nueva: false }
+    })
+    expect(await screen.findByText(/ya congelada: desde ella no ha cambiado nada que pida otra/)).toBeInTheDocument()
+    expect(screen.queryByText(/Sin cambios materiales/)).not.toBeInTheDocument()
+  })
+
+  it('la tesis invalidada se ve junto a la decisión', async () => {
+    // Solo salía en rojo al final del diff; el bloque de la decisión no la nombraba.
+    servir((a) => {
+      a.analisis.expectativas.ultimo!.impacto_en_tesis = [{ punto: 'margen operativo < 18%', estado: 'invalidado' }]
+    })
+    const aviso = await screen.findByText(/Tu tesis «El margen aguanta» tiene 1 punto de invalidación cruzado/)
+    const bloque = aviso.closest('div')!
+    expect(bloque).toHaveTextContent('margen operativo < 18% (según los resultados de 2026-Q2: trimestre, no ejercicio)')
+    expect(bloque).toHaveTextContent('El motor de decisión no mira la tesis')
+    // Arriba, en la sección de la decisión, no en la del diff.
+    expect(aviso.closest('section')).toHaveTextContent('Decisión del motor')
+  })
+
+  it('sin puntos cruzados no hay aviso de tesis', async () => {
+    servir((a) => {
+      a.analisis.expectativas.ultimo!.impacto_en_tesis = []
+    })
+    expect(await screen.findByText(/Decisión del motor/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tu tesis/)).not.toBeInTheDocument()
+  })
+})
+

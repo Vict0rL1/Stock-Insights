@@ -57,6 +57,7 @@
      "reading": "Convierte el 121,2 % del beneficio en caja: el beneficio contable subestima la generación real."
     },
     "catalysts": [],
+    "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -253,7 +254,8 @@
       "net_margin": 0.15,
       "operating_margin": 0.21
      },
-     "reading": "Margen operativo del 21,0 %: márgenes sólidos.",
+     "ejercicio": "2025",
+     "reading": "Margen operativo anual del 21,0 % (ejercicio 2025): márgenes sólidos.",
      "trends": {
       "gross_margin": null,
       "net_margin": null,
@@ -262,6 +264,12 @@
     },
     "price": 92.0,
     "quant_signal": null,
+    "riesgos_sin_comprobar": [
+     "deuda/capital",
+     "cobertura de intereses",
+     "tendencia del margen operativo",
+     "valoración frente a su historia"
+    ],
     "risk_metrics": {
      "annualized_volatility": 0.0011747494915901335,
      "max_drawdown": {
@@ -319,7 +327,7 @@
       "pb": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: a los ejercicios publicados en esas fechas les falta el patrimonio neto (positivo) o el número de acciones."
       },
       "pe": {
        "available": false,
@@ -331,16 +339,23 @@
      "years_covered": 10
     },
     "verdict": {
+     "alcance": "Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia. No entran los trimestres publicados después ni el DCF precargado de más abajo.",
      "disclaimer": "Lectura conjunta de los datos, no una recomendación de compra o venta. Qué hacer depende de tu cartera, horizonte y tolerancia al riesgo, que el modelo no conoce. Un informe favorable sobre una empresa excelente sigue pudiendo ser una mala compra al precio equivocado.",
      "negatives": [],
      "positives": [
       "ingresos creciendo al 10,0 % anual",
-      "margen operativo del 21,0 %"
+      "margen operativo anual del 21,0 % (ejercicio 2025)"
      ],
      "quant_label": null,
      "quant_score": null,
+     "sin_comprobar": [
+      "valoración frente a su historia",
+      "tendencia del margen operativo",
+      "cobertura de intereses",
+      "Altman Z"
+     ],
      "stance": "constructiva",
-     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo del 21,0 %. En contra: sin señales de alarma en los datos.",
+     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo anual del 21,0 % (ejercicio 2025). En contra: nada entre lo que se pudo comprobar. Sin comprobar por falta de datos: valoración frente a su historia, tendencia del margen operativo, cobertura de intereses y Altman Z.",
      "what_would_change_it": [
       "Dos trimestres seguidos de caída del margen operativo.",
       "Que el crecimiento de ingresos se vuelva negativo de forma sostenida.",
@@ -2386,6 +2401,8 @@
   },
   "/api/expectativas/calibracion?symbol=ACME": {
    "json": {
+    "definiciones": "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea» (±1 % en ingresos, ±2 % en BPA diluido, ±0,5 pp en margen bruto, ±0,5 pp en margen operativo); un rango se mide desde su centro.",
+    "excluidos_otro_trimestre": 0,
     "nota": "Cada fuente se calibra por separado: mezclar el consenso con el modelo interno daría la calibración de nadie. Con menos de 5 pares, el número describe la muestra, no a la fuente.",
     "pares": 6,
     "por_fuente": {
@@ -2435,18 +2452,18 @@
       "por_empresa": {
        "ACME": {
         "cerca_pct": 0.25,
-        "error_medio_abs": 0.252151,
+        "error_medio_abs": 0.250505,
         "n": 4,
-        "sesgo": -0.242546,
+        "sesgo": -0.244553,
         "suficiente": false
        }
       },
       "por_metrica": {
        "eps_diluted": {
         "cerca_pct": 0.0,
-        "error_medio_abs": 0.899394,
+        "error_medio_abs": 0.900115,
         "n": 1,
-        "sesgo": -0.899394,
+        "sesgo": -0.900115,
         "suficiente": false
        },
        "gross_margin": {
@@ -2465,17 +2482,17 @@
        },
        "revenue": {
         "cerca_pct": 0.0,
-        "error_medio_abs": 0.01921,
+        "error_medio_abs": 0.011903,
         "n": 1,
-        "sesgo": 0.01921,
+        "sesgo": 0.011903,
         "suficiente": false
        }
       },
       "total": {
        "cerca_pct": 0.25,
-       "error_medio_abs": 0.252151,
+       "error_medio_abs": 0.250505,
        "n": 4,
-       "sesgo": -0.242546,
+       "sesgo": -0.244553,
        "suficiente": false
       }
      }
@@ -2570,13 +2587,13 @@
        "bajo": null,
        "detalle": {
         "base": {
-         "periodo": "2025-Q1",
-         "valor": 277.0
+         "periodo": "2025-Q2",
+         "valor": 279.0
         },
         "crecimiento_mediano": 0.098041,
         "metodo": "mismo trimestre del año anterior × (1 + mediana del crecimiento interanual de los últimos 4 trimestres)",
         "observaciones": 4,
-        "trimestre_objetivo_fin": "2026-03-31"
+        "trimestre_objetivo_fin": "2026-06-30"
        },
        "fuente": "app: modelo interno v1",
        "fuente_tipo": "modelo_interno",
@@ -2586,20 +2603,20 @@
        "operador": null,
        "registrado_en": "2026-07-14T14:35:00+00:00",
        "unidad": "USD",
-       "valor": 304.15728
+       "valor": 306.353362
       },
       {
        "alto": null,
        "bajo": null,
        "detalle": {
         "base": {
-         "periodo": "2025-Q1",
-         "valor": 0.46166666666666667
+         "periodo": "2025-Q2",
+         "valor": 0.465
         },
         "crecimiento_mediano": 0.098041,
         "metodo": "mismo trimestre del año anterior × (1 + mediana del crecimiento interanual de los últimos 4 trimestres)",
         "observaciones": 4,
-        "trimestre_objetivo_fin": "2026-03-31"
+        "trimestre_objetivo_fin": "2026-06-30"
        },
        "fuente": "app: modelo interno v1",
        "fuente_tipo": "modelo_interno",
@@ -2609,14 +2626,14 @@
        "operador": null,
        "registrado_en": "2026-07-14T14:35:00+00:00",
        "unidad": "USD/acción",
-       "valor": 0.506929
+       "valor": 0.510589
       },
       {
        "alto": null,
        "bajo": null,
        "detalle": {
         "metodo": "media de los últimos 4 trimestres",
-        "trimestre_objetivo_fin": "2026-03-31",
+        "trimestre_objetivo_fin": "2026-06-30",
         "valores": [
          0.4,
          0.4,
@@ -2639,7 +2656,7 @@
        "bajo": null,
        "detalle": {
         "metodo": "media de los últimos 4 trimestres",
-        "trimestre_objetivo_fin": "2026-03-31",
+        "trimestre_objetivo_fin": "2026-06-30",
         "valores": [
          0.21,
          0.21,
@@ -2702,6 +2719,7 @@
       "punto": "recall"
      }
     ],
+    "no_comparables": [],
     "parcial": false,
     "por_fuente": {
      "consenso": [
@@ -2754,7 +2772,7 @@
         "alto": null,
         "bajo": null,
         "operador": null,
-        "valor": 304.15728
+        "valor": 306.353362
        },
        "etiqueta": "Ingresos",
        "fuente": "app: modelo interno v1",
@@ -2762,7 +2780,7 @@
        "lectura": "supera",
        "metrica": "revenue",
        "real": 310.0,
-       "sorpresa": 0.01921,
+       "sorpresa": 0.011903,
        "tipo_sorpresa": "relativa",
        "tolerancia": {
         "tipo": "relativo",
@@ -2775,7 +2793,7 @@
         "alto": null,
         "bajo": null,
         "operador": null,
-        "valor": 0.506929
+        "valor": 0.510589
        },
        "etiqueta": "BPA diluido",
        "fuente": "app: modelo interno v1",
@@ -2783,7 +2801,7 @@
        "lectura": "por_debajo",
        "metrica": "eps_diluted",
        "real": 0.051,
-       "sorpresa": -0.899394,
+       "sorpresa": -0.900115,
        "tipo_sorpresa": "relativa",
        "tolerancia": {
         "tipo": "relativo",
@@ -3221,19 +3239,19 @@
      "tipos_usados": {}
     },
     "estres": {
-     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
      "aviso_sin_historico": null,
-     "años_cubiertos": 0.7,
-     "cobertura": "3 ene 2026 → 11 sept 2026",
+     "años_cubiertos": 1.4,
+     "cobertura": "10 abr 2025 → 11 sept 2026",
      "cobertura_peso": 1.0,
      "drawdown_desde": "2026-08-22",
      "drawdown_hasta": "2026-09-01",
      "max_drawdown_pct": -0.58,
-     "peor_ventana_desde": null,
-     "peor_ventana_hasta": null,
+     "peor_ventana_desde": "2025-09-04",
+     "peor_ventana_hasta": "2026-05-14",
      "peor_ventana_meses": 12,
-     "peor_ventana_nota": "El histórico común no llega a 12 meses, así que no hay ninguna ventana entera que medir. Se deja vacío en vez de recortar el periodo y seguir rotulándolo igual.",
-     "peor_ventana_pct": null,
+     "peor_ventana_nota": null,
+     "peor_ventana_pct": 5.23,
      "sin_historico": [],
      "suficiente": true
     },
@@ -3298,6 +3316,7 @@
       ],
       "stop": 50.0,
       "stop_fijado_al_abrir": true,
+      "stop_perforado": false,
       "stop_por_clase": false,
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
@@ -3329,9 +3348,9 @@
      "tope_pct": 6.0
     },
     "summary": {
-     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 0,7 años, desde 2026. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
      "max_drawdown_esperado_pct": -0.58,
-     "peor_ventana_pct": null,
+     "peor_ventana_pct": 5.23,
      "precios_viejos": [],
      "priced_positions": 1,
      "realizado_sin_convertir": [],

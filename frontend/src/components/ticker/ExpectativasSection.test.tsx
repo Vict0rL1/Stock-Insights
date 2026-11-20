@@ -84,6 +84,41 @@ describe('resultados frente a expectativas', () => {
     expect(screen.getByText('+0,0004')).toBeInTheDocument()
   })
 
+  it('una estimación de otro trimestre se enseña marcada y la pantalla dice cuál era', async () => {
+    // Revisión 12, visual: el modelo interno estimó el trimestre que cierra el
+    // 31 mar y la pantalla lo comparaba con el real del 2026-Q2 sin decirlo. Las
+    // filas son inmutables; el backend marca la comparación y aquí se dice.
+    const evento = structuredClone(ACME['/api/expectativas/eventos/1'].json) as {
+      parcial: boolean; sin_resultado: string[]; no_comparables?: string[]
+      por_fuente: Record<string, { metrica: string; lectura: string; sorpresa?: number | null; periodo_distinto?: unknown }[]>
+    }
+    const motivo = 'estimó el trimestre que cierra el 31 mar 2026, y el real es de 2026-Q2, que cierra el 30 jun 2026'
+    for (const c of evento.por_fuente.modelo_interno) {
+      Object.assign(c, { lectura: 'desconocido', sorpresa: undefined, motivo,
+                         periodo_distinto: { estimado_fin: '2026-03-31', real_fin: '2026-06-30', real_periodo: '2026-Q2', motivo } })
+    }
+    Object.assign(evento, { parcial: true, sin_resultado: [], no_comparables: ['gross_margin', 'operating_margin'] })
+    servir({ ...ACME, '/api/expectativas/eventos/1': { status: 200, json: evento } })
+    render(<ExpectativasSection symbol="ACME" />)
+    expect(await screen.findByText(`Modelo interno (de la app): ${motivo}. Esas filas no comparan el mismo trimestre: no cuentan en la lectura ni en la calibración.`)).toBeInTheDocument()
+    expect(screen.getAllByText('otro trimestre')).toHaveLength(evento.por_fuente.modelo_interno.length)
+    expect(screen.getByText('parcial: sin expectativa del mismo trimestre para margen bruto, margen operativo')).toBeInTheDocument()
+  })
+
+  it('la calibración dice qué miden «Error medio» y «Cerca», y cuántos pares quedan fuera', async () => {
+    // Revisión 12, visual: «Cerca 0 %» y «25 %» sin decir de qué.
+    const cal = structuredClone(ACME['/api/expectativas/calibracion?symbol=ACME'].json) as Record<string, unknown>
+    Object.assign(cal, {
+      definiciones: 'Error medio: la media del error sin signo. Cerca: la parte de los pares que cayó dentro de la tolerancia (±1\u00a0% en ingresos).',
+      excluidos_otro_trimestre: 4,
+    })
+    servir({ ...ACME, '/api/expectativas/calibracion?symbol=ACME': { status: 200, json: cal } })
+    const { container } = render(<ExpectativasSection symbol="ACME" />)
+    await screen.findByText(/^Calibración histórica/)
+    await waitFor(() => expect(container.textContent).toContain('Cerca: la parte de los pares que cayó dentro de la tolerancia (±1\u00a0% en ingresos).'))
+    expect(container.textContent).toContain('4 pares quedan fuera: la expectativa estimó otro trimestre que el del resultado.')
+  })
+
   it('tras «Capturar expectativas» la lectura sigue a la vista mientras recarga', async () => {
     // Revisión del 2.1: la recarga pasaba por «cargando» y la lectura, la
     // lista y la calibración desaparecían; la página saltaba.

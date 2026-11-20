@@ -30,7 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app.etiquetas import etiqueta
-from app.formato import fmt_cifras, fmt_fecha, fmt_frente, fmt_num
+from app.formato import fmt_cifras, fmt_fecha, fmt_frente, fmt_num, fmt_pct
 
 # --- Métricas y tolerancias ----------------------------------------------------
 #
@@ -150,6 +150,36 @@ def validez_temporal(exp: dict, corte: str | None) -> dict:
     return {"valida": False, "motivo": f"registrada después de conocerse el resultado ({fmt_fecha(corte)})"}
 
 
+# Medio trimestre: dos cierres a menos distancia son el mismo trimestre (un año de
+# 52 o 53 semanas mueve el cierre unos días; el trimestre de al lado está a 13
+# semanas).
+MEDIO_TRIMESTRE_DIAS = 45
+
+
+def periodo_distinto(exp: dict, real: dict | None) -> dict | None:
+    """¿Estimó la expectativa otro trimestre que el del real con que se compara?
+
+    Solo se puede saber cuando la expectativa dice qué trimestre estimó (el modelo
+    interno guarda `trimestre_objetivo_fin`) y el real dice cuál es. Las capturas
+    anteriores a la revisión 12 estimaban «el siguiente al último conocido» aunque
+    el evento fuera otro, y sus filas son inmutables: se detecta al leerlas."""
+    objetivo = (exp.get("detalle") or {}).get("trimestre_objetivo_fin")
+    detalle_real = (real or {}).get("detalle") or {}
+    try:
+        estimado = date.fromisoformat(str(objetivo)[:10])
+        cierre = date.fromisoformat(str(detalle_real.get("periodo_fin"))[:10])
+    except ValueError:
+        return None
+    if abs((estimado - cierre).days) <= MEDIO_TRIMESTRE_DIAS:
+        return None
+    periodo = detalle_real.get("periodo")
+    de = f"de {periodo}, que cierra" if periodo else "del trimestre que cierra"
+    return {
+        "estimado_fin": estimado.isoformat(), "real_fin": cierre.isoformat(), "real_periodo": periodo,
+        "motivo": f"estimó el trimestre que cierra el {fmt_fecha(estimado)}, y el real es {de} el {fmt_fecha(cierre)}",
+    }
+
+
 def evaluar_evento(evento: dict, expectativas: list[dict], reales: list[dict], tesis: list[dict] | None = None) -> dict:
     """Lectura completa de un evento, separada por fuente."""
     corte = corte_del_evento(evento, reales)
@@ -168,8 +198,16 @@ def evaluar_evento(evento: dict, expectativas: list[dict], reales: list[dict], t
             continue
         if e.get("fuente_tipo") == "reglas":
             continue  # las reglas de la tesis se leen en `impacto_en_tesis`
-        real = (por_metrica_real.get(e.get("metrica")) or {}).get("valor")
-        por_fuente.setdefault(e["fuente_tipo"], []).append(comparar_metrica(e, real))
+        real = por_metrica_real.get(e.get("metrica"))
+        c = comparar_metrica(e, (real or {}).get("valor"))
+        otro = periodo_distinto(e, real)
+        if otro is not None:
+            # Las cifras se enseñan, pero no hay lectura: una estimación de otro
+            # trimestre no «supera» ni queda «por debajo» de nada (revisión 12,
+            # visual: el Q1 del modelo interno contra el real del Q2).
+            c = {**{k: v for k, v in c.items() if k not in ("sorpresa", "tipo_sorpresa", "tolerancia", "distancia")},
+                 "lectura": DESCONOCIDO, "motivo": otro["motivo"], "periodo_distinto": otro}
+        por_fuente.setdefault(e["fuente_tipo"], []).append(c)
 
     lectura = clasificar(por_fuente, guidance.get("direccion"))
     validas_reglas = [e for e in expectativas if e.get("fuente_tipo") == "reglas"
@@ -212,7 +250,11 @@ def clasificar(por_fuente: dict[str, list[dict]], direccion_guidance: str | None
         en_contra.append("guidance a la baja en otra")
 
     esperadas = {c["metrica"] for lista in por_fuente.values() for c in lista}
-    sin_real = sorted(esperadas - set(votos))
+    # Una métrica cuyo real llegó pero cuya única expectativa era de otro
+    # trimestre no es «sin resultado»: es «sin expectativa comparable».
+    otro_trimestre = {c["metrica"] for lista in por_fuente.values() for c in lista if c.get("periodo_distinto")}
+    no_comparables = sorted(otro_trimestre - set(votos))
+    sin_real = sorted(esperadas - set(votos) - otro_trimestre)
     if not votos and direccion_guidance is None:
         clasificacion = DESCONOCIDO
     elif a_favor and en_contra:
@@ -227,8 +269,9 @@ def clasificar(por_fuente: dict[str, list[dict]], direccion_guidance: str | None
         "clasificacion": clasificacion,
         "a_favor": a_favor,
         "en_contra": en_contra,
-        "parcial": bool(sin_real),
+        "parcial": bool(sin_real or no_comparables),
         "sin_resultado": sin_real,
+        "no_comparables": no_comparables,
         "regla_clasificacion": (
             "una fuente vota por métrica (consenso > guidance > usuario > modelo interno); "
             "votos en las dos direcciones = MIXTO, sin compensar"
@@ -543,7 +586,25 @@ def calibrar(pares: list[dict], minimo: int = 5) -> dict:
             "interno daría la calibración de nadie. Con menos de "
             f"{minimo} pares, el número describe la muestra, no a la fuente."
         ),
+        "definiciones": _definiciones({f["metrica"] for f in filas}),
     }
+
+
+def _definiciones(metricas: set[str]) -> str:
+    """Qué miden «Error medio» y «Cerca», con las tolerancias de las métricas que
+    hay. La pantalla decía «Cerca 0 %» y «25 %» sin decir de qué (revisión 12,
+    visual). Las tolerancias salen de `METRICAS`, las mismas que deciden «en línea»."""
+    tolerancias = []
+    for m in [m for m in METRICAS if m in metricas] + sorted(metricas - set(METRICAS)):
+        tipo, tol = _tolerancia(m)
+        cifra = fmt_pct(tol, 1, ceros=False) if tipo == "relativo" else f"{fmt_num(tol * 100, 1, ceros=False)} pp"
+        tolerancias.append(f"±{cifra} en {etiqueta(m)}")
+    return (
+        "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. "
+        "Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea»"
+        + (f" ({', '.join(tolerancias)})" if tolerancias else "")
+        + "; un rango se mide desde su centro."
+    )
 
 
 def ahora_utc() -> datetime:

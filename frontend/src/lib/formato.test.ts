@@ -74,4 +74,17 @@ describe('formato compartido con el backend', () => {
     expect(formato.agruparAMano('999,5')).toBe('999,5')
     expect(formato.agruparAMano('0,0001')).toBe('0,0001')
   })
+
+  // Revisión 12, visual: «0,00 %» salía en verde en Mercado y un drawdown de
+  // «0,0 %» en rojo en Salud. El color sigue a lo que se lee.
+  it('el signo de una cifra es el de lo que se lee, y lo que se escribe cero es cero', () => {
+    const { fmtPct, signoLeido } = formato
+    expect(signoLeido(fmtPct(0, 2, { signo: true, enPuntos: true }))).toBe(0)
+    expect(signoLeido(fmtPct(0.004, 2, { signo: true, enPuntos: true }))).toBe(0)
+    expect(signoLeido(fmtPct(-0.004, 2, { signo: true, enPuntos: true }))).toBe(0)
+    expect(signoLeido(fmtPct(-0.0001))).toBe(0)
+    expect(signoLeido(fmtPct(0.006, 2, { signo: true, enPuntos: true }))).toBe(1)
+    expect(signoLeido(fmtPct(-0.25))).toBe(-1)
+    expect(signoLeido(fmtPct(null))).toBe(0)
+  })
 })

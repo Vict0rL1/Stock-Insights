@@ -211,7 +211,7 @@ def volatilidad_cartera(
 
 
 def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False,
-                parcial: bool = False) -> str:
+                parcial: bool = False, sin_posiciones: bool = False) -> str:
     """La frase de BASE_CARTERA, con el detalle dentro: donde la frase lo marca
     (`{detalle}`) o, si no, antes del punto final.
 
@@ -223,7 +223,15 @@ def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool
     (revisión 8). Sin efectivo anotado no hay detalle que dar; anotado y sin tipo
     de cambio, el detalle es el motivo del tipo y se queda (revisión 10), junto a
     «no se pudo pasar a dólares»: al final, detrás de «el tamaño puede quedarse
-    corto o pasarse», parecía explicar eso (revisión 11)."""
+    corto o pasarse», parecía explicar eso (revisión 11).
+
+    Sin ninguna posición abierta (`sin_posiciones`), ni valorada ni sin valorar,
+    no hay «lo que ya tienes» que medir: con la cartera vacía y sin efectivo, la
+    nota hablaba del «valor de tus posiciones abiertas» y de «si guardas
+    liquidez», y el panel ponía «Liquidez 61,1 %» sin decir de qué capital
+    (revisión 12, visual)."""
+    if sin_posiciones and not parcial and base_cartera in _BASE_SIN_POSICIONES:
+        base_cartera = _BASE_SIN_POSICIONES[base_cartera]
     if parcial or base_cartera == "invertido_parcial":
         if cartera_vacia:
             base_cartera, detalle_base = "parcial_sin_valoradas", None
@@ -323,6 +331,31 @@ BASE_CARTERA = {
         "topes por sector y correlación no ven nada de lo que ya tienes, así que el "
         "tamaño es una cota superior."
     ),
+    # Sin ninguna posición abierta (`_BASE_SIN_POSICIONES`): no hay peso de lo
+    # que ya tienes, y sin efectivo conocido los pesos y la liquidez son
+    # porcentajes de un capital que la app no conoce (revisión 12, visual).
+    "vacia_sin_efectivo": (
+        "no tienes posiciones abiertas ni efectivo anotado, así que la app no conoce "
+        "tu capital: cada peso, y la liquidez que queda, es un porcentaje del dinero "
+        "que dediques a la cartera, no un importe. Puedes anotar el efectivo en Cartera."
+    ),
+    "vacia_sin_cambio": (
+        "no tienes posiciones abiertas y el efectivo está anotado, pero no se pudo "
+        "pasar a dólares{detalle}, así que la app no conoce tu "
+        "capital: cada peso, y la liquidez que queda, es un porcentaje del dinero que "
+        "dediques a la cartera, no un importe."
+    ),
+    "vacia_con_efectivo": (
+        "no tienes posiciones abiertas, así que tu capital es solo el efectivo{detalle}: "
+        "cada peso, y la liquidez que queda, es un porcentaje de ese efectivo."
+    ),
+}
+
+# La frase de cada base cuando no hay ninguna posición abierta.
+_BASE_SIN_POSICIONES = {
+    "invertido": "vacia_sin_efectivo",
+    "invertido_sin_cambio": "vacia_sin_cambio",
+    "capital": "vacia_con_efectivo",
 }
 
 
@@ -338,6 +371,7 @@ def dimensionar(
     base_cartera: str = "invertido",
     detalle_base: str | None = None,
     parcial: bool = False,
+    sin_posiciones: bool = False,
 ) -> dict:
     """Convierte ideas en pesos de cartera, aplicando todos los límites.
 
@@ -348,7 +382,10 @@ def dimensionar(
     afirmaba siempre que la app no registra el efectivo, también después de la
     migración 0008. `detalle_base` se añade a esa frase (qué efectivo y de cuándo).
     `parcial`: hay posiciones abiertas que no se pudieron valorar y no están en
-    `cartera`; la frase lo tiene en cuenta (revisión 9).
+    `cartera`; la frase lo tiene en cuenta (revisión 9). `sin_posiciones`: no hay
+    ninguna posición abierta, ni valorada ni sin valorar; `cartera` vacía no lo
+    dice, porque el coste de oportunidad quita de ella la propia candidata
+    (revisión 12, visual).
 
     `candidatas`: [{symbol, sector, peso_bruto_pct, vol_anual_pct}]. El peso
     bruto es el que sale del riesgo por operación — el que `decision.py` calcula
@@ -654,7 +691,8 @@ def dimensionar(
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera, parcial=parcial)
+            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera, parcial=parcial,
+                                     sin_posiciones=sin_posiciones)
         ),
     }
 
@@ -804,11 +842,16 @@ def peor_ventana(
         "peor_ventana_meses": meses,
         "peor_ventana_desde": desde_v.isoformat() if desde_v else None,
         "peor_ventana_hasta": hasta_v.isoformat() if hasta_v else None,
+        # Con la ventana con que mide: «no llega a 12 meses» sin decir de qué
+        # sesiones salía no dejaba ver que el Portafolio medía con un año y la
+        # Cartera con dos (revisión 12, visual).
         "peor_ventana_nota": (
             None
             if peor_v is not None
             else (
-                f"El histórico común no llega a {meses} meses, así que no hay "
+                f"El histórico común no llega a {meses} meses: son {fmt_num(len(valores), 0)} "
+                f"{plural(len(valores), 'sesión', 'sesiones')} ({fmt_fecha(orden[0])} → {fmt_fecha(orden[-1])}) "
+                f"y una ventana de {meses} meses pide más de {fmt_num(ventana, 0)}, así que no hay "
                 "ninguna ventana entera que medir. Se deja vacío en vez de "
                 "recortar el periodo y seguir rotulándolo igual."
             )

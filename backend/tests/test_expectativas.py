@@ -8,7 +8,7 @@ expectativa algo que ya se sabía.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -593,3 +593,131 @@ def test_la_proporcion_junto_al_borde_de_la_banda_no_se_escribe_igual_que_el():
     # Y lejos del borde, tres cifras significativas, nunca «0 veces».
     lejos = ev.comprobar_escala({"metrica": "revenue", "valor": 115.0}, [{"revenue": 94_930_000_000.0, "end_date": "2026-06-30"}])
     assert "(0 veces" not in lejos["motivo"] and "(0,00000000121 veces" in lejos["motivo"]
+
+
+# --- Revisión 12, visual: el modelo interno estimaba otro trimestre ---------------------
+
+
+def _hasta_2025_q4():
+    """Los trimestres de 2025, sin el 2026-Q1: aún sin publicar cuando se captura el 2026-Q2."""
+    return [q for q in _trimestres_historicos() if q["periodo"].startswith("2025-")]
+
+
+def test_el_modelo_interno_estima_el_trimestre_del_evento_y_no_el_siguiente_al_ultimo(session_factory, servicio):
+    """En la demo, con el último trimestre publicado en 2025-Q4 y el evento de
+    2026-Q2, el modelo estimó el trimestre que cierra el 31 mar (el siguiente al
+    último conocido) y la pantalla lo comparó con el real de junio: los ingresos
+    salían del Q1 del año anterior en vez del Q2. Aquí falta el 2026-Q2 y el
+    evento es el 2026-Q3."""
+    sin_q2 = [q for q in servicio.financials["AAPL"]["quarters"] if q["periodo"] != "2026-Q2"]
+    servicio.financials["AAPL"]["quarters"] = sin_q2
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q3", fecha_prevista="2026-10-30", ahora=AHORA)
+        cap = svc.capturar(s, servicio, e, AHORA)
+        modelo = {x.metrica: x for x in s.query(Expectation).filter_by(fuente_tipo="modelo_interno")}
+        assert cap["trimestre_objetivo_fin"] == "2026-09-30"
+        assert modelo["revenue"].detalle["trimestre_objetivo_fin"] == "2026-09-30"
+        assert modelo["revenue"].detalle["base"]["periodo"] == "2025-Q3"
+
+        servicio.financials["AAPL"]["quarters"].append(
+            trimestre(2026, 3, "2026-10-30", revenue=118.0, operating_income=118.0 * 0.2, gross_profit=118.0 * 0.45,
+                      eps_diluted=1.18))
+        despues = datetime(2026, 11, 2, tzinfo=timezone.utc)
+        servicio.ahora = despues
+        svc.registrar_reales(s, servicio, e, despues)
+        lectura = svc.evaluar(s, e)
+    assert not any(c.get("periodo_distinto") for c in lectura["por_fuente"]["modelo_interno"])
+    assert lectura["no_comparables"] == []
+
+
+def test_el_trimestre_objetivo_sale_del_periodo_o_de_la_fecha_y_si_no_hay_ninguno_no_se_supone():
+    qs = _hasta_2025_q4()
+    evento = lambda **kw: CatalystEvent(symbol="AAPL", tipo="earnings", **kw)  # noqa: E731
+    assert svc._fin_objetivo(evento(periodo="2026-Q2"), qs) == "2026-06-30"
+    assert svc._fin_objetivo(evento(periodo="2026-Q1"), qs) == "2026-03-31"
+    # Sin periodo legible, el último cierre anterior a la fecha prevista.
+    assert svc._fin_objetivo(evento(periodo=None, fecha_prevista="2026-07-30"), qs) == "2026-06-30"
+    assert svc._fin_objetivo(evento(periodo="segundo trimestre", fecha_prevista="2026-05-02"), qs) == "2026-03-31"
+    # Un evento antes de que cierre otro trimestre publicaría uno ya conocido.
+    assert svc._fin_objetivo(evento(periodo=None, fecha_prevista="2026-02-10"), qs) is None
+    # Sin periodo ni fecha no se sabe qué trimestre es: antes, «el siguiente».
+    assert svc._fin_objetivo(evento(periodo=None), qs) is None
+    # Un cierre a fin de mes sigue a fin de mes; uno de 52/53 semanas conserva su día.
+    assert svc._mas_trimestres(date(2025, 9, 30), 1) == date(2025, 12, 31)
+    assert svc._mas_trimestres(date(2025, 9, 27), 1) == date(2025, 12, 27)
+
+
+def test_sin_trimestre_que_estimar_el_modelo_interno_lo_dice(session_factory):
+    cuando = datetime(2026, 7, 14, 14, 35, tzinfo=timezone.utc)
+    servicio = ServicioFalso(cuando)
+    servicio.financials["AAPL"] = {"periods": [], "quarters": _hasta_2025_q4(), "as_of": cuando.isoformat()}
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", ahora=cuando)
+        cap = svc.capturar(s, servicio, e, cuando)
+    assert not any(x["fuente_tipo"] == "modelo_interno" for x in cap["registradas"])
+    assert any(m.startswith("modelo interno: no se sabe qué trimestre publica el evento") for m in cap["sin_fuente"])
+
+
+def _real_q3(metrica, valor, fin="2026-09-30"):
+    return _real(metrica, valor, detalle={"periodo": "2026-Q3", "periodo_fin": fin})
+
+
+def test_una_estimacion_de_otro_trimestre_se_ensena_pero_no_se_lee():
+    """Las filas capturadas antes del arreglo son inmutables: la lectura dice que
+    no miden el mismo trimestre, no vota y no cuenta como «sin resultado»."""
+    del_q2 = {"trimestre_objetivo_fin": "2026-06-30"}
+    r = ev.evaluar_evento(
+        EVENTO,
+        [_exp("revenue", 115.0),
+         _exp("revenue", 116.2, fuente_tipo="modelo_interno", fuente="app", detalle=del_q2),
+         _exp("operating_margin", 0.21, fuente_tipo="modelo_interno", fuente="app", detalle=del_q2)],
+        [_real_q3("revenue", 118.0), _real_q3("operating_margin", 0.12)],
+    )
+    margen = next(c for c in r["por_fuente"]["modelo_interno"] if c["metrica"] == "operating_margin")
+    assert margen["lectura"] == "desconocido" and "sorpresa" not in margen and margen["real"] == 0.12
+    assert margen["periodo_distinto"]["estimado_fin"] == "2026-06-30"
+    assert margen["motivo"] == ("estimó el trimestre que cierra el 30 jun 2026, y el real es de 2026-Q3, "
+                                "que cierra el 30 sept 2026")
+    # Antes votaba: «Margen operativo por debajo (modelo interno)».
+    assert r["en_contra"] == [] and r["clasificacion"] == "mejora_fundamental"
+    assert r["no_comparables"] == ["operating_margin"] and r["sin_resultado"] == [] and r["parcial"] is True
+
+
+def test_unos_dias_de_diferencia_en_el_cierre_son_el_mismo_trimestre():
+    # Un año de 52/53 semanas cierra el 26 de septiembre; la estimación dice el 30.
+    r = ev.evaluar_evento(
+        EVENTO,
+        [_exp("revenue", 115.0, fuente_tipo="modelo_interno", fuente="app",
+              detalle={"trimestre_objetivo_fin": "2026-09-30"})],
+        [_real_q3("revenue", 118.0, fin="2026-09-26")],
+    )
+    assert r["por_fuente"]["modelo_interno"][0]["lectura"] == "supera"
+    assert r["no_comparables"] == []
+
+
+def test_la_calibracion_deja_fuera_las_estimaciones_de_otro_trimestre(session_factory):
+    cuando = datetime(2026, 7, 14, 14, 35, tzinfo=timezone.utc)
+    with session_factory() as s:
+        e = svc.crear_evento(s, "AAPL", "earnings", periodo="2026-Q2", fecha_prevista="2026-07-30", ahora=cuando)
+        for fuente_tipo, fuente, objetivo in (("modelo_interno", "app: modelo interno v1", "2026-03-31"),
+                                              ("usuario", "yo", None)):
+            s.add(Expectation(event_id=e.id, metrica="revenue", fuente_tipo=fuente_tipo, fuente=fuente, valor=304.16,
+                              informacion_hasta=cuando, registrado_en=cuando,
+                              detalle={"trimestre_objetivo_fin": objetivo} if objetivo else None))
+        s.add(EventActual(event_id=e.id, metrica="revenue", valor=310.0, unidad="USD", fuente="edgar Q-2026-2",
+                          publicado="2026-07-30", registrado_en=datetime(2026, 8, 3, tzinfo=timezone.utc),
+                          detalle={"periodo": "2026-Q2", "periodo_fin": "2026-06-30"}))
+        s.commit()
+        c = svc.calibracion(s, "AAPL")
+    assert "modelo_interno" not in c["por_fuente"] and c["por_fuente"]["usuario"]["total"]["n"] == 1
+    assert c["excluidos_otro_trimestre"] == 1
+
+
+def test_la_calibracion_dice_que_miden_error_medio_y_cerca():
+    """Revisión 12, visual: «Cerca 0 %» y «25 %» sin decir de qué."""
+    c = ev.calibrar([{"symbol": "AAA", "metrica": m, "fuente_tipo": "consenso", "esperado": 1.0, "real": 1.0}
+                     for m in ("revenue", "eps_diluted", "operating_margin")])
+    d = c["definiciones"]
+    assert d.startswith("Error medio: la media del error sin signo")
+    assert ("Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea» "
+            "(±1 % en ingresos, ±2 % en BPA diluido, ±0,5 pp en margen operativo)") in d

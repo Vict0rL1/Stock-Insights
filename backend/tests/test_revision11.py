@@ -48,7 +48,8 @@ def test_margen_y_crecimiento_se_escriben_de_su_lado_de_su_nivel():
     assert any(r["evidence"].startswith("CAGR de ingresos -0,04\u00a0%") for r in riesgos)
     veredicto = deep_dive.build_verdict(None, {}, {"revenue_cagr": 0.0804}, {}, {"current": {"operating_margin": 0.1504}})
     assert "ingresos creciendo al 8,04\u00a0% anual" in veredicto["positives"]
-    assert "margen operativo del 15,04\u00a0%" in veredicto["positives"]
+    # \u00abanual\u00bb desde la revisi\u00f3n 12: el informe lee ejercicios, no trimestres.
+    assert "margen operativo anual del 15,04\u00a0%" in veredicto["positives"]
 
 
 def test_el_informe_sirve_sus_fronteras():

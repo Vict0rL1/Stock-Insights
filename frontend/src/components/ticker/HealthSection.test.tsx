@@ -27,7 +27,7 @@ const SALUD: Health = {
 const RIESGO_SIN_DATOS: RiskResponse = {
   ...FUENTE,
   symbol: 'ACME',
-  window: '1Y (barras diarias)',
+  ventana: { sesiones: 252, pedidas: 252, desde: '2025-09-12', hasta: '2026-09-11', parcial: false },
   beta_vs_spy: null,
   annualized_volatility: null,
   max_drawdown: null,
@@ -93,5 +93,70 @@ describe('salud y riesgo de la ficha', () => {
     render(<HealthSection symbol="ACME" />)
     expect(await screen.findByText('2,9896')).toBeInTheDocument()
   })
-})
 
+  // Revisión 12, visual: «Máx. drawdown (1A) 0,0 %» salía en rojo, con «pico 26
+  // dic 2025 → valle 26 dic 2025»: un cero pintado como alarma.
+  it('un drawdown de cero no se pinta en rojo ni da un pico y un valle del mismo día', async () => {
+    servir({
+      '/api/stocks/ACME/health': { status: 200, json: SALUD },
+      '/api/stocks/ACME/risk': {
+        status: 200,
+        json: { ...RIESGO_SIN_DATOS, max_drawdown: { max_drawdown: 0, peak: '2025-12-26', trough: '2025-12-26' } },
+      },
+    })
+    const { container } = render(<HealthSection symbol="ACME" />)
+    const valor = (await screen.findByText(/^Máx\. drawdown/)).nextElementSibling as HTMLElement
+    expect(valor).toHaveTextContent('0,0 %')
+    expect(valor.className).not.toMatch(/red/)
+    expect(container.textContent).toContain('Drawdown: ninguna caída desde un máximo en la ventana.')
+    expect(container.textContent).not.toMatch(/pico .* → valle/)
+  })
+
+  it('una caída de verdad sí va en rojo, con su pico y su valle', async () => {
+    servir({
+      '/api/stocks/ACME/health': { status: 200, json: SALUD },
+      '/api/stocks/ACME/risk': {
+        status: 200,
+        json: { ...RIESGO_SIN_DATOS, max_drawdown: { max_drawdown: -0.25, peak: '2026-02-02', trough: '2026-04-07' } },
+      },
+    })
+    const { container } = render(<HealthSection symbol="ACME" />)
+    const valor = (await screen.findByText(/^Máx\. drawdown/)).nextElementSibling as HTMLElement
+    expect(valor).toHaveTextContent('-25,0 %')
+    expect(valor.className).toMatch(/red/)
+    expect(container.textContent).toContain('Drawdown: pico 2 feb 2026 → valle 7 abr 2026.')
+  })
+
+  // Revisión 12, visual: el pie decía «Ventana: 1Y (barras diarias)», en inglés y
+  // fijo: ni desde cuándo había serie (26 dic 2025) ni «parcial» si no llegaba a un año.
+  it('la ventana es la medida, en español, y dice «parcial» si no llega a un año', async () => {
+    servir({
+      '/api/stocks/ACME/health': { status: 200, json: SALUD },
+      '/api/stocks/ACME/risk': {
+        status: 200,
+        json: {
+          ...RIESGO_SIN_DATOS,
+          ventana: { sesiones: 180, pedidas: 252, desde: '2025-12-26', hasta: '2026-09-11', parcial: true },
+        },
+      },
+    })
+    const { container } = render(<HealthSection symbol="ACME" />)
+    expect((await screen.findByText(/^Máx\. drawdown/)).textContent).toBe('Máx. drawdown (1Aparcial)')
+    expect(screen.getByText(/^Beta vs\. SPY/).textContent).toBe('Beta vs. SPY (1Aparcial)')
+    expect(container.textContent).toContain(
+      'Ventana: 180 sesiones diarias, del 26 dic 2025 al 11 sept 2026 · parcial: un año completo son 252.',
+    )
+    expect(container.textContent).not.toMatch(/1Y/)
+  })
+
+  it('con el año completo, la ventana no lleva «parcial»', async () => {
+    servir({
+      '/api/stocks/ACME/health': { status: 200, json: SALUD },
+      '/api/stocks/ACME/risk': { status: 200, json: RIESGO_SIN_DATOS },
+    })
+    const { container } = render(<HealthSection symbol="ACME" />)
+    expect((await screen.findByText(/^Máx\. drawdown/)).textContent).toBe('Máx. drawdown (1A)')
+    expect(container.textContent).toContain('Ventana: 252 sesiones diarias, del 12 sept 2025 al 11 sept 2026.')
+    expect(container.textContent).not.toMatch(/parcial/)
+  })
+})

@@ -72,6 +72,91 @@ def posiciones_para_decidir(session: Session, ahora: datetime | None = None) -> 
     return {s: agregar_lotes(l) for s, l in por_simbolo.items()}
 
 
+# Lo urgente arriba; lo que no se sabe, antes que lo que está bien.
+_ORDEN_DEL_STOP = {"perforado": 0, "sin_comprobar": 1, "por_encima": 2}
+
+
+def stops_de_la_cartera(session: Session, service, senales: list[dict]) -> dict:
+    """El stop de CADA posición abierta, esté o no en la lista del día.
+
+    Hoy solo miraba las posiciones del mercado barrido: STOP (fuera del S&P 500,
+    stop en 110 y cotizando a 104) salía como «sin valorar» en el aviso del
+    tamaño, que no habla de stops, y la cabecera decía «Para vender 0 · nada
+    urgente» y «1 en cartera» con tres abiertas (revisión 12, visual). Se calcula
+    en cada petición y no viaja en la caché de la lista: una posición abierta o
+    un stop subido después de calcularla también cuentan.
+
+    De cada una: `perforado` o `por_encima` con la regla del motor
+    (`decision.stop_perforado`, en o por debajo), o `sin_comprobar` con su motivo
+    (sin precio, sin stop): no poder mirarlo no es «nada urgente». El precio es
+    el de la lista si la empresa está en ella (con el que decide el motor y que
+    enseña su fila) y, si no, su cotización. El stop, como en el motor: el más
+    protector de los fijados; sin ninguno, el que recalcula la decisión de la
+    lista o, fuera de ella, el de la cartera con la volatilidad guardada (sin
+    histórico, el punto medio de su clase, y se marca).
+    """
+    from app.analysis.decision import _stop_pct, stop_perforado
+    from app.routers.portfolio import _cotizacion, _volatilidad_de
+
+    posiciones = posiciones_para_decidir(session)
+    por_simbolo = {s.get("symbol"): s for s in senales or []}
+    monedas = dict(session.execute(
+        select(Instrument.symbol, Instrument.currency).where(Instrument.symbol.in_(list(posiciones)))
+    ).all()) if posiciones else {}
+    filas = []
+    for symbol, posicion in posiciones.items():
+        senal = por_simbolo.get(symbol)
+        moneda = monedas.get(symbol)
+        if senal is not None:
+            cotizacion = senal.get("price") or {}
+            precio = datos.precio(cotizacion.get("last"))
+            precio_estado = cotizacion.get("estado") or "valido"
+        else:
+            precio, moneda_cotizada, estado = _cotizacion(service, symbol)
+            precio, moneda = datos.precio(precio), moneda_cotizada or moneda
+            precio_estado = estado["estado"]
+        if precio is None:
+            precio_estado = "desconocido"
+
+        stop, por_clase = datos.precio(posicion.get("stop")), False
+        decision = (senal or {}).get("decision") or {}
+        coste = datos.precio(posicion.get("cost_basis"))
+        if stop is None and decision.get("owned"):
+            stop = datos.precio((decision.get("levels") or {}).get("stop"))
+        elif stop is None and coste is not None:
+            vol = _volatilidad_de(service, symbol)
+            clase = "cripto" if symbol.endswith("-USD") else "accion"
+            stop = datos.redondear_precio(coste * (1 - _stop_pct(vol, clase) / 100))
+            por_clase = vol is None
+
+        perforado = stop_perforado(precio, stop)
+        motivo = None
+        if perforado is None:
+            motivo = (
+                "sin precio (ninguna fuente dio su cotización)" if precio is None
+                else "sin stop (ni fijado al abrir ni coste con que calcularlo)"
+            )
+        filas.append({
+            "symbol": symbol,
+            "en_lista": senal is not None,
+            "precio": precio,
+            "precio_estado": precio_estado,
+            "moneda": moneda,
+            # Hacia abajo, como lo sirve el motor: es el umbral de «en o por debajo de».
+            "stop": datos.redondear_precio(stop, hacia="abajo"),
+            "stop_fijado_al_abrir": posicion.get("stop") is not None,
+            "stop_por_clase": por_clase,
+            "estado": "sin_comprobar" if perforado is None else "perforado" if perforado else "por_encima",
+            "motivo": motivo,
+        })
+    filas.sort(key=lambda f: (_ORDEN_DEL_STOP[f["estado"]], f["symbol"]))
+    return {
+        "abiertas": len(posiciones),
+        "en_lista": sum(1 for f in filas if f["en_lista"]),
+        "posiciones": filas,
+    }
+
+
 def convertir_serie(serie: list[tuple[date, float]], moneda: str | None, fx_series: dict) -> list[tuple[date, float]] | None:
     """Cierres en moneda local → en dólares, con el tipo vigente en cada fecha."""
     if moneda == fx.BASE:

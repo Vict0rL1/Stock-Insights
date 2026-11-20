@@ -17,7 +17,7 @@ from app.analysis.fundamentals import (
 from app.analysis.health import health_snapshot
 from app.analysis import logos
 from app.analysis.indicators import macd, rsi, sma
-from app.analysis.risk import annualized_volatility, beta, daily_returns, max_drawdown
+from app.analysis.risk import annualized_volatility, beta, daily_returns, max_drawdown, ventana
 from app.analysis.valuation import dcf, scenario_set, sensitivity_grid
 from app.cache.cache import MarketDataService
 from app.config import settings
@@ -387,6 +387,10 @@ def get_peers(symbol: SimboloRuta, service: MarketDataService = Depends(get_serv
     }
 
 
+# Un año de sesiones: la ventana de beta, volatilidad y drawdown.
+SESIONES_RIESGO = 252
+
+
 @router.get("/{symbol}/risk")
 def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_service)):
     """Beta vs. SPY, volatilidad anualizada y máximo drawdown (1 año).
@@ -394,17 +398,20 @@ def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_servi
     Reutiliza el histórico ya cacheado del gráfico: coste marginal cero.
     """
     symbol = validar_simbolo(symbol)
-    history = _fetch(service, "price_history", symbol=symbol, interval="1day", outputsize=252)
+    history = _fetch(service, "price_history", symbol=symbol, interval="1day", outputsize=SESIONES_RIESGO)
+    # Las últimas `SESIONES_RIESGO` aunque la fuente dé más: la ventana que se
+    # declara abajo es la que se mide.
+    barras = history["bars"][-SESIONES_RIESGO:]
     closes = pd.Series(
-        [b["close"] for b in history["bars"]],
-        index=[b["ts"][:10] for b in history["bars"]],
+        [b["close"] for b in barras],
+        index=[b["ts"][:10] for b in barras],
     )
     returns = daily_returns(closes)
 
     beta_value = None
     benchmark = "SPY"
     try:
-        bench = service.get("price_history", symbol=benchmark, interval="1day", outputsize=252)
+        bench = service.get("price_history", symbol=benchmark, interval="1day", outputsize=SESIONES_RIESGO)
         bench_closes = pd.Series(
             [b["close"] for b in bench["bars"]],
             index=[b["ts"][:10] for b in bench["bars"]],
@@ -415,7 +422,9 @@ def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_servi
 
     return {
         "symbol": symbol,
-        "window": "1Y (barras diarias)",
+        # La ventana medida, no un rótulo fijo: era «1Y (barras diarias)», en
+        # inglés y tuviera la serie lo que tuviera (revisión 12, visual).
+        "ventana": ventana(closes, SESIONES_RIESGO),
         "beta_vs_spy": beta_value,
         "annualized_volatility": annualized_volatility(returns),
         "max_drawdown": max_drawdown(closes),

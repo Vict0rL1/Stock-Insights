@@ -8,7 +8,7 @@ import { mensajeDeError, useDato } from '../../lib/useDato'
 import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
 import { CosteOportunidadResumen, RiesgoResumen } from './QueCambioSection'
-import { TABLA_COMPACTA } from '../../lib/tablas'
+import { COLUMNA_FIJA_DERECHA, TABLA_COMPACTA } from '../../lib/tablas'
 import { MarcoTabla } from '../MarcoTabla'
 
 function Bloque({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -218,7 +218,11 @@ export function HistorialSection({ symbol }: { symbol: string }) {
               <MarcoTabla etiqueta="Historial de decisiones">
                 <table className={`${TABLA_COMPACTA} text-xs`}>
                   <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-                    <tr><th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th><th className="text-right">Precio</th><th className="text-right">Puntuación</th><th /></tr>
+                    <tr>
+                      <th className="py-1 text-left">Cuándo</th><th className="text-left">Origen</th><th className="text-left">Acción</th>
+                      <th className="text-right">Precio</th><th className="text-right">Puntuación</th>
+                      <th className={`${COLUMNA_FIJA_DERECHA} bg-white`} />
+                    </tr>
                   </thead>
                   <tbody>
                     {lista.map((f) => (
@@ -230,7 +234,10 @@ export function HistorialSection({ symbol }: { symbol: string }) {
                         <td className="text-right tabular-nums">
                           {fmtFrente(f.score, f.umbrales_puntuacion?.length ? f.umbrales_puntuacion : umbrales, { signo: true })}
                         </td>
-                        <td className="text-right">
+                        {/* Fija a la derecha: el replay es lo que se viene a hacer aquí, y a
+                            820 px el botón quedaba fuera del marco con solo su borde
+                            asomando (revisión 12, visual). */}
+                        <td className={`${COLUMNA_FIJA_DERECHA} text-right ${replay?.id === f.id ? 'bg-slate-50' : 'bg-white'}`}>
                           <button type="button" onClick={() => abrir(f.id)} className="rounded border border-slate-300 px-2 py-0.5 text-[11px]">
                             Replay
                           </button>

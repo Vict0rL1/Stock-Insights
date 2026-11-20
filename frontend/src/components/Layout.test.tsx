@@ -6,12 +6,16 @@
  * Escape —devolviendo el foco a «Menú»— y tocando fuera.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Layout } from './Layout'
 
+// jsdom no desplaza: sin esto, cada navegación avisa de que `scrollTo` no existe.
+const arriba = vi.fn()
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ providers: [], llm: null }), { status: 200 })))
+  arriba.mockClear()
+  vi.stubGlobal('scrollTo', arriba)
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -114,3 +118,88 @@ describe('Layout: el menú en móvil', () => {
     expect(container.querySelector('main')!.hasAttribute('inert')).toBe(false)
   })
 })
+
+/** Una pantalla con enlaces a otra, como la lista de Hoy con «Ver el análisis completo». */
+function Pantalla({ titulo }: { titulo: string }) {
+  const navigate = useNavigate()
+  return (
+    <>
+      <h1>{titulo}</h1>
+      <button type="button" onClick={() => void navigate('/ticker/ACME')}>Ver el análisis completo</button>
+      <button type="button" onClick={() => void navigate('/ticker/ACME?pestana=historial')}>Misma ficha, otra consulta</button>
+      <button type="button" onClick={() => void navigate('/cartera#riesgo')}>Al riesgo de la cartera</button>
+      <button type="button" onClick={() => void navigate(-1)}>Atrás</button>
+    </>
+  )
+}
+
+function pintarConFicha() {
+  return render(
+    <MemoryRouter initialEntries={['/hoy']}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/hoy" element={<Pantalla titulo="Pantalla Hoy" />} />
+          <Route path="/ticker/:symbol" element={<Pantalla titulo="Ficha" />} />
+          <Route
+            path="/cartera"
+            element={
+              <>
+                <Pantalla titulo="Pantalla Cartera" />
+                <section id="riesgo">Riesgo</section>
+              </>
+            }
+          />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('Layout: una pantalla nueva se abre por arriba', () => {
+  // Revisión 12 (visual): la página no se recarga y el navegador conservaba el
+  // desplazamiento de la anterior; «Ver el análisis completo» abría la ficha
+  // unos 100 px más abajo, con la cabecera cortada.
+  const alAncla = vi.fn()
+  const original = Element.prototype.scrollIntoView
+  beforeEach(() => {
+    alAncla.mockClear()
+    Element.prototype.scrollIntoView = alAncla
+  })
+  afterEach(() => {
+    Element.prototype.scrollIntoView = original
+  })
+
+  it('al cambiar de ruta vuelve arriba', () => {
+    pintarConFicha()
+    expect(arriba).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver el análisis completo' }))
+    expect(screen.getByText('Ficha')).toBeInTheDocument()
+    expect(arriba).toHaveBeenCalledWith(0, 0)
+  })
+
+  it('no al cambiar solo la consulta (las pestañas de la misma pantalla)', () => {
+    pintarConFicha()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver el análisis completo' }))
+    arriba.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Misma ficha, otra consulta' }))
+    expect(arriba).not.toHaveBeenCalled()
+  })
+
+  it('con «Atrás» no: volver a donde estabas es cosa del navegador', () => {
+    pintarConFicha()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver el análisis completo' }))
+    arriba.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Atrás' }))
+    expect(screen.getByText('Pantalla Hoy')).toBeInTheDocument()
+    expect(arriba).not.toHaveBeenCalled()
+  })
+
+  it('con un ancla, a ella y no arriba', () => {
+    pintarConFicha()
+    fireEvent.click(screen.getByRole('button', { name: 'Al riesgo de la cartera' }))
+    expect(alAncla).toHaveBeenCalledTimes(1)
+    expect(alAncla.mock.contexts[0]).toBe(document.getElementById('riesgo'))
+    expect(arriba).not.toHaveBeenCalled()
+  })
+})
+

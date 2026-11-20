@@ -1,17 +1,39 @@
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
-import { fmtFecha, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { fmtFecha, fmtNum, fmtPct, fmtPrecio, signoLeido, ZONA_MERCADO } from '../lib/formato'
 import { useDato } from '../lib/useDato'
-import type { SectorEntry } from '../api/types'
+import type { Quote, SectorEntry } from '../api/types'
+
+/** Verde, rojo o neutro según la variación que se LEE. Con `pct >= 0` un
+ *  «0,00 %» salía en verde, como una subida (revisión 12, visual: Nasdaq 100,
+ *  Dow Jones, Tecnología). */
+const TONO = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' } as const
+const BARRA = { '1': 'bg-emerald-400', '0': 'bg-slate-300', '-1': 'bg-red-400' } as const
 
 function ChangeChip({ pct }: { pct: number | null | undefined }) {
   if (pct === null || pct === undefined) return <span className="text-slate-400">—</span>
-  const up = pct >= 0
+  const texto = fmtPct(pct, 2, { signo: true, enPuntos: true })
+  return <span className={`font-medium tabular-nums ${TONO[signoLeido(texto)]}`}>{texto}</span>
+}
+
+/** «finnhub · 11 sept 2026, 16:00 ET»: de dónde y de cuándo es una cotización.
+ *  Las seis cotizaciones y los sectores no lo decían, mientras Macro y la curva
+ *  sí; con el reloj en sábado, «Sectores hoy» no podía ser una sesión de hoy y
+ *  nada lo avisaba (revisión 12, visual). La hora, en la del mercado. */
+function Procedencia({ quotes, className }: { quotes: (Quote | null)[]; className: string }) {
+  // Solo las válidas: las viejas o desconocidas ya llevan su `EstadoDato`, con
+  // su fuente y su antigüedad, y las que faltan dicen que faltan.
+  const validas = quotes.filter((q): q is Quote => q !== null && (q.estado === undefined || q.estado === 'valido'))
+  if (validas.length === 0) return null
+  const fuentes = [...new Set(validas.map((q) => q.source))].sort().join(', ')
+  const instantes = validas.map((q) => q.as_of).sort((a, b) => Date.parse(a) - Date.parse(b))
+  const desde = fmtFecha(instantes[0], { hora: true, zona: ZONA_MERCADO })
+  const hasta = fmtFecha(instantes[instantes.length - 1], { hora: true, zona: ZONA_MERCADO })
   return (
-    <span className={`font-medium tabular-nums ${up ? 'text-emerald-600' : 'text-red-600'}`}>
-      {fmtPct(pct, 2, { signo: true, enPuntos: true })}
-    </span>
+    <p className={className}>
+      {fuentes} · {desde === hasta ? `dato del ${desde}` : `datos del ${desde} al ${hasta}`}
+    </p>
   )
 }
 
@@ -60,6 +82,7 @@ export function DashboardPage() {
                   {ix.quote ? fmtNum(ix.quote.price) : '—'}
                 </div>
                 <ChangeChip pct={ix.quote?.change_pct} />
+                <Procedencia quotes={[ix.quote]} className="mt-1 text-[10px] text-slate-400" />
                 {/* Un precio rescatado de la caché parecía de ahora, y uno que
                     ninguna fuente dio era un «—» sin explicación (revisión del 2.1). */}
                 {ix.quote && ix.quote.estado !== undefined && ix.quote.estado !== 'valido' && (
@@ -78,7 +101,10 @@ export function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-slate-700">
-            Sectores hoy <span className="font-normal text-slate-400">(ETFs SPDR como proxy)</span>
+            {/* Sin «hoy»: la variación es sobre el cierre anterior al dato, y el dato
+                puede ser del viernes aunque se mire en sábado (revisión 12, visual). */}
+            Sectores{' '}
+            <span className="font-normal text-slate-400">(ETFs SPDR como proxy; variación sobre el cierre anterior)</span>
           </h2>
           <BloqueDatos carga={sectores} que="los sectores" vacio={(d) => d.length === 0} mensajeVacio="Ninguna fuente devolvió sectores.">
             {(lista) => (
@@ -88,6 +114,7 @@ export function DashboardPage() {
                   {lista.map((s) => {
                     const pct = s.change_pct
                     const width = pct === null ? 0 : Math.min(Math.abs(pct) * 25, 100)
+                    const signo = pct === null ? 0 : signoLeido(fmtPct(pct, 2, { enPuntos: true }))
                     return (
                       <li key={s.symbol} className="flex items-center gap-2 text-sm">
                         <Link
@@ -98,7 +125,7 @@ export function DashboardPage() {
                         </Link>
                         <div className="h-2 flex-1 overflow-hidden rounded bg-slate-100">
                           <div
-                            className={`h-full ${pct !== null && pct >= 0 ? 'bg-emerald-400' : 'bg-red-400'}`}
+                            className={`h-full ${BARRA[signo]}`}
                             style={{ width: `${width}%` }}
                           />
                         </div>
@@ -109,6 +136,7 @@ export function DashboardPage() {
                     )
                   })}
                 </ul>
+                <Procedencia quotes={lista.map((s) => s.quote)} className="mt-2 text-[11px] text-slate-400" />
               </>
             )}
           </BloqueDatos>

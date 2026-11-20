@@ -84,6 +84,48 @@ def test_dato_ausente_nunca_aprueba():
     assert result["checks"][0]["actual"] is None
 
 
+def test_un_dato_ausente_no_es_un_suspenso():
+    """Revisión 12, visual: XOM (P/E 12, deuda/capital 0,4, ROE 19 %) salía
+    «No pasa» con el ratio corriente en rojo solo porque faltaba ese dato. Sin
+    dato no aprueba (`passes` False), pero tampoco suspende: queda sin comprobar."""
+    preset = next(p for p in DEFAULT_PRESETS if p["name"].startswith("Value"))
+    r = evaluate_filters({"pe_ttm": 12.0, "debt_to_equity": 0.4, "roe": 0.19}, preset["filters"])
+    assert r["passes"] is False
+    assert r["estado"] == "sin_comprobar"
+    sin = next(c for c in r["checks"] if c["metric"] == "current_ratio")
+    assert sin["estado"] == "sin_dato" and sin["passed"] is False and sin["actual"] is None
+    assert {c["estado"] for c in r["checks"] if c["metric"] != "current_ratio"} == {"pasa"}
+    # Un NaN tampoco es un dato: compararlo daba False y salía como suspenso.
+    assert evaluate_filters({"pe_ttm": float("nan")}, {"pe_ttm": {"op": "lte", "value": 18}})["estado"] == "sin_comprobar"
+
+
+def test_un_suspenso_con_dato_manda_aunque_falte_otro():
+    """Con un filtro suspendido ya no puede pasar, le falte lo que le falte."""
+    r = evaluate_filters({"pe_ttm": 30.0}, {"pe_ttm": {"op": "lte", "value": 18},
+                                            "roe": {"op": "gte", "value": 0.10}})
+    assert r["estado"] == "no_pasa" and r["passes"] is False
+    assert [c["estado"] for c in r["checks"]] == ["no_pasa", "sin_dato"]
+
+
+def test_el_recuento_separa_los_que_suspenden_de_los_que_no_se_pudieron_comprobar():
+    """«0 de 8 pasan» no separaba unos de otros (revisión 12, visual)."""
+    from datetime import datetime, timezone
+
+    from app.routers.screener import ScreenRequest, run_screen
+    from tests.fakes_empresa import ServicioFalso
+
+    sv = ServicioFalso(datetime(2026, 9, 14, tzinfo=timezone.utc))
+    for symbol, metrics in {"AAA": {"pe_ttm": 10.0, "roe": 0.2}, "BBB": {"pe_ttm": 40.0, "roe": 0.2},
+                            "CCC": {"pe_ttm": 10.0, "roe": None}, "DDD": {"pe_ttm": None, "roe": 0.01}}.items():
+        sv.fundamentales[symbol] = {"metrics": metrics, "source": "prueba"}
+    filtros = {"pe_ttm": {"op": "lte", "value": 18}, "roe": {"op": "gte", "value": 0.10}}
+    r = run_screen(ScreenRequest(symbols=["DDD", "CCC", "BBB", "AAA"], filters=filtros), sv)
+    assert (r["passed"], r["no_pasan"], r["sin_comprobar"], r["evaluated"]) == (1, 2, 1, 4)
+    # Las que pasan, luego las que no se pudieron comprobar, luego las que suspenden.
+    assert [(f["symbol"], f["estado"]) for f in r["results"]] == [
+        ("AAA", "pasa"), ("CCC", "sin_comprobar"), ("BBB", "no_pasa"), ("DDD", "no_pasa")]
+
+
 def test_limites_inclusivos():
     assert evaluate_filters({"pe_ttm": 18.0}, {"pe_ttm": {"op": "lte", "value": 18}})["passes"]
     assert evaluate_filters({"roe": 0.10}, {"roe": {"op": "gte", "value": 0.10}})["passes"]

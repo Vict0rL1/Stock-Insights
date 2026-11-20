@@ -40,7 +40,8 @@ const PAREJAS: [string, string][] = [
 
 // El violeta de la IA marca lo generado por IA (§3); el SMA 200 y el RSI lo
 // usaban siendo cálculos (revisión de la Fase 1). Solo lo pinta esto:
-const PUEDEN_USAR_IA = ['../components/ia/ContenidoIA.tsx', '../components/ApiUsageBar.tsx']
+// `MarkdownIA` solo pinta el texto del modelo, dentro de `BloqueIA` (revisión 12, visual).
+const PUEDEN_USAR_IA = ['../components/ia/ContenidoIA.tsx', '../components/ia/MarkdownIA.tsx', '../components/ApiUsageBar.tsx']
 const FUENTES = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}', '!../lib/tokens.ts'], {
   query: '?raw',
   import: 'default',

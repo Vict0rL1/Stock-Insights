@@ -103,4 +103,16 @@ describe('pantalla de Cartera (ítem 2.1)', () => {
     expect(screen.getByText('Sin posiciones abiertas.')).toBeInTheDocument()
     expect(screen.queryByText('Cargando el análisis de la cartera…')).toBeNull()
   })
+
+  it('con la cartera vacía no ofrece descargar el histórico de nada', async () => {
+    // Revisión 12, visual: sin ninguna posición, la cabecera ofrecía «Descargar
+    // histórico completo». Sin precio (el caso de arriba) sí sale.
+    servir({
+      status: 200,
+      json: { disponible: false, sin_posiciones: true, nota: 'No hay posiciones abiertas que analizar como cartera.' },
+    })
+    pintar()
+    expect(await screen.findByText('No hay posiciones abiertas que analizar como cartera.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Descargar histórico completo' })).toBeNull()
+  })
 })

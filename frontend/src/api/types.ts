@@ -171,6 +171,8 @@ export interface ValuationDefaults extends Sourced {
   deuda_parcial?: string[] | null
   nota_deuda?: string | null
   shares_outstanding: number | null
+  /** La moneda del FCF y de la deuda neta (EDGAR solo se lee en USD). */
+  moneda?: string | null
   historical_growth: Financials['growth']
   suggested_growth_capped: number | null
   current_price: number | null
@@ -210,9 +212,20 @@ export interface PeersResponse extends Sourced {
   note: string
 }
 
+/** La ventana medida de beta, volatilidad y drawdown: era «1Y (barras
+ *  diarias)», fijo y en inglés, tuviera la serie lo que tuviera (revisión 12,
+ *  visual). `parcial`: menos sesiones que las `pedidas` (un año, 252). */
+export interface VentanaRiesgo {
+  sesiones: number
+  pedidas: number
+  desde: string | null
+  hasta: string | null
+  parcial: boolean
+}
+
 export interface RiskResponse extends Sourced {
   symbol: string
-  window: string
+  ventana: VentanaRiesgo
   beta_vs_spy: number | null
   annualized_volatility: number | null
   max_drawdown: { max_drawdown: number; peak: string; trough: string } | null
@@ -344,12 +357,18 @@ export interface ScreenCheck {
   op: 'gte' | 'lte'
   value: number
   actual: number | null
+  /** Solo true si se comprobó y cumple: un dato ausente nunca aprueba. */
   passed: boolean
+  /** «sin_dato» no es un suspenso: falta el dato (revisión 12, visual). */
+  estado: 'pasa' | 'no_pasa' | 'sin_dato'
 }
 
 export interface ScreenRow {
   symbol: string
   passes: boolean
+  /** «no_pasa» si suspende algún filtro con dato; «sin_comprobar» si no
+   *  suspende ninguno pero le falta el dato de alguno. */
+  estado: 'pasa' | 'no_pasa' | 'sin_comprobar'
   checks: ScreenCheck[]
   metrics: Record<string, number | null>
   source: string
@@ -360,6 +379,8 @@ export interface ScreenResult {
   results: ScreenRow[]
   unavailable: { symbol: string; reason: string }[]
   passed: number
+  no_pasan: number
+  sin_comprobar: number
   evaluated: number
   note: string
 }
@@ -404,6 +425,9 @@ export interface PortfolioPosition {
   stop_fijado_al_abrir?: boolean
   /** Recalculado sin histórico: el punto medio de su clase, no un stop medido. */
   stop_por_clase?: boolean
+  /** Con la regla del motor (precio en o por debajo del stop). null = sin
+   *  precio o sin stop: no se sabe. */
+  stop_perforado?: boolean | null
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -877,6 +901,35 @@ export interface TodayResponse {
   disclaimer: string
   cached?: boolean
   fetched_at?: string
+  /** El stop de CADA posición abierta, también de las que no están en este
+   *  mercado. Se repasa en cada petición, fuera de la caché de la lista. Sin
+   *  él (respuesta antigua) no se sabe y no se dice «nada urgente». */
+  cartera?: StopsDeCartera
+}
+
+/** Repaso del stop de la cartera (`contexto_cartera.stops_de_la_cartera`). */
+export interface StopsDeCartera {
+  /** null = no se pudo repasar (`error`). */
+  abiertas: number | null
+  /** Cuántas están en la lista de este mercado (las que decide el motor aquí). */
+  en_lista: number | null
+  posiciones: StopDePosicion[]
+  error?: string
+}
+
+export interface StopDePosicion {
+  symbol: string
+  en_lista: boolean
+  precio: number | null
+  precio_estado: 'valido' | 'viejo' | 'desconocido'
+  moneda: string | null
+  stop: number | null
+  stop_fijado_al_abrir: boolean
+  stop_por_clase: boolean
+  /** Con la regla del motor: precio en o por debajo del stop. */
+  estado: 'perforado' | 'por_encima' | 'sin_comprobar'
+  /** Por qué no se pudo comprobar (sin precio, sin stop). */
+  motivo: string | null
 }
 
 export interface CalibrationBucket {
@@ -966,6 +1019,10 @@ export interface Verdict {
   stance: string
   positives: string[]
   negatives: string[]
+  /** Lo que la lectura mira y no pudo comprobar por falta del dato (revisión 12). */
+  sin_comprobar?: string[]
+  /** De qué sale la lectura y qué no entra en ella (revisión 12). */
+  alcance?: string
   quant_label: string | null
   quant_score: number | null
   summary: string
@@ -1004,6 +1061,8 @@ export interface DeepDiveReport {
     current: { gross_margin: number | null; operating_margin: number | null; net_margin: number | null }
     trends: Record<string, string | null>
     reading: string
+    /** El ejercicio de `current`: los márgenes del informe son anuales (revisión 12). */
+    ejercicio?: string | null
   }
   debt: {
     net_debt: number | null
@@ -1048,7 +1107,11 @@ export interface DeepDiveReport {
     max_drawdown: { max_drawdown: number; peak: string; trough: string } | null
   } | null
   risks: DeepDiveRisk[]
+  /** Umbrales de riesgo que no se pudieron mirar por falta del dato (revisión 12). */
+  riesgos_sin_comprobar?: string[]
   catalysts: DeepDiveCatalyst[]
+  /** Qué hay en la lista de catalizadores: su ventana y su origen (revisión 12). */
+  catalysts_note?: string
   verdict: Verdict
   /** Las fronteras con que el informe escribe cada cifra (revisión 11); falta en
    *  informes de antes. */
@@ -1803,6 +1866,9 @@ export interface CrisisEstresada {
 export interface RiesgoDeCartera {
   disponible: boolean
   nota?: string
+  /** Ninguna posición abierta: no hay histórico que descargar. Sin precio no
+   *  viene, y reintentar sí tiene sentido. */
+  sin_posiciones?: boolean
   posiciones?: PosicionDeCartera[]
   sin_precio?: string[]
   /** Posiciones con precio pero sin moneda o tipo de cambio: fuera de los pesos. */
@@ -2180,7 +2246,18 @@ export interface AnalisisEmpresa {
   confianza: ConfianzaEvidencia
   riesgo: RiesgoEnCartera
   calidad: CalidadBeneficios
-  expectativas: { estado: string; ultimo?: { evento: EventoCatalizador; clasificacion: string; a_favor: string[]; en_contra: string[]; guidance: string | null } | null; proximo?: { evento: EventoCatalizador; expectativas: number } | null }
+  expectativas: {
+    estado: string
+    ultimo?: {
+      evento: EventoCatalizador
+      clasificacion: string
+      a_favor: string[]
+      en_contra: string[]
+      guidance: string | null
+      impacto_en_tesis?: { punto: string; estado: string }[]
+    } | null
+    proximo?: { evento: EventoCatalizador; expectativas: number } | null
+  }
   coste_oportunidad: CosteOportunidad
   faltan: { dato: string; seccion: string; motivo: string | null }[]
   generado_por: string
@@ -2312,6 +2389,9 @@ export interface ComparacionMetrica {
   sorpresa?: number
   tipo_sorpresa?: string
   motivo?: string
+  /** La expectativa estimó otro trimestre que el del real: se enseña, pero sin
+   *  lectura (`desconocido`), sin voto y fuera de la calibración. */
+  periodo_distinto?: { estimado_fin: string; real_fin: string; real_periodo: string | null; motivo: string }
 }
 
 export interface LecturaEvento {
@@ -2325,6 +2405,8 @@ export interface LecturaEvento {
   en_contra: string[]
   parcial: boolean
   sin_resultado: string[]
+  /** Métricas con real cuya única expectativa era de otro trimestre. */
+  no_comparables?: string[]
   regla_clasificacion: string
   impacto_en_tesis: { punto: string; estado: string; real?: number | null; umbral?: number | null; motivo?: string }[]
   expectativas_por_fuente: Record<string, { metrica: string; fuente: string; valor: number | null; bajo: number | null; alto: number | null; operador: string | null; registrado_en: string; detalle: Record<string, unknown> | null }[]>
@@ -2334,6 +2416,10 @@ export interface CalibracionExpectativas {
   por_fuente: Record<string, { total: { n: number; error_medio_abs?: number; sesgo?: number; cerca_pct?: number; suficiente?: boolean }; mejor_prevista: string | null; empresas_menos_previsibles: string[] }>
   pares: number
   nota: string
+  /** Qué miden «Error medio» y «Cerca», con las tolerancias de las métricas que hay. */
+  definiciones?: string
+  /** Pares fuera porque la expectativa estimó otro trimestre que el del real. */
+  excluidos_otro_trimestre?: number
 }
 
 export interface ContribucionPosicion {
@@ -2369,6 +2455,8 @@ export interface ContribucionAlRiesgo {
   hasta?: string
   nota?: string
   indice_beta?: string | null
+  /** Ninguna posición abierta: no hay histórico que descargar. */
+  sin_posiciones?: boolean
 }
 
 export interface SaldosEfectivo {

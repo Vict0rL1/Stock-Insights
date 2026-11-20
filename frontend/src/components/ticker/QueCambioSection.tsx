@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
+import { leerNumero } from '../../lib/entrada'
 import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { fmtMetrica } from '../../lib/metricas'
 import { mensajeDeError, useDato } from '../../lib/useDato'
@@ -31,6 +32,17 @@ function valorDe(v: number | string | null, c: CambioMetrica, umbrales: number[]
     : fmtMetrica(v, c.unidad)
 }
 
+// Una fracción como se lee en la fila (`fmtMetrica`: en puntos, con un decimal).
+const puntosEscritos = (v: number) => leerNumero(fmtNum(v * 100, 1)) ?? v * 100
+
+// La diferencia en pp, de lo que se lee: con la de los valores sin redondear,
+// «33,4 % → 30,1 %» decía «(-3,4 pp)», y la resta de lo escrito da -3,3
+// (revisión 12, visual).
+function diferenciaEnPuntos(c: CambioMetrica): number | null {
+  if (typeof c.antes !== 'number' || typeof c.ahora !== 'number') return c.absoluto === undefined ? null : c.absoluto * 100
+  return puntosEscritos(c.ahora) - puntosEscritos(c.antes)
+}
+
 function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: { antes: number[]; ahora: number[] } }) {
   const tono =
     c.tipo === 'dato_perdido' ? 'text-amber-800' : c.direccion === 'baja' ? 'text-red-700' : c.direccion === 'sube' ? 'text-emerald-700' : 'text-slate-700'
@@ -41,8 +53,8 @@ function Cambio({ c, umbrales }: { c: CambioMetrica; umbrales: { antes: number[]
           la derecha solo en unas filas y en otras se pegaba a la izquierda. */}
       <span className={`ml-auto tabular-nums ${tono}`}>
         {valorDe(c.antes, c, umbrales.antes)} → {valorDe(c.ahora, c, umbrales.ahora)}
-        {c.tipo === 'material' && c.unidad === 'fracción' && c.absoluto !== undefined && (
-          <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto * 100, 1)} pp)</span>
+        {c.tipo === 'material' && c.unidad === 'fracción' && diferenciaEnPuntos(c) !== null && (
+          <span className="ml-1 text-slate-400">({fmtNum(diferenciaEnPuntos(c), 1, { signo: true })} pp)</span>
         )}
         {c.tipo === 'material' && c.unidad === 'puntos' && c.absoluto !== undefined && (
           <span className="ml-1 text-slate-400">({c.absoluto >= 0 ? '+' : ''}{fmtNum(c.absoluto, 2)} puntos)</span>
@@ -145,6 +157,38 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
   )
 }
 
+/**
+ * Los puntos de la tesis que hoy están cruzados, junto a la decisión. Salían
+ * solo en rojo al final del diff, debajo de nueve cambios, y el bloque de
+ * «Vigilar», «¿Por qué esta decisión?» y «¿Qué la cambiaría?» no los nombraba
+ * (revisión 12, visual). De lo que dice el análisis de ahora, no del diff: un
+ * trimestre ya comparado deja de salir en el diff, y la tesis sigue rota.
+ */
+function TesisInvalidada({ a }: { a: AnalisisEmpresaResponse['analisis'] }) {
+  const ultimo = a.expectativas?.ultimo
+  const puntos = [
+    ...(a.tesis?.disparadores ?? []).filter((t) => t.salta).map((t) => `${t.descripcion}${t.detalle ? ` (${t.detalle})` : ''}`),
+    ...(ultimo?.impacto_en_tesis ?? [])
+      .filter((i) => i.estado === 'invalidado')
+      .map((i) => `${i.punto} (según los resultados de ${ultimo?.evento.periodo ?? 'el último evento'}: trimestre, no ejercicio)`),
+  ]
+  if (!puntos.length) return null
+  return (
+    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+      <p className="font-semibold">
+        Tu tesis{a.tesis?.titulo ? ` «${a.tesis.titulo}»` : ''} tiene {puntos.length}{' '}
+        {plural(puntos.length, 'punto de invalidación cruzado', 'puntos de invalidación cruzados')}:
+      </p>
+      <ul className="mt-0.5 space-y-0.5">
+        {puntos.map((p, i) => (
+          <li key={i}>· {p}</li>
+        ))}
+      </ul>
+      <p className="mt-1 text-[11px]">El motor de decisión no mira la tesis: esta decisión no la tiene en cuenta.</p>
+    </div>
+  )
+}
+
 export function QueCambioSection({ symbol }: { symbol: string }) {
   const carga = useDato(() => api.analisisEmpresa(symbol), symbol)
   // Al cambiar de símbolo el bloque vuelve a «cargando» y `QueCambio` se monta
@@ -188,9 +232,13 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
               confianza {a.confianza.nivel.toUpperCase()}
             </span>
           </h2>
+          {/* La existente, sin «sin cambios materiales»: justo debajo, «¿Qué cambió?»
+              cuenta 9 cambios materiales frente a OTRA instantánea, la anterior, y
+              las dos frases parecían contradecirse (revisión 12, visual). */}
           <span className="text-[11px] text-slate-400">
             {datos.instantanea
-              ? `${datos.instantanea.nueva ? 'Instantánea nueva' : 'Sin cambios materiales: instantánea existente'} #${datos.instantanea.id} · ${fmtFecha(datos.instantanea.creado_en, { hora: true })}`
+              ? `${datos.instantanea.nueva ? 'Instantánea nueva' : 'Instantánea'} #${datos.instantanea.id} · ${fmtFecha(datos.instantanea.creado_en, { hora: true })}` +
+                (datos.instantanea.nueva ? '' : ' · ya congelada: desde ella no ha cambiado nada que pida otra')
               : 'sin congelar'}
           </span>
         </div>
@@ -200,6 +248,7 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
             <li key={i}>· {r}</li>
           ))}
         </ul>
+        <TesisInvalidada a={a} />
         <div className="mt-3">
           <DecisionExplicada decision={d} abierta />
         </div>

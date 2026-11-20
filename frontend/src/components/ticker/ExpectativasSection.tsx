@@ -67,6 +67,21 @@ function Evento({ id, alCambiar }: { id: number; alCambiar: () => void }) {
   )
 }
 
+/** Las filas de una fuente que estimaron otro trimestre que el del real. El
+ *  modelo interno estimó el Q1 y la pantalla lo comparaba con el real del Q2 sin
+ *  decirlo (revisión 12, visual). Las filas viejas son inmutables: se enseñan,
+ *  pero se dice que no miden lo mismo. */
+function OtroTrimestre({ nombre, filas }: { nombre: string; filas: LecturaEvento['por_fuente'][string] }) {
+  const motivos = [...new Set(filas.flatMap((c) => (c.periodo_distinto ? [c.periodo_distinto.motivo] : [])))]
+  if (motivos.length === 0) return null
+  return (
+    <p className="mt-1 rounded bg-amber-50 p-2 text-[11px] text-amber-900">
+      {fuente(nombre)}: {motivos.join('; ')}. Esas filas no comparan el mismo trimestre: no cuentan en la lectura
+      ni en la calibración.
+    </p>
+  )
+}
+
 function LecturaDeEvento({
   l,
   msg,
@@ -84,8 +99,20 @@ function LecturaDeEvento({
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${CLASIFICACION[l.clasificacion]}`}>
           {etiqueta(l.clasificacion).toUpperCase()}
         </span>
-        {/* Con etiquetas: «eps_diluted, revenue» salía en crudo (revisión 6). */}
-        {l.parcial && <span className="text-xs text-amber-800">parcial: sin resultado para {l.sin_resultado.map((m) => etiqueta(m)).join(', ')}</span>}
+        {/* Con etiquetas: «eps_diluted, revenue» salía en crudo (revisión 6). Una
+            métrica con real pero sin expectativa del mismo trimestre no es «sin
+            resultado» (revisión 12, visual). */}
+        {l.parcial && (
+          <span className="text-xs text-amber-800">
+            parcial:{' '}
+            {[
+              l.sin_resultado.length > 0 ? `sin resultado para ${l.sin_resultado.map((m) => etiqueta(m)).join(', ')}` : null,
+              l.no_comparables?.length ? `sin expectativa del mismo trimestre para ${l.no_comparables.map((m) => etiqueta(m)).join(', ')}` : null,
+            ]
+              .filter((t) => t !== null)
+              .join('; ')}
+          </span>
+        )}
         {l.guidance && <span className="text-xs text-slate-600">guidance: {l.guidance}</span>}
         <button type="button" className="ml-auto rounded-md border border-slate-300 px-2 py-1 text-xs"
           onClick={() => accion(api.capturarExpectativas(id))}>Capturar expectativas</button>
@@ -124,11 +151,14 @@ function LecturaDeEvento({
                         «supera», y un beneficio negativo «2.000.000,00» junto a «M» (revisión 6). */}
                     {c.sorpresa == null ? '—' : c.tipo_sorpresa === 'relativa' ? fmtPct(c.sorpresa, 1) : c.unidad === 'fracción' ? `${fmtNum(c.sorpresa * 100, 1)} pp` : fmtMetrica(c.sorpresa, c.unidad, { ausente: '—', signo: true })}
                   </td>
-                  <td className={`text-right font-medium ${LECTURA[c.lectura]}`}>{etiqueta(c.lectura)}</td>
+                  <td className={`text-right font-medium ${LECTURA[c.lectura]}`}>
+                    {c.periodo_distinto ? 'otro trimestre' : etiqueta(c.lectura)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <OtroTrimestre nombre={nombre} filas={filas} />
         </div>
       ))}
 
@@ -268,7 +298,15 @@ function Calibracion({ cal }: { cal: CalibracionExpectativas }) {
           </tbody>
         </table>
       </MarcoTabla>
-      <p className="mt-1 text-[10px] text-slate-400">{cal.nota} Sesgo positivo = lo real salió por encima de lo esperado.</p>
+      {/* Qué miden «Error medio» y «Cerca»: la nota solo explicaba el sesgo
+          (revisión 12, visual). Las definiciones, con las tolerancias, vienen del
+          backend, que es quien decide «en línea». */}
+      <p className="mt-1 text-[10px] text-slate-400">
+        {cal.nota} {cal.definiciones ? `${cal.definiciones} ` : ''}Sesgo positivo = lo real salió por encima de lo esperado.
+        {cal.excluidos_otro_trimestre
+          ? ` ${cal.excluidos_otro_trimestre} ${plural(cal.excluidos_otro_trimestre, 'par queda fuera', 'pares quedan fuera')}: la expectativa estimó otro trimestre que el del resultado.`
+          : ''}
+      </p>
     </>
   )
 }

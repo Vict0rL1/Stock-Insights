@@ -14,6 +14,7 @@ import type {
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtDinero, fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { useLlmEstado } from '../lib/llm'
 import { MarcoTabla } from '../components/MarcoTabla'
 
 /** Enlace al documento en la SEC. Cada dato de esta pantalla sale de uno, y sin
@@ -402,6 +403,19 @@ export function EarningsPage() {
   const [resultado, setResultado] = useState<AnalisisResponse | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // La extracción la hace la IA. Con la IA apagada la pantalla no lo decía (la
+  // barra lateral, que a 390 px ni se ve, era el único aviso) y «Ver qué
+  // costaría» acababa en «Error HTTP 500» (revisión 12, visual). Como en
+  // Noticias: sin estado conocido no se ofrece, y el motivo se dice arriba.
+  const { status: llm, error: errorIa } = useLlmEstado()
+  const iaEncendida = llm?.configured === true
+  const sinIa = iaEncendida
+    ? null
+    : llm
+      ? 'La extracción la hace la IA, y la capa de IA está desactivada: sin ANTHROPIC_API_KEY no se analiza ningún reporte ni se estima su coste.'
+      : errorIa
+        ? `La extracción la hace la IA, y no se pudo comprobar si está encendida (${errorIa}): mientras tanto no se ofrece analizar.`
+        : null
 
   const cargar = useCallback(async (s: string) => {
     setBusy('cargando')
@@ -469,6 +483,11 @@ export function EarningsPage() {
         quepa una. Cada dato lleva la frase que lo respalda, y esa frase se busca
         en el original.
       </p>
+      {sinIa && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {sinIa} La lista de reportes de la SEC y los ya analizados se consultan igual.
+        </p>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <form
@@ -532,7 +551,8 @@ export function EarningsPage() {
                   ) : (
                     <button
                       onClick={() => verCoste(f)}
-                      disabled={busy !== null}
+                      disabled={busy !== null || !iaEncendida}
+                      title={sinIa ?? (iaEncendida ? undefined : 'Comprobando si la IA está encendida…')}
                       className="text-xs text-sky-700 hover:underline disabled:opacity-50"
                     >
                       {busy === `coste-${f.accession_no}`

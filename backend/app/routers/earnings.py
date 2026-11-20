@@ -88,6 +88,27 @@ class AnalizarRequest(BaseModel):
 
 
 
+def _exigir_ia(llm: LLMProvider | None) -> LLMProvider:
+    """La IA, o un 503 que dice que falta, antes de descargar nada de EDGAR.
+
+    Sin `ANTHROPIC_API_KEY`, `get_llm` da None y «Ver qué costaría» respondía
+    «Error HTTP 500» (`None.contar_tokens`), igual que «Analizar» (revisión 12,
+    visual). El coste tampoco se puede dar sin ella: los tokens los cuenta el
+    API y la tarifa es la del modelo configurado. La lista de reportes y el
+    historial de los ya analizados no la necesitan y siguen funcionando.
+    """
+    if llm is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Capa de IA no configurada: añade ANTHROPIC_API_KEY en .env. Sin ella no se "
+                "analiza ningún reporte ni se estima su coste; la lista de reportes de la SEC "
+                "y los ya analizados se consultan igual."
+            ),
+        )
+    return llm
+
+
 def _filings_de_resultados(service: MarketDataService, symbol: str) -> list[dict]:
     """Los filings con lenguaje de la dirección, del más reciente al más viejo."""
     try:
@@ -243,7 +264,7 @@ def estimar_coste(
     symbol: SimboloRuta,
     accession_no: str | None = None,
     service: MarketDataService = Depends(get_service),
-    llm: LLMProvider = Depends(get_llm),
+    llm: LLMProvider | None = Depends(get_llm),
 ):
     """Cuánto costaría analizar este reporte. Sin llamar al modelo.
 
@@ -252,6 +273,7 @@ def estimar_coste(
     corto y eso hay que saberlo antes, no en la factura.
     """
     symbol = validar_simbolo(symbol)
+    llm = _exigir_ia(llm)
     filings = _filings_de_resultados(service, symbol)
     filing = _elegir(filings, accession_no)
     preparado = _preparar(service, symbol, filing)
@@ -300,7 +322,7 @@ def analizar(
     request: AnalizarRequest = Body(default_factory=AnalizarRequest),
     session: Session = Depends(get_session),
     service: MarketDataService = Depends(get_service),
-    llm: LLMProvider = Depends(get_llm),
+    llm: LLMProvider | None = Depends(get_llm),
 ):
     """Extrae guidance, riesgos y temas de un reporte, y lo compara con el anterior.
 
@@ -309,6 +331,7 @@ def analizar(
     es auditable, porque sus entradas quedan guardadas.
     """
     symbol = validar_simbolo(symbol)
+    llm = _exigir_ia(llm)
     filings = _filings_de_resultados(service, symbol)
     filing = _elegir(filings, request.accession_no)
     preparado = _preparar(service, symbol, filing)

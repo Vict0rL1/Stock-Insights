@@ -14,7 +14,8 @@ import type {
   RiskBudget,
   Vigilancia,
 } from '../api/types'
-import { fmtAntiguedad, fmtDinero, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../lib/formato'
+import { etiqueta } from '../lib/etiquetas'
+import { fmtAntiguedad, fmtDinero, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { useDato, type CargaConReintento } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
@@ -47,7 +48,7 @@ function SinHistorico({ estres }: { estres: Estres }) {
   )
 }
 
-function EstresPanel({ estres }: { estres: Estres }) {
+function EstresPanel({ estres, sinPosiciones = false }: { estres: Estres; sinPosiciones?: boolean }) {
   if (!estres.suficiente) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -55,7 +56,11 @@ function EstresPanel({ estres }: { estres: Estres }) {
           Peor escenario histórico
         </h3>
         <p className="mt-1 text-xs text-slate-500">
-          {estres.nota ?? 'Histórico insuficiente para estresar esta cartera.'}
+          {/* Con la cartera vacía, «Sin cartera o sin histórico» hacía pensar en
+              una descarga fallida (revisión 12, visual). */}
+          {sinPosiciones
+            ? 'Sin posiciones abiertas que estresar.'
+            : (estres.nota ?? 'Histórico insuficiente para estresar esta cartera.')}
         </p>
         <SinHistorico estres={estres} />
       </section>
@@ -85,8 +90,15 @@ function EstresPanel({ estres }: { estres: Estres }) {
           {estres.peor_ventana_pct !== null &&
           estres.peor_ventana_pct !== undefined ? (
             <>
-              <dd className="text-lg font-semibold tabular-nums text-red-700">
-                {fmtPct(estres.peor_ventana_pct, 1, { enPuntos: true })}
+              {/* Con signo y en rojo solo si es una caída: desde que el estrés
+                  puede medir 12 meses (revisión 12, visual) la peor ventana de una
+                  cartera que solo subió salía «5,8 %» en rojo, como una pérdida. */}
+              <dd
+                className={`text-lg font-semibold tabular-nums ${
+                  signoLeido(fmtPct(estres.peor_ventana_pct, 1, { enPuntos: true, signo: true })) < 0 ? 'text-red-700' : ''
+                }`}
+              >
+                {fmtPct(estres.peor_ventana_pct, 1, { enPuntos: true, signo: true })}
               </dd>
               <dd className="text-[11px] text-slate-400">
                 {fmtFecha(estres.peor_ventana_desde)} → {fmtFecha(estres.peor_ventana_hasta)}
@@ -126,8 +138,23 @@ function EstresPanel({ estres }: { estres: Estres }) {
   )
 }
 
-function RiskBudgetPanel({ risk }: { risk: RiskBudget }) {
+function RiskBudgetPanel({ risk, sinPosiciones = false }: { risk: RiskBudget; sinPosiciones?: boolean }) {
+  // Sin posiciones no hay riesgo que sumar, y se dice así: «0,0 %, quedan 6,0 %
+  // de margen» junto a un valor de mercado «—» era el mismo vacío contado como
+  // cero en una tarjeta y como ausente en la otra (revisión 12, visual).
+  if (sinPosiciones) {
+    return (
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-800">Riesgo abierto</h2>
+        <p className="mt-1 text-xs text-slate-500">Sin posiciones abiertas: no hay riesgo abierto que sumar.</p>
+      </section>
+    )
+  }
   const excedido = risk.riesgo_total_pct > risk.tope_pct
+  // Las que cuentan enteras porque su stop ya está perforado, con nombre: STOP
+  // ponía 15,6 de los 31,1 puntos sin que el panel la nombrara, y la nota que lo
+  // explica viajaba en la respuesta sin pintarse (revisión 12, visual).
+  const conNota = risk.posiciones.filter((p) => p.nota)
   const pct = Math.min(risk.riesgo_total_pct / risk.tope_pct, 1.6) * 100
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -152,6 +179,12 @@ function RiskBudgetPanel({ risk }: { risk: RiskBudget }) {
         <div className={`h-full ${excedido ? 'bg-red-500' : 'bg-emerald-500'}`}
              style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
+      {conNota.map((p, i) => (
+        <p key={`${p.symbol}-${i}`} className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-800">
+          <span className="font-semibold">{p.symbol}</span> — {p.nota} (un{' '}
+          {fmtFrente(p.riesgo_pct / 100, 0, { pct: true })} de la cartera).
+        </p>
+      ))}
       {risk.avisos.map((a, i) => (
         <p key={i} className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{a}</p>
       ))}
@@ -253,15 +286,25 @@ function DivisasPanel({ d }: { d: DivisasDeCartera }) {
  *  solo se volvía a pedir al desmontarse; con `refrescar` no se desmonta y la
  *  curva se quedaba en la cartera de antes (segunda revisión del 2.1). El fallo
  *  salía como el motivo a secas, sin decir qué no había cargado (ítem 2.1). */
-function HistorialPanel({ historial }: { historial: CargaConReintento<HistorialDeCartera> }) {
+function HistorialPanel({
+  historial,
+  conCodigo,
+}: {
+  historial: CargaConReintento<HistorialDeCartera>
+  conCodigo: boolean
+}) {
   return (
     <BloqueDatos carga={historial} que="el recorrido de la cartera">
-      {(d) => <Recorrido d={d} />}
+      {(d) => <Recorrido d={d} conCodigo={conCodigo} />}
     </BloqueDatos>
   )
 }
 
-function Recorrido({ d }: { d: HistorialDeCartera }) {
+/** `conCodigo`: con varias divisas, cada importe dice la suya, como las
+ *  tarjetas de arriba; «37.643,00» a secas no decía que eran dólares (revisión
+ *  12, visual). */
+function Recorrido({ d, conCodigo = false }: { d: HistorialDeCartera; conCodigo?: boolean }) {
+  const moneda = conCodigo ? (d.base ?? null) : null
   if (!d.disponible) {
     return (
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -287,14 +330,18 @@ function Recorrido({ d }: { d: HistorialDeCartera }) {
       {r?.disponible && (
         <div className="mt-3 flex flex-wrap items-baseline gap-x-8 gap-y-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">Ahora</div>
+            {/* El último punto de la curva es un CIERRE, no la cotización de
+                ahora que usan las tarjetas: «Ahora» hacía comparar dos cifras
+                de momentos distintos (revisión 12, visual). */}
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">Último cierre</div>
             <div className="text-xl font-semibold tabular-nums text-slate-800">
-              {fmtNum(r.actual)}
+              {fmtDinero(r.actual, moneda)}
             </div>
+            <div className="text-[10px] text-slate-400">{fmtFecha(d.hasta)}</div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400">Máximo</div>
-            <div className="text-xl tabular-nums text-slate-500">{fmtNum(r.maximo)}</div>
+            <div className="text-xl tabular-nums text-slate-500">{fmtDinero(r.maximo, moneda)}</div>
             {r.bajo_maximo_pct !== null && r.bajo_maximo_pct !== undefined && (
               <div className="text-[10px] tabular-nums text-slate-400">
                 {fmtPct(r.bajo_maximo_pct, 1, { enPuntos: true })} por debajo
@@ -409,6 +456,35 @@ function EstadoDelPrecio({ p }: { p: PortfolioPosition }) {
     )
   }
   return null
+}
+
+/** El stop de la fila y si está perforado, con la regla del motor (lo decide el
+ *  backend: `stop_perforado`). La tabla no tenía columna de stop y STOP, a 104
+ *  con el stop en 110, salía en verde por su +15,6 % sobre el coste (revisión
+ *  12, visual). Sin precio con que compararlo, «sin comprobar», no «intacto». */
+function EstadoDelStop({ p, moneda }: { p: PortfolioPosition; moneda: string | null }) {
+  if (p.stop === null || p.stop === undefined) {
+    return (
+      <span className="text-slate-400" title="Sin stop: ni fijado al abrir ni coste con que calcularlo.">
+        —
+      </span>
+    )
+  }
+  return (
+    <span className={p.stop_perforado ? 'font-medium text-red-600' : 'text-slate-700'}>
+      {fmtPrecio(p.stop, moneda)}
+      {p.stop_perforado === true && (
+        <span className="ml-1 rounded bg-red-100 px-1 text-[10px] font-medium text-red-800">
+          {etiqueta('perforado')}
+        </span>
+      )}
+      {p.stop_perforado === null && (
+        <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-800" title="Sin precio con que compararlo.">
+          {etiqueta('sin_comprobar')}
+        </span>
+      )}
+    </span>
+  )
 }
 
 function PortfolioTab() {
@@ -540,13 +616,20 @@ function PortfolioTab() {
           // si son dólares o dólares canadienses (ítem 1.7). Con una sola, sería ruido.
           const conCodigo = variasMonedas(data)
           const monedaDe = (m: string | null | undefined) => (conCodigo ? (m ?? null) : null)
+          // Sin posiciones abiertas, el vacío se dice igual en todas partes: el
+          // invertido salía «0,00» y el valor de mercado «—» (revisión 12, visual).
+          const sinAbiertas = data.positions.length === 0
           return (
             <>
-              <section className="grid grid-cols-2 gap-3 sm:grid-cols-4 [&>div]:min-w-0">
+              {/* Cuatro columnas solo desde `xl`: con la barra lateral, a 820 px
+                  cada tarjeta medía ~130 px y cortaba el código de moneda
+                  («30.659,76 US»), justo lo que hay que leer con dos divisas
+                  (revisión 12, visual). */}
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4 [&>div]:min-w-0">
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <div className="text-xs text-slate-400">Invertido</div>
                   <div className="text-xl font-semibold tabular-nums">
-                    {fmtDinero(data.summary.total_invested, monedaDe(data.divisas?.base))}
+                    {fmtDinero(sinAbiertas ? null : data.summary.total_invested, monedaDe(data.divisas?.base))}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -564,7 +647,9 @@ function PortfolioTab() {
                       «+12 % con un −45 % por el camino» son propuestas distintas, y
                       quien solo ve la primera abandona en el peor momento. */}
                   <div className="mt-1 text-[11px] leading-tight text-slate-500">
-                    {data.summary.max_drawdown_esperado_pct !== null ? (
+                    {sinAbiertas ? (
+                      'Sin posiciones abiertas.'
+                    ) : data.summary.max_drawdown_esperado_pct !== null ? (
                       <>
                         Peor caída histórica de esta cartera:{' '}
                         <span className="font-medium text-red-700 tabular-nums">
@@ -611,10 +696,10 @@ function PortfolioTab() {
               )}
 
               {data.divisas && <DivisasPanel d={data.divisas} />}
-              <HistorialPanel historial={historial} />
-              {data.risk_budget && <RiskBudgetPanel risk={data.risk_budget} />}
+              <HistorialPanel historial={historial} conCodigo={conCodigo} />
+              {data.risk_budget && <RiskBudgetPanel risk={data.risk_budget} sinPosiciones={sinAbiertas} />}
 
-              {data.estres && <EstresPanel estres={data.estres} />}
+              {data.estres && <EstresPanel estres={data.estres} sinPosiciones={sinAbiertas} />}
 
               {data.concentration_warnings.length > 0 && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -633,13 +718,13 @@ function PortfolioTab() {
                   <p className="text-sm text-slate-400">Sin posiciones abiertas.</p>
                 ) : (
                   <MarcoTabla etiqueta="Posiciones abiertas">
-                    <table className="w-full min-w-[640px] text-sm">
+                    <table className="w-full min-w-[720px] text-sm">
                       <thead>
                         <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
                           {/* «1 año» y no una cabecera vacía: `key={h}` haría colisión
                               con la columna en blanco del final, y además dice qué
                               periodo dibuja la línea. */}
-                          {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Valor', 'No realizado', 'Peso', ''].map(
+                          {['Ticker', '1 año', 'Sector', 'Acciones', 'Coste', 'Precio', 'Stop', 'Valor', 'No realizado', 'Peso', ''].map(
                             (h) => (
                               <th key={h} className="px-2 py-1 font-normal">
                                 {h}
@@ -655,7 +740,7 @@ function PortfolioTab() {
                             <tr
                               key={p.id}
                               className={`border-b border-slate-100 ${
-                                p.sin_convertir ? 'bg-amber-50' : ''
+                                p.stop_perforado ? 'bg-red-50' : p.sin_convertir ? 'bg-amber-50' : ''
                               }`}
                               title={p.sin_convertir ?? undefined}
                             >
@@ -688,6 +773,9 @@ function PortfolioTab() {
                               <td className="px-2 py-1.5 tabular-nums">
                                 {fmtPrecio(p.price, monedaDe(p.currency))}
                                 <EstadoDelPrecio p={p} />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums">
+                                <EstadoDelStop p={p} moneda={monedaDe(p.currency)} />
                               </td>
                               <td className="px-2 py-1.5 tabular-nums">
                                 {fmtDinero(p.market_value, monedaDe(p.currency))}

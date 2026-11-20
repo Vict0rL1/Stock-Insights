@@ -101,6 +101,18 @@ comprar → vigilar
 papel: puntuacion_favorable  decide → a_favor   (sigue cumpliendo; ya no basta)
 ```
 
+Una decisión «Sin datos» tiene una traza de una sola regla («Precio y puntuación
+válidos») y el resto no se evalúa, así que el cruce no tiene con qué comparar. La
+explicación dice entonces qué faltaba (su `faltan`) y, si ahora sí hay datos, las
+reglas que deciden y antes no se evaluaron:
+
+```
+sin_datos → vigilar
+Antes no había una puntuación válida («Precio y puntuación válidos»: no cumple) y el motor no podía decidir. Ahora la acción sale de sus reglas:
+«Puntuación ≥ +0,35»: no se evaluaba → cumple (+0,60 frente a +0,35).
+«Precio ≥ media de 200 sesiones + 2 %»: no se evaluaba → no cumple (92,00 frente a 96,68).
+```
+
 `cambiaria` lista, para cada acción alternativa, las condiciones con su umbral y
 la distancia actual (en puntos o en %). Sale de los mismos umbrales que deciden.
 

@@ -86,6 +86,46 @@ export function formatoMacd(ultimo: number | undefined) {
   return ultimo !== undefined && Number.isFinite(ultimo) && Math.abs(ultimo) < 1 ? formatoPrecio(ultimo) : FORMATO_RSI
 }
 
+/**
+ * Cómo responde el gráfico a la rueda, al arrastre y al toque (revisión 12,
+ * visual). Con lo que trae la librería, la rueda sobre el gráfico hacía zoom en
+ * el tiempo y la página dejaba de bajar con el puntero encima, y en un móvil el
+ * arrastre vertical sobre el gráfico tampoco movía la página (`vertTouchDrag`).
+ * La rueda y el arrastre vertical son de la página; el gráfico se mueve
+ * arrastrando en horizontal y se amplía con dos dedos o arrastrando un eje (y
+ * los rangos de arriba). Con la rueda horizontal también fuera: un panel táctil
+ * nunca da un gesto vertical puro, y un poco de desvío bastaba para quedarse la
+ * rueda.
+ *
+ * Los bordes fijos: sin ellos, desplazado o con zoom, la serie acababa a tres
+ * cuartos del ancho con un hueco a la derecha (la grabación en móvil), y con el
+ * borde izquierdo libre la librería no mete la primera fecha del eje dentro del
+ * gráfico: el «2026» salía cortado, «026» a 390 px.
+ */
+export const INTERACCION = {
+  handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+  handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
+} as const
+export const ESCALA_TIEMPO = { fixLeftEdge: true, fixRightEdge: true } as const
+
+/** Las cifras de los ejes, enteras o ninguna (revisión 12, visual): sin esto, en
+ *  la unión de dos paneles el «76,00» del precio quedaba cortado por el
+ *  separador (la coma parecía un punto) y montado sobre el «100,00» del RSI. */
+export const EJE_PRECIOS = { entireTextOnly: true } as const
+
+/**
+ * El eje del RSI. Escala FIJA 0-100: dejarla automática hace que el eje se
+ * reajuste en cada rango y un RSI de 55 parezca un extremo porque es el máximo
+ * de la ventana. Con 0-100 la altura significa siempre lo mismo.
+ *
+ * Y en el eje solo las bandas (70 y 30, con su etiqueta): las marcas
+ * automáticas caían en 75 y 25, y las etiquetas de las bandas las tapaban a
+ * medias; la del 100, arriba del todo, se montaba sobre la última del precio
+ * (revisión 12, visual). En un panel de 90 px con la escala fija, el 0 y el
+ * 100 son sus bordes.
+ */
+export const EJE_RSI = { autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 }, textColor: 'transparent' } as const
+
 // El volumen es contexto, no protagonista: semitransparente y en la quinta parte
 // de abajo del panel del precio.
 const OPACIDAD_VOLUMEN = 0.35
@@ -114,9 +154,10 @@ export function PriceChart({ history }: { history: History }) {
         vertLine: { color: c('text-muted'), labelBackgroundColor: c('surface-sunken') },
         horzLine: { color: c('text-muted'), labelBackgroundColor: c('surface-sunken') },
       },
-      rightPriceScale: { borderColor: borde },
-      timeScale: { borderColor: borde },
+      rightPriceScale: { borderColor: borde, ...EJE_PRECIOS },
+      timeScale: { borderColor: borde, ...ESCALA_TIEMPO },
       localization: LOCALIZACION,
+      ...INTERACCION,
     })
 
     const candles = chart.addSeries(CandlestickSeries, {
@@ -182,6 +223,7 @@ export function PriceChart({ history }: { history: History }) {
     // precio aplastaría las velas hasta dejarlas ilegibles.
     const rsi = overlay(history.bars, history.indicators.rsi14)
     let panel = 1
+    let panelRsi: number | null = null
     if (rsi.length > 0) {
       const serie = chart.addSeries(
         LineSeries,
@@ -200,14 +242,8 @@ export function PriceChart({ history }: { history: History }) {
           title: '',
         })
       }
-      // Escala FIJA 0-100: dejarla automática hace que el eje se reajuste en
-      // cada rango y un RSI de 55 parezca un extremo porque es el máximo de la
-      // ventana. Con 0-100 la altura significa siempre lo mismo.
-      chart.priceScale('right', panel).applyOptions({
-        autoScale: false,
-        scaleMargins: { top: 0.05, bottom: 0.05 },
-      })
       serie.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) })
+      panelRsi = panel
       panel += 1
     }
 
@@ -243,6 +279,13 @@ export function PriceChart({ history }: { history: History }) {
         linea.setData(overlay(history.bars, valores))
       }
     }
+
+    // El eje del RSI, cuando ya existen todos los paneles: la librería guarda
+    // las opciones de la escala derecha de un panel también como las de la
+    // gráfica, y el panel que se crea después las hereda. Fijadas antes del
+    // MACD, su eje salía sin cifras y con la escala fija del RSI (revisión 12,
+    // visual).
+    if (panelRsi !== null) chart.priceScale('right', panelRsi).applyOptions(EJE_RSI)
 
     // Las alturas, al final y DEL ÚLTIMO AL PRIMERO.
     //

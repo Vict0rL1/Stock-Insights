@@ -46,7 +46,7 @@ repositorio.
 - [ ] **2.3** Tipografía (mínimo 12 px, `<TituloPagina>`, `<TituloTarjeta>`) — estado: pendiente · commit: — · nota: —
 - [ ] **2.4** V15 · `<BarraExposicion>` — estado: pendiente · commit: — · nota: —
 - [ ] **2.5** V16 · aprovechamiento del espacio (matriz, tablas) — estado: pendiente · commit: — · nota: —
-- [ ] **2.6** V10 · pestañas de la ficha (6 + «Más ▾») — estado: pendiente · commit: — · nota: —
+- [ ] **2.6** V10 · pestañas de la ficha (6 + «Más ▾») — estado: pendiente · commit: — · nota: en móvil (por debajo de `md`), desde la revisión 12, las pestañas van en una sola fila que se desplaza, con un fundido en el borde que esconde más (`FranjaDesplazable`, components/MarcoTabla.tsx); queda lo de escritorio.
 - [ ] **2.7** V12 · estado de la tesis trimestral y anual — estado: pendiente · commit: — · nota: —
 - [ ] **2.8** V17 · logo de TradingView y atribución — estado: pendiente · commit: — · nota: —
 - [ ] **2.9** Modo resumen — estado: pendiente · commit: — · nota: —
@@ -322,7 +322,8 @@ arreglos de la segunda). Arreglados en el commit «fix(2.1): tercera pasada…»
 Pendiente (baja, no regresión): un 429 de yfinance en la cadena de opciones se reintenta como
 cualquier `ProviderError` (+2 peticiones); traducir los 429 de yfinance a `RateLimitError` sería una
 mejora general. Los campos del DCF de la ficha (`ValuationSection`) siguen con `parseFloat`: no se
-guardan, pero leerían «12,5» como 12.
+guardan, pero leerían «12,5» como 12. (Resuelto en la revisión 12: se escriben con `textoDeCampo` y
+se leen con `leerNumero`, también los del módulo de Valoración.)
 
 Queda para la fase 4.5: `@typescript-eslint/no-misused-promises` marca 29 manejadores `async` en
 13 ficheros (la mayoría capturan dentro); activarla es revisarlos uno a uno. Tampoco se ve una
@@ -830,6 +831,44 @@ y los comparables (R² y el intervalo con sus dos decimales) escriben cada cifra
 decide. Avisos: «Esa posición abierta sin valorar» va pegada al paréntesis que la nombra, delante de
 «Si no tuvieras nada…»; y el motivo del tipo de cambio va junto a «no se pudo pasar a dólares».
 
+### Duodécima revisión (visual, workflow, 18–20 nov)
+
+Una revisión distinta: no del diff, sino de la app en pantalla. 104 capturas a 1440, 820 y 390 px y
+cinco recorridos grabados (backend de demostración), descritos por seis revisores y verificados por
+otros seis: 102 observaciones confirmadas (7 altas, 29 medias, 66 bajas). Se arreglaron por temas,
+cada uno en su worktree, con tests que fallan sin el arreglo; golden idéntico.
+
+- **El stop perforado ya no se calla** (las 7 altas menos una). Hoy repasa el stop de TODAS las
+  posiciones abiertas, también las de fuera del mercado barrido (`contexto_cartera.stops_de_la_cartera`,
+  servido como `cartera` en `/api/signals/today`), con un panel rojo y «Para vender» que las cuenta; sin
+  precio dice «sin comprobar», nunca «nada urgente». Una sola regla (`decision.stop_perforado`). El
+  Portafolio tiene columna Stop (`positions[].stop_perforado`) y el riesgo abierto nombra la posición.
+  Los recuentos de Hoy cuadran con la cartera.
+- **Pantalla:** las tablas con desplazamiento lo indican (`MarcoTabla`), las pestañas de la ficha caben
+  en una fila en móvil, al navegar se vuelve arriba, el gráfico ya no se queda con la rueda; el Markdown
+  de la IA se pinta (`MarkdownIA`, sin HTML del modelo) y sus botones se apagan con la IA apagada; los
+  campos del DCF leen la coma decimal; 0,00 % ya no sale en verde (`signoLeido`).
+- **Datos:** el screener separa «sin dato» de «no pasa»; ETFs avisa de los que descarta; el estrés del
+  Portafolio puede medir 12 meses (y una peor ventana positiva sale con su signo); el informe a fondo dice
+  qué no pudo comprobar; «Qué cambió» explica la caja «Sin datos» y enseña la tesis invalidada junto a la
+  decisión; Expectativas avisa cuando el trimestre estimado no es el del real; Mercado y Salud fechan sus
+  cifras.
+
+**Pendiente de Victor (revisión 12):**
+- Golden `tesis` y `analisis`: con cero titulares en la ventana de 14 días, el punto de noticias debería
+  quedar «sin comprobar» (observación alta 050). Hoy cuenta como comprobado, como decidía un test escrito
+  a propósito («una descarga buena sin titulares sí es una comprobación»). El arreglo está hecho y no se
+  ha integrado porque cambia esos golden.
+- Golden `dcf_ficha`: añadir `moneda` a los valores de partida del DCF para rotular FCF y deuda; sin él,
+  los rótulos van sin moneda (no se supone).
+- Reglas: si la postura del informe a fondo debe bajar con comprobaciones sin dato, si el DCF entra en
+  ella, si el informe debe leer el último trimestre, y si una tesis invalidada debe cambiar la acción.
+- Que el tamaño sirva a qué ideas afecta cada recorte, de forma estructurada (hoy la tarjeta lo deduce
+  del texto); cambia los golden `sizing` y `hoy`.
+- Bajas sin tocar: sectores y categorías en inglés, dos volatilidades con nombre parecido, empates en
+  «más pegadas / más sueltas», colores repetidos en la leyenda del gráfico, rotulación de ETFs
+  (solapamiento, AUM/Patrimonio) y textos internos como «versión de los umbrales d252a79».
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -851,7 +890,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de

@@ -95,10 +95,14 @@ export function ContribucionAlRiesgoPanel() {
                   <p className="text-[10px] text-slate-400">{c.metodo}. {c.nota}</p>
                 </>
               )}
-              <button type="button" onClick={descargar} disabled={contribucion.refrescando}
-                className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50">
-                {contribucion.refrescando ? 'Descargando…' : 'Descargar histórico y recalcular'}
-              </button>
+              {/* Sin ninguna posición no hay histórico que descargar: con la
+                  cartera vacía se ofrecía igual (revisión 12, visual). */}
+              {!c.sin_posiciones && (
+                <button type="button" onClick={descargar} disabled={contribucion.refrescando}
+                  className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50">
+                  {contribucion.refrescando ? 'Descargando…' : 'Descargar histórico y recalcular'}
+                </button>
+              )}
             </div>
           )}
         </BloqueDatos>

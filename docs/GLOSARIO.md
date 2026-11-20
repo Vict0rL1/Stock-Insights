@@ -13,7 +13,7 @@ en `backend/app/etiquetas.py`; este documento fija las palabras.
 | Concepto | Término | Nunca | Nota |
 |---|---|---|---|
 | Beneficio por acción | BPA | EPS | «BPA diluido», «crecimiento del BPA». |
-| Flujo de caja libre | flujo de caja libre (FCF) | FCF yield | «FCF» solo como abreviatura en compuestos ya fijados: «margen de FCF», «FCF de partida», «rentabilidad por FCF». |
+| Flujo de caja libre | flujo de caja libre (FCF) | FCF yield, free cash flow | «FCF» solo como abreviatura en compuestos ya fijados: «margen de FCF», «FCF de partida», «rentabilidad por FCF». |
 | Rentabilidad del flujo de caja libre sobre el precio | rentabilidad por FCF | FCF yield | |
 | Rentabilidad por dividendo | rentabilidad por dividendo | Div. yield, dividend yield | |
 | Coste anual de un ETF | coste anual | Expense ratio | Se explica en dinero: «75 al año por cada 10.000 invertidos». |
