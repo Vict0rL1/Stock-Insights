@@ -106,7 +106,7 @@ def crecimiento_implicito(
             "motivo": (
                 f"Ni creciendo al {fmt_pct(CRECIMIENTO_MAX, 0)} anual durante "
                 f"{years} años se justifica el precio con estos supuestos. Que el "
-                "número exacto sea 70 % u 80 % da igual: lo que dice el resultado "
+                "número exacto sea 70\u00a0% u 80\u00a0% da igual: lo que dice el resultado "
                 "es que el precio no se explica por el flujo de caja actual."
             ),
         }

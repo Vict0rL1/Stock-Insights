@@ -3,9 +3,9 @@
  * comprobadas» vendía como garantía lo que no se había comprobado. UNKNOWN no
  * se convierte en PASS, tampoco en una frase.
  */
-import { render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
-import { Anticipacion } from './HistorialSection'
+import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Anticipacion, HistorialSection } from './HistorialSection'
 
 const REGLA = 'cada dato estaba disponible antes del momento de la decisión'
 
@@ -29,5 +29,52 @@ describe('protección contra información posterior en el replay', () => {
     const t = texto(4, ['consenso'])
     expect(t).not.toMatch(/Sin información posterior/)
     expect(t).toMatch(/Sin fecha verificable, no se pudo comprobar: consenso\./)
+  })
+})
+
+describe('historial de decisiones', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('la puntuación de cada fila no se escribe igual que un umbral (revisión 8)', async () => {
+    // Dos instantáneas con 0,3504 (comprar) y 0,3496 (sin acción) salían
+    // «Comprar 0,35» y «Sin acción 0,35»: una acción distinta con la misma cifra.
+    const fila = (id: number, accion: string, score: number) => ({
+      id, fecha: '2026-09-12', creado_en: `2026-09-12T1${id}:00:00+00:00`, origen: 'analisis:14:35:00',
+      accion, precio: 110, moneda: 'USD', score, reglas_version: 'v1', replay: true,
+    })
+    const respuesta = {
+      symbol: 'ACME', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
+      decisiones: [fila(1, 'comprar', 0.3504), fila(2, 'ninguna', 0.3496), fila(3, 'ninguna', 0.12),
+        // Con posición solo cuenta el umbral de vender, como en su traza y sus
+        // razones: «+0,35», no «+0,3496» (revisión 9).
+        { ...fila(4, 'mantener', 0.3497), umbrales_puntuacion: [-0.35] }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 })))
+    render(<HistorialSection symbol="ACME" />)
+    expect(await screen.findByText('+0,3504')).toBeInTheDocument()
+    expect(screen.getByText('+0,3496')).toBeInTheDocument()
+    expect(screen.getByText('+0,12')).toBeInTheDocument()
+    expect(screen.getByText('+0,35')).toBeInTheDocument()
+  })
+
+  it('el botón «Replay» queda fijo a la derecha del marco (revisión 12, visual)', async () => {
+    // A 820 px el replay, que es lo que se viene a hacer a esta pantalla, quedaba
+    // fuera del marco con solo su borde asomando; a 390, «Cuándo» y «Origen» lo
+    // empujaban fuera y nada lo decía.
+    const respuesta = {
+      symbol: 'ACME', reglas_version_actual: 'v1', thresholds: { favorable: 0.35, desfavorable: -0.35 },
+      decisiones: [{
+        id: 1, fecha: '2026-09-12', creado_en: '2026-09-12T14:35:00+00:00', origen: 'analisis:14:35:00',
+        accion: 'vigilar', precio: 92, moneda: 'USD', score: 0.6, reglas_version: 'v1', replay: true,
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(respuesta), { status: 200 })))
+    render(<HistorialSection symbol="ACME" />)
+    const celda = (await screen.findByRole('button', { name: 'Replay' })).closest('td') as HTMLElement
+    expect(celda.parentElement?.lastElementChild).toBe(celda)
+    expect(celda.className.split(/\s+/)).toEqual(expect.arrayContaining(['sticky', 'right-0', 'z-10', 'bg-white']))
+    // Su cabecera también: sin fondo, «Puntuación» se vería pasar por debajo.
+    const cabecera = celda.closest('table')?.querySelector('thead tr')?.lastElementChild as HTMLElement
+    expect(cabecera.className.split(/\s+/)).toEqual(expect.arrayContaining(['sticky', 'right-0', 'bg-white']))
   })
 })

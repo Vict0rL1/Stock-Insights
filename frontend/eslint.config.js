@@ -31,6 +31,10 @@ export default tseslint.config(
         'error',
         { allowNumber: true, allowBoolean: true, allowNullish: false, allowAny: false, allowNever: false, allowRegExp: false },
       ],
+      // Una promesa sin manejador ni `await` es un fallo que nadie ve: un
+      // `.then(setX)` suelto deja «Cargando» para siempre si la petición falla
+      // (revisión del 2.1). Las que ya capturan dentro se marcan con `void`.
+      '@typescript-eslint/no-floating-promises': 'error',
     },
   },
   // Una cifra para una persona solo se escribe con `lib/formato.ts` (ítem 1.7):
@@ -52,6 +56,16 @@ export default tseslint.config(
             ":matches(NewExpression, CallExpression)[callee.object.name='Intl'][callee.property.name=/^(NumberFormat|DateTimeFormat)$/]",
           message: 'Intl solo dentro de lib/formato.ts: un formateador propio es otro sistema de formato.',
         },
+        // Una cifra y su «%» con espacio normal se parten al final de una línea:
+        // en móvil, «21» / «% supuesto» (revisión del 2.12). Espacio duro, como
+        // `fmtPct`: `\u00a0` en una cadena, `&nbsp;` en el texto de JSX. También
+        // con un salto de línea en medio: el JSX lo pinta como un espacio normal
+        // (revisión 3). Sin `\s`, que incluye el espacio duro.
+        ...['Literal[value=/\\d[\\x20\\t\\r\\n]+%/]', 'JSXText[value=/\\d[\\x20\\t\\r\\n]+%/]',
+          'TemplateElement[value.raw=/\\d[\\x20\\t\\r\\n]+%/]'].map((selector) => ({
+          selector,
+          message: 'Entre una cifra y su «%», espacio duro (\\u00a0 o &nbsp;): con un espacio normal se parten en dos líneas.',
+        })),
         // `codigo.replace(/_/g, ' ')` enseña un código en crudo con espacios:
         // «LOW VOLATILITY», «working capital over assets», «Realestate» (revisión
         // de la Fase 1). Un código se enseña con etiqueta().
@@ -70,6 +84,32 @@ export default tseslint.config(
         {
           selector: 'TemplateElement[value.raw=/^\\s+%/], JSXText[value=/^\\s+%/], Literal[value=/^\\s+%/]',
           message: 'Un porcentaje se escribe con fmtPct (con enPuntos si ya viene en %): lleva espacio duro antes de «%».',
+        },
+        // Un manejador de error que ni mira el error lo convierte en otra cosa:
+        // `() => setIndices([])` pintaba un fallo como «no hay datos», y las
+        // alertas de Portafolio que no cargaban salían «Sin alertas configuradas»
+        // (ítem 2.1, una docena de sitios).
+        {
+          selector:
+            "CallExpression[callee.property.name='then'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]:nth-child(2), CallExpression[callee.property.name='catch'] > :matches(ArrowFunctionExpression, FunctionExpression)[params.length=0]",
+          message: 'Un fallo de carga no se traga: usa useDato + BloqueDatos (components/EstadoDato.tsx) o enseña el error.',
+        },
+        // Lo mismo con `try { … } catch { setX([]) }`: la guarda de arriba no
+        // lo veía (revisión del 2.1). Un `catch` que de verdad no necesita el
+        // error lo justifica con un eslint-disable.
+        {
+          selector: 'CatchClause[param=null]',
+          message: 'Un catch sin el error lo traga: nómbralo y enséñalo, o justifica por qué no hace falta.',
+        },
+        // Un valor por acción con fmtNum tiene dos decimales fijos: el valor
+        // estimado de 0,004 de una acción de céntimos salía «0,00» junto a su
+        // precio de 0,003 (revisión 4, hermano de A1). En cualquier parte de los
+        // argumentos (`sc?.value_per_share`, `p['value_mid']`) y también el BPA y
+        // el máximo de 52 semanas (revisión 5). El cambio del día no: es una
+        // diferencia y va con los decimales del precio, no los suyos (revisión 6).
+        {
+          selector: "CallExpression[callee.name='fmtNum'] MemberExpression:matches([property.name=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low)$/], [property.value=/^(value_per_share|value_mid|value_low|value_high|valor_por_accion|eps_diluted|eps_estimate|eps_actual|week52_high|week52_low)$/])",
+          message: 'Un valor por acción se escribe con fmtPrecio (o fmtValorRedondo si llega redondeado a cifras significativas, fmtCifras si es un cálculo con supuestos).',
         },
       ],
     },

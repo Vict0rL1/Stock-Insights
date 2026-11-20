@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '../api/client'
+import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   Comparables,
   DcfInverso,
@@ -7,10 +8,11 @@ import type {
   Sensibilidad,
   SupuestosEscenario,
   Valoracion,
-  WatchlistItem,
 } from '../api/types'
-import { fmtCompacto, fmtNum, fmtPct, valorDeCampo } from '../lib/formato'
+import { leerNumero, textoDeCampo } from '../lib/entrada'
+import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
+import { MarcoTabla } from '../components/MarcoTabla'
 
 const ESCENARIOS = ['bajista', 'base', 'alcista'] as const
 type NombreEscenario = (typeof ESCENARIOS)[number]
@@ -56,7 +58,7 @@ function BarraRango({
         <div
           className="absolute top-0.5 h-5 w-0.5 bg-slate-900"
           style={{ left: `calc(${marca}% - 1px)` }}
-          title={`Precio actual: ${fmtNum(actual, 2)}`}
+          title={`Precio actual: ${fmtPrecio(actual)}`}
         />
       )}
     </div>
@@ -71,13 +73,13 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
       </h2>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-2xl font-semibold tabular-nums text-slate-900">
-          {fmtNum(g.bajo, 0)} – {fmtNum(g.alto, 0)}
+          {fmtValorRedondo(g.bajo)} – {fmtValorRedondo(g.alto)}
         </span>
         {g.precio_actual !== null && (
           <span className="text-sm text-slate-500">
             cotiza a{' '}
             <span className="font-medium tabular-nums text-slate-800">
-              {fmtNum(g.precio_actual, 0)}
+              {fmtPrecio(g.precio_actual)}
             </span>{' '}
             ({g.posicion})
           </span>
@@ -91,8 +93,21 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
   )
 }
 
-/** Los tres escenarios, cada uno con su rango y sus supuestos editables. */
-function Escenarios({
+const CAMPOS: [keyof SupuestosEscenario, string][] = [
+  ['growth_rate', 'Crecimiento FCF'],
+  ['discount_rate', 'WACC'],
+  ['terminal_growth', 'Perpetuidad'],
+]
+
+/** Los tres escenarios, cada uno con su rango y sus supuestos editables.
+ *
+ *  Los campos eran `type="number"` leídos con `Number(...)`: un campo borrado, o
+ *  un «8,5» que el navegador no acepta y entrega vacío, recalculaba con un 0 %
+ *  sin avisar. Ahora son texto con la coma de la app, leído con `leerNumero`
+ *  como el DCF de la ficha; lo que no se lee no llega a los supuestos y no deja
+ *  recalcular (revisión 12, visual). Se monta de nuevo con cada valoración
+ *  (`key`), así que lo escrito no sobrevive a otra respuesta. */
+export function Escenarios({
   data,
   supuestos,
   onCambiar,
@@ -106,6 +121,15 @@ function Escenarios({
   busy: boolean
 }) {
   const precio = data.entradas.precio_actual
+  const [textos, setTextos] = useState<Record<string, string>>({})
+  const nombreCampo = (clave: string) => {
+    const [escenario, campo] = clave.split('|')
+    return `${CAMPOS.find(([c]) => c === campo)?.[1] ?? campo} ${escenario}`
+  }
+  const vacios = Object.entries(textos).filter(([, t]) => t.trim() === '').map(([k]) => nombreCampo(k))
+  const ilegibles = Object.entries(textos)
+    .filter(([, t]) => t.trim() !== '' && leerNumero(t) === null)
+    .map(([k, t]) => `${nombreCampo(k)} («${t}»)`)
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-800">
@@ -140,10 +164,10 @@ function Escenarios({
                 </span>
                 {e.rango.disponible ? (
                   <span className="tabular-nums text-slate-900">
-                    {fmtNum(e.rango.bajo, 0)}{' '}
+                    {fmtValorRedondo(e.rango.bajo)}{' '}
                     <span className="text-slate-400">–</span>{' '}
-                    <span className="font-medium">{fmtNum(e.rango.centro, 0)}</span>{' '}
-                    <span className="text-slate-400">–</span> {fmtNum(e.rango.alto, 0)}
+                    <span className="font-medium">{fmtValorRedondo(e.rango.centro)}</span>{' '}
+                    <span className="text-slate-400">–</span> {fmtValorRedondo(e.rango.alto)}
                   </span>
                 ) : (
                   <span className="text-xs text-amber-800">sin rango calculable</span>
@@ -168,31 +192,30 @@ function Escenarios({
               )}
 
               <div className="mt-2 grid grid-cols-3 gap-3">
-                {(
-                  [
-                    ['growth_rate', 'Crecimiento FCF'],
-                    ['discount_rate', 'WACC'],
-                    ['terminal_growth', 'Perpetuidad'],
-                  ] as [keyof SupuestosEscenario, string][]
-                ).map(([campo, etiqueta]) => (
-                  <label key={campo} className="block">
-                    <span className="block text-[10px] uppercase tracking-wide text-slate-400">
-                      {etiqueta}
-                    </span>
-                    <div className="flex items-baseline gap-1">
-                      <input
-                        type="number"
-                        step={0.1}
-                        value={valorDeCampo(s[campo] * 100, 1)}
-                        onChange={(ev) =>
-                          onCambiar(nombre, campo, Number(ev.target.value) / 100)
-                        }
-                        className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
-                      />
-                      <span className="text-xs text-slate-400">%</span>
-                    </div>
-                  </label>
-                ))}
+                {CAMPOS.map(([campo, etiqueta]) => {
+                  const clave = `${nombre}|${campo}`
+                  return (
+                    <label key={campo} className="block">
+                      <span className="block text-[10px] uppercase tracking-wide text-slate-400">
+                        {etiqueta}
+                      </span>
+                      <div className="flex items-baseline gap-1">
+                        <input
+                          inputMode="decimal"
+                          value={textos[clave] ?? textoDeCampo(s[campo] * 100, 1)}
+                          onChange={(ev) => {
+                            const texto = ev.target.value
+                            setTextos((prev) => ({ ...prev, [clave]: texto }))
+                            const n = texto.trim() === '' ? null : leerNumero(texto)
+                            if (n !== null) onCambiar(nombre, campo, n / 100)
+                          }}
+                          className="w-16 rounded border border-slate-300 px-1.5 py-0.5 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
+                        />
+                        <span className="text-xs text-slate-400">%</span>
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
 
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
@@ -203,13 +226,24 @@ function Escenarios({
         })}
       </div>
 
-      <button
-        onClick={onAplicar}
-        disabled={busy}
-        className="mt-3 rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-      >
-        {busy ? 'Calculando…' : 'Recalcular con mis supuestos'}
-      </button>
+      {ilegibles.length > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          No se puede leer {ilegibles.join(', ')}. Escribe el porcentaje como en el resto de la app, p.&nbsp;ej.
+          8,5: no se recalcula con un número a medias.
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          onClick={onAplicar}
+          disabled={busy || vacios.length > 0 || ilegibles.length > 0}
+          className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {busy ? 'Calculando…' : 'Recalcular con mis supuestos'}
+        </button>
+        {vacios.length > 0 && (
+          <span className="text-xs text-slate-500">Para recalcular falta: {vacios.join(', ')}.</span>
+        )}
+      </div>
     </section>
   )
 }
@@ -252,7 +286,7 @@ function SensibilidadPanel({ s }: { s: Sensibilidad }) {
               />
             </div>
             <div className="mt-0.5 text-[11px] tabular-nums text-slate-400">
-              {fmtNum(f.valor_abajo, 0)} → {fmtNum(f.valor_arriba, 0)}
+              {fmtValorRedondo(f.valor_abajo)} → {fmtValorRedondo(f.valor_arriba)}
             </div>
           </li>
         ))}
@@ -343,7 +377,7 @@ function InversoPanel({ inv }: { inv: DcfInverso }) {
   )
 }
 
-function ComparablesPanel({ c }: { c: Comparables }) {
+export function ComparablesPanel({ c }: { c: Comparables }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-800">
@@ -354,11 +388,13 @@ function ComparablesPanel({ c }: { c: Comparables }) {
         <>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3">
             <span className="text-lg font-semibold tabular-nums text-slate-900">
-              {c.etiqueta_multiplo} {fmtNum(c.intervalo.bajo, 1)} – {fmtNum(c.intervalo.alto, 1)}
+              {/* Con los dos decimales con que se sirven: con uno, 22,44 fuera de
+                  15,02–22,36 se leía «15,0 – 22,4 · cotiza a 22,4 (fuera)» (revisión 11). */}
+              {c.etiqueta_multiplo} {fmtNum(c.intervalo.bajo)} – {fmtNum(c.intervalo.alto)}
             </span>
             <span className="text-sm text-slate-500">
               cotiza a{' '}
-              <span className="font-medium text-slate-800">{fmtNum(c.multiplo_objetivo, 1)}</span>{' '}
+              <span className="font-medium text-slate-800">{fmtNum(c.multiplo_objetivo)}</span>{' '}
               ({c.dentro_del_intervalo ? 'dentro' : 'fuera'})
             </span>
           </div>
@@ -393,7 +429,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
       )}
 
       {c.pares && c.pares.length > 0 && (
-        <div className="mt-3 overflow-x-auto">
+        <MarcoTabla etiqueta="Comparación con los pares" className="mt-3">
           <table className="w-full min-w-[420px] text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-slate-400">
               <tr className="border-b border-slate-200">
@@ -428,7 +464,7 @@ function ComparablesPanel({ c }: { c: Comparables }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
     </section>
   )
@@ -437,18 +473,13 @@ function ComparablesPanel({ c }: { c: Comparables }) {
 export function ValuationPage() {
   const [entrada, setEntrada] = useState('')
   const [symbol, setSymbol] = useState('')
-  const [seguidas, setSeguidas] = useState<string[]>([])
   const [data, setData] = useState<Valoracion | null>(null)
   const [supuestos, setSupuestos] = useState<Record<string, SupuestosEscenario>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.watchlist().then(
-      (w) => setSeguidas(w.items.map((i: WatchlistItem) => i.symbol)),
-      () => setSeguidas([]),
-    )
-  }, [])
+  // Cada valoración monta los escenarios de nuevo: lo escrito a medias en un
+  // campo no se queda encima de los supuestos que acaban de llegar.
+  const [version, setVersion] = useState(0)
 
   const correr = useCallback(
     async (s: string, escenarios?: Record<string, SupuestosEscenario>) => {
@@ -463,6 +494,7 @@ export function ValuationPage() {
             Object.entries(d.escenarios).map(([k, v]) => [k, { ...v.supuestos }]),
           ),
         )
+        setVersion((v) => v + 1)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error')
         setData(null)
@@ -488,7 +520,7 @@ export function ValuationPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) correr(s)
+            if (s) void correr(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -507,27 +539,13 @@ export function ValuationPage() {
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </form>
-        {seguidas.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate-400">De tu watchlist:</span>
-            {seguidas.map((s) => (
-              <button
-                key={s}
-                onClick={() => {
-                  setEntrada(s)
-                  correr(s)
-                }}
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  symbol === s
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <AtajosWatchlist
+          actual={symbol}
+          elegir={(s) => {
+            setEntrada(s)
+            void correr(s)
+          }}
+        />
       </section>
 
       {data && (
@@ -535,6 +553,7 @@ export function ValuationPage() {
           {data.rango_global && <RangoGlobalPanel g={data.rango_global} />}
           <SensibilidadPanel s={data.sensibilidad} />
           <Escenarios
+            key={version}
             data={data}
             supuestos={supuestos}
             busy={busy}

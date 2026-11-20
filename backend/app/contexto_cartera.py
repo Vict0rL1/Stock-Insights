@@ -2,7 +2,8 @@
 
 La contribución al riesgo, el riesgo de añadir una idea y el coste de
 oportunidad necesitan lo mismo: cada posición abierta con su peso sobre el
-total (en dólares, convertido con el tipo de hoy) y su histórico de cierres EN
+total (en dólares, al precio y al tipo que ya se conocían en la fecha del
+cálculo; hoy, los últimos) y su histórico de cierres EN
 DÓLARES (convertido con el tipo de CADA fecha: con el de hoy, el riesgo de
 divisa de una acción canadiense desaparecería). Se construye aquí una vez, con
 las reglas de la cartera:
@@ -71,11 +72,96 @@ def posiciones_para_decidir(session: Session, ahora: datetime | None = None) -> 
     return {s: agregar_lotes(l) for s, l in por_simbolo.items()}
 
 
+# Lo urgente arriba; lo que no se sabe, antes que lo que está bien.
+_ORDEN_DEL_STOP = {"perforado": 0, "sin_comprobar": 1, "por_encima": 2}
+
+
+def stops_de_la_cartera(session: Session, service, senales: list[dict]) -> dict:
+    """El stop de CADA posición abierta, esté o no en la lista del día.
+
+    Hoy solo miraba las posiciones del mercado barrido: STOP (fuera del S&P 500,
+    stop en 110 y cotizando a 104) salía como «sin valorar» en el aviso del
+    tamaño, que no habla de stops, y la cabecera decía «Para vender 0 · nada
+    urgente» y «1 en cartera» con tres abiertas (revisión 12, visual). Se calcula
+    en cada petición y no viaja en la caché de la lista: una posición abierta o
+    un stop subido después de calcularla también cuentan.
+
+    De cada una: `perforado` o `por_encima` con la regla del motor
+    (`decision.stop_perforado`, en o por debajo), o `sin_comprobar` con su motivo
+    (sin precio, sin stop): no poder mirarlo no es «nada urgente». El precio es
+    el de la lista si la empresa está en ella (con el que decide el motor y que
+    enseña su fila) y, si no, su cotización. El stop, como en el motor: el más
+    protector de los fijados; sin ninguno, el que recalcula la decisión de la
+    lista o, fuera de ella, el de la cartera con la volatilidad guardada (sin
+    histórico, el punto medio de su clase, y se marca).
+    """
+    from app.analysis.decision import _stop_pct, stop_perforado
+    from app.routers.portfolio import _cotizacion, _volatilidad_de
+
+    posiciones = posiciones_para_decidir(session)
+    por_simbolo = {s.get("symbol"): s for s in senales or []}
+    monedas = dict(session.execute(
+        select(Instrument.symbol, Instrument.currency).where(Instrument.symbol.in_(list(posiciones)))
+    ).all()) if posiciones else {}
+    filas = []
+    for symbol, posicion in posiciones.items():
+        senal = por_simbolo.get(symbol)
+        moneda = monedas.get(symbol)
+        if senal is not None:
+            cotizacion = senal.get("price") or {}
+            precio = datos.precio(cotizacion.get("last"))
+            precio_estado = cotizacion.get("estado") or "valido"
+        else:
+            precio, moneda_cotizada, estado = _cotizacion(service, symbol)
+            precio, moneda = datos.precio(precio), moneda_cotizada or moneda
+            precio_estado = estado["estado"]
+        if precio is None:
+            precio_estado = "desconocido"
+
+        stop, por_clase = datos.precio(posicion.get("stop")), False
+        decision = (senal or {}).get("decision") or {}
+        coste = datos.precio(posicion.get("cost_basis"))
+        if stop is None and decision.get("owned"):
+            stop = datos.precio((decision.get("levels") or {}).get("stop"))
+        elif stop is None and coste is not None:
+            vol = _volatilidad_de(service, symbol)
+            clase = "cripto" if symbol.endswith("-USD") else "accion"
+            stop = datos.redondear_precio(coste * (1 - _stop_pct(vol, clase) / 100))
+            por_clase = vol is None
+
+        perforado = stop_perforado(precio, stop)
+        motivo = None
+        if perforado is None:
+            motivo = (
+                "sin precio (ninguna fuente dio su cotización)" if precio is None
+                else "sin stop (ni fijado al abrir ni coste con que calcularlo)"
+            )
+        filas.append({
+            "symbol": symbol,
+            "en_lista": senal is not None,
+            "precio": precio,
+            "precio_estado": precio_estado,
+            "moneda": moneda,
+            # Hacia abajo, como lo sirve el motor: es el umbral de «en o por debajo de».
+            "stop": datos.redondear_precio(stop, hacia="abajo"),
+            "stop_fijado_al_abrir": posicion.get("stop") is not None,
+            "stop_por_clase": por_clase,
+            "estado": "sin_comprobar" if perforado is None else "perforado" if perforado else "por_encima",
+            "motivo": motivo,
+        })
+    filas.sort(key=lambda f: (_ORDEN_DEL_STOP[f["estado"]], f["symbol"]))
+    return {
+        "abiertas": len(posiciones),
+        "en_lista": sum(1 for f in filas if f["en_lista"]),
+        "posiciones": filas,
+    }
+
+
 def convertir_serie(serie: list[tuple[date, float]], moneda: str | None, fx_series: dict) -> list[tuple[date, float]] | None:
     """Cierres en moneda local → en dólares, con el tipo vigente en cada fecha."""
     if moneda == fx.BASE:
         return serie
-    tipos = fx_series.get(moneda) or []
+    tipos = fx.puntos_en_banda(moneda, fx_series.get(moneda))
     if not tipos:
         return None
     fechas, valores = [f for f, _ in sorted(tipos)], [v for _, v in sorted(tipos)]
@@ -90,16 +176,24 @@ def convertir_serie(serie: list[tuple[date, float]], moneda: str | None, fx_seri
 def construir(session: Session, service, *, descargar: bool = False, ahora: datetime | None = None) -> dict:
     """{posiciones, series (en USD), sin_peso, mercado, total_usd}. Nunca lanza
     por una posición: la que falla queda fuera con su motivo."""
-    from app.routers.portfolio import _cotizacion, _fx_completo, _historico_largo, _moneda_segura, _resolver_divisa
+    from app.routers.portfolio import _cotizacion, _fx_completo, _historico_largo, _resolver_divisa
+
+    from app.oportunidad import _tipo_en, _ultimas_anotaciones
 
     ahora = ahora or datetime.now(timezone.utc)
     filas = session.execute(
         select(Position, Instrument).join(Instrument, Position.instrument_id == Instrument.id)
-        .where(Position.closed_at.is_(None))
     ).all()
     agregadas: dict[str, dict] = {}
     for pos, inst in filas:
         if pit.disponible_en(pos.opened_at, ahora) is False:
+            continue
+        # Cerrada en `ahora`, con la misma regla que `posiciones_para_decidir`.
+        # Antes se filtraba en SQL por `closed_at IS NULL`: en una reconstrucción,
+        # una posición abierta ese día y cerrada después desaparecía del capital
+        # y de los comparables, mientras el mismo análisis la daba por abierta
+        # (revisión de A5).
+        if pos.closed_at is not None and pit.disponible_en(pos.closed_at, ahora) is not False:
             continue
         a = agregadas.setdefault(inst.symbol, {"symbol": inst.symbol, "nombre": inst.name, "sector": inst.sector,
                                                "industria": inst.industry, "cantidad": 0.0, "coste": 0.0,
@@ -109,32 +203,79 @@ def construir(session: Session, service, *, descargar: bool = False, ahora: date
         a["stops"].append(pos.stop)
         a["abierta_desde"] = min(a["abierta_desde"], pos.opened_at)
 
+    # Las cotizaciones antes que el histórico largo: el margen de descarga va
+    # anclado a `ahora`, y pedir primero el histórico de todas las posiciones lo
+    # consumía (revisión de 2f8d84b).
+    cotizaciones = {s: _cotizacion(service, s) for s in agregadas}
+    crudas, fallos = _historico_largo(service, list(agregadas) + [INDICE_MERCADO], descargar)
+    # ¿Se reconstruye el pasado? Con el margen de lo que tarda el propio cálculo,
+    # para que un análisis en vivo que empezó hace unos segundos no lo parezca.
+    reconstruccion = pit.descargado_a_tiempo(datetime.now(timezone.utc), ahora) is False
     sin_peso, valoradas = [], []
     monedas = set()
     for a in agregadas.values():
-        precio, moneda, estado = _cotizacion(service, a["symbol"])
-        moneda = _moneda_segura(_resolver_divisa(session, service, a["instrument"], moneda))
+        precio, moneda, estado = cotizaciones[a["symbol"]]
+        sin_precio = "sin precio: fuera de los pesos (no vale cero)"
+        posterior = precio is not None and pit.descargado_a_tiempo(estado.get("publicado"), ahora) is False
+        if posterior or (precio is None and reconstruccion):
+            # Sin cotización de entonces, el último cierre que ya existía: un
+            # precio viejo, y se dice, como en `seccion_mercado`. Una cotización
+            # posterior a la fecha es información futura (la reconstrucción del
+            # 12 pesaba cada posición con el precio del 15), y que hoy no haya
+            # cotización no cambia lo que valía entonces (revisión de A5).
+            # Solo al reconstruir: en vivo, sin cotización la posición queda
+            # fuera y nombrada, como en /api/portfolio. Con el cierre viejo de la
+            # caché entraba en los pesos, el coste de oportunidad y el tamaño sin
+            # que nada lo dijera, y los dos totales no cuadraban (revisión 4).
+            previos = [c for d, c in crudas.get(a["symbol"]) or [] if pit.barra_disponible(d, ahora)]
+            if previos:
+                precio, estado = previos[-1], {"estado": "viejo"}
+            else:
+                precio, estado = None, {"estado": "desconocido"}
+                if posterior:
+                    sin_precio = ("sin precio en esa fecha: la cotización es posterior y no hay un cierre "
+                                  "anterior en caché (no vale cero)")
+        cruda = _resolver_divisa(session, service, a["instrument"], moneda)
+        # Una moneda en peniques (GBX) se sabe cuál es: decir «desconocida»
+        # escondía el motivo (auditoría del 19 oct, hermano del 500 de la cartera).
+        try:
+            moneda, sin_moneda = fx.normalizar(cruda), "moneda desconocida: no se supone dólar"
+        except fx.SinTipo as exc:
+            moneda, sin_moneda = None, str(exc)
         a.update(precio=datos.precio(precio), moneda=moneda, precio_estado=estado.get("estado"))
         if a["precio"] is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": "sin precio: fuera de los pesos (no vale cero)"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": sin_precio})
             continue
         if moneda is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": "moneda desconocida: no se supone dólar"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": sin_moneda})
             continue
         monedas.add(moneda)
         valoradas.append(a)
 
-    tipos, fx_series, _ = _fx_completo(service, monedas)
+    # También las monedas del efectivo anotado: con toda la cartera en dólares y
+    # efectivo en CAD, la ficha no tenía con qué convertirlo y lo daba por
+    # desconocido mientras Hoy sí lo sumaba; dos tamaños para la misma idea
+    # (revisión de M3).
+    monedas_efectivo = {c.moneda for c in _ultimas_anotaciones(session, ahora)}
+    _, fx_series, _ = _fx_completo(service, monedas | monedas_efectivo)
     for a in valoradas:
-        por_usd = 1.0 if a["moneda"] == fx.BASE else datos.numero((tipos.get(a["moneda"]) or {}).get("por_usd"))
+        # Con el tipo que ya se conocía en `ahora`, el mismo que usa el efectivo
+        # (`oportunidad._tipo_en`). Con el último de la serie, una reconstrucción
+        # del 12 convertía los CAD de la posición a 1,50 (el tipo del 14) y los
+        # del efectivo a 1,30: dos tipos para la misma divisa en el mismo capital
+        # (revisión de A2).
+        motivo = f"sin tipo de cambio para {a['moneda']}"
+        try:
+            tipo = None if a["moneda"] == fx.BASE else _tipo_en(fx_series.get(a["moneda"]), ahora, a["moneda"])
+        except fx.SinTipo as exc:
+            tipo, motivo = None, str(exc)
+        por_usd = 1.0 if a["moneda"] == fx.BASE else (tipo or {}).get("por_usd")
         a["valor_usd"] = a["precio"] * a["cantidad"] / por_usd if por_usd else None
         if a["valor_usd"] is None:
-            sin_peso.append({"symbol": a["symbol"], "motivo": f"sin tipo de cambio para {a['moneda']}"})
+            sin_peso.append({"symbol": a["symbol"], "motivo": motivo})
     valoradas = [a for a in valoradas if a.get("valor_usd")]
     total = sum(a["valor_usd"] for a in valoradas)
 
-    simbolos = [a["symbol"] for a in valoradas]
-    crudas, fallos = _historico_largo(service, simbolos + [INDICE_MERCADO], descargar)
     series = {}
     for a in valoradas:
         s = crudas.get(a["symbol"])

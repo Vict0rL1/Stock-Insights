@@ -50,7 +50,7 @@ from app.analysis.valuation import rango_de_valor, redondear, sensibilidad_orden
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.deps import get_service
-from app.formato import fmt_num, fmt_pct
+from app.formato import fmt_num, fmt_pct, fmt_valor_redondo
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.simbolos import SimboloRuta, validar_simbolo
@@ -359,7 +359,7 @@ def valorar(
             "quedarse con el del medio."
             if factor and factor >= 2
             else (
-                f"El rango va de {fmt_num(global_['bajo'])} a {fmt_num(global_['alto'])} (factor "
+                f"El rango va de {fmt_valor_redondo(global_['bajo'])} a {fmt_valor_redondo(global_['alto'])} (factor "
                 f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
                 if factor
                 else ""
@@ -396,7 +396,7 @@ def valorar(
             {"valor": medido, "supuesto": False}
             if medido is not None
             else {"valor": CRECIMIENTO_SUPUESTO, "supuesto": True,
-                  "motivo": "sin crecimiento histórico de ingresos medible: supuesto del 3 %"}
+                  "motivo": "sin crecimiento histórico de ingresos medible: supuesto del 3\u00a0%"}
         )
         margen = (
             margen_implicito(

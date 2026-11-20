@@ -120,54 +120,59 @@ async function fetchJson<T>(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
           'plano: espera un poco y vuelve a intentarlo.',
       )
     }
-    throw err
+    throw sinConexion(err)
   } finally {
     clearTimeout(timer)
   }
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      detail = textoDeError(body.detail) ?? detail
-    } catch {
-      // cuerpo no-JSON: nos quedamos con el mensaje genérico
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }
 
+/** Sin servidor que responda, `fetch` lanza un `TypeError` del navegador
+ *  («Failed to fetch»), y llegaba tal cual a frases como «No se pudo borrar la
+ *  tesis: Failed to fetch» (segunda revisión del 2.1). */
+function sinConexion(err: unknown): unknown {
+  if (err instanceof TypeError) {
+    return new ApiError(0, 'No se pudo conectar con la app: ¿está arrancado el servidor (./start.sh)?')
+  }
+  return err
+}
+
+/** `fetch` con el fallo de red dicho en español. */
+async function conectar(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch (err) {
+    throw sinConexion(err)
+  }
+}
+
+/** El motivo de una respuesta de error: el `detail` del backend o, si el
+ *  cuerpo no es JSON, el código HTTP. Antes, tres copias de lo mismo. */
+async function motivoDe(resp: Response): Promise<string> {
+  const generico = `Error HTTP ${resp.status}`
+  try {
+    const body = await resp.json()
+    return textoDeError(body.detail) ?? generico
+    // eslint-disable-next-line no-restricted-syntax -- un cuerpo que no es JSON no es otro fallo: el fallo es el código HTTP, y se lanza igual.
+  } catch {
+    return generico
+  }
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const resp = await fetch(path, {
+  const resp = await conectar(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-  const resp = await fetch(path, { method: 'DELETE' })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  const resp = await conectar(path, { method: 'DELETE' })
+  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
   return resp.json() as Promise<T>
 }
 
@@ -179,7 +184,12 @@ export const api = {
       120_000,
     ),
   historialEmpresa: (symbol: string) =>
-    fetchJson<{ symbol: string; decisiones: DecisionHistorica[]; reglas_version_actual: string }>(
+    fetchJson<{
+      symbol: string
+      decisiones: DecisionHistorica[]
+      thresholds: { favorable: number; desfavorable: number }
+      reglas_version_actual: string
+    }>(
       `/api/empresa/${encodeURIComponent(symbol)}/historial`,
     ),
   replay: (id: number) => fetchJson<ReplayDecision>(`/api/snapshots/${id}/replay`),
@@ -313,7 +323,7 @@ export const api = {
   riesgoDeCartera: (descargar: boolean) =>
     fetchJson<RiesgoDeCartera>(`/api/portfolio/riesgo?descargar=${descargar}`),
   addPosition: (body: { symbol: string; quantity: number; cost_basis: number }) =>
-    postJson<{ id: number; symbol: string }>('/api/portfolio/positions', body),
+    postJson<{ id: number; symbol: string; thesis_id?: number | null; stop_por_clase?: boolean }>('/api/portfolio/positions', body),
   /** Fija o SUBE el stop de una posición abierta. Bajarlo lo rechaza el servidor. */
   fijarStop: (id: number, stop: number) =>
     postJson<{ id: number; stop: number; anterior: number | null }>(

@@ -18,7 +18,8 @@ tienes un 12 % en riesgo y todo va en la misma dirección, pierdes un 12 %.
 """
 
 from __future__ import annotations
-from app.formato import fmt_pct, plural
+from app.analysis.decision import stop_perforado
+from app.formato import fmt_frente, fmt_pct, plural
 
 # Topes. Convención habitual entre gestores; ajustables y discutibles.
 HEAT_MAXIMO_PCT = 6.0        # riesgo abierto total
@@ -47,9 +48,10 @@ def riesgo_de_posicion(posicion: dict, total_cartera: float | None) -> dict | No
     precio = posicion.get("price")
     if not valor or not stop or not precio or not total_cartera:
         return None
-    if stop >= precio:
+    if stop_perforado(precio, stop):
         # Stop ya perforado: lo que arriesgas desde aquí no es la distancia al
-        # stop, es todo lo que queda. Decirlo así evita un falso alivio.
+        # stop, es todo lo que queda. Decirlo así evita un falso alivio. Con la
+        # regla del motor (en o por debajo), no con una comparación propia.
         perdida = valor
         nota = "stop ya perforado: en riesgo la posición entera"
     else:
@@ -59,6 +61,8 @@ def riesgo_de_posicion(posicion: dict, total_cartera: float | None) -> dict | No
         "symbol": posicion.get("symbol"),
         "grupo": _grupo(posicion),
         "riesgo_pct": round(perdida / total_cartera * 100, 2),
+        # Sin redondear, para sumar y comparar con los topes (revisión 11).
+        "_crudo": perdida / total_cartera * 100,
         "peso_pct": round(valor / total_cartera * 100, 2),
         "nota": nota,
     }
@@ -73,16 +77,24 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
     ]
     sin_calcular = len(posiciones) - len(detalle)
 
-    por_grupo: dict[str, float] = {}
+    # Se suma y se compara con los topes SIN redondear, y se sirve así (sin el
+    # ruido de coma flotante): la pantalla lo escribe de su lado del tope. Con la
+    # suma de cifras ya redondeadas, tres posiciones de 2,004 % daban «6,0 %,
+    # quedan 0,0 % de margen» y ningún aviso, con un 6,012 % en riesgo
+    # (revisión 11).
+    crudo_grupo: dict[str, float] = {}
     for r in detalle:
-        por_grupo[r["grupo"]] = round(por_grupo.get(r["grupo"], 0.0) + r["riesgo_pct"], 2)
+        crudo_grupo[r["grupo"]] = crudo_grupo.get(r["grupo"], 0.0) + r.pop("_crudo")
+    por_grupo = {grupo: round(v, 12) for grupo, v in crudo_grupo.items()}
 
-    total = round(sum(r["riesgo_pct"] for r in detalle), 2)
+    total = round(sum(crudo_grupo.values()), 12)
     avisos: list[str] = []
 
     if total > HEAT_MAXIMO_PCT:
         avisos.append(
-            f"Tienes un {fmt_pct(total, en_puntos=True)} de la cartera en riesgo a la vez, por "
+            # De su lado del tope: con 6,03 decía «un 6,0 %… por encima del 6 %»
+            # (revisión 10).
+            f"Tienes un {fmt_frente(total / 100, HEAT_MAXIMO_PCT / 100, pct=True)} de la cartera en riesgo a la vez, por "
             f"encima del {fmt_pct(HEAT_MAXIMO_PCT, 0, en_puntos=True)} que se suele considerar el "
             "tope. Si todo se gira en tu contra, eso es lo que pierdes."
         )
@@ -90,7 +102,7 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
     for grupo, riesgo in sorted(por_grupo.items(), key=lambda kv: -kv[1]):
         if riesgo > HEAT_GRUPO_MAXIMO_PCT:
             avisos.append(
-                f"«{grupo}» concentra un {fmt_pct(riesgo, en_puntos=True)} de riesgo. Las posiciones "
+                f"«{grupo}» concentra un {fmt_frente(riesgo / 100, HEAT_GRUPO_MAXIMO_PCT / 100, pct=True)} de riesgo. Las posiciones "
                 "de un mismo grupo caen juntas, así que cuentan como una sola "
                 f"apuesta grande, no como varias pequeñas (tope sugerido: "
                 f"{fmt_pct(HEAT_GRUPO_MAXIMO_PCT, 0, en_puntos=True)})."
@@ -111,7 +123,7 @@ def presupuesto_de_riesgo(posiciones: list[dict], total_cartera: float | None) -
         "posiciones": sorted(detalle, key=lambda r: -r["riesgo_pct"]),
         "sin_calcular": sin_calcular,
         "avisos": avisos,
-        "margen_pct": round(max(0.0, HEAT_MAXIMO_PCT - total), 2),
+        "margen_pct": round(max(0.0, HEAT_MAXIMO_PCT - total), 12),
         "nota": (
             "El riesgo abierto es lo que perderías si TODAS tus posiciones "
             "tocaran su stop. Se agrupa por sector —y cripto en bloque, porque "

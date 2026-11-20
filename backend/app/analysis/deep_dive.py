@@ -11,6 +11,7 @@ informe es completo y honesto sin ella.
 
 from __future__ import annotations
 
+from app.analysis.calidad_beneficios import FCF_NI_DEBIL, FCF_NI_FUERTE
 from app.analysis.fundamentals import (
     cagr,
     derive_ratio_series,
@@ -20,7 +21,31 @@ from app.analysis.fundamentals import (
     total_debt,
 )
 from app.analysis.health import health_snapshot
-from app.formato import fmt_num, fmt_pct, plural
+from app.formato import fmt_frente, fmt_precio, plural
+
+# Una sola lista de fronteras por cifra, con TODAS las que la clasifican en el
+# informe: la lectura, los riesgos, el veredicto, el prompt de la IA y la
+# pantalla escriben la cifra frente a la lista entera. Con una lista por sitio,
+# una deuda/capital de 2,996 era «3,00 (apalancamiento alto)» en la lectura y
+# «2,996» en los riesgos, y una cobertura de 4,996 salía «4,996× — ajustada» en
+# la lectura y «5,0×» en la casilla de al lado (revisión 11). Se sirve en el
+# informe (`umbrales`) para que la pantalla no tenga que copiarla.
+UMBRALES = {
+    "revenue_cagr": [0, 0.05, 0.08, 0.15],
+    "operating_margin": [0.05, 0.15, 0.25],
+    "debt_to_equity": [1, 2, 3],
+    "interest_coverage": [1.5, 2, 3, 5, 8],
+    "fcf_conversion": [FCF_NI_DEBIL, FCF_NI_FUERTE],
+    "max_drawdown": [-0.35],
+}
+
+
+def frente(clave: str, valor) -> str:
+    """La cifra `clave` del informe escrita frente a sus fronteras (`UMBRALES`).
+    Ratios con «×» y conversión sin ceros a la derecha, como en la lectura."""
+    pct = clave in ("revenue_cagr", "operating_margin", "fcf_conversion", "max_drawdown")
+    ceros = clave not in ("interest_coverage", "fcf_conversion")
+    return fmt_frente(valor, UMBRALES[clave], pct=pct, ceros=ceros)
 
 
 def _trend(values: list[float | None]) -> str | None:
@@ -127,7 +152,7 @@ def _growth_reading(cagr_5y: float | None, acceleration: str | None, years: int 
     )
     tail = f", y a 3 años viene {acceleration}" if acceleration else ""
     corta = f"; ventana corta: la completa es de {VENTANA_NOMINAL}" if years < VENTANA_NOMINAL else ""
-    return f"Ingresos con {pace} ({fmt_pct(cagr_5y)} anual a {_anos(years)}{corta}){tail}."
+    return f"Ingresos con {pace} ({frente('revenue_cagr', cagr_5y)} anual a {_anos(years)}{corta}){tail}."
 
 
 def margins_section(ratios: list[dict]) -> dict:
@@ -143,6 +168,10 @@ def margins_section(ratios: list[dict]) -> dict:
         "net_margin": _trend(net),
     }
     return {
+        # El ejercicio de los márgenes de `current`: el informe lee ejercicios
+        # anuales, y «margen operativo del 21,0 %» sin más se leía como el de hoy
+        # mientras «Qué cambió» enseñaba un trimestre al 12,0 % (revisión 12, visual).
+        "ejercicio": latest.get("fiscal_year"),
         "by_year": [
             {
                 "year": r.get("fiscal_year"),
@@ -158,11 +187,18 @@ def margins_section(ratios: list[dict]) -> dict:
             "net_margin": latest.get("net_margin"),
         },
         "trends": trends,
-        "reading": _margins_reading(latest.get("operating_margin"), trends["operating_margin"]),
+        "reading": _margins_reading(
+            latest.get("operating_margin"), trends["operating_margin"], latest.get("fiscal_year")
+        ),
     }
 
 
-def _margins_reading(operating: float | None, trend: str | None) -> str:
+def _del_ejercicio(ejercicio) -> str:
+    """« (ejercicio 2025)», o nada si no se sabe cuál."""
+    return f" (ejercicio {ejercicio})" if ejercicio else ""
+
+
+def _margins_reading(operating: float | None, trend: str | None, ejercicio=None) -> str:
     if operating is None:
         return "Sin datos de márgenes."
     level = (
@@ -172,7 +208,7 @@ def _margins_reading(operating: float | None, trend: str | None) -> str:
         else "márgenes muy finos o negativos"
     )
     tail = f" y la tendencia va {trend}" if trend else ""
-    return f"Margen operativo del {fmt_pct(operating)}: {level}{tail}."
+    return f"Margen operativo anual del {frente('operating_margin', operating)}{_del_ejercicio(ejercicio)}: {level}{tail}."
 
 
 def debt_section(periods: list[dict], ratios: list[dict], market_cap: float | None) -> dict:
@@ -227,7 +263,10 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
     parts = []
     if d_e is not None:
         parts.append(
-            f"Deuda/capital {fmt_num(d_e)}"
+            # Cada cifra, de su lado de los umbrales que la clasifican: 2,004 y
+            # 1,996 salían los dos «2,00», uno «alto» y otro «moderado»; 1,96 y 2,04,
+            # «2,0× — frágil» y «2,0× — ajustada» (revisión 10).
+            f"Deuda/capital {frente('debt_to_equity', d_e)}"
             + (
                 " (apalancamiento alto)" if d_e > 2
                 else " (moderado)" if d_e > 1
@@ -236,7 +275,7 @@ def _debt_reading(d_e: float | None, coverage: float | None, trend: str | None, 
         )
     if coverage is not None:
         parts.append(
-            f"cobertura de intereses {fmt_num(coverage, 1)}×"
+            f"cobertura de intereses {frente('interest_coverage', coverage)}×"
             + (" — holgada" if coverage > 5 else " — ajustada" if coverage > 2 else " — frágil")
         )
     if trend:
@@ -295,52 +334,77 @@ def _cash_reading(fcf: float | None, conversion: float | None) -> str:
         return "Flujo de caja libre negativo: el negocio consume caja."
     if conversion is None:
         return "Genera flujo de caja libre positivo."
-    from app.analysis.calidad_beneficios import FCF_NI_DEBIL, FCF_NI_FUERTE
-
+    # De su lado de los dos umbrales: 0,596 y 0,604 salían «60 %», uno «solo» y el
+    # otro «saludable» (revisión 10).
     if conversion > FCF_NI_FUERTE:
         return (
-            f"Convierte el {fmt_pct(conversion, 0)} del beneficio en caja: el "
+            f"Convierte el {frente('fcf_conversion', conversion)} del beneficio en caja: el "
             "beneficio contable subestima la generación real."
         )
     if conversion < FCF_NI_DEBIL:
         return (
-            f"Solo el {fmt_pct(conversion, 0)} del beneficio llega a caja libre. "
+            f"Solo el {frente('fcf_conversion', conversion)} del beneficio llega a caja libre. "
             "Conviene mirar si es capex de crecimiento o deterioro de la calidad "
             "del beneficio."
         )
-    return f"Conversión de beneficio a caja del {fmt_pct(conversion, 0)}: saludable."
+    return f"Conversión de beneficio a caja del {frente('fcf_conversion', conversion)}: saludable."
+
+
+# Lo que el riesgo y el veredicto miran y puede faltar, con el mismo nombre en
+# los dos sitios.
+_TENDENCIA_MARGEN = "tendencia del margen operativo"
+_VALORACION_HISTORICA = "valoración frente a su historia"
 
 
 def risks_section(
     periods: list[dict], ratios: list[dict], risk: dict | None, valuation: dict
 ) -> list[dict]:
     """Riesgos derivados de los datos, cada uno con su evidencia."""
+    return _riesgos(periods, ratios, risk, valuation)[0]
+
+
+def _riesgos(
+    periods: list[dict], ratios: list[dict], risk: dict | None, valuation: dict
+) -> tuple[list[dict], list[str]]:
+    """Los riesgos y los umbrales que no se pudieron mirar por falta del dato.
+
+    Sin la segunda lista, «Ninguno de los umbrales del modelo se dispara» salía con
+    la deuda/capital, la cobertura y la valoración frente a su historia sin
+    calcular: un umbral sin dato no se dispara, pero tampoco se ha comprobado
+    (revisión 12, visual)."""
     risks = []
+    sin_comprobar: list[str] = []
     latest_ratio = ratios[-1] if ratios else {}
 
     d_e = latest_ratio.get("debt_to_equity")
+    if d_e is None:
+        sin_comprobar.append("deuda/capital")
     if d_e is not None and d_e > 2:
         risks.append(
             {
                 "type": "Apalancamiento",
                 "severity": "alto" if d_e > 3 else "medio",
-                "evidence": f"Deuda/capital de {fmt_num(d_e)}",
+                "evidence": f"Deuda/capital de {frente('debt_to_equity', d_e)}",
                 "why": "Una subida de tipos o una caída de resultados aprieta mucho más rápido.",
             }
         )
 
     coverage = latest_ratio.get("interest_coverage")
+    if coverage is None:
+        sin_comprobar.append("cobertura de intereses")
     if coverage is not None and coverage < 3:
         risks.append(
             {
                 "type": "Cobertura de intereses",
                 "severity": "alto" if coverage < 1.5 else "medio",
-                "evidence": f"El EBIT cubre {fmt_num(coverage, 1)}× los intereses",
+                "evidence": f"El EBIT cubre {frente('interest_coverage', coverage)}× los intereses",
                 "why": "Poco margen para absorber un año malo sin tensiones financieras.",
             }
         )
 
     margin_trend = _trend([r.get("operating_margin") for r in ratios])
+    if margin_trend is None:
+        sin_comprobar.append(_TENDENCIA_MARGEN)
     if margin_trend == "deteriorándose":
         risks.append(
             {
@@ -352,17 +416,21 @@ def risks_section(
         )
 
     growth = growth_summary(periods)
+    if growth.get("revenue_cagr") is None:
+        sin_comprobar.append("crecimiento de los ingresos")
     if growth.get("revenue_cagr") is not None and growth["revenue_cagr"] < 0:
         risks.append(
             {
                 "type": "Ingresos en contracción",
                 "severity": "alto",
-                "evidence": f"CAGR de ingresos {fmt_pct(growth['revenue_cagr'])} a {growth['years']} años",
+                "evidence": f"CAGR de ingresos {frente('revenue_cagr', growth['revenue_cagr'])} a {growth['years']} años",
                 "why": "Un múltiplo bajo sobre un negocio que encoge no es una ganga.",
             }
         )
 
     cheapness = valuation.get("cheapness_score")
+    if cheapness is None:
+        sin_comprobar.append(_VALORACION_HISTORICA)
     if cheapness is not None and cheapness < 0.25:
         risks.append(
             {
@@ -373,40 +441,60 @@ def risks_section(
             }
         )
 
-    if risk:
-        drawdown = (risk.get("max_drawdown") or {}).get("max_drawdown")
-        if drawdown is not None and drawdown < -0.35:
-            risks.append(
-                {
-                    "type": "Volatilidad histórica",
-                    "severity": "medio",
-                    "evidence": f"Máxima caída del {fmt_pct(drawdown)} en el último año",
-                    "why": "Dimensiona la posición contando con que puede repetirse.",
-                }
-            )
+    drawdown = ((risk or {}).get("max_drawdown") or {}).get("max_drawdown")
+    if drawdown is None:
+        sin_comprobar.append("máxima caída del último año")
+    if drawdown is not None and drawdown < -0.35:
+        risks.append(
+            {
+                "type": "Volatilidad histórica",
+                "severity": "medio",
+                "evidence": f"Máxima caída del {frente('max_drawdown', drawdown)} en el último año",
+                "why": "Dimensiona la posición contando con que puede repetirse.",
+            }
+        )
 
     risks.sort(key=lambda r: 0 if r["severity"] == "alto" else 1)
-    return risks
+    return risks, sin_comprobar
+
+
+# El calendario de resultados se pide a estos días vista (`routers/deep_dive.py`)
+# y los filings son los últimos PRESENTADOS: la lista no mira a 6-18 meses, que
+# es lo que prometía su rótulo encima de unos resultados a 24 días (revisión 12,
+# visual). Se sirve con la lista (`catalysts_note`) para que la pantalla diga lo
+# que hay en vez de prometer un plazo.
+VENTANA_RESULTADOS_DIAS = 120
+MAX_RESULTADOS = 4
+MAX_FILINGS = 3
+
+
+def catalysts_note() -> str:
+    return (
+        f"Resultados previstos en los próximos {VENTANA_RESULTADOS_DIAS} días (calendario) "
+        f"y los {MAX_FILINGS} últimos documentos presentados ante la SEC."
+    )
 
 
 def catalysts_section(
     earnings: list[dict], filings: list[dict], events: list[dict]
 ) -> list[dict]:
-    """Catalizadores identificables a 6-18 meses a partir de datos, no de opinión."""
+    """Fechas a vigilar sacadas de datos, no de opinión: los resultados previstos
+    (`earnings`, ya acotados a `VENTANA_RESULTADOS_DIAS`) y los últimos filings."""
     catalysts = []
-    for event in earnings[:4]:
+    for event in earnings[:MAX_RESULTADOS]:
         catalysts.append(
             {
                 "type": "Resultados",
                 "when": event.get("date"),
                 "detail": (
+                    # El BPA con los decimales de un precio: 0,0042 salía «0,00» (revisión 5).
                     f"Publicación de resultados"
-                    + (f" · BPA estimado {fmt_num(event['eps_estimate'])}" if event.get("eps_estimate") is not None else "")
+                    + (f" · BPA estimado {fmt_precio(event['eps_estimate'])}" if event.get("eps_estimate") is not None else "")
                 ),
                 "source": "calendario",
             }
         )
-    for filing in filings[:3]:
+    for filing in filings[:MAX_FILINGS]:
         catalysts.append(
             {
                 "type": filing.get("type"),
@@ -440,36 +528,60 @@ def build_verdict(
     analista suele enterrar y aquí va explícita.
     """
     positives, negatives = [], []
+    # Lo que la lectura mira y no pudo comprobar por falta del dato. Sin esto, la
+    # lista de «en contra» vacía se escribía «sin señales de alarma en los datos»
+    # con la valoración frente a su historia, la cobertura de intereses y el
+    # Altman Z sin calcular: «no se pudo comprobar» se leía «nada en contra»
+    # (revisión 12, visual). La postura sigue saliendo de lo comprobado.
+    sin_comprobar: list[str] = []
 
     cheapness = valuation.get("cheapness_score")
-    if cheapness is not None:
+    if cheapness is None:
+        sin_comprobar.append(_VALORACION_HISTORICA)
+    else:
         if cheapness >= 0.65:
             positives.append("cotiza por debajo de su valoración histórica habitual")
         elif cheapness <= 0.35:
             negatives.append("cotiza por encima de su valoración histórica habitual")
 
     revenue_cagr = growth.get("revenue_cagr")
-    if revenue_cagr is not None:
+    if revenue_cagr is None:
+        sin_comprobar.append("crecimiento de los ingresos")
+    else:
         if revenue_cagr > 0.08:
-            positives.append(f"ingresos creciendo al {fmt_pct(revenue_cagr)} anual")
+            positives.append(f"ingresos creciendo al {frente('revenue_cagr', revenue_cagr)} anual")
         elif revenue_cagr < 0:
             negatives.append("ingresos en contracción")
 
     operating = (margins.get("current") or {}).get("operating_margin")
-    if operating is not None and operating > 0.15:
-        positives.append(f"margen operativo del {fmt_pct(operating)}")
-    if margins.get("trends", {}).get("operating_margin") == "deteriorándose":
+    if operating is None:
+        sin_comprobar.append("margen operativo")
+    elif operating > 0.15:
+        # Anual y de qué ejercicio: «margen operativo del 21,0 %» a secas se leía
+        # como el de hoy junto a un trimestre al 12,0 % en «Qué cambió».
+        positives.append(
+            f"margen operativo anual del {frente('operating_margin', operating)}"
+            f"{_del_ejercicio(margins.get('ejercicio'))}"
+        )
+    trend = (margins.get("trends") or {}).get("operating_margin")
+    if trend is None and operating is not None:
+        sin_comprobar.append(_TENDENCIA_MARGEN)
+    if trend == "deteriorándose":
         negatives.append("márgenes en deterioro")
 
     coverage = debt.get("interest_coverage")
-    if coverage is not None:
+    if coverage is None:
+        sin_comprobar.append("cobertura de intereses")
+    else:
         if coverage > 8:
             positives.append("balance sin tensión por intereses")
         elif coverage < 3:
-            negatives.append(f"cobertura de intereses ajustada ({fmt_num(coverage, 1)}×)")
+            negatives.append(f"cobertura de intereses ajustada ({frente('interest_coverage', coverage)}×)")
 
     zone = (debt.get("altman_z") or {}).get("zone")
-    if zone == "riesgo":
+    if zone is None:
+        sin_comprobar.append("Altman Z")
+    elif zone == "riesgo":
         negatives.append("Altman Z en zona de riesgo")
 
     stance = (
@@ -482,9 +594,15 @@ def build_verdict(
         "stance": stance,
         "positives": positives,
         "negatives": negatives,
+        "sin_comprobar": sin_comprobar,
         "quant_label": (signal or {}).get("label"),
         "quant_score": (signal or {}).get("score"),
-        "summary": _verdict_summary(stance, positives, negatives),
+        "summary": _verdict_summary(stance, positives, negatives, sin_comprobar),
+        # De qué sale la lectura y qué no entra en ella: el informe lee ejercicios
+        # anuales, y su recuadro verde convivía sin decirlo con un DCF muy por
+        # debajo del precio y con un trimestre que invalidaba la tesis (revisión
+        # 12, visual).
+        "alcance": _alcance(margins.get("ejercicio")),
         "what_would_change_it": _invalidators(positives, negatives),
         "disclaimer": (
             "Lectura conjunta de los datos, no una recomendación de compra o "
@@ -496,17 +614,33 @@ def build_verdict(
     }
 
 
-def _verdict_summary(stance: str, positives: list[str], negatives: list[str]) -> str:
+def _verdict_summary(
+    stance: str, positives: list[str], negatives: list[str], sin_comprobar: list[str] | None = None
+) -> str:
+    sin_comprobar = sin_comprobar or []
+    falta = f" Sin comprobar por falta de datos: {_lista(sin_comprobar)}." if sin_comprobar else ""
     if not positives and not negatives:
-        return "Datos insuficientes para una lectura conjunta."
+        return "Datos insuficientes para una lectura conjunta." + falta
     pos = "; ".join(positives) or "sin factores claramente favorables"
-    neg = "; ".join(negatives) or "sin señales de alarma en los datos"
+    # «Sin señales de alarma» solo si se pudo mirar todo: con algo sin comprobar,
+    # lo que se sabe es que nada de lo comprobado está en contra.
+    neg = "; ".join(negatives) or (
+        "nada entre lo que se pudo comprobar" if sin_comprobar else "sin señales de alarma en los datos"
+    )
     frame = {
         "constructiva": "Los datos apuntan en dirección favorable",
         "cautelosa": "Los datos invitan a la cautela",
         "mixta": "Los datos dan una lectura mixta",
     }[stance]
-    return f"{frame}. A favor: {pos}. En contra: {neg}."
+    return f"{frame}. A favor: {pos}. En contra: {neg}.{falta}"
+
+
+def _alcance(ejercicio) -> str:
+    cual = f"ejercicio anual {ejercicio}" if ejercicio else "último ejercicio anual"
+    return (
+        f"Lectura del {cual} y de la valoración frente a su propia historia. No entran "
+        "los trimestres publicados después ni el DCF precargado de más abajo."
+    )
 
 
 def _invalidators(positives: list[str], negatives: list[str]) -> list[str]:
@@ -547,6 +681,7 @@ def assemble(
     margins = margins_section(ratios)
     debt = debt_section(periods, ratios, profile.get("market_cap"))
     cash_flow = cash_flow_section(periods, ratios)
+    risks, riesgos_sin_comprobar = _riesgos(periods, ratios, risk, valuation)
 
     return {
         "symbol": symbol,
@@ -561,9 +696,13 @@ def assemble(
         "dcf": dcf,
         "quant_signal": signal,
         "risk_metrics": risk,
-        "risks": risks_section(periods, ratios, risk, valuation),
+        "risks": risks,
+        "riesgos_sin_comprobar": riesgos_sin_comprobar,
         "catalysts": catalysts_section(earnings, filings, events),
+        "catalysts_note": catalysts_note(),
         "verdict": build_verdict(signal, valuation, growth, debt, margins),
+        # Las fronteras con que el informe escribe cada cifra (`UMBRALES`).
+        "umbrales": {clave: list(lista) for clave, lista in UMBRALES.items()},
         "data_sources": {
             "financials": financials.get("source"),
             "quote": (quote or {}).get("source"),

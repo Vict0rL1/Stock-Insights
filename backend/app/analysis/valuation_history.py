@@ -97,9 +97,36 @@ def percentile_rank(values: list[float], current: float) -> float | None:
     return (below + 0.5 * ties) / len(values)
 
 
-def _stats(points: list[dict], current: float | None, higher_is_cheaper: bool) -> dict:
-    """Resumen de una serie: rango, mediana y dónde cae el valor actual."""
+# Lo que necesita cada múltiplo de un ejercicio publicado (`historical_multiples`).
+_NECESITA = {
+    "pe": "un BPA diluido positivo",
+    "pb": "el patrimonio neto (positivo) o el número de acciones",
+    "fcf_yield": "el flujo de caja libre o el número de acciones",
+}
+
+
+def _sin_observaciones(clave: str, periods: list[dict], filings: list[dict], bars: list[dict], years: int) -> str:
+    """Por qué una serie se quedó sin un solo punto. «Solo 0 observaciones (mínimo
+    12)» decía que faltaba historia cuando lo que faltaba era el patrimonio: el
+    P/E de la misma empresa tenía 10 (revisión 12, visual)."""
+    muestras = _monthly_samples(bars, years)
+    if not muestras:
+        return "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
+    if all(point_in_time_period(periods, filings, dia) is None for dia, _ in muestras):
+        return (
+            "Sin observaciones: en las fechas del histórico de precios aún no había "
+            "ningún ejercicio publicado."
+        )
+    return f"Sin observaciones: a los ejercicios publicados en esas fechas les falta {_NECESITA[clave]}."
+
+
+def _stats(points: list[dict], current: float | None, higher_is_cheaper: bool,
+           sin_puntos: str | None = None) -> dict:
+    """Resumen de una serie: rango, mediana y dónde cae el valor actual.
+    `sin_puntos`: el motivo si la serie está vacía."""
     values = [p["value"] for p in points]
+    if not values and sin_puntos:
+        return {"available": False, "n": 0, "reason": sin_puntos}
     if len(values) < MIN_POINTS:
         return {
             "available": False,
@@ -163,10 +190,14 @@ def valuation_vs_history(
         if fcf is not None and market_cap:
             current_fcf_yield = fcf / market_cap
 
+    def vacia(clave: str) -> str | None:
+        return None if series[clave] else _sin_observaciones(clave, periods, filings, bars, years)
+
     multiples = {
-        "pe": _stats(series["pe"], current_pe, higher_is_cheaper=False),
-        "pb": _stats(series["pb"], current_pb, higher_is_cheaper=False),
-        "fcf_yield": _stats(series["fcf_yield"], current_fcf_yield, higher_is_cheaper=True),
+        "pe": _stats(series["pe"], current_pe, higher_is_cheaper=False, sin_puntos=vacia("pe")),
+        "pb": _stats(series["pb"], current_pb, higher_is_cheaper=False, sin_puntos=vacia("pb")),
+        "fcf_yield": _stats(series["fcf_yield"], current_fcf_yield, higher_is_cheaper=True,
+                            sin_puntos=vacia("fcf_yield")),
     }
 
     available = [m for m in multiples.values() if m.get("available") and m.get("cheapness_percentile") is not None]

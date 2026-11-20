@@ -114,19 +114,39 @@ class SinTipo(Exception):
     """No hay tipo utilizable. El motivo va en el mensaje y acaba en pantalla."""
 
 
-def normalizar(moneda: str | None) -> str | None:
-    if not moneda or not isinstance(moneda, str):
+# Céntimos que algunas fuentes dan como si fueran la moneda, con la moneda de
+# la que son la centésima parte.
+SUBUNIDADES = {"GBX": "GBP", "GBP.": "GBP", "ZAC": "ZAR", "ILA": "ILS"}
+# Yahoo los escribe con la última letra en minúscula: «GBp» son peniques y
+# «GBP», libras. Pasarlo a mayúsculas a ciegas convertía 72 peniques en 72
+# libras, un valor cien veces mayor y sin aviso (revisión de A3).
+_SUBUNIDADES_EN_MINUSCULA = {"GBp": "GBX", "GBx": "GBX", "ZAc": "ZAC"}
+
+
+def codigo(moneda) -> str | None:
+    """El código de una moneda tal como llega de una fuente, en mayúsculas y sin
+    confundir una subunidad con su moneda. La única forma de leerlo: la
+    cotización, el perfil y lo que se guarda en el instrumento pasan por aquí."""
+    if not isinstance(moneda, str) or not moneda.strip():
         return None
-    m = moneda.strip().upper()
-    # Algunas fuentes devuelven peniques o centavos como si fueran la moneda.
-    # Convertirlos como si fueran libras daría un valor 100 veces mayor, así
-    # que se rechazan en vez de adivinar.
-    if m in ("GBX", "GBP.", "ZAC", "ILA"):
+    m = moneda.strip()
+    return _SUBUNIDADES_EN_MINUSCULA.get(m, m.upper())
+
+
+def normalizar(moneda: str | None) -> str | None:
+    m = codigo(moneda)
+    # Convertir céntimos como si fueran la moneda daría un valor cien veces
+    # mayor, así que se rechazan en vez de adivinar. El motivo no pide corregir
+    # la divisa: no hay dónde, viene del proveedor y se vuelve a leer en cada
+    # consulta (revisión de A3).
+    if m in SUBUNIDADES:
+        madre = SUBUNIDADES[m]
         raise SinTipo(
-            f"«{m}» son céntimos, no una moneda: convertirlo daría un valor cien "
-            "veces mayor. Corrige la divisa de la posición."
+            f"«{m}» son céntimos de {madre}, no una moneda: sumarlos como {madre} daría un valor cien "
+            "veces mayor. Es la divisa que da el proveedor de la cotización y la app no convierte "
+            "céntimos, así que la posición queda fuera de los totales."
         )
-    return m or None
+    return m
 
 
 def a_por_usd(moneda: str, valor: float) -> float:
@@ -157,6 +177,28 @@ def comprobar_banda(moneda: str, por_usd: float) -> None:
             f"que la serie {SERIES[moneda]['serie']} está leída del revés. No se "
             "convierte nada antes que convertir mal."
         )
+
+
+def en_banda(moneda: str, por_usd: float) -> bool:
+    """`comprobar_banda` como pregunta, para filtrar los puntos de una serie."""
+    try:
+        comprobar_banda(moneda, por_usd)
+    except SinTipo:
+        return False
+    return True
+
+
+def puntos_en_banda(moneda: str, serie: list[tuple[date, float]] | None) -> list[tuple[date, float]]:
+    """La serie sin los puntos fuera de banda, para convertir el pasado fecha a
+    fecha: un punto así cuenta como un día sin publicar y vale el anterior.
+
+    `serie_por_usd` solo mira la mediana (un valor raro suelto no es una serie
+    del revés) y conservaba el punto: la serie en dólares de una candidata en CAD
+    salía con la volatilidad cien veces mayor con un 13 por 1,30, y un punto
+    intermedio inventaba un salto del −90 % (revisión 4). El tipo de una fecha
+    concreta (`oportunidad._tipo_en`, `tipo_desde_observaciones`) no se filtra:
+    se rechaza con su motivo."""
+    return [(f, v) for f, v in serie or [] if en_banda(moneda, v)]
 
 
 def comprobar_serie(serie_id: str | None, valores: list[float | None]) -> None:
@@ -318,7 +360,12 @@ def convertir_cartera(
         try:
             moneda = normalizar(p.get("currency"))
         except SinTipo as exc:
-            sin_convertir.append({"symbol": p.get("symbol"), "motivo": str(exc)})
+            # Con su código y su id: sin el código, una fila en peniques entre
+            # filas en USD no contaba como otra divisa («Toda la cartera está en
+            # USD») y los importes salían sin código; sin el id, dos lotes del
+            # mismo símbolo se reponían los dos con el primero (revisión de A3).
+            sin_convertir.append({"id": p.get("id"), "symbol": p.get("symbol"), "moneda": codigo(p.get("currency")),
+                                  "motivo": str(exc)})
             continue
         if moneda is None:
             # La moneda desconocida NO es la base. Antes se suponía dólar, y el
@@ -327,6 +374,7 @@ def convertir_cartera(
             # como si fueran estadounidenses. Sin moneda no hay conversión
             # posible, así que queda fuera del total y se nombra.
             sin_convertir.append({
+                "id": p.get("id"),
                 "symbol": p.get("symbol"),
                 "moneda": None,
                 "motivo": (
@@ -348,7 +396,7 @@ def convertir_cartera(
                 fila[f"{campo}_base"] = r["importe"]
                 fila["conversion"] = r["traza"]
         except SinTipo as exc:
-            sin_convertir.append({"symbol": p.get("symbol"), "moneda": moneda, "motivo": str(exc)})
+            sin_convertir.append({"id": p.get("id"), "symbol": p.get("symbol"), "moneda": moneda, "motivo": str(exc)})
             continue
 
         if fila.get("market_value_base") is not None:

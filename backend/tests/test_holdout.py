@@ -185,3 +185,54 @@ def test_el_endpoint_guarda_la_particion_con_el_resultado(backtest_http, session
     with session_factory() as s:
         guardado = json.loads(s.query(LlmOutput).one().content_md)
     assert guardado["particion"]["holdout_mirado"] is False and guardado["particion"]["corte"]
+
+
+def _guardar(s, **contenido):
+    import json
+
+    from app.db.models import LlmOutput
+
+    s.add(LlmOutput(kind="rule_backtest", model="reglas/6a", content_md=json.dumps(
+        {"particion": {"corte": "2023-01-01", "holdout_mirado": False}, **contenido})))
+    s.commit()
+
+
+def test_un_backtest_de_cripto_no_valida_las_reglas_de_acciones(session_factory):
+    """Solo momentum, stops de cripto y BTC como índice: decidía si las reglas de
+    acciones estaban «calibradas» o «refutadas» (revisión de M2)."""
+    from app.routers.signals import _stored_rule_backtest
+
+    with session_factory() as s:
+        _guardar(s, n_operaciones=90, fiable=True, esperanza_pct=4.0, ventaja_pct=1.0, clase="cripto")
+        assert _stored_rule_backtest(s, clase="accion") is None
+        assert _stored_rule_backtest(s, clase="cripto")["clase"] == "cripto"
+        # Los guardados antes de llevar `clase` son de acciones (el script por defecto).
+        _guardar(s, n_operaciones=70, fiable=True, esperanza_pct=1.0, ventaja_pct=0.5)
+        assert _stored_rule_backtest(s, clase="accion")["n_operaciones"] == 70
+
+
+def test_un_backtest_corto_posterior_no_tapa_una_refutacion_fiable(session_factory):
+    """Uno de 8 operaciones lanzado después desde la interfaz quitaba el aviso
+    rojo de una refutación con 120 (revisión de M2)."""
+    from app.analysis.decision import _confianza
+    from app.routers.signals import _stored_rule_backtest
+
+    with session_factory() as s:
+        _guardar(s, n_operaciones=120, fiable=True, esperanza_pct=-1.0, ventaja_pct=-2.0)
+        _guardar(s, n_operaciones=8, fiable=False, esperanza_pct=3.0, ventaja_pct=2.0)
+        elegido = _stored_rule_backtest(s)
+    assert elegido["n_operaciones"] == 120
+    assert _confianza(elegido) == "refutada"
+
+
+def test_el_pie_de_hoy_dice_lo_mismo_que_las_filas(session_factory):
+    """Decía siempre «aún no están validadas… ejecuta el backtest», aunque cada
+    fila dijera «calibrada» o «refutada» (revisión de M2)."""
+    from app.routers.signals import _frase_validacion
+
+    assert "ejecuta el backtest" in _frase_validacion(None)
+    calibrada = _frase_validacion({"fiable": True, "esperanza_pct": 1.0, "ventaja_pct": 0.5})
+    assert "superaron a comprar a ciegas" in calibrada and "no están validadas" not in calibrada
+    assert "perdían dinero" in _frase_validacion({"fiable": True, "esperanza_pct": -1.0, "ventaja_pct": -1.0})
+    assert "muy pocas operaciones" in _frase_validacion({"fiable": False, "esperanza_pct": 1.0, "ventaja_pct": 1.0})
+    assert "no tiene con qué compararlas" in _frase_validacion({"fiable": True, "esperanza_pct": 1.0, "ventaja_pct": None})

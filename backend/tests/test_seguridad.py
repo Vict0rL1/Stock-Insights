@@ -6,15 +6,18 @@
   patrón en cada parámetro o campo con «symbol» en el nombre. Y se prueba el
   comportamiento: un símbolo malicioso es un 422 en español y NUNCA una llamada
   a un proveedor.
-- El backend solo escucha en 127.0.0.1; CORS solo admite el Vite local.
+- El backend solo escucha en 127.0.0.1; CORS solo admite el Vite local; y solo
+  atiende a una cabecera `Host` de esta máquina (auditoría del 19 oct, A6).
 - `.env` no se versiona y `.env.example` no lleva claves; ningún fichero
   versionado contiene algo con forma de clave.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -201,6 +204,145 @@ def test_el_backend_solo_escucha_en_local_y_cors_solo_admite_el_vite_local(clien
     local = c.options("/api/meta/health", headers={"Origin": "http://localhost:5173",
                                                    "Access-Control-Request-Method": "GET"})
     assert local.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+@pytest.mark.parametrize("host", ["malicioso.example", "malicioso.example:8000", "192.168.1.20:8000",
+                                  "localhost.malicioso.example", "", "::1"])
+def test_un_host_ajeno_es_un_400_en_espanol_y_no_llega_a_la_api(cliente, host):
+    # Escuchar en 127.0.0.1 no basta: con DNS rebinding, una web hace que su
+    # dominio resuelva a 127.0.0.1 y llama a la API con `Host: su-dominio`.
+    c, espia = cliente
+    r = c.get("/api/stocks/AAPL/quote", headers={"host": host})
+    assert r.status_code == 400
+    assert r.json()["detail"].startswith("Cabecera Host no permitida")
+    assert espia.llamadas == []
+
+
+@pytest.mark.parametrize("host", ["localhost:5173", "127.0.0.1:8000", "[::1]:8000", "LocalHost:5173", "localhost"])
+def test_los_hosts_de_esta_maquina_pasan(cliente, host):
+    c, _ = cliente
+    assert c.get("/api/meta/health", headers={"host": host}).status_code == 200
+
+
+@pytest.mark.parametrize("cabeceras", [
+    {"origin": "https://malicioso.example"},
+    {"origin": "http://localhost:3000"},  # otra web local: mismo sitio, otro origen
+    {"origin": "null"},
+    {"sec-fetch-site": "cross-site"},  # un <img> o un formulario sin Origin
+    {"sec-fetch-site": "same-site"},
+])
+def test_una_peticion_de_otra_web_es_un_403_y_no_llega_a_la_api(cliente, cabeceras):
+    # Revisión de A6: con `Host: 127.0.0.1:8000`, el de verdad, una web ajena
+    # congelaba una instantánea con un <img> y gastaba cuota con un POST sin
+    # cuerpo: CORS solo impide leer la respuesta, no que se ejecute.
+    c, espia = cliente
+    for metodo, ruta in (("get", "/api/empresa/AAPL/analisis?pares=false"),
+                         ("post", "/api/expectativas/AAPL/proximos-resultados"),
+                         ("post", "/api/earnings/AAPL/analizar")):
+        r = getattr(c, metodo)(ruta, headers={"host": "127.0.0.1:8000", **cabeceras})
+        assert r.status_code == 403, (ruta, r.text[:200])
+        assert r.json()["detail"].startswith("Petición de otra web")
+    assert espia.llamadas == []
+
+
+@pytest.mark.parametrize("cabeceras", [
+    {"origin": "http://localhost:5173"},  # la interfaz, por el proxy de Vite
+    {"origin": "http://127.0.0.1:5173", "sec-fetch-site": "same-origin"},
+    {"origin": "http://127.0.0.1:8000"},  # el propio backend (/docs)
+    {"sec-fetch-site": "same-origin"},
+    {"sec-fetch-site": "none"},  # escrita en la barra de direcciones
+])
+def test_la_interfaz_y_el_propio_backend_pasan(cliente, cabeceras):
+    c, _ = cliente
+    assert c.get("/api/meta/health", headers={"host": "127.0.0.1:8000", **cabeceras}).status_code == 200
+
+
+def test_la_interfaz_en_otro_puerto_pasa_por_el_proxy_y_el_403_dice_como_arreglarlo(cliente):
+    # Revisión 3: `npm run preview` (4173) o `npm run dev` con el 5173 ocupado
+    # (5174) recibían 403 en todo POST; el navegador marca same-origin.
+    c, _ = cliente
+    r = c.get("/api/meta/health", headers={"host": "localhost:8000", "origin": "http://localhost:5174",
+                                           "sec-fetch-site": "same-origin"})
+    assert r.status_code == 200
+    ajena = c.get("/api/meta/health", headers={"host": "localhost:8000", "origin": "http://localhost:5174"})
+    assert ajena.status_code == 403 and "CORS_ORIGINS" in ajena.json()["detail"]
+
+
+def test_sin_fetch_metadata_ni_origin_se_mira_el_referer(cliente):
+    # Revisión 3: a un nombre de ALLOWED_HOSTS en http el navegador no manda
+    # Fetch Metadata, y un <img> de otra web pasaba.
+    c, espia = cliente
+    r = c.get("/api/empresa/AAPL/analisis?pares=false",
+              headers={"host": "127.0.0.1:8000", "referer": "https://malicioso.example/pagina"})
+    assert r.status_code == 403 and "Referer" in r.json()["detail"]
+    assert espia.llamadas == []
+    propio = c.get("/api/meta/health", headers={"host": "127.0.0.1:8000", "referer": "http://localhost:5173/hoy"})
+    assert propio.status_code == 200
+
+
+def test_la_interfaz_con_un_nombre_de_allowed_hosts_pasa():
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+
+    from app.main import HostDeConfianza
+
+    interna = Starlette(routes=[Route("/", lambda _: PlainTextResponse("ok"))])
+    c = TestClient(HostDeConfianza(interna, ["localhost", "mi-mac.local"], ["http://localhost:5173"]))
+    assert c.get("/", headers={"host": "mi-mac.local:8000", "origin": "http://mi-mac.local:5173"}).status_code == 200
+    assert c.get("/", headers={"host": "mi-mac.local:8000", "origin": "http://mi-mac.local:3000"}).status_code == 403
+
+
+def test_con_un_nombre_de_allowed_hosts_otro_puerto_de_vite_va_en_cors_origins():
+    # Revisión 4: .env.example prometía «cualquier puerto» también aquí. Por http
+    # el navegador no manda Fetch Metadata, el proxy deja pasar el Referer y un
+    # Vite en el 5174 recibía 403 hasta en las lecturas. Lo dice la documentación.
+    from starlette.applications import Starlette
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+
+    from app.main import HostDeConfianza
+
+    interna = Starlette(routes=[Route("/", lambda _: PlainTextResponse("ok"))])
+    lectura = {"host": "localhost:8000", "referer": "http://mi-mac.local:5174/hoy"}
+    por_defecto = TestClient(HostDeConfianza(interna, ["localhost", "mi-mac.local"], ["http://localhost:5173"]))
+    r = por_defecto.get("/", headers=lectura)
+    assert r.status_code == 403 and "CORS_ORIGINS" in r.json()["detail"]
+    anadido = TestClient(HostDeConfianza(interna, ["localhost", "mi-mac.local"],
+                                         ["http://localhost:5173", "http://mi-mac.local:5174"]))
+    assert anadido.get("/", headers=lectura).status_code == 200
+
+
+def test_allowed_hosts_anade_nombres_y_no_quita_los_de_esta_maquina(tmp_path):
+    # Revisión de A6: la lista sustituía a la de por defecto y, con
+    # ALLOWED_HOSTS='["mi-mac.local"]', el proxy de Vite (que llama como
+    # localhost:8000) recibía un 400 en toda la interfaz.
+    codigo = (
+        "from fastapi.testclient import TestClient\n"
+        "from app.main import app\n"
+        "c = TestClient(app)\n"
+        "print(c.get('/api/meta/health', headers={'host': 'localhost:8000'}).status_code,"
+        " c.get('/api/meta/health', headers={'host': 'mi-mac.local:8000'}).status_code,"
+        " c.get('/api/meta/health', headers={'host': 'otra.example'}).status_code)\n"
+    )
+    entorno = {**os.environ, "ALLOWED_HOSTS": '["mi-mac.local"]',
+               "DATABASE_PATH": str(tmp_path / "t.db")}
+    salida = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ / "backend", env=entorno,
+                            capture_output=True, text=True, timeout=120)
+    assert salida.stdout.split() == ["200", "200", "400"], salida.stderr[-500:]
+
+
+def test_start_sh_no_da_por_arrancado_un_backend_que_responde_con_error():
+    # `curl -s` termina bien ante un 400: «Todo listo» con la API rechazándolo todo.
+    start = (RAIZ / "start.sh").read_text(encoding="utf-8")
+    sondas = re.findall(r"curl -\w+ http://localhost:8000\S*", start)
+    assert sondas and all(s.startswith("curl -sf ") for s in sondas), sondas
+
+
+def test_fuera_de_los_tests_testserver_no_esta_permitido():
+    from app.config import Settings
+
+    assert Settings.model_fields["allowed_hosts"].default == ["localhost", "127.0.0.1", "[::1]"]
 
 
 def test_env_no_se_versiona_y_la_plantilla_no_lleva_claves():

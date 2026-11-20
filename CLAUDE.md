@@ -36,10 +36,11 @@ código nuevo, comentarios, mensajes de error, textos de UI, docs y commits.
 - **Fechas con zona, siempre.** UTC en el backend; SQLite pierde la zona al
   guardar, así que se sirve con `snapshots.iso_utc`.
 - **Cifras para una persona:** solo con `app/formato.py` / `src/lib/formato.ts`
-  (`fmt_num`, `fmt_pct`, `fmt_dinero`, `fmt_compacto`, `fmt_fecha`, `fmt_antiguedad`),
+  (`fmt_num`, `fmt_pct`, `fmt_dinero`, `fmt_precio`, `fmt_valor_redondo`, `fmt_cifras`, `fmt_frente`, `fmt_compacto`, `fmt_fecha`, `fmt_antiguedad`),
   gemelos probados contra la misma tabla (`formato.casos.json`). Nada de `{x:.1f}`
   ni `toFixed`: un test y ESLint lo impiden. Con varias monedas, cada importe lleva
-  su código. Las fechas, igual: nunca ISO en pantalla (patrón `fecha_iso` de las
+  su código. Un precio por acción o un nivel, con `fmt_precio` (y `datos.redondear_precio` si se
+  sirve redondeado; con `hacia` si es el umbral de «en o por encima/debajo de»): con dos decimales fijos, una acción de 0,003 tenía el stop en 0. Las fechas, igual: nunca ISO en pantalla (patrón `fecha_iso` de las
   fugas); la hora de un dato de mercado, en ET (`ZONA_MERCADO`).
 - **Códigos para una persona:** con `etiqueta()` (`app/etiquetas.py`, el único
   diccionario; el frontend usa su copia exportada con `python -m app.etiquetas`).
@@ -47,7 +48,8 @@ código nuevo, comentarios, mensajes de error, textos de UI, docs y commits.
   nuevo necesita etiqueta (test exhaustivo);
   las palabras siguen `docs/GLOSARIO.md` («BPA», nunca «EPS»), también con test.
 - **Punto en el tiempo:** toda reconstrucción del pasado pregunta a
-  `app/punto_en_el_tiempo.py` (`disponible_en`, `barra_disponible`, `filtrar`).
+  `app/punto_en_el_tiempo.py` (`disponible_en`, `barra_disponible`, `filtrar`; lo que se
+  descarga durante el propio cálculo, `descargado_a_tiempo`).
   No comparar fechas a mano. Un dato fechado por día el mismo día de una
   decisión con hora no está disponible salvo prueba (`obtenido_en`).
 - **El motor de decisión** es una lista de reglas con prioridad; su traza

@@ -50,6 +50,10 @@ _BASE: dict[str, str] = {
     "debil": "débil",
     "critico": "crítico",
     "intacta": "intacta",
+    "sin_comprobar": "sin comprobar",
+    # El estado del stop de una posición en el repaso de Hoy (revisión 12, visual).
+    "perforado": "perforado",
+    "sin_puntos": "sin puntos vigilables",
     "valido": "válido",
     "viejo": "viejo",
     "sin_cartera": "sin cartera",
@@ -65,6 +69,10 @@ _BASE: dict[str, str] = {
     "precaucion": "precaución",
     "cumple": "cumple",
     "no_cumple": "no cumple",
+    # Los filtros del screener: un dato que falta no es un suspenso (revisión 12, visual).
+    "pasa": "pasa",
+    "no_pasa": "no pasa",
+    "sin_dato": "sin dato",
     # --- Métricas y datos ---
     "revenue": "ingresos",
     "ingresos": "ingresos",

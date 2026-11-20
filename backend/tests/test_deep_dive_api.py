@@ -11,6 +11,7 @@ from app.db.engine import get_session
 from app.deps import get_llm, get_service
 from app.main import app
 from app.providers.base import DataNotFoundError, iso_utc
+from app.providers.router import AllProvidersFailedError
 
 
 def _periods(n=8):
@@ -51,6 +52,8 @@ class DeepDiveService:
         if data_type == "financials":
             if symbol == "NOSEC":
                 raise DataNotFoundError("edgar: no registrada en la SEC")
+            if symbol == "CAIDO":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
             return {**common, "symbol": symbol, "periods": _periods()}
         if data_type == "profile":
             return {
@@ -165,6 +168,15 @@ def test_empresa_fuera_de_la_sec_da_404_explicativo(client):
     resp = client.get("/api/deep-dive/NOSEC")
     assert resp.status_code == 404
     assert "EDGAR" in resp.json()["detail"]
+
+
+def test_edgar_caido_es_un_fallo_no_una_empresa_fuera_de_la_sec(client):
+    """Segunda revisión del 2.1: con EDGAR caído el informe decía «Sin estados
+    financieros… EDGAR solo cubre empresas registradas en la SEC» con un 404, y
+    la ficha no podía distinguirlo de una ausencia de verdad."""
+    resp = client.get("/api/deep-dive/CAIDO")
+    assert resp.status_code == 502
+    assert "No se pudieron descargar" in resp.json()["detail"]
 
 
 def test_narrativa_requiere_llm(client):

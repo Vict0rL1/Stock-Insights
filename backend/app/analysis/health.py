@@ -9,6 +9,13 @@ from __future__ import annotations
 from app.analysis.fundamentals import _div, deuda_total, free_cash_flow
 
 
+# Las fronteras de las zonas. Viajan en la respuesta para que la cifra se
+# escriba de su lado: 2,9904 y 2,9896 salían los dos «2,99», uno «zona segura» y
+# el otro «zona gris» (revisión 10).
+ALTMAN_SEGURA = 2.99
+ALTMAN_RIESGO = 1.81
+
+
 def altman_z(period: dict, market_cap: float | None) -> dict:
     """Altman Z-score (fórmula original de 1968, para empresas industriales
     cotizadas). Zonas: > 2.99 segura, 1.81–2.99 gris, < 1.81 riesgo.
@@ -38,10 +45,11 @@ def altman_z(period: dict, market_cap: float | None) -> dict:
 
     zone = None
     if score is not None:
-        zone = "segura" if score > 2.99 else "gris" if score >= 1.81 else "riesgo"
+        zone = "segura" if score > ALTMAN_SEGURA else "gris" if score >= ALTMAN_RIESGO else "riesgo"
     return {
         "score": score,
         "zone": zone,
+        "umbrales": [ALTMAN_RIESGO, ALTMAN_SEGURA],
         "components": components,
         "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
     }

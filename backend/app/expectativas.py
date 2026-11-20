@@ -14,6 +14,8 @@ La parte pura (comparar, clasificar, calibrar) está en
 
 from __future__ import annotations
 
+import re
+from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -23,6 +25,7 @@ from sqlalchemy.orm import Session
 from app import datos
 from app import punto_en_el_tiempo as pit
 from app.analysis import expectativas as ev
+from app.etiquetas import etiqueta
 from app.db.models import (
     TIPOS_DE_EVENTO,
     TIPOS_DE_FUENTE,
@@ -57,12 +60,18 @@ def _iso(d) -> str | None:
 
 
 def _a_instante(valor) -> datetime:
-    """Una marca de la fuente a datetime UTC. Un día solo, a su comienzo."""
+    """Una marca de la fuente a datetime UTC. Un día solo, a su comienzo.
+
+    Lo que no se puede fechar es un error, no «ahora»: «31/12/2026» se guardaba
+    como el momento del registro en una fila inmutable (revisión 5)."""
     m = pit.marca(valor)
     if m is None:
-        return datetime.now(timezone.utc)
+        raise ValueError(f"fecha de la información ilegible: {valor!r} (usa AAAA-MM-DD o ISO con hora)")
     momento, instante = m
-    return momento if instante else datetime(momento.year, momento.month, momento.day, tzinfo=timezone.utc)
+    # En UTC antes de guardar: SQLite pierde la zona, y «14:04+02:00» se releía
+    # como las 14:04 UTC, dos horas después de su registro (revisión 6).
+    return momento.astimezone(timezone.utc) if instante else datetime(momento.year, momento.month, momento.day,
+                                                                       tzinfo=timezone.utc)
 
 
 def serializar_evento(e: CatalystEvent) -> dict:
@@ -125,13 +134,26 @@ def resultado_conocido(session: Session, evento: CatalystEvent, ahora: datetime)
     return None if v["valida"] else v["motivo"]
 
 
-def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str, ahora: datetime) -> bool:
-    """Una expectativa nueva. False si ya estaba (misma métrica, fuente y tipo)."""
+def _guardar(session: Session, evento: CatalystEvent, x: dict, fuente_tipo: str, ahora: datetime,
+             *, descargado: bool = False) -> bool:
+    """Una expectativa nueva. False si ya estaba (misma métrica, fuente y tipo).
+
+    `descargado`: la fuente se pidió durante la propia captura (el calendario)."""
     if fuente_tipo not in TIPOS_DE_FUENTE:
         raise ValueError(f"fuente desconocida: {fuente_tipo}")
     info = _a_instante(x.get("informacion_hasta") or ahora)
-    if pit.disponible_en(info, ahora) is False:
+    # El consenso se descarga durante la propia captura y Finnhub lo fecha con la
+    # hora de la descarga, después de `ahora`: comparar sin el margen común de lo
+    # descargado durante el cálculo daba un 500 al pulsar «Capturar expectativas»
+    # con la caché fría (revisión 4). Dentro del margen se guarda como conocido en
+    # `ahora`: una expectativa nunca lleva información posterior a su registro.
+    # Solo para lo descargado: una anotación a mano unos minutos en el futuro
+    # sigue siendo un error (revisión 5).
+    a_tiempo = pit.descargado_a_tiempo(info, ahora) if descargado else pit.disponible_en(info, ahora)
+    if a_tiempo is False:
         raise ValueError("la información de la fuente no puede ser posterior a su registro")
+    if pit.disponible_en(info, ahora) is False:
+        info = _a_instante(ahora)
     fila = Expectation(
         event_id=evento.id, metrica=x["metrica"], fuente_tipo=fuente_tipo, fuente=x["fuente"][:96],
         valor=datos.numero(x.get("valor")), bajo=datos.numero(x.get("bajo")), alto=datos.numero(x.get("alto")),
@@ -166,7 +188,33 @@ def _trimestres(service, symbol: str, ahora: datetime) -> list[dict]:
             if pit.disponible_en(q.get("filed_at"), ahora, obtenido) is not False]
 
 
+def _indice_trimestral(periodo: str | None) -> int | None:
+    """«2026-Q2» → un entero que sube de uno en uno por trimestre fiscal. Otra forma, None."""
+    m = re.fullmatch(r"(\d{4})-Q([1-4])", (periodo or "").strip())
+    return int(m.group(1)) * 4 + int(m.group(2)) - 1 if m else None
+
+
+def _mas_trimestres(fin: date, n: int) -> date:
+    """El cierre `n` trimestres después (o antes, con `n` negativo). Un cierre a fin
+    de mes sigue a fin de mes: del 30 sept, tres meses después es el 31 dic, no el 30."""
+    mes = fin.month + 3 * n
+    ano = fin.year + (mes - 1) // 12
+    mes = (mes - 1) % 12 + 1
+    ultimo_dia = monthrange(ano, mes)[1]
+    a_fin_de_mes = fin.day == monthrange(fin.year, fin.month)[1]
+    return date(ano, mes, ultimo_dia if a_fin_de_mes else min(fin.day, ultimo_dia))
+
+
 def _fin_objetivo(evento: CatalystEvent, trimestres: list[dict]) -> str | None:
+    """El cierre del trimestre que publica el evento: el que el modelo interno estima.
+
+    Antes era siempre «el siguiente al último conocido», sin mirar el periodo del
+    evento. Con el último publicado en 2025-Q4 (el 2026-Q1 sin publicar todavía) y
+    el evento de 2026-Q2, el modelo estimó el trimestre que cierra el 31 mar y la
+    pantalla lo comparó con el real de junio (revisión 12, visual). Ahora se
+    cuentan los trimestres fiscales que separan el último conocido del periodo del
+    evento; sin un periodo legible, el último cierre anterior a la fecha prevista.
+    Sin ninguna de las dos cosas no se sabe qué trimestre es, y no se supone."""
     if evento.periodo_fin:
         return evento.periodo_fin
     conocido = next((q for q in trimestres if q.get("periodo") == evento.periodo), None)
@@ -174,14 +222,20 @@ def _fin_objetivo(evento: CatalystEvent, trimestres: list[dict]) -> str | None:
         return conocido["end_date"]
     if not trimestres:
         return None
-    # El trimestre siguiente al último conocido: tres meses después de su cierre.
-    ultimo = date.fromisoformat(trimestres[-1]["end_date"])
-    mes = ultimo.month + 3
-    ano = ultimo.year + (mes - 1) // 12
-    mes = (mes - 1) % 12 + 1
-    from calendar import monthrange
-
-    return date(ano, mes, min(ultimo.day, monthrange(ano, mes)[1])).isoformat()
+    ultimo = trimestres[-1]
+    fin = date.fromisoformat(ultimo["end_date"])
+    desde, hasta = _indice_trimestral(ultimo.get("periodo")), _indice_trimestral(evento.periodo)
+    if desde is not None and hasta is not None:
+        return _mas_trimestres(fin, hasta - desde).isoformat()
+    if evento.fecha_prevista:
+        limite = date.fromisoformat(evento.fecha_prevista)
+        n = 0
+        while _mas_trimestres(fin, n + 1) <= limite:
+            n += 1
+        # Con n = 0 el evento llega antes de que cierre otro trimestre: publicaría
+        # uno ya conocido, y eso no se estima.
+        return _mas_trimestres(fin, n).isoformat() if n else None
+    return None
 
 
 def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime | None = None) -> dict:
@@ -203,10 +257,12 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
             # consenso en miles se leería como una sorpresa del 99 %.
             escala = ev.comprobar_escala(x, trimestres)
             if escala["estado"] == "dudosa":
-                sin.append(f"{tipo}: {x['metrica']} con escala dudosa, no se registra: {escala['motivo']}")
+                # Con su etiqueta: «eps_diluted» salía en crudo en «Sin fuente» (revisión 5).
+                sin.append(f"{etiqueta(tipo)}: {etiqueta(x['metrica'])} con escala dudosa, no se registra: "
+                           f"{escala['motivo']}")
                 return
             x = {**x, "detalle": {**(x.get("detalle") or {}), "escala": escala}}
-        if _guardar(session, evento, x, tipo, ahora):
+        if _guardar(session, evento, x, tipo, ahora, descargado=True):
             registradas.append({"metrica": x["metrica"], "fuente_tipo": tipo, "fuente": x["fuente"]})
         else:
             ya += 1
@@ -254,7 +310,9 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
     for x in internas:
         anotar({**x, "fuente": "app: modelo interno v1", "informacion_hasta": trimestres[-1].get("filed_at") if trimestres else ahora,
                 "detalle": {**x["detalle"], "trimestre_objetivo_fin": fin}}, "modelo_interno")
-    if not internas:
+    if trimestres and fin is None:
+        sin.append("modelo interno: no se sabe qué trimestre publica el evento (sin periodo legible ni fecha prevista)")
+    elif not internas:
         sin.append("modelo interno: no hay trimestres suficientes para estimar")
 
     # 4) Reglas de la tesis: lo que la tesis exige del trimestre.
@@ -277,6 +335,8 @@ def _reglas_de_tesis(session: Session, symbol: str, trimestres: list[dict], ahor
             continue
         for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id,
                                                              ThesisTrigger.activo.is_(True))).scalars():
+            if pit.disponible_en(t.created_at, ahora) is not True:
+                continue
             cfg = t.config or {}
             if t.kind != "metrica" or cfg.get("metrica") not in METRICAS_TESIS_TRIMESTRALES or cfg.get("op") not in INVERSO:
                 continue
@@ -406,17 +466,29 @@ def _direccion_del_guidance(session: Session, evento: CatalystEvent, ahora: date
 # --- Evaluar y calibrar -------------------------------------------------------------------
 
 
-def evaluar(session: Session, evento: CatalystEvent) -> dict:
+def _sabido(fila_en, ahora: datetime | None) -> bool:
+    """¿Estaba registrado en `ahora`? Sin `ahora` (la lectura de hoy), todo.
+    Lo que no se puede probar no cuenta, como el efectivo (auditoría, A4)."""
+    return ahora is None or pit.disponible_en(fila_en, ahora) is True
+
+
+def evaluar(session: Session, evento: CatalystEvent, ahora: datetime | None = None) -> dict:
+    """El evento frente a sus expectativas. Con `ahora`, solo lo registrado
+    entonces: el resumen de un análisis del 1 de noviembre leía el guidance
+    anotado el 5 y contaba expectativas del 10 (revisión de A4)."""
     inst = session.execute(select(Instrument).where(Instrument.symbol == evento.symbol)).scalar_one_or_none()
     disparadores = []
     if inst is not None:
         for tesis in session.execute(select(Thesis).where(Thesis.instrument_id == inst.id)).scalars():
+            if not _sabido(tesis.created_at, ahora):
+                continue
             disparadores += [{"id": t.id, "descripcion": t.descripcion}
-                             for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()]
+                             for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()
+                             if _sabido(t.created_at, ahora)]
     return ev.evaluar_evento(
         serializar_evento(evento),
-        [serializar_expectativa(x) for x in _expectativas(session, evento.id)],
-        [serializar_real(r) for r in _reales(session, evento.id)],
+        [serializar_expectativa(x) for x in _expectativas(session, evento.id) if _sabido(x.registrado_en, ahora)],
+        [serializar_real(r) for r in _reales(session, evento.id) if _sabido(r.registrado_en, ahora)],
         disparadores,
     )
 
@@ -426,7 +498,7 @@ def calibracion(session: Session, symbol: str | None = None) -> dict:
     q = select(CatalystEvent)
     if symbol:
         q = q.where(CatalystEvent.symbol == symbol.upper())
-    pares = []
+    pares, otro_trimestre = [], 0
     for e in session.execute(q).scalars():
         reales = [serializar_real(r) for r in _reales(session, e.id)]
         if not reales:
@@ -439,12 +511,19 @@ def calibracion(session: Session, symbol: str | None = None) -> dict:
             sx = serializar_expectativa(x)
             if x.fuente_tipo == "reglas" or not ev.validez_temporal(sx, corte)["valida"]:
                 continue
+            # Una estimación de otro trimestre no dice nada de quien la hizo: el
+            # modelo interno «fallaba» un 25 % comparando su Q1 con el real del Q2
+            # (revisión 12, visual). Las filas viejas no se corrigen (son
+            # inmutables); se dejan fuera y se cuentan.
+            if ev.periodo_distinto(sx, por_metrica.get(x.metrica)) is not None:
+                otro_trimestre += 1
+                continue
             real = (por_metrica.get(x.metrica) or {}).get("valor")
             esperado = x.valor if x.valor is not None else (
                 (x.bajo + x.alto) / 2 if x.bajo is not None and x.alto is not None else (x.bajo if x.bajo is not None else x.alto))
             pares.append({"symbol": e.symbol, "metrica": x.metrica, "fuente_tipo": x.fuente_tipo,
                           "esperado": esperado, "real": real})
-    return ev.calibrar(pares)
+    return {**ev.calibrar(pares), "excluidos_otro_trimestre": otro_trimestre}
 
 
 def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dict:
@@ -456,9 +535,9 @@ def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dic
     for e in eventos:
         if pit.disponible_en(e.creado_en, ahora) is False:
             continue
-        reales = [r for r in _reales(session, e.id) if pit.disponible_en(r.registrado_en, ahora) is not False]
+        reales = [r for r in _reales(session, e.id) if _sabido(r.registrado_en, ahora)]
         if reales and ultimo is None:
-            lectura = evaluar(session, e)
+            lectura = evaluar(session, e, ahora)
             consenso = next((c for c in lectura["por_fuente"].get("consenso") or [] if c["metrica"] == "revenue"), None)
             ultimo = {
                 "evento": serializar_evento(e),
@@ -469,7 +548,8 @@ def resumen_para_analisis(session: Session, symbol: str, ahora: datetime) -> dic
                 "sorpresa_ingresos": (consenso or {}).get("sorpresa"),
             }
         elif not reales and proximo is None:
-            proximo = {"evento": serializar_evento(e), "expectativas": len(_expectativas(session, e.id))}
+            proximo = {"evento": serializar_evento(e),
+                       "expectativas": sum(1 for x in _expectativas(session, e.id) if _sabido(x.registrado_en, ahora))}
     if ultimo is None and proximo is None:
         return {"estado": "sin_eventos", "huella": None}
     return {"estado": "valido", "ultimo": ultimo, "proximo": proximo,

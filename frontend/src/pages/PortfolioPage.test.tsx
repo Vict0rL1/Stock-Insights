@@ -101,4 +101,16 @@ describe('cifras de la cartera', () => {
     expect(screen.getByText('Invertido').parentElement?.textContent).toMatch(/\u00a0USD$/)
     expect(screen.getByText(/· todo convertido a USD/).textContent).toBe('1 divisa · todo convertido a USD')
   })
+
+  it('el riesgo abierto se escribe de su lado del tope y el margen no sale «0,0 %» (revisión 10)', async () => {
+    // Con 5,97 el número grande decía «6,0 %» sin rojo y «quedan 0,0 % de margen».
+    const rutas: Rutas = structuredClone(base)
+    const cartera = rutas['/api/portfolio'].json as Cartera & { risk_budget: Record<string, unknown> }
+    cartera.risk_budget = { ...cartera.risk_budget, riesgo_total_pct: 5.97, tope_pct: 6, margen_pct: 0.03, avisos: [] }
+    servir(rutas)
+    render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
+    expect(await screen.findByText('5,97 %')).toBeInTheDocument()
+    expect(screen.getByText(/quedan 0,03 % de margen/)).toBeInTheDocument()
+  })
 })
+

@@ -8,7 +8,8 @@ puedas leer el informe entero sin gastar nada en Claude.
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_compacto, fmt_num, fmt_pct
+from app.formato import fmt_compacto, fmt_fecha, fmt_frente, fmt_num, fmt_pct, fmt_precio
+from app.llm.signal_llm import FRONTERAS_ETIQUETA
 from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.analysis.deep_dive import assemble
+from app.analysis.deep_dive import VENTANA_RESULTADOS_DIAS, assemble, frente
+from app.analysis.health import ALTMAN_RIESGO, ALTMAN_SEGURA
 from app.analysis.factors import build_raw_factors, composite_score, family_scores, zscores
 from app.analysis.fundamentals import derive_ratio_series, growth_summary
 from app.analysis.signal import build_signal
@@ -33,6 +35,9 @@ from app.simbolos import SimboloRuta, validar_simbolo
 router = APIRouter(prefix="/api/deep-dive", tags=["deep-dive"])
 
 
+# «Qué vigilar», sin plazo: con «(6-18 meses)» la IA colocaba ahí unos
+# resultados a 24 días, lo mismo que el rótulo de la lista calculada (revisión
+# 12, visual).
 NARRATIVE_SYSTEM = """Eres un analista de renta variable escribiendo para un \
 estudiante de finanzas. Recibes un informe YA CALCULADO con cifras reales.
 
@@ -48,7 +53,7 @@ años de historia, factores ausentes).
   ## El negocio
   ## Lo que dicen los números
   ## Valoración
-  ## Qué vigilar (6-18 meses)
+  ## Qué vigilar
   ## Lectura final
 - En "Lectura final", sintetiza sin recomendar: di qué tendría que ser cierto \
 para que la tesis alcista funcione y qué la rompería.
@@ -113,12 +118,25 @@ def deep_dive(
     """
     symbol = validar_simbolo(symbol)
 
-    financials = _safe(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502. Antes `_safe` se
+    # tragaba los dos y un EDGAR caído se leía como «no registrada en la SEC»,
+    # así que la ficha no podía tratar el 404 como ausencia (segunda revisión
+    # del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError as exc:
+        financials, motivo = None, str(exc)
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
+    else:
+        motivo = "sin ejercicios anuales"
     if financials is None or not financials.get("periods"):
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Sin estados financieros para {symbol} en SEC EDGAR. El informe "
+                f"Sin estados financieros para {symbol} en SEC EDGAR ({motivo}). El informe "
                 "necesita histórico auditado; EDGAR solo cubre empresas "
                 "registradas en la SEC (no aplica a cotizadas extranjeras sin ADR)."
             ),
@@ -167,7 +185,7 @@ def deep_dive(
         service,
         "earnings_calendar",
         start=today.isoformat(),
-        end=(today + timedelta(days=120)).isoformat(),
+        end=(today + timedelta(days=VENTANA_RESULTADOS_DIAS)).isoformat(),
     )
     earnings = [
         e for e in (calendar or {}).get("events", []) if e.get("symbol") == symbol
@@ -240,7 +258,7 @@ def _dcf_defaults(periods: list[dict], quote: dict | None) -> dict | None:
         "shares_outstanding": shares,
         "current_price": (quote or {}).get("price"),
         "note": (
-            "Supuestos de partida derivados del histórico, acotados al 15 % de "
+            "Supuestos de partida derivados del histórico, acotados al 15\u00a0% de "
             "crecimiento. Edítalos en la pestaña Valoración: el resultado es muy "
             "sensible a la tasa de descuento y al crecimiento terminal."
         ),
@@ -318,8 +336,17 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
     risks = "\n".join(
         f"- [{r['severity']}] {r['type']}: {r['evidence']}" for r in report.get("risks", [])
     )
+    # Previsto o ya presentado: la IA recibía los dos bajo «catalizadores
+    # próximos» y un 10-Q del mes pasado pasaba por un catalizador por venir
+    # (revisión 12, visual).
+    def cuando(c: dict) -> str:
+        if not c.get("when"):
+            return "sin fecha"
+        verbo = "presentado" if c.get("source") == "edgar" else "previsto"
+        return f"{verbo} el {fmt_fecha(c['when'])}"
+
     catalysts = "\n".join(
-        f"- {c['type']} ({c.get('when') or 'sin fecha'}): {c.get('detail')}"
+        f"- {c['type']} ({cuando(c)}): {c.get('detail')}"
         for c in report.get("catalysts", [])[:6]
     )
 
@@ -327,26 +354,26 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
 Sector: {business.get('sector') or 'desconocido'}
 Ingresos último ejercicio ({business.get('latest_fiscal_year')}): {fmt_compacto(business.get('latest_revenue'))}
 Años de histórico disponibles: {business.get('years_of_history')}
-Precio actual: {fmt_num(report.get('price'))}
+Precio actual: {fmt_precio(report.get('price'))}
 
 CRECIMIENTO
-CAGR ingresos {ventana}: {pct(growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
+CAGR ingresos {ventana}: {frente('revenue_cagr', growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
 CAGR BPA {ventana}: {pct(growth.get('eps_cagr'))} | CAGR FCF {ventana}: {pct(growth.get('fcf_cagr'))}
 Tendencia: {growth.get('acceleration') or 'sin determinar'}
 
 MÁRGENES
-Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {pct(margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
+Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {frente('operating_margin', margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
 Tendencia del margen operativo: {margins.get('trends', {}).get('operating_margin') or 'sin determinar'}
 
 DEUDA
-Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {fmt_num(debt.get('debt_to_equity'))}
-Cobertura de intereses: {fmt_num(debt.get('interest_coverage'), 1)}
-Altman Z: {fmt_num((debt.get('altman_z') or {}).get('score'))} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
+Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {frente('debt_to_equity', debt.get('debt_to_equity'))}
+Cobertura de intereses: {frente('interest_coverage', debt.get('interest_coverage'))}
+Altman Z: {fmt_frente((debt.get('altman_z') or {}).get('score'), (debt.get('altman_z') or {}).get('umbrales') or [ALTMAN_RIESGO, ALTMAN_SEGURA])} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
 Piotroski F: {_piotroski(debt.get('piotroski_f'))}
 
 CAJA
 FCF último ejercicio: {fmt_compacto(cash.get('current', {}).get('fcf'))}
-Conversión beneficio→caja: {pct(cash.get('current', {}).get('fcf_conversion'))}
+Conversión beneficio→caja: {frente('fcf_conversion', cash.get('current', {}).get('fcf_conversion'))}
 Intensidad de capex: {pct(cash.get('current', {}).get('capex_intensity'))}
 Tendencia del FCF: {cash.get('fcf_trend') or 'sin determinar'}
 
@@ -355,16 +382,18 @@ VALORACIÓN FRENTE A SU PROPIA HISTORIA ({valuation.get('years_covered')} años)
 Lectura: {valuation.get('reading')}
 
 SEÑAL CUANTITATIVA (frente a sus pares)
-{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_num((report.get('quant_signal') or {}).get('score'), signo=True)}
+{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_frente((report.get('quant_signal') or {}).get('score'), FRONTERAS_ETIQUETA, signo=True)}
 
 RIESGOS DETECTADOS EN LOS DATOS
 {risks or '- Ninguno relevante detectado'}
 
-CATALIZADORES PRÓXIMOS
+CATALIZADORES ({report.get('catalysts_note') or 'fechas sacadas de los datos'})
 {catalysts or '- Ninguno identificado'}
 
 VEREDICTO CALCULADO: postura {verdict.get('stance')}
 A favor: {'; '.join(verdict.get('positives', [])) or 'ninguno'}
 En contra: {'; '.join(verdict.get('negatives', [])) or 'ninguno'}
+Sin comprobar por falta de datos (no cuentan ni a favor ni en contra): {'; '.join(verdict.get('sin_comprobar') or []) or 'nada'}
+Alcance: {verdict.get('alcance') or 'sin indicar'}
 
 Escribe el informe."""

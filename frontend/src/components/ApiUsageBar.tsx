@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { ProviderUsage } from '../api/types'
-import { useLlmStatus } from '../lib/llm'
+import { useLlmEstado } from '../lib/llm'
+import { mensajeDeError } from '../lib/useDato'
 
 function windowLabel(seconds: number): string {
   if (seconds <= 60) return 'min'
@@ -13,28 +14,63 @@ function windowLabel(seconds: number): string {
 // saber cuánto queda es parte del flujo de trabajo, no un adorno.
 export function ApiUsageBar() {
   const [usage, setUsage] = useState<ProviderUsage[]>([])
-  const llm = useLlmStatus()
+  // El contador nunca rompe la UI, pero un fallo tampoco se calla: antes, si la
+  // primera consulta fallaba, la barra desaparecía sin decir nada (ítem 2.1).
+  // Si ya había cifras, se quedan las últimas y se dice que lo son.
+  const [errorUso, setErrorUso] = useState<string | null>(null)
+  const { status: llm, error: errorIa, reintentar: reintentarIa } = useLlmEstado()
+  // La barra vive en el Layout y se monta una vez: si el estado de la IA no se
+  // pudo consultar al abrir la app, se vuelve a pedir con el uso, cada 30 s,
+  // hasta que se sepa (revisión del 2.1).
+  const iaSabida = useRef(false)
+  useEffect(() => {
+    iaSabida.current = llm !== null
+  }, [llm])
 
   useEffect(() => {
     let alive = true
     const load = () => {
       api.usage().then(
-        (data) => alive && setUsage(data),
-        () => undefined, // el contador nunca debe romper la UI
+        (data) => {
+          if (!alive) return
+          setUsage(data)
+          setErrorUso(null)
+        },
+        (e: unknown) => alive && setErrorUso(mensajeDeError(e)),
       )
     }
     load()
-    const timer = setInterval(load, 30_000)
+    const timer = setInterval(() => {
+      load()
+      if (!iaSabida.current) reintentarIa()
+    }, 30_000)
     return () => {
       alive = false
       clearInterval(timer)
     }
-  }, [])
+  }, [reintentarIa])
 
-  if (usage.length === 0) return null
+  if (usage.length === 0 && !errorUso) return null
   return (
-    <div className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400">
-      <span className="w-full uppercase tracking-wider text-slate-300">APIs</span>
+    <div
+      className="flex flex-wrap items-center gap-1 text-[10px] text-slate-400"
+      title={errorUso && usage.length ? `Últimas cifras conocidas: la consulta del uso falló (${errorUso}).` : undefined}
+    >
+      {/* `slate-400`, no `slate-300`: a 10 px daba un contraste de 1,9:1 y en el
+          cajón de móvil apenas se leía (revisión del 2.12). */}
+      <span className="w-full uppercase tracking-wider text-slate-400">APIs</span>
+      {usage.length === 0 && errorUso && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={errorUso}>
+          uso desconocido: no se pudo consultar
+        </span>
+      )}
+      {/* Unas cifras que no se pudieron actualizar se dicen a la vista: solo
+          en el `title` parecían las de ahora (revisión del 2.1). */}
+      {usage.length > 0 && errorUso && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={errorUso}>
+          últimas cifras: no se pudo actualizar
+        </span>
+      )}
       {usage.map((u) => (
         <span
           key={u.provider}
@@ -54,6 +90,11 @@ export function ApiUsageBar() {
           {u.provider} {u.remaining}/{u.limit}
         </span>
       ))}
+      {/* Qué significa el tachado, a la vista: solo estaba en el `title`, y en
+          una pantalla táctil no hay `hover` (revisión del 2.12). */}
+      {usage.some((u) => !u.configured) && (
+        <span className="w-full text-slate-400">Tachado: sin API key en .env.</span>
+      )}
       {llm && (
         <span
           title={
@@ -67,7 +108,12 @@ export function ApiUsageBar() {
               : 'bg-slate-100 text-slate-400 line-through'
           }`}
         >
-          IA {llm.configured ? 'activa' : 'off'}
+          IA {llm.configured ? 'activa' : 'apagada'}
+        </span>
+      )}
+      {!llm && errorIa && (
+        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title={`No se pudo comprobar la capa de IA: ${errorIa}. Mientras tanto no se ofrecen interpretaciones; se vuelve a comprobar cada 30 s.`}>
+          IA sin comprobar
         </span>
       )}
     </div>

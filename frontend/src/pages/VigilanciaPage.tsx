@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
-import { api } from '../api/client'
+import { useState, type ReactNode } from 'react'
+import { api, ApiError } from '../api/client'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DecisionRegistrada,
-  DecisionesResponse,
   DisparadorVigilado,
   MetricasVigilables,
-  SinTesisResponse,
-  ThesisRecord,
-  VigilanciaResponse,
+  UnidadMetrica,
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtNum, fmtPct } from '../lib/formato'
+import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
 
@@ -29,7 +28,14 @@ const TONO_ACCION: Record<string, string> = {
  *  Tres estados, y el tercero importa tanto como los otros: cruzado, no
  *  cruzado, y NO SE PUDO MEDIR. Pintar el tercero como el segundo convertiría
  *  un fallo de datos en tranquilidad. */
-function Disparador({ d }: { d: DisparadorVigilado }) {
+function Disparador({ d, accion, unidad }: { d: DisparadorVigilado; accion?: ReactNode; unidad?: UnidadMetrica }) {
+  // La serie, en la unidad de la métrica (un margen en %, un ratio en veces) y
+  // de su lado del umbral: con decimales fijos, un ratio corriente de 0,996 que
+  // cruzaba «< 1» se escribía «1,00» debajo del detalle que decía 0,996 (revisión 6).
+  const cifra = (v: number) =>
+    unidad === 'pct' || unidad === 'veces'
+      ? fmtFrente(v, d.umbral ?? null, { pct: unidad === 'pct' })
+      : fmtNum(v, 3)
   const estado = !d.medible ? 'sin_medir' : d.salta ? 'salta' : 'ok'
   const borde =
     estado === 'salta'
@@ -68,7 +74,7 @@ function Disparador({ d }: { d: DisparadorVigilado }) {
 
       {d.serie && d.serie.length > 1 && (
         <p className="mt-1 text-[11px] tabular-nums text-slate-500">
-          Últimos ejercicios: {d.serie.map((v) => fmtNum(v, 3)).join(' → ')}
+          Últimos ejercicios: {d.serie.map(cifra).join(' → ')}
           {d.tendencia && (
             <span
               className={
@@ -105,6 +111,7 @@ function Disparador({ d }: { d: DisparadorVigilado }) {
       {d.aviso && (
         <p className="mt-2 text-[11px] leading-relaxed text-amber-800">{d.aviso}</p>
       )}
+      {accion && <div className="mt-1 flex justify-end">{accion}</div>}
     </li>
   )
 }
@@ -113,10 +120,12 @@ function TarjetaTesis({
   t,
   onBorrar,
   onAñadir,
+  unidadDe,
 }: {
   t: VigilanciaTesis
   onBorrar: (id: number) => void
   onAñadir: (thesisId: number) => void
+  unidadDe: (clave: unknown) => UnidadMetrica | undefined
 }) {
   const v = t.vigilancia
   return (
@@ -147,16 +156,23 @@ function TarjetaTesis({
       {v.total > 0 ? (
         <ul className="mt-3 space-y-2">
           {v.disparadores.map((d) => (
-            <div key={d.id} className="relative">
-              <Disparador d={d} />
-              <button
-                onClick={() => onBorrar(d.id)}
-                className="absolute right-2 top-9 text-[10px] text-slate-400 hover:text-red-600"
-                title="Quitar este punto"
-              >
-                quitar
-              </button>
-            </div>
+            // «quitar» va en el flujo de la tarjeta: con `absolute`, a 390 px
+            // caía encima del detalle y tapaba «por» en «…si cae por debajo de
+            // 0,180» (ítem 2.12).
+            <Disparador
+              key={d.id}
+              d={d}
+              unidad={unidadDe(d.config.metrica)}
+              accion={
+                <button
+                  onClick={() => onBorrar(d.id)}
+                  className="text-[10px] text-slate-400 hover:text-red-600"
+                  title="Quitar este punto"
+                >
+                  quitar
+                </button>
+              }
+            />
           ))}
         </ul>
       ) : null}
@@ -187,14 +203,33 @@ function FormularioDisparador({
 
   const opciones =
     kind === 'crecimiento' ? (metricas?.crecimientos ?? []) : (metricas?.metricas ?? [])
+  // Solo lo que es un porcentaje se divide entre 100. Antes se dividía todo, y
+  // «ratio corriente < 1» se guardaba como 0,01: el punto no saltaba nunca
+  // (revisión del 2.12). Sin catálogo con unidad, se mantiene el % de siempre.
+  const enPct = (opciones.find((m) => m.clave === metrica)?.unidad ?? 'pct') === 'pct'
 
   const enviar = async () => {
     setError(null)
+    // `Number('') / 100` daba 0: un umbral borrado se guardaba como «0 %», un
+    // punto que nadie escribió (segunda revisión del 2.1). Ausente no es cero.
+    // El campo es `type="number"`: el navegador ya entrega el valor con punto
+    // decimal, así que no se reinterpreta con la convención de la app (con
+    // `leerNumero`, «0.125» llegaba como 125 %; tercera pasada). Lo que no es
+    // un número también llega vacío.
+    const u = umbral.trim() === '' ? null : Number(umbral)
+    if (kind !== 'noticia' && (u === null || !Number.isFinite(u))) {
+      setError(
+        enPct
+          ? 'Escribe el umbral como número (p. ej. 18 o 18,5): vacío no es 0\u00a0%.'
+          : 'Escribe el umbral como número (p. ej. 1,5): vacío no es 0.',
+      )
+      return
+    }
     try {
       const config =
         kind === 'noticia'
           ? { palabras: palabras.split(',').map((p) => p.trim()).filter(Boolean) }
-          : { metrica, op, umbral: Number(umbral) / 100 }
+          : { metrica, op, umbral: enPct ? (u as number) / 100 : (u as number) }
       await api.addTrigger(thesisId, { kind, descripcion, config })
       onHecho()
     } catch (e) {
@@ -221,13 +256,13 @@ function FormularioDisparador({
               setKind(k)
               setMetrica(k === 'crecimiento' ? 'revenue_cagr' : 'operating_margin')
             }}
-            className={`rounded-lg px-3 py-1 text-xs capitalize ${
+            className={`rounded-lg px-3 py-1 text-xs ${
               kind === k
                 ? 'bg-sky-800 text-white'
                 : 'border border-sky-300 text-sky-800'
             }`}
           >
-            {k}
+            {etiqueta(k, { mayuscula: true })}
           </button>
         ))}
       </div>
@@ -284,7 +319,7 @@ function FormularioDisparador({
             onChange={(e) => setUmbral(e.target.value)}
             className="w-20 rounded-lg border border-sky-300 bg-white px-2 py-1.5 text-sm tabular-nums"
           />
-          <span className="text-sm text-sky-800">%</span>
+          <span className="text-sm text-sky-800">{enPct ? '%' : 'veces'}</span>
         </div>
       )}
 
@@ -324,11 +359,11 @@ function Decision({ d }: { d: DecisionRegistrada }) {
         </span>
         {d.price_at_decision !== null && (
           <span className="ml-auto text-xs tabular-nums text-slate-500">
-            {fmtNum(d.price_at_decision, 2)}
+            {fmtPrecio(d.price_at_decision)}
             {d.precio_actual !== null && (
               <>
                 {' → '}
-                {fmtNum(d.precio_actual, 2)}{' '}
+                {fmtPrecio(d.precio_actual)}{' '}
                 {d.cambio_pct !== null && (
                   <span
                     className={d.cambio_pct >= 0 ? 'text-emerald-700' : 'text-red-700'}
@@ -352,6 +387,8 @@ function Decision({ d }: { d: DecisionRegistrada }) {
           {ctx.disparadores_saltando.map((x, i) => (
             <p key={i} className="text-[11px] leading-relaxed text-amber-800">
               Al decidir ya estaba cruzado: «{x.descripcion}»
+              {/* La duda de un punto sin unidad guardada, congelada con la decisión (revisión 6). */}
+              {x.aviso && <span className="block">{x.aviso}</span>}
             </p>
           ))}
           {/* No comprobado no es «no cruzado»: se dice aparte. */}
@@ -372,27 +409,52 @@ function Decision({ d }: { d: DecisionRegistrada }) {
 }
 
 export function VigilanciaPage() {
-  const [vig, setVig] = useState<VigilanciaResponse | null>(null)
-  const [dec, setDec] = useState<DecisionesResponse | null>(null)
-  const [sin, setSin] = useState<SinTesisResponse | null>(null)
-  const [tesis, setTesis] = useState<ThesisRecord[]>([])
-  const [metricas, setMetricas] = useState<MetricasVigilables | null>(null)
+  // Los puntos de invalidación seguían con `useState` y `setError`: sin
+  // «Cargando», el fallo salía suelto y sin «Reintentar», compartía `error` con
+  // el registro de decisiones (que lo borraba al empezar) y, si fallaba la
+  // recarga tras quitar un punto, el punto quitado seguía pintado como actual
+  // (revisión del 2.1).
+  const vigilancia = useDato(() => api.vigilancia(), 'vigilancia')
+  const vig = vigilancia.datos
+  // Decisiones, posiciones sin tesis, tesis enlazables y catálogo de métricas
+  // hacían `() => setX(null)` / `[]`: un fallo los borraba sin decir nada. El
+  // peor, el aviso de posiciones sin tesis, que desaparecía justo cuando no se
+  // había podido comprobar (ítem 2.1).
+  const dec = useDato(() => api.decisiones(), 'decisiones')
+  const sin = useDato(() => api.sinTesis(), 'sin-tesis')
+  const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
+  const metricas = useDato(() => api.metricasVigilables(), 'metricas')
+  const catalogo = [...(metricas.datos?.metricas ?? []), ...(metricas.datos?.crecimientos ?? [])]
+  const unidadDe = (clave: unknown) => catalogo.find((m) => m.clave === clave)?.unidad
   const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
   const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
   const [error, setError] = useState<string | null>(null)
+  // «quitar» un punto hacía `await` sin capturar: un rechazo no decía nada y el
+  // punto seguía ahí (revisión del 2.1).
+  const [fallo, setFallo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const cargar = useCallback(() => {
-    api.vigilancia().then(setVig, (e) => setError(e.message))
-    api.decisiones().then(setDec, () => setDec(null))
-    api.sinTesis().then(setSin, () => setSin(null))
-    api.theses().then((d) => setTesis(d.theses), () => setTesis([]))
-  }, [])
+  // Tras registrar, añadir o quitar algo: todo se refresca sin vaciarse. Con
+  // una clave por versión pasaban por «Cargando», desaparecían «Decisiones
+  // pasadas» y el aviso, y el selector de tesis se quedaba sin opciones.
+  const cargar = () => {
+    vigilancia.refrescar()
+    dec.refrescar()
+    sin.refrescar()
+    tesis.refrescar()
+  }
 
-  useEffect(() => {
-    cargar()
-    api.metricasVigilables().then(setMetricas, () => setMetricas(null))
-  }, [cargar])
+  const quitar = async (id: number) => {
+    setFallo(null)
+    try {
+      await api.deleteTrigger(id)
+      cargar()
+    } catch (e) {
+      // Un 404 es que ya no existía (otro clic, otra pestaña): no es un fallo.
+      if (e instanceof ApiError && e.status === 404) cargar()
+      else setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
+    }
+  }
 
   const registrar = async () => {
     setBusy(true)
@@ -431,17 +493,22 @@ export function VigilanciaPage() {
           {vig.aviso_sin_disparadores}
         </p>
       )}
-      {sin && (sin.posiciones_sin_tesis.length > 0 || sin.watchlist_sin_tesis.length > 0) && (
+      {sin.estado === 'error' && (
+        <ErrorDeCarga que="el recuento de posiciones sin tesis" error={sin.error} reintentar={sin.reintentar} />
+      )}
+      {sin.estado === 'listo' && (sin.datos.posiciones_sin_tesis.length > 0 || sin.datos.watchlist_sin_tesis.length > 0) && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-          {sin.nota}
+          {sin.datos.nota}
         </p>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {añadiendoA !== null && metricas.estado === 'error' && (
+        <ErrorDeCarga que="el catálogo de métricas vigilables" error={metricas.error} reintentar={metricas.reintentar} />
+      )}
       {añadiendoA !== null && (
         <FormularioDisparador
           thesisId={añadiendoA}
-          metricas={metricas}
+          metricas={metricas.datos}
           onHecho={() => {
             setAñadiendoA(null)
             cargar()
@@ -450,24 +517,28 @@ export function VigilanciaPage() {
         />
       )}
 
-      {vig?.tesis.map((t) => (
-        <TarjetaTesis
-          key={t.thesis_id}
-          t={t}
-          onAñadir={setAñadiendoA}
-          onBorrar={async (id) => {
-            await api.deleteTrigger(id)
-            cargar()
-          }}
-        />
-      ))}
-
-      {vig && vig.tesis.length === 0 && (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-          Todavía no hay ninguna tesis escrita. Se crean al añadir una posición o
-          algo a la watchlist, o desde la pestaña Tesis.
+      {fallo && (
+        <p role="alert" className="text-sm text-red-600">
+          {fallo}
         </p>
       )}
+
+      <BloqueDatos carga={vigilancia} que="la vigilancia de tesis">
+        {(v) =>
+          v.tesis.length === 0 ? (
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+              Todavía no hay ninguna tesis escrita. Se crean al añadir una posición o
+              algo a la watchlist, o desde la pestaña Tesis.
+            </p>
+          ) : (
+            <>
+              {v.tesis.map((t) => (
+                <TarjetaTesis key={t.thesis_id} t={t} onAñadir={setAñadiendoA} onBorrar={quitar} unidadDe={unidadDe} />
+              ))}
+            </>
+          )
+        }
+      </BloqueDatos>
 
       {/* --- Registro de decisiones --- */}
       <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -501,13 +572,18 @@ export function VigilanciaPage() {
             className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">Sin tesis enlazada</option>
-            {tesis.map((t) => (
+            {(tesis.datos ?? []).map((t) => (
               <option key={t.id} value={t.id}>
                 {t.symbol} — {t.title}
               </option>
             ))}
           </select>
         </div>
+        {tesis.estado === 'error' && (
+          <div className="mt-2">
+            <ErrorDeCarga que="las tesis que se pueden enlazar" error={tesis.error} reintentar={tesis.reintentar} />
+          </div>
+        )}
         <textarea
           value={form.razonamiento}
           onChange={(e) => setForm({ ...form, razonamiento: e.target.value })}
@@ -522,16 +598,20 @@ export function VigilanciaPage() {
         >
           {busy ? 'Guardando…' : 'Registrar'}
         </button>
+        {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
       </section>
 
-      {dec && dec.decisiones.length > 0 && (
+      {dec.estado === 'error' && (
+        <ErrorDeCarga que="las decisiones pasadas" error={dec.error} reintentar={dec.reintentar} />
+      )}
+      {dec.estado === 'listo' && dec.datos.decisiones.length > 0 && (
         <section className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-800">
             Decisiones pasadas, con el razonamiento de entonces
           </h2>
-          {dec.coherencia.avisos && dec.coherencia.avisos.length > 0 && (
+          {dec.datos.coherencia.avisos && dec.datos.coherencia.avisos.length > 0 && (
             <ul className="mt-2 space-y-1">
-              {dec.coherencia.avisos.map((a) => (
+              {dec.datos.coherencia.avisos.map((a) => (
                 <li key={a} className="text-xs leading-relaxed text-amber-800">
                   {a}
                 </li>
@@ -539,11 +619,11 @@ export function VigilanciaPage() {
             </ul>
           )}
           <ul className="mt-3 space-y-2">
-            {dec.decisiones.map((d) => (
+            {dec.datos.decisiones.map((d) => (
               <Decision key={d.id} d={d} />
             ))}
           </ul>
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{dec.nota}</p>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{dec.datos.nota}</p>
         </section>
       )}
     </div>

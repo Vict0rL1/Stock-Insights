@@ -9,13 +9,13 @@ empresa.
 
 | Pieza | Archivo | Qué hace |
 |---|---|---|
-| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None |
+| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None; lo descargado durante el propio cálculo cuenta hasta `MARGEN_DE_DESCARGA` después: la cotización y la puntuación de pares (`descargado_a_tiempo`, fechadas al descargarlas) y el desempate por `obtenido_en` (la barra o el filing de hoy). El análisis, la congelación (`anomalias_temporales`) y el replay usan la misma regla |
 | Análisis de empresa | `backend/app/analisis_empresa.py` | Reúne precio, EDGAR con linaje, DCF inverso, tesis, noticias, señal, posición, decisión, riesgo, calidad, expectativas, confianza y coste de oportunidad |
 | Traza de reglas | `backend/app/analysis/decision.py` | Cada decisión trae `reglas` (resultado, valor, umbral, papel) y `cambiaria` |
 | Congelar y reproducir | `backend/app/snapshots.py` | `congelar_analisis`, `anterior_comparable`, `reproducir` |
 | Diff material | `backend/app/analysis/cambios.py` | `comparar(anterior, actual)` con `MATERIALIDAD` |
 | Confianza por evidencia | `backend/app/analysis/confianza.py` | 10 factores, regla de agregación escrita |
-| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis`, `/historial`, `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
+| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis` (su `cambios.decision` sirve `umbrales_puntuacion_antes` y `umbrales_puntuacion_ahora`, los de cada traza, para escribir cada lado de la puntuación), `/historial` (con los `thresholds` de la puntuación y, en cada fila, los `umbrales_puntuacion` de su propia traza, para escribirla de su lado), `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
 
 ## El registro: `DecisionSnapshot`, el mismo de siempre
 
@@ -31,6 +31,16 @@ se congela cuando cambia algo **material**: otra acción, otro resultado en algu
 regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de
 expectativas. Si solo se movió el precio, no: diez aperturas de la misma empresa
 en una tarde no son diez decisiones. Al día siguiente siempre hay instantánea del día.
+
+**Cuándo NO se congela aunque se pida.** Si el análisis no tiene precio (ni
+cotización ni último cierre) ni estados financieros —un error de tecleo, «AAPLL»,
+o una caída de todas las fuentes—, se devuelve pero no se guarda: una instantánea
+es inmutable, y la de algo que quizá no existe no se podría borrar nunca. Se
+decide con lo que el análisis ya trae, sin volver a preguntar a las fuentes
+(`analisis_empresa.sin_ningun_dato`). La respuesta lo dice en `sin_congelar`
+(`None` si se congeló o no se pidió), distinguiendo «ninguna fuente lo tiene» de
+«no respondieron». Basta el precio o los estados para que se congele (VACIA, solo
+con estados de EDGAR, se congela). `./start.sh validar` lo cuenta como UNKNOWN.
 
 `evaluar_instantaneas.py` sigue midiendo solo **afirmaciones** (comprar, vender,
 reducir, evitar): un «mantener» se congela para poder reconstruirlo, pero no es
@@ -89,6 +99,18 @@ se cumple decide. Por eso la atribución es su traza, no un segundo sistema:
 comprar → vigilar
 «Precio ≥ media de 200 sesiones + 2 %»: cumple (110.00 frente a 101.14) → no cumple (99.00 frente a 100.66)
 papel: puntuacion_favorable  decide → a_favor   (sigue cumpliendo; ya no basta)
+```
+
+Una decisión «Sin datos» tiene una traza de una sola regla («Precio y puntuación
+válidos») y el resto no se evalúa, así que el cruce no tiene con qué comparar. La
+explicación dice entonces qué faltaba (su `faltan`) y, si ahora sí hay datos, las
+reglas que deciden y antes no se evaluaron:
+
+```
+sin_datos → vigilar
+Antes no había una puntuación válida («Precio y puntuación válidos»: no cumple) y el motor no podía decidir. Ahora la acción sale de sus reglas:
+«Puntuación ≥ +0,35»: no se evaluaba → cumple (+0,60 frente a +0,35).
+«Precio ≥ media de 200 sesiones + 2 %»: no se evaluaba → no cumple (92,00 frente a 96,68).
 ```
 
 `cambiaria` lista, para cada acción alternativa, las condiciones con su umbral y

@@ -683,3 +683,63 @@ def test_el_motivo_sin_fundamentales_es_el_que_dio_el_router():
     assert _por_que_sin_fundamentales(cuota) == "sin cuota en las fuentes de fundamentales"
     assert _por_que_sin_fundamentales(caida) == "con las fuentes de fundamentales fallando"
     assert _por_que_sin_fundamentales(nada) == "sin ninguna fuente de fundamentales configurada"
+
+
+def test_hoy_repasa_el_stop_de_toda_la_cartera_y_no_desde_la_cache(client, session_factory):
+    """Revisión 12, visual: con STOP fuera del S&P 500 (stop en 110, cotizando a
+    104), Hoy decía «Para vender 0 · nada urgente» y «1 en cartera» con tres
+    posiciones abiertas: solo miraba las del mercado barrido. Ahora repasa el
+    stop de todas, con la regla del motor, y lo que no puede comprobar lo dice."""
+    from tests.fixtures import extremos as ex
+
+    c, service = client
+    original = service.get
+    cotizaciones = {"STOP": 104.0, "ROZA": 110.0}  # CHIP: sin cotización en ninguna fuente
+
+    def con_cotizaciones(data_type, **kw):
+        if data_type == "quote" and kw.get("symbol") in cotizaciones:
+            return {"symbol": kw["symbol"], "price": cotizaciones[kw["symbol"]], "currency": "USD",
+                    "as_of": iso_utc(), "estado": "valido"}
+        return original(data_type, **kw)
+
+    service.get = con_cotizaciones
+    with session_factory() as s:
+        ex._posicion(s, ex._instrumento(s, "KO", "Consumer Staples"), 300, 58.0, 50.0)
+        ex._posicion(s, ex._instrumento(s, "STOP", "Technology"), 50, 90.0, 110.0)
+        ex._posicion(s, ex._instrumento(s, "CHIP", "Technology"), 200, 20.0, 18.0)
+        s.commit()
+
+    data = _completar(c)
+    cartera = data["cartera"]
+    assert cartera["abiertas"] == 3 and cartera["en_lista"] == 1
+    assert [p["symbol"] for p in cartera["posiciones"]] == ["STOP", "CHIP", "KO"]  # lo urgente arriba
+    stop, chip, ko = cartera["posiciones"]
+    assert (stop["estado"], stop["en_lista"], stop["precio"], stop["stop"], stop["moneda"], stop["motivo"]) == (
+        "perforado", False, 104.0, 110.0, "USD", None)
+    assert chip["estado"] == "sin_comprobar" and chip["motivo"].startswith("sin precio")
+    senal_ko = next(x for x in data["signals"] if x["symbol"] == "KO")
+    assert ko["en_lista"] and ko["precio"] == senal_ko["price"]["last"] and ko["estado"] == "por_encima"
+
+    # En el stop exacto también está perforado («en o por debajo», como el motor).
+    # Y se repasa en cada petición: la lista sale de la caché, la cartera no.
+    with session_factory() as s:
+        ex._posicion(s, ex._instrumento(s, "ROZA", "Technology"), 10, 100.0, 110.0)
+        s.commit()
+    otra = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    assert otra["cached"] is not False
+    roza = next(p for p in otra["cartera"]["posiciones"] if p["symbol"] == "ROZA")
+    assert roza["estado"] == "perforado" and otra["cartera"]["abiertas"] == 4
+
+
+def test_un_fallo_al_repasar_los_stops_no_cuesta_la_lista_ni_se_calla(client, monkeypatch):
+    from app import contexto_cartera
+
+    def revienta(*a, **k):
+        raise RuntimeError("caído")
+
+    monkeypatch.setattr(contexto_cartera, "stops_de_la_cartera", revienta)
+    c, _ = client
+    data = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    assert data["signals"]
+    assert data["cartera"]["abiertas"] is None and "ninguna se ha comprobado" in data["cartera"]["error"]
+

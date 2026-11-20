@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta, timezone
 
+from app.analysis.markets import parametros_lista_diaria
 from app.providers.base import DataNotFoundError
 
 
@@ -95,7 +96,7 @@ class ServicioFalso:
         return self
 
     def senal(self, symbol, score, as_of=None, mercado="us_sp500"):
-        params = {"v": 6, "market": mercado}
+        params = parametros_lista_diaria(mercado)
         lista = self.cache.get("daily_picks", params) or {"signals": [], "as_of": (as_of or self.ahora).isoformat()}
         lista["signals"] = [s for s in lista["signals"] if s["symbol"] != symbol] + [
             {"symbol": symbol, "score": score, "label": "favorable", "coverage": 1.0,

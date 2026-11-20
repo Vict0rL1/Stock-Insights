@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.db.engine import get_session
 from app.deps import get_service
 from app.main import app
-from app.providers.base import iso_utc
+from app.providers.base import DataNotFoundError, iso_utc
 
 
 class FakeService:
@@ -24,6 +24,9 @@ class FakeService:
         if data_type == "profile":
             return {**common, "symbol": kwargs["symbol"], "name": "Fake Corp", "sector": "Tech",
                     "currency": "USD"}
+        if data_type == "price_history":
+            # Abrir una posición descarga el histórico una vez (revisión 8).
+            raise DataNotFoundError("sin histórico")
         raise AssertionError(f"tipo inesperado: {data_type}")
 
 

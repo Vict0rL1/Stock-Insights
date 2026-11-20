@@ -122,7 +122,7 @@ def limpiar(contratos: list[dict], hoy: date | None = None) -> tuple[list[dict],
             f"De {total} contratos se usan {len(limpios)}. Se descartan los que no "
             f"cruzan desde hace más de {MAX_DIAS_SIN_CRUZAR} días, los de horquilla "
             f"mayor del {fmt_pct(MAX_HORQUILLA, 0)} y los de IV fuera de "
-            f"[{fmt_pct(IV_MIN, 0)}, {fmt_pct(IV_MAX, 0)}]: un strike ilíquido con IV de 300 % "
+            f"[{fmt_pct(IV_MIN, 0)}, {fmt_pct(IV_MAX, 0)}]: un strike ilíquido con IV de 300\u00a0% "
             "arrastra cualquier media y parece señal."
         ),
     }
@@ -799,6 +799,7 @@ def panel(
     spot: float,
     cierres: list[tuple[date, float]],
     *,
+    cierres_rv: list[tuple[date, float]] | None = None,
     fechas_resultados: list[date] | None = None,
     proxima_resultados: date | None = None,
     base: dict | None = None,
@@ -845,7 +846,9 @@ def panel(
         por_venc.setdefault(c["vencimiento"], []).append(c)
 
     iv30 = iv_a_tenor(por_venc, spot, TENOR_REFERENCIA, hoy)
-    cierres_ord = [v for _, v in sorted(cierres)]
+    # `cierres_rv`: los recientes, si quien llama los separa del largo (una copia
+    # de días no da la realizada de hoy; revisión 11).
+    cierres_ord = [v for _, v in sorted(cierres if cierres_rv is None else cierres_rv)]
     rv30 = volatilidad_realizada(cierres_ord, 30)
 
     # Skew al vencimiento más cercano a 30 días con contratos a ambos lados.

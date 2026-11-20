@@ -108,8 +108,13 @@ def test_sin_senal_de_compra_no_hay_nada_que_financiar():
 
 def test_si_no_cabe_por_limites_no_trade_y_dice_que_limite():
     assert _evaluar([_pos()], tamano=0.0)["veredicto"]["accion"] == "NO_TRADE"
-    r = _evaluar([_pos()], tamano=0.0, recortes=["Ideas nuevas al 0 %: la cartera que YA tienes estima un 30 % de volatilidad"])
-    assert "volatilidad" in r["veredicto"]["motivo"]
+    # Con la constante del dimensionador y comprobando lo que SOLO dice el recorte:
+    # con «0 %» y espacio normal ya no casaba, el motivo caía en el genérico (que
+    # también dice «volatilidad») y el test pasaba sin probar nada (revisión del 2.12).
+    recorte = f"{sizing.RECORTE_SIN_HUECO_DE_RIESGO}: la cartera que YA tienes estima un 30\u00a0% de volatilidad"
+    r = _evaluar([_pos()], tamano=0.0, recortes=[recorte])
+    assert "la cartera que YA tienes" in r["veredicto"]["motivo"]
+    assert "Ninguno de los límites" not in r["veredicto"]["motivo"]
 
 
 def test_si_no_cabe_pero_el_efectivo_es_desconocido_no_se_concluye():
@@ -201,10 +206,91 @@ def test_el_efectivo_de_entonces_es_la_ultima_anotacion_ya_hecha(session_factory
 
     ahora = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
     with session_factory() as s:
-        s.add(CashBalance(moneda="USD", importe=1000.0, as_of=ahora - timedelta(days=10)))
-        s.add(CashBalance(moneda="USD", importe=5000.0, as_of=ahora + timedelta(days=3)))
+        # Cada saldo, anotado el día de su fecha (sin `registrado_en` quedaban
+        # anotados con el reloj real, después de `ahora`).
+        for importe, dias in ((1000.0, -10), (5000.0, 3)):
+            s.add(CashBalance(moneda="USD", importe=importe, as_of=ahora + timedelta(days=dias),
+                              registrado_en=ahora + timedelta(days=dias)))
         s.commit()
         entonces = efectivo_usd(s, {}, ahora)
         hoy = efectivo_usd(s, {}, ahora + timedelta(days=5))
     assert entonces["estado"] == "valido" and entonces["usd"] == 1000.0
     assert hoy["usd"] == 5000.0
+
+
+def _cliente(session_factory, servicio):
+    from fastapi.testclient import TestClient
+
+    from app.db.engine import get_session
+    from app.deps import get_service
+    from app.main import app
+
+    def override():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = override
+    app.dependency_overrides[get_service] = lambda: servicio
+    return TestClient(app)
+
+
+def test_un_saldo_con_desfase_horario_se_guarda_en_utc_y_vale_ya(session_factory):
+    """SQLite guarda la hora de pared y la relee como UTC: un saldo de hace un
+    minuto en +02:00 quedaba dos horas en el futuro y Hoy usaba el anterior en
+    silencio mientras Cartera enseñaba el nuevo (revisión de M3)."""
+    from app.main import app
+    from app.oportunidad import efectivo_usd
+    from tests.fakes_empresa import AHORA, ServicioFalso
+
+    hace_un_minuto = (datetime.now(timezone.utc) - timedelta(minutes=1)).astimezone(timezone(timedelta(hours=2)))
+    try:
+        c = _cliente(session_factory, ServicioFalso(AHORA))
+        assert c.post("/api/portfolio/efectivo", json={"moneda": "USD", "importe": 1000,
+                                                       "as_of": (hace_un_minuto - timedelta(days=2)).isoformat()}).status_code == 200
+        r = c.post("/api/portfolio/efectivo", json={"moneda": "USD", "importe": 50000, "as_of": hace_un_minuto.isoformat()})
+        assert r.status_code == 200, r.text
+        assert r.json()["as_of"].endswith("Z") or r.json()["as_of"].endswith("+00:00")
+    finally:
+        app.dependency_overrides.clear()
+    with session_factory() as s:
+        assert efectivo_usd(s, {}, datetime.now(timezone.utc))["usd"] == 50000.0
+
+
+def test_la_ficha_convierte_el_efectivo_en_una_moneda_sin_posiciones(session_factory):
+    """Con la cartera toda en dólares y efectivo en CAD, el contexto de cartera
+    no pedía el tipo del CAD: la ficha daba el efectivo por desconocido mientras
+    Hoy lo sumaba, y la misma idea salía con dos tamaños (revisión de M3)."""
+    from app import contexto_cartera
+    from app.db.models import CashBalance, Instrument, Position
+    from app.oportunidad import efectivo_usd
+    from tests.fakes_empresa import AHORA, ServicioFalso
+    from tests.fixtures.extremos import FX_BUENO, _serie_fx
+
+    sv = ServicioFalso(AHORA).empresa("AAPL", precio=100.0, score=None)
+    sv.macro["DEXCAUS"] = _serie_fx(FX_BUENO)
+    # La serie de tipos acaba el día antes de AHORA: con el reloj real, el tipo
+    # tenía semanas y, desde la auditoría del 19 oct, eso se dice («viejo»).
+    ahora = AHORA
+    with session_factory() as s:
+        inst = Instrument(symbol="AAPL", currency="USD")
+        s.add(inst)
+        s.commit()
+        s.add(Position(instrument_id=inst.id, quantity=10, cost_basis=90.0, opened_at=ahora - timedelta(days=30)))
+        s.add(CashBalance(moneda="CAD", importe=13700.0, as_of=ahora - timedelta(days=1),
+                          registrado_en=ahora - timedelta(days=1)))
+        s.commit()
+        ctx = contexto_cartera.construir(s, sv, ahora=ahora)
+        efectivo = efectivo_usd(s, ctx, ahora)
+    assert efectivo["estado"] == "valido"
+    assert efectivo["usd"] == pytest.approx(13700.0 / FX_BUENO, rel=0.01)
+
+
+def test_no_cabe_con_un_efectivo_de_tipo_viejo_tambien_lo_avisa():
+    # Revisión 3: la rama «No cabe» con el efectivo conocido salía antes de los
+    # avisos; el peso que la deja sin hueco se mide con ese efectivo dentro.
+    r = _evaluar([_pos()], tamano=0.0, aviso_efectivo="tipo de cambio de más de 7 días (CAD, del 20 ago 2026)")
+    assert r["veredicto"]["accion"] == "NO_TRADE"
+    assert "Ojo con el efectivo: tipo de cambio de más de 7 días" in r["veredicto"]["motivo"]

@@ -57,6 +57,7 @@
      "reading": "Sin datos de flujo de caja."
     },
     "catalysts": [],
+    "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -75,6 +76,10 @@
       },
       "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
       "score": null,
+      "umbrales": [
+       1.81,
+       2.99
+      ],
       "zone": null
      },
      "by_year": [
@@ -185,6 +190,7 @@
       "net_margin": null,
       "operating_margin": null
      },
+     "ejercicio": "2025",
      "reading": "Sin datos de márgenes.",
      "trends": {
       "gross_margin": null,
@@ -194,9 +200,49 @@
     },
     "price": null,
     "quant_signal": null,
+    "riesgos_sin_comprobar": [
+     "deuda/capital",
+     "cobertura de intereses",
+     "tendencia del margen operativo",
+     "crecimiento de los ingresos",
+     "valoración frente a su historia",
+     "máxima caída del último año"
+    ],
     "risk_metrics": null,
     "risks": [],
     "symbol": "VACIA",
+    "umbrales": {
+     "debt_to_equity": [
+      1,
+      2,
+      3
+     ],
+     "fcf_conversion": [
+      0.6,
+      1.1
+     ],
+     "interest_coverage": [
+      1.5,
+      2,
+      3,
+      5,
+      8
+     ],
+     "max_drawdown": [
+      -0.35
+     ],
+     "operating_margin": [
+      0.05,
+      0.15,
+      0.25
+     ],
+     "revenue_cagr": [
+      0,
+      0.05,
+      0.08,
+      0.15
+     ]
+    },
     "valuation": {
      "caveats": [
       "Los múltiplos usan el BPA y el patrimonio del último ejercicio ANUAL publicado, no cifras TTM trimestrales: la serie es más rugosa que la de un terminal profesional.",
@@ -207,30 +253,38 @@
       "fcf_yield": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       },
       "pb": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       },
       "pe": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: no hay histórico de precios con que reconstruir la serie."
       }
      },
      "reading": "Sin histórico suficiente para situar la valoración actual.",
      "years_covered": 10
     },
     "verdict": {
+     "alcance": "Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia. No entran los trimestres publicados después ni el DCF precargado de más abajo.",
      "disclaimer": "Lectura conjunta de los datos, no una recomendación de compra o venta. Qué hacer depende de tu cartera, horizonte y tolerancia al riesgo, que el modelo no conoce. Un informe favorable sobre una empresa excelente sigue pudiendo ser una mala compra al precio equivocado.",
      "negatives": [],
      "positives": [],
      "quant_label": null,
      "quant_score": null,
+     "sin_comprobar": [
+      "valoración frente a su historia",
+      "crecimiento de los ingresos",
+      "margen operativo",
+      "cobertura de intereses",
+      "Altman Z"
+     ],
      "stance": "mixta",
-     "summary": "Datos insuficientes para una lectura conjunta.",
+     "summary": "Datos insuficientes para una lectura conjunta. Sin comprobar por falta de datos: valoración frente a su historia, crecimiento de los ingresos, margen operativo, cobertura de intereses y Altman Z.",
      "what_would_change_it": [
       "Dos trimestres seguidos de caída del margen operativo.",
       "Que el crecimiento de ingresos se vuelva negativo de forma sostenida.",
@@ -1265,7 +1319,8 @@
      "id": 1,
      "nueva": true,
      "origen": "analisis:14:35:00"
-    }
+    },
+    "sin_congelar": null
    },
    "status": 200
   },
@@ -1582,16 +1637,23 @@
       "precio": null,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",
-    "symbol": "VACIA"
+    "symbol": "VACIA",
+    "thresholds": {
+     "desfavorable": -0.35,
+     "favorable": 0.35
+    }
    },
    "status": 200
   },
   "/api/expectativas/calibracion?symbol=VACIA": {
    "json": {
+    "definiciones": "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea»; un rango se mide desde su centro.",
+    "excluidos_otro_trimestre": 0,
     "nota": "Cada fuente se calibra por separado: mezclar el consenso con el modelo interno daría la calibración de nadie. Con menos de 5 pares, el número describe la muestra, no a la fuente.",
     "pares": 0,
     "por_fuente": {}
@@ -1628,7 +1690,10 @@
      "tipos_usados": {}
     },
     "estres": {
+     "aviso_sin_historico": null,
+     "cobertura_peso": null,
      "nota": "Sin cartera o sin histórico.",
+     "sin_historico": [],
      "suficiente": false
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",
@@ -1664,8 +1729,9 @@
    "json": {
     "desconocidas": [],
     "disponible": false,
-    "nota": "Ninguna posición abierta tiene precio y moneda conocidos: no hay pesos que descomponer.",
-    "posiciones": []
+    "nota": "No hay posiciones abiertas cuyo riesgo descomponer.",
+    "posiciones": [],
+    "sin_posiciones": true
    },
    "status": 200
   },
@@ -2744,6 +2810,75 @@
      "generado_por": "app",
      "reglas": "5c98dd9a4ec0"
     }
+   },
+   "status": 200
+  },
+  "/api/stocks/VACIA/financials": {
+   "json": {
+    "as_of": "2026-09-12T14:35:00+00:00",
+    "growth": {
+     "eps_cagr": null,
+     "fcf_cagr": null,
+     "revenue_cagr": null,
+     "years": 0
+    },
+    "periods": [
+     {
+      "end_date": "2024-12-31",
+      "filed_at": "2025-02-12",
+      "fiscal_year": "2024",
+      "fuentes": {}
+     },
+     {
+      "end_date": "2025-12-31",
+      "filed_at": "2026-02-10",
+      "fiscal_year": "2025",
+      "fuentes": {}
+     }
+    ],
+    "quarters": [],
+    "ratios": [
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2024-12-31",
+      "eps_diluted": null,
+      "fcf": null,
+      "fcf_margin": null,
+      "fiscal_year": "2024",
+      "gross_margin": null,
+      "interest_coverage": null,
+      "net_income": null,
+      "net_margin": null,
+      "operating_margin": null,
+      "revenue": null,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     },
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2025-12-31",
+      "eps_diluted": null,
+      "fcf": null,
+      "fcf_margin": null,
+      "fiscal_year": "2025",
+      "gross_margin": null,
+      "interest_coverage": null,
+      "net_income": null,
+      "net_margin": null,
+      "operating_margin": null,
+      "revenue": null,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     }
+    ],
+    "source": "edgar",
+    "symbol": "VACIA"
    },
    "status": 200
   },

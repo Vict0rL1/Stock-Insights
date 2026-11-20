@@ -1,20 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DecisionExplicada } from '../components/DecisionExplicada'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { CompanyLogo } from '../components/CompanyLogo'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import type {
   DailySignal,
   Conviction,
   Decision,
   DecisionAction,
-  MarketInfo,
   Sizing,
+  StopDePosicion,
+  StopsDeCartera,
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
 import { coord } from '../lib/svg'
+import { mensajeDeError, useDato } from '../lib/useDato'
 
 type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
 
@@ -88,6 +91,34 @@ function ActionChip({ decision }: { decision: Decision }) {
   )
 }
 
+/** El color de una variación del día: en neutro si lo que se escribe es cero o
+ *  si no hay dato. Con `>= 0`, un «0,00 %» salía en verde, como una subida (FTV
+ *  a 140,00, en la tarjeta y en la tabla; revisión 12, visual). Sigue a
+ *  `signoLeido`, la única regla del signo que se lee. */
+export function tonoDeVariacion(
+  valor: number | null | undefined,
+  escrito: string,
+  sube: string,
+  baja: string,
+): string {
+  const signo = valor === null || valor === undefined ? 0 : signoLeido(escrito)
+  return signo === 0 ? 'text-slate-400' : signo > 0 ? sube : baja
+}
+
+/** Los recortes del tamaño que tocan a una idea: los que la nombran y los que
+ *  no nombran a ninguna (valen para todas, como «Ideas nuevas al 0 %…»). La
+ *  tarjeta decía «0,0 % · recortado desde 6,1 %» sin el porqué, que solo estaba
+ *  en el panel del tamaño, cientos de píxeles más abajo: leída sola, una idea de
+ *  compra al 0 % parecía un error (revisión 12, visual). */
+export function recortesDe(symbol: string, recortes: string[], ideas: string[]): string[] {
+  // Por palabra entera: «KO» no es parte de «KOF», ni «BRK.B» de «BRK.BX».
+  const nombra = (texto: string, s: string) => {
+    const literal = s.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&')
+    return new RegExp(`(?<![A-Za-z0-9.])${literal}(?![A-Za-z0-9]|\\.[A-Za-z0-9])`).test(texto)
+  }
+  return recortes.filter((r) => nombra(r, symbol) || !ideas.some((otra) => nombra(r, otra)))
+}
+
 /**
  * Dónde queda el stop respecto al precio de hoy, con signo: negativo = por
  * debajo. En una idea nueva el backend manda la distancia en positivo y la
@@ -99,6 +130,24 @@ export function distanciaAlStop(decision: Decision): number | null {
   const pct = decision.levels?.stop_pct
   if (pct === null || pct === undefined) return null
   return decision.owned ? pct : -pct
+}
+
+/** La distancia al stop, sin escribirse como cero si no lo es: con el stop en
+ *  100 y el precio en 100,04 (o 99,96, ya perforado) decía «0,0 %» (revisión 9). */
+export function textoDistanciaAlStop(decision: Decision): string {
+  const puntos = distanciaAlStop(decision)
+  return fmtFrente(puntos === null ? null : puntos / 100, 0, { pct: true, signo: true })
+}
+
+/** Los umbrales de puntuación de la propia decisión (con posición, solo el de
+ *  vender), como su traza y sus razones: frente a los dos, una «mantener» con
+ *  0,3496 decía «+0,3496» junto a «Puntuación +0,35» (revisión 9). */
+function umbralesDeSuDecision(decision: Decision | undefined, porDefecto: number[]): number[] {
+  const suyos = (decision?.reglas ?? [])
+    .filter((r) => r.id.startsWith('puntuacion'))
+    .map((r) => r.datos?.umbral)
+    .filter((u): u is number => typeof u === 'number')
+  return suyos.length ? suyos : porDefecto
 }
 
 /** El plan completo: por qué, a qué precio, y cuándo salir. */
@@ -134,7 +183,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
                 Zona de compra
               </div>
               <div className="text-sm tabular-nums text-slate-800">
-                {fmtNum(levels.entrada_desde, 2)}–{fmtNum(levels.entrada_hasta, 2)}
+                {fmtPrecio(levels.entrada_desde)}–{fmtPrecio(levels.entrada_hasta)}
               </div>
             </div>
           )}
@@ -143,9 +192,9 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Stop
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(levels.stop, 2)}{' '}
+              {fmtPrecio(levels.stop)}{' '}
               <span className="text-xs text-slate-400">
-                {fmtPct(distanciaAlStop(decision), 1, { signo: true, enPuntos: true })}
+                {textoDistanciaAlStop(decision)}
               </span>
             </div>
           </div>
@@ -154,9 +203,9 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
               Objetivo
             </div>
             <div className="text-sm tabular-nums text-emerald-700">
-              {fmtNum(levels.objetivo, 2)}{' '}
+              {fmtPrecio(levels.objetivo)}{' '}
               <span className="text-xs text-slate-400">
-                {fmtPct(levels.objetivo_pct, 1, { signo: true, enPuntos: true })}
+                {fmtFrente(levels.objetivo_pct == null ? null : levels.objetivo_pct / 100, 0, { pct: true, signo: true })}
               </span>
             </div>
           </div>
@@ -249,6 +298,50 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
   )
 }
 
+/** Lo que se cuenta de la cartera. `vender` junta lo que la lista manda vender
+ *  con los stops perforados del repaso, también los de fuera de este mercado;
+ *  `cartera` son TODAS las abiertas, no solo las de la lista: con STOP y SHOP.TO
+ *  fuera del S&P 500, Hoy decía «Para vender 0 · nada urgente» con el stop de
+ *  STOP perforado y «1 en cartera» con tres (revisión 12, visual). */
+type Recuentos = {
+  comprar: number
+  vigilar: number
+  /** Las abiertas; sin repaso, solo las que están en la lista. */
+  cartera: number
+  /** Las abiertas que la lista de este mercado no puntúa. */
+  fuera: number
+  vender: number
+  /** Posiciones cuyo stop no se pudo comprobar (sin precio, sin stop). */
+  sinComprobar: number
+  /** false = la respuesta no trae el repaso o falló: no se sabe si hay algo urgente. */
+  repasada: boolean
+}
+
+export function recuentos(data: TodayResponse | null): Recuentos {
+  const s = data?.signals ?? []
+  const repaso = data?.cartera
+  const repasada = repaso !== undefined && repaso.abiertas !== null && !repaso.error
+  const posiciones = repasada ? repaso.posiciones : []
+  // La lista puede venir de la caché (hasta 6 h): con el repaso, que es de ahora,
+  // una venta suya solo cuenta si la posición sigue abierta.
+  const abiertas = new Set(posiciones.map((p) => p.symbol))
+  const vender = new Set(
+    s
+      .filter((x) => x.decision.action === 'vender' && (!repasada || abiertas.has(x.symbol)))
+      .map((x) => x.symbol),
+  )
+  for (const p of posiciones) if (p.estado === 'perforado') vender.add(p.symbol)
+  return {
+    comprar: s.filter((x) => x.decision.action === 'comprar').length,
+    vigilar: s.filter((x) => x.decision.action === 'vigilar').length,
+    cartera: repasada ? (repaso.abiertas ?? 0) : s.filter((x) => x.decision.owned).length,
+    fuera: posiciones.filter((p) => !p.en_lista).length,
+    vender: vender.size,
+    sinComprobar: posiciones.filter((p) => p.estado === 'sin_comprobar' && !vender.has(p.symbol)).length,
+    repasada,
+  }
+}
+
 /** Fila de resumen: el estado del día en cifras grandes.
  *
  *  Es lo que los paneles de trading ponen arriba del todo, y funciona porque
@@ -263,11 +356,13 @@ function SummaryStrip({
   onPick,
 }: {
   data: TodayResponse
-  acciones: { comprar: number; vigilar: number; cartera: number; vender: number }
+  acciones: Recuentos
   onPick: (v: View) => void
 }) {
-  const ideas = data.shortlist?.ideas.length ?? 0
-  const cobertura = data.requested ? (data.scored / data.requested) * 100 : 0
+  // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
+  // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
+  const ideas = data.shortlist ? data.shortlist.ideas.length : null
+  const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
     label: string
     valor: string
@@ -277,16 +372,30 @@ function SummaryStrip({
   }[] = [
     {
       label: 'Ideas de compra',
-      valor: String(ideas),
-      tono: 'text-emerald-700',
-      sub: `de ${acciones.comprar} que califican`,
+      valor: ideas === null ? '—' : String(ideas),
+      tono: ideas === null ? 'text-slate-500' : 'text-emerald-700',
+      sub: ideas === null ? 'sin lista corta' : `de ${acciones.comprar} que califican`,
       vista: 'ideas',
     },
     {
+      // «Nada urgente» solo si se miró todo: un stop sin comprobar, o una
+      // respuesta sin repaso, no es «nada urgente» (revisión 12, visual).
       label: 'Para vender',
       valor: String(acciones.vender),
-      tono: acciones.vender > 0 ? 'text-red-600' : 'text-slate-500',
-      sub: acciones.vender > 0 ? 'en tu cartera' : 'nada urgente',
+      tono:
+        acciones.vender > 0
+          ? 'text-red-600'
+          : acciones.sinComprobar > 0 || !acciones.repasada
+            ? 'text-amber-800'
+            : 'text-slate-500',
+      sub:
+        acciones.vender > 0
+          ? 'en tu cartera'
+          : !acciones.repasada
+            ? 'cartera sin repasar'
+            : acciones.sinComprobar > 0
+              ? `${acciones.sinComprobar} sin comprobar`
+              : 'nada urgente',
       vista: 'cartera',
     },
     {
@@ -300,7 +409,15 @@ function SummaryStrip({
       label: 'En cartera',
       valor: String(acciones.cartera),
       tono: 'text-slate-900',
-      sub: 'posiciones abiertas',
+      // En singular con una («1 posiciones abiertas»), y diciendo cuántas no
+      // están en esta lista (revisión 12, visual).
+      sub:
+        plural(acciones.cartera, 'posición abierta', 'posiciones abiertas') +
+        (!acciones.repasada
+          ? ' en esta lista'
+          : acciones.fuera > 0
+            ? ` · ${acciones.fuera} fuera de esta lista`
+            : ''),
       vista: 'cartera',
     },
     {
@@ -348,13 +465,23 @@ function SummaryStrip({
  *  responde es "¿por qué esta y no otra?", no "¿quién califica?". */
 function IdeaCard({
   signal,
+  motivosDelRecorte,
   onOpen,
 }: {
   signal: DailySignal & { conviction: Conviction; peso_final_pct?: number | null }
+  /** Los recortes del tamaño que la tocan (`recortesDe`). */
+  motivosDelRecorte: string[]
   onOpen: () => void
 }) {
   const { conviction: c, decision, price } = signal
   const niveles = decision.levels
+  const variacion = price ? fmtPct(price.change_pct, 2, { signo: true, enPuntos: true }) : ''
+  const recortado =
+    signal.peso_final_pct !== null &&
+    signal.peso_final_pct !== undefined &&
+    niveles !== null &&
+    niveles.peso_bruto_pct !== null &&
+    signal.peso_final_pct < niveles.peso_bruto_pct
   return (
     <li className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -377,14 +504,11 @@ function IdeaCard({
         {price && (
           <div className="text-right">
             <div className="text-base tabular-nums text-slate-900">
-              {fmtNum(price.last, 2)}
+              {fmtPrecio(price.last)}
             </div>
-            <div
-              className={`text-xs tabular-nums ${
-                (price.change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
-              }`}
-            >
-              {fmtPct(price.change_pct, 2, { signo: true, enPuntos: true })}
+            {/* Sin variación, neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
+            <div className={`text-xs tabular-nums ${tonoDeVariacion(price.change_pct, variacion, 'text-emerald-600', 'text-red-600')}`}>
+              {variacion}
             </div>
           </div>
         )}
@@ -401,7 +525,7 @@ function IdeaCard({
               Comprar entre
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtNum(niveles.entrada_desde, 2)}–{fmtNum(niveles.entrada_hasta, 2)}
+              {fmtPrecio(niveles.entrada_desde)}–{fmtPrecio(niveles.entrada_hasta)}
             </div>
           </div>
           <div>
@@ -409,7 +533,7 @@ function IdeaCard({
               Vender si baja a
             </div>
             <div className="text-sm tabular-nums text-red-600">
-              {fmtNum(niveles.stop, 2)}
+              {fmtPrecio(niveles.stop)}
             </div>
           </div>
           <div>
@@ -417,17 +541,44 @@ function IdeaCard({
               Cuánto de tu cartera
             </div>
             <div className="text-sm tabular-nums text-slate-900">
-              {fmtPct(signal.peso_final_pct ?? niveles.peso_bruto_pct, 1, { enPuntos: true })}
-              {signal.peso_final_pct !== null &&
-                signal.peso_final_pct !== undefined &&
-                niveles.peso_bruto_pct !== null &&
-                signal.peso_final_pct < niveles.peso_bruto_pct && (
-                  <span className="block text-[10px] text-amber-800">
-                    recortado desde {fmtPct(niveles.peso_bruto_pct, 1, { enPuntos: true })}
-                  </span>
-                )}
+              {/* Sin peso final, el bruto no se enseña como si lo fuera: es lo que
+                  permitiría el stop mirando la empresa sola, antes de los topes
+                  de la cartera (ítem 2.1). */}
+              {signal.peso_final_pct !== null && signal.peso_final_pct !== undefined ? (
+                fmtPct(signal.peso_final_pct, 1, { enPuntos: true })
+              ) : (
+                <span className="text-slate-500">
+                  —
+                  {niveles.peso_bruto_pct !== null && (
+                    <span className="block text-[10px]">
+                      sin tamaño final; bruto {fmtPct(niveles.peso_bruto_pct, 1, { enPuntos: true })}
+                    </span>
+                  )}
+                </span>
+              )}
+              {recortado && (
+                <span className="block text-[10px] text-amber-800">
+                  recortado desde {fmtPct(niveles.peso_bruto_pct, 1, { enPuntos: true })}
+                </span>
+              )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* El porqué del recorte, en la propia tarjeta: sin él, un 0,0 % se leía
+          como un error (revisión 12, visual). */}
+      {recortado && (
+        <div className="mt-2 text-[11px] leading-snug text-amber-900">
+          {motivosDelRecorte.length > 0 ? (
+            <ul className="space-y-1">
+              {motivosDelRecorte.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          ) : (
+            <p>El motivo del recorte, en «Cómo se repartió el tamaño», más abajo.</p>
+          )}
         </div>
       )}
 
@@ -467,9 +618,12 @@ function AvoidList({
         {signals.map((s) => (
           <li key={s.symbol} className="flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-medium text-slate-800">{s.symbol}</span>
-            <span className="text-slate-500">{s.context.name}</span>
+            {/* El separador, al final del nombre: al saltar de línea en móvil,
+                al principio de la descripción quedaba colgando («· Information
+                Technology…»; ítem 2.12). */}
+            <span className="text-slate-500">{s.context.name} ·</span>
             <span className="text-xs text-slate-400">
-              · {s.context.sector_name} · {s.conviction.resumen}
+              {s.context.sector_name} · {s.conviction.resumen}
             </span>
           </li>
         ))}
@@ -492,7 +646,10 @@ function puntos(v: number | null | undefined): string {
 
 function SizingPanel({ sizing }: { sizing: Sizing }) {
   const enLibro = Object.entries(sizing.cartera_actual ?? {})
-  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado)
+  // Sin ninguna pareja posible (una idea y nada en cartera) no hay nada que
+  // comprobar: «Solo se pudieron medir 0 de 0 parejas» era una falsa alarma
+  // (revisión 8; igual que en el veredicto de la ficha).
+  const sinAplicar = (sizing.controles ?? []).filter((c) => !c.aplicado && c.parejas_posibles !== 0)
   // Un límite que no se pudo aplicar SIEMPRE se enseña, aunque no haya
   // recortado nada. Antes el panel se ocultaba sin recortes, y «no recortó
   // porque no pudo mirar» era indistinguible de «no hacía falta recortar».
@@ -632,14 +789,19 @@ function FactorBars({
 }
 
 /** Cabecera de columnas: alineada con la fila, con las mismas anchuras. */
+// La cabecera y la fila comparten columnas: cede «Empresa» (flexible), nunca la
+// puntuación ni la acción. Con anchos fijos dentro de un `overflow-hidden`, a
+// 390 px y en tableta (768–1140 px, con la barra lateral) desaparecían justo
+// la señal y la acción; las barras de factores van desde `xl` y, por debajo,
+// en el panel desplegado (revisión de A7).
 function ListHeader() {
   return (
     <div className="flex items-center gap-4 border-b border-slate-100 px-4 py-2 text-[10px] uppercase tracking-wide text-slate-400">
-      <span className="w-7 shrink-0" />
-      <span className="w-40 shrink-0">Empresa</span>
+      <span className="hidden w-7 shrink-0 sm:block" />
+      <span className="min-w-0 flex-1 xl:w-40 xl:flex-none">Empresa</span>
       <span className="hidden w-20 shrink-0 lg:block">Año</span>
       <span className="hidden w-24 shrink-0 text-right sm:block">Precio</span>
-      <span className="hidden flex-1 pl-4 md:block">
+      <span className="hidden flex-1 pl-4 xl:block">
         <span className="flex gap-3">
           {FACTOR_KEYS.map((key) => (
             <span key={key} className="w-16">
@@ -648,18 +810,24 @@ function ListHeader() {
           ))}
         </span>
       </span>
-      <span className="ml-auto pr-[7.5rem] text-right">Puntuación</span>
-      <span className="w-20 pr-6 text-right">Acción</span>
+      <span className="ml-auto flex shrink-0 items-center gap-3">
+        <span className="w-16 whitespace-nowrap text-right">Puntuación</span>
+        <span className="w-20 text-right">Acción</span>
+        <span className="w-1.5" aria-hidden />
+      </span>
     </div>
   )
 }
 
 function SignalRow({
   signal,
+  umbrales,
   expanded,
   onToggle,
 }: {
   signal: DailySignal
+  /** Los de la puntuación: con dos decimales, 0,3496 era «+0,35 · Sin acción» (revisión 8). */
+  umbrales: number[]
   expanded: boolean
   onToggle: () => void
 }) {
@@ -671,14 +839,18 @@ function SignalRow({
         aria-expanded={expanded}
         className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-slate-50"
       >
-        <span className="w-7 shrink-0 text-xs tabular-nums text-slate-300">
+        <span className="hidden w-7 shrink-0 text-xs tabular-nums text-slate-300 sm:block">
           {signal.rank}
         </span>
 
-        <span className="flex w-40 shrink-0 items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-2 xl:w-40 xl:flex-none">
           <CompanyLogo symbol={signal.symbol} size="sm" />
           <span className="min-w-0">
             <span className="font-medium text-slate-900">{signal.symbol}</span>
+            {/* Por debajo de 640 px la columna del puesto no cabe: va junto al
+                símbolo, o en las vistas filtradas (Mi cartera, Vigilar) se
+                perdía el orden global (revisión 3). */}
+            <span className="ml-1.5 text-[10px] tabular-nums text-slate-400 sm:hidden">#{signal.rank}</span>
             <span className="block truncate text-xs text-slate-400">
               {signal.context.name ?? signal.context.sector_name ?? '—'}
             </span>
@@ -703,14 +875,15 @@ function SignalRow({
           {signal.price ? (
             <>
               <span className="block text-sm tabular-nums text-slate-800">
-                {fmtNum(signal.price.last, 2)}
+                {fmtPrecio(signal.price.last)}
               </span>
               <span
-                className={`block text-xs tabular-nums ${
-                  (signal.price.change_pct ?? 0) >= 0
-                    ? 'text-emerald-600'
-                    : 'text-red-500'
-                }`}
+                className={`block text-xs tabular-nums ${tonoDeVariacion(
+                  signal.price.change_pct,
+                  fmtPct(signal.price.change_pct, 2, { signo: true, enPuntos: true }),
+                  'text-emerald-600',
+                  'text-red-500',
+                )}`}
               >
                 {fmtPct(signal.price.change_pct, 2, { signo: true, enPuntos: true })}
               </span>
@@ -720,24 +893,23 @@ function SignalRow({
           )}
         </span>
 
-        <span className="hidden flex-1 pl-4 md:block">
+        <span className="hidden flex-1 pl-4 xl:block">
           <FactorBars families={signal.families} />
         </span>
 
-        <span className="ml-auto flex items-center gap-3">
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           <span
-            className={`w-12 text-right text-sm font-semibold tabular-nums ${
+            className={`w-16 text-right text-sm font-semibold tabular-nums ${
               positive ? 'text-emerald-700' : 'text-red-600'
             }`}
           >
-            {signal.score > 0 ? '+' : ''}
-            {fmtNum(signal.score, 2)}
+            {fmtFrente(signal.score, umbralesDeSuDecision(signal.decision, umbrales), { signo: true })}
           </span>
           <span className="w-20 text-right">
             <ActionChip decision={signal.decision} />
           </span>
           <span
-            className={`text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
+            className={`w-1.5 text-slate-300 transition-transform ${expanded ? 'rotate-90' : ''}`}
             aria-hidden
           >
             ›
@@ -747,7 +919,7 @@ function SignalRow({
 
       {expanded && (
         <div className="space-y-3 bg-slate-50/70 px-4 pb-4 pt-1 md:pl-[4.75rem]">
-          <div className="md:hidden">
+          <div className="xl:hidden">
             <FactorBars families={signal.families} withLabels />
           </div>
           <DecisionPlan decision={signal.decision} symbol={signal.symbol} />
@@ -757,8 +929,8 @@ function SignalRow({
               <div className="flex items-baseline justify-between text-xs text-slate-500">
                 <span>Rango de 52 semanas</span>
                 <span className="tabular-nums">
-                  {fmtNum(signal.price.low_52w, 2)} –{' '}
-                  {fmtNum(signal.price.high_52w, 2)}
+                  {fmtPrecio(signal.price.low_52w)} –{' '}
+                  {fmtPrecio(signal.price.high_52w)}
                 </span>
               </div>
               {signal.price.range_position !== null && (
@@ -816,11 +988,127 @@ function SignalRow({
   )
 }
 
+/** El stop de tus posiciones, arriba y en todas las vistas.
+ *
+ *  Hoy solo miraba las posiciones del mercado barrido: con STOP fuera del
+ *  S&P 500 (stop en 110, cotizando a 104), la cabecera decía «Para vender 0 ·
+ *  nada urgente» y STOP solo salía en el aviso del tamaño, que no habla de
+ *  stops (revisión 12, visual). Lo perforado va en rojo, esté o no en la lista;
+ *  lo que no se pudo comprobar, en ámbar y con su motivo. */
+function RepasoDeStops({ repaso, mercado }: { repaso: StopsDeCartera | undefined; mercado: string }) {
+  if (!repaso) return null
+  if (repaso.error) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs leading-relaxed text-red-800">
+        {repaso.error}
+      </p>
+    )
+  }
+  const perforadas = repaso.posiciones.filter((p) => p.estado === 'perforado')
+  const sinComprobar = repaso.posiciones.filter((p) => p.estado === 'sin_comprobar')
+  if (perforadas.length === 0 && sinComprobar.length === 0) return null
+  const enlace = (symbol: string) => (
+    <Link to={`/ticker/${symbol}`} className="font-semibold underline">
+      {symbol}
+    </Link>
+  )
+  return (
+    <div className="space-y-2">
+      {perforadas.length > 0 && (
+        <section className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <h2 className="text-sm font-semibold text-red-800">
+            Stop perforado en {perforadas.length} {plural(perforadas.length, 'posición', 'posiciones')}
+          </h2>
+          <ul className="mt-1 space-y-1 text-xs leading-relaxed text-red-800">
+            {perforadas.map((p) => (
+              <li key={p.symbol}>
+                {enlace(p.symbol)} cotiza a {fmtPrecio(p.precio, p.moneda)}, en o por debajo de su stop (
+                {fmtPrecio(p.stop, p.moneda)}).
+                {p.precio_estado === 'viejo' && ' Es un precio viejo: compruébalo en tu broker antes de actuar.'}
+                {p.stop_por_clase && ' Ese stop es el punto medio de su clase, no uno medido.'}
+                {!p.en_lista && ` No está en ${mercado}: la lista no la puntúa, pero su stop se mira igual.`}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {sinComprobar.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <h2 className="text-sm font-semibold text-amber-900">
+            {sinComprobar.length} {plural(sinComprobar.length, 'posición', 'posiciones')} con el stop sin comprobar
+          </h2>
+          <ul className="mt-1 space-y-1 text-xs leading-relaxed text-amber-900">
+            {sinComprobar.map((p) => (
+              <li key={p.symbol}>
+                {enlace(p.symbol)}: {p.motivo}. Míralo en tu broker.
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}
+
+/** Las posiciones que este mercado no puntúa, en «Mi cartera». La pestaña
+ *  contaba solo las de la lista («Mi cartera (1)» con tres abiertas) y las demás
+ *  no salían en ninguna vista (revisión 12, visual). Sin decisión de la lista,
+ *  solo su stop. */
+function FueraDeLaLista({ posiciones, mercado }: { posiciones: StopDePosicion[]; mercado: string }) {
+  if (posiciones.length === 0) return null
+  const tono: Record<StopDePosicion['estado'], string> = {
+    perforado: 'bg-red-100 text-red-800',
+    sin_comprobar: 'bg-amber-100 text-amber-800',
+    por_encima: 'bg-slate-100 text-slate-600',
+  }
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-slate-800">Fuera de {mercado}</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        La lista no las puntúa ni decide sobre ellas: de cada una, solo su stop.
+      </p>
+      <ul className="mt-2 divide-y divide-slate-100">
+        {posiciones.map((p) => (
+          <li key={p.symbol} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
+            <Link to={`/ticker/${p.symbol}`} className="font-medium text-slate-900 hover:underline">
+              {p.symbol}
+            </Link>
+            <span className="text-xs tabular-nums text-slate-600">
+              {fmtPrecio(p.precio, p.moneda)} · stop {fmtPrecio(p.stop, p.moneda)}
+            </span>
+            <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${tono[p.estado]}`}>
+              {etiqueta(p.estado)}
+            </span>
+            {p.motivo && <span className="text-xs text-slate-500">{p.motivo}</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export function TodayPage() {
-  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [market, setMarket] = useState('us_sp500')
   const [data, setData] = useState<TodayResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // La lista no va por `useDato`: encadena pasadas sola («Seguir
+  // completando») y cada una sustituye a la anterior sin vaciar lo que ya se
+  // ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
+  // repite la misma pasada (ítem 2.1).
+  const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
+  // Cada carga que se inicia (cambio de mercado, «Actualizar», «Reintentar»)
+  // es una cadena con su número, y sus pasadas automáticas lo heredan. Una
+  // respuesta, buena o mala, de una cadena que ya no es la vigente se
+  // descarta: el aviso de una pasada vieja del S&P 500 quedaba encima de la
+  // lista buena, y su «Reintentar» cargaba el S&P 500 bajo el botón de otro
+  // mercado (revisión del 2.1). Descartar por mercado no bastaba: con
+  // S&P 500 → Canadá → S&P 500 la pasada vieja era «del mercado vigente»
+  // (segunda revisión del 2.1).
+  const cadena = useRef(0)
+  // Las peticiones en vuelo, por mercado y tipo de pasada: una cadena nueva que
+  // pide lo mismo se engancha a la que ya va. Al abrir Hoy con `npm run dev`
+  // (StrictMode) el efecto corre dos veces, y eran dos cadenas de hasta cuatro
+  // pasadas cada una: el doble de cuota de APIs gratuitas para lo mismo.
+  const enVuelo = useRef(new Map<string, Promise<TodayResponse>>())
   const [busy, setBusy] = useState(false)
   const [view, setView] = useState<View>('ideas')
   const [autoRondas, setAutoRondas] = useState(0)
@@ -834,31 +1122,48 @@ export function TodayPage() {
   // agotarla en silencio dejaría el resto del día sin datos.
   const MAX_PASADAS_AUTO = 4
 
-  const load = (which: string, refresh = false, autoPasada = 0) => {
+  const pedir = (which: string, refresh: boolean): Promise<TodayResponse> => {
+    const clave = `${which}|${refresh}`
+    const previa = enVuelo.current.get(clave)
+    if (previa) return previa
+    const promesa = api.today(which, refresh)
+    enVuelo.current.set(clave, promesa)
+    // Solo saca la petición del mapa: su fallo lo atiende `load`.
+    const soltar = () => {
+      if (enVuelo.current.get(clave) === promesa) enVuelo.current.delete(clave)
+    }
+    void promesa.then(soltar, soltar)
+    return promesa
+  }
+
+  const load = (which: string, refresh = false, autoPasada = 0, deCadena?: number) => {
+    const mia = deCadena ?? ++cadena.current
     setBusy(true)
     setError(null)
-    api.today(which, refresh).then(
+    pedir(which, refresh).then(
       (d) => {
+        if (mia !== cadena.current) return
         setData(d)
         if (!d.complete && autoPasada < MAX_PASADAS_AUTO) {
           setAutoRondas(autoPasada + 1)
-          load(which, true, autoPasada + 1)
+          load(which, true, autoPasada + 1, mia)
           return
         }
         setAutoRondas(0)
         setBusy(false)
       },
-      (e) => {
-        setError(e instanceof Error ? e.message : 'Error')
+      (e: unknown) => {
+        if (mia !== cadena.current) return
+        setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
         setAutoRondas(0)
         setBusy(false)
       },
     )
   }
 
-  useEffect(() => {
-    api.markets().then((d) => setMarkets(d.markets), () => undefined)
-  }, [])
+  // Un fallo al pedir los mercados se dice: `() => undefined` lo callaba y el
+  // selector desaparecía sin más (ítem 2.1).
+  const mercados = useDato(() => api.markets().then((d) => d.markets), 'mercados')
 
   useEffect(() => {
     // Al cambiar de mercado los filtros previos ya no aplican.
@@ -866,6 +1171,11 @@ export function TodayPage() {
     setSector(null)
     setExpanded(null)
     load(market)
+    // Al irse (otro mercado, otra pantalla, o el desmontaje de StrictMode) la
+    // cadena en marcha deja de ser la vigente.
+    return () => {
+      cadena.current += 1
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market])
 
@@ -890,15 +1200,7 @@ export function TodayPage() {
     return base
   }, [data, view, sector, query])
 
-  const acciones = useMemo(() => {
-    const s = data?.signals ?? []
-    return {
-      comprar: s.filter((x) => x.decision.action === 'comprar').length,
-      vigilar: s.filter((x) => x.decision.action === 'vigilar').length,
-      cartera: s.filter((x) => x.decision.owned).length,
-      vender: s.filter((x) => x.decision.action === 'vender').length,
-    }
-  }, [data])
+  const acciones = useMemo(() => recuentos(data), [data])
 
   // Buscar es para encontrar una empresa concreta, esté en el cubo que esté:
   // filtrar además por vista haría que "no aparece" volviera a ser posible.
@@ -922,8 +1224,11 @@ export function TodayPage() {
           <p className="mt-0.5 max-w-3xl text-sm leading-snug text-slate-500">
             {data
               ? [
-                  `${data.shortlist?.ideas.length ?? 0} ${plural(data.shortlist?.ideas.length ?? 0, 'idea', 'ideas')} de compra`,
+                  data.shortlist
+                    ? `${data.shortlist.ideas.length} ${plural(data.shortlist.ideas.length, 'idea', 'ideas')} de compra`
+                    : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
+                  acciones.sinComprobar > 0 ? `${acciones.sinComprobar} sin comprobar` : null,
                   acciones.cartera > 0 ? `${acciones.cartera} en cartera` : null,
                   `${data.scored} ${plural(data.scored, 'empresa puntuada', 'empresas puntuadas')}`,
                 ]
@@ -964,7 +1269,7 @@ export function TodayPage() {
             Una idea sostenida por un solo factor es una apuesta a ese factor, no al
             activo — y comprar algo <em>porque ha subido</em> es exactamente el
             razonamiento que las otras tres familias existen para contrastar. Los
-            stops son mucho más anchos (hasta 60 %) porque la volatilidad lo exige,
+            stops son mucho más anchos (hasta 60&nbsp;%) porque la volatilidad lo exige,
             y por eso el peso sugerido de cartera sale mucho más pequeño.
           </p>
         </div>
@@ -974,24 +1279,35 @@ export function TodayPage() {
         <SummaryStrip data={data} acciones={acciones} onPick={setView} />
       )}
 
-      {markets.length > 1 && (
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
-          {markets.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => setMarket(m.key)}
-              title={`${m.companies} empresas · ${m.sectors} sectores`}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                market === m.key
-                  ? 'bg-slate-900 text-white'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {data?.signals && <RepasoDeStops repaso={data.cartera} mercado={data.market_name} />}
+
+      {/* Con un solo mercado no hay nada que elegir y no se pinta. */}
+      <BloqueDatos carga={mercados} que="los mercados">
+        {(lista) =>
+          lista.length > 1 && (
+            // Los selectores saltan de línea y sus etiquetas no se parten: a
+            // 390 px los botones se encogían y «Mejores ideas (5)» salía en tres
+            // líneas; desplazándose en su marco, la opción activa quedaba
+            // recortada contra el borde y las demás, escondidas (ítem 2.12).
+            <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
+              {lista.map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setMarket(m.key)}
+                  title={`${m.companies} empresas · ${m.sectors} sectores`}
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    market === m.key
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )
+        }
+      </BloqueDatos>
 
       {busy && !data && (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -1003,11 +1319,7 @@ export function TodayPage() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {error}
-        </div>
-      )}
+      {error && <ErrorDeCarga que="la lista de hoy" error={error.mensaje} reintentar={error.reintentar} />}
 
       {data && !data.signals && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -1020,10 +1332,10 @@ export function TodayPage() {
         <>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+              <div className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 bg-white p-0.5">
                 {(
                   [
-                    ['ideas', `Mejores ideas (${data.shortlist?.ideas.length ?? 0})`],
+                    ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],
                     ['comprar', `Todas las que califican (${acciones.comprar})`],
                     ['vigilar', `Vigilar (${acciones.vigilar})`],
                     ['cartera', `Mi cartera (${acciones.cartera})`],
@@ -1033,7 +1345,7 @@ export function TodayPage() {
                   <button
                     key={key}
                     onClick={() => setView(key)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                       view === key
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-500 hover:text-slate-900'
@@ -1110,17 +1422,30 @@ export function TodayPage() {
             </div>
           )}
 
-          {view === 'ideas' && data.shortlist ? (
+          {/* Sin lista corta, la vista de ideas lo dice: antes caía a la tabla
+              de todas las puntuadas bajo «Mejores ideas (0)» (ítem 2.1). */}
+          {view === 'ideas' && !data.shortlist ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Esta respuesta no trae la lista corta de ideas, así que no se puede
+              decir cuántas hay: no es lo mismo que ninguna. Pulsa «Actualizar»
+              para recalcularla, o mira «Todas las que califican».
+            </div>
+          ) : view === 'ideas' && data.shortlist ? (
             <div className="space-y-4">
               <p className="text-xs leading-relaxed text-slate-500">
                 {data.shortlist.nota}
               </p>
               {data.shortlist.ideas.length > 0 && (
                 <ul className="space-y-3">
-                  {data.shortlist.ideas.map((s) => (
+                  {data.shortlist.ideas.map((s, _, ideas) => (
                     <IdeaCard
                       key={s.symbol}
                       signal={s}
+                      motivosDelRecorte={recortesDe(
+                        s.symbol,
+                        data.shortlist.sizing.recortes,
+                        ideas.map((i) => i.symbol),
+                      )}
                       onOpen={() => {
                         setView('comprar')
                         setQuery(s.symbol)
@@ -1133,6 +1458,13 @@ export function TodayPage() {
               <AvoidList signals={data.shortlist.evitar} />
             </div>
           ) : (
+          <>
+          {view === 'cartera' && sector === null && (
+            <FueraDeLaLista
+              posiciones={(data.cartera?.posiciones ?? []).filter((p) => !p.en_lista)}
+              mercado={data.market_name}
+            />
+          )}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             {rows.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-slate-400">
@@ -1163,10 +1495,13 @@ export function TodayPage() {
                       Hoy no hay ninguna compra en {data.market_name}.
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed">
-                      Ninguna empresa cumple a la vez las dos condiciones:
-                      puntuar por encima de {fmtNum(data.thresholds.favorable, 2, { signo: true })}{' '}
-                      frente a sus comparables <em>y</em> cotizar sobre su media
-                      de 200 sesiones. No actuar también es una decisión.
+                      Ninguna empresa está hoy en «Comprar»: o no cumple a la vez
+                      las dos condiciones (puntuar por encima de{' '}
+                      {fmtNum(data.thresholds.favorable, 2, { signo: true })} frente a
+                      sus comparables <em>y</em> cerrar por encima de su media de 200
+                      sesiones con el margen de su banda) o se aplaza (resultados en
+                      los próximos días, precio viejo). Cada una en «Vigilar» dice
+                      qué espera. No actuar también es una decisión.
                     </p>
                     {acciones.vigilar > 0 && (
                       <button
@@ -1177,6 +1512,12 @@ export function TodayPage() {
                       </button>
                     )}
                   </>
+                ) : view === 'cartera' && sector === null && acciones.repasada ? (
+                  <p>
+                    {acciones.cartera === 0
+                      ? 'No tienes posiciones abiertas.'
+                      : `Ninguna de tus posiciones está en ${data.market_name}.`}
+                  </p>
                 ) : (
                   <p>Nada que mostrar con este filtro.</p>
                 )}
@@ -1189,6 +1530,7 @@ export function TodayPage() {
                     <SignalRow
                       key={signal.symbol}
                       signal={signal}
+                      umbrales={data?.thresholds ? [data.thresholds.favorable, data.thresholds.desfavorable] : []}
                       expanded={expanded === signal.symbol}
                       onToggle={() =>
                         setExpanded(expanded === signal.symbol ? null : signal.symbol)
@@ -1199,6 +1541,7 @@ export function TodayPage() {
               </>
             )}
           </div>
+          </>
           )}
 
           <div className="flex flex-wrap justify-between gap-3 text-xs text-slate-400">
