@@ -162,6 +162,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
   const sinComprobar = report.riesgos_sin_comprobar ?? []
+  const catalizadoresSinComprobar = report.catalysts_sin_comprobar ?? []
   // La cifra de la casilla, igual que en la lectura de encima: frente a las mismas
   // fronteras. Con decimales fijos, «cobertura de intereses 4,996× — ajustada»
   // llevaba al lado «Cobertura 5,0×», con holgada por encima de 5 (revisión 11).
@@ -402,8 +403,16 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
         {/* Lo que hay, no un plazo: «(6-18 meses)» encabezaba unos resultados a
             24 días y los últimos filings, que ya pasaron (revisión 12, visual). */}
         <Section title="Catalizadores y fechas a vigilar" reading={report.catalysts_note}>
+          {/* Con una fuente caída, la lista vacía no es «ninguno»: el calendario o la
+              SEC no respondieron y no se sabe si hay algo (revisión 13). */}
           {report.catalysts.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-400">Ninguno identificado en los datos.</p>
+            catalizadoresSinComprobar.length > 0 ? (
+              <p className="mt-1 text-sm text-amber-800">
+                Sin comprobar. Fuentes que no respondieron: {enLista(catalizadoresSinComprobar)}.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-400">Ninguno identificado en los datos.</p>
+            )
           ) : (
             <ul className="mt-2 space-y-1 text-sm">
               {report.catalysts.map((c, i) => (
@@ -426,6 +435,11 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
                 </li>
               ))}
             </ul>
+          )}
+          {report.catalysts.length > 0 && catalizadoresSinComprobar.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              La lista puede estar incompleta. Fuentes que no respondieron: {enLista(catalizadoresSinComprobar)}.
+            </p>
           )}
         </Section>
       </div>

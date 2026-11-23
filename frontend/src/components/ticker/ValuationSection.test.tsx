@@ -131,6 +131,28 @@ describe('los campos del DCF, con la convención de la app', () => {
     expect(screen.getByText('Para calcular falta: años de proyección.')).toBeInTheDocument()
   })
 
+  it('los campos que admiten negativos no piden el teclado decimal, que en iOS no trae «-»', async () => {
+    // Revisión 13: todos pasaron a `inputMode="decimal"` y en un iPhone no había
+    // forma de escribir la deuda neta de una empresa con caja neta, el FCF de
+    // una que quema caja, ni un crecimiento o una perpetuidad negativos.
+    servir({ ...DEFAULTS, moneda: 'USD' })
+    render(<ValuationSection symbol="ACME" />)
+    const fcf = await screen.findByLabelText('FCF base (USD, año 2025)')
+    const modo = (campo: HTMLElement) => campo.getAttribute('inputmode')
+    for (const campo of [
+      fcf,
+      screen.getByLabelText('Deuda neta (USD)'),
+      ...screen.getAllByLabelText('Crecimiento FCF (%/año)'),
+      ...screen.getAllByLabelText('Crecimiento terminal (%)'),
+    ]) {
+      expect(modo(campo)).toBeNull()
+    }
+    // Los que nunca son negativos conservan su teclado numérico.
+    expect(modo(screen.getByLabelText('Acciones en circulación'))).toBe('decimal')
+    expect(modo(screen.getByLabelText('Años de proyección'))).toBe('numeric')
+    expect(screen.getAllByLabelText('WACC / tasa de descuento (%)').map(modo)).toEqual(['decimal', 'decimal', 'decimal'])
+  })
+
   it('cada caja de la fila de arriba deja su campo abajo, y el «(%)» no se queda solo', async () => {
     // A 820 px, «FCF base (año 2025)» ocupa dos líneas y «Deuda neta» una: los
     // campos de la misma fila quedaban a alturas distintas.

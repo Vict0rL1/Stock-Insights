@@ -227,3 +227,16 @@ describe('el aviso de un punto sin unidad, congelado con la decisión', () => {
   })
 })
 
+describe('Vigilancia (revisión 13)', () => {
+  it('el cambio desde la decisión que se escribe cero no sale en verde', async () => {
+    // Con `cambio_pct >= 0`, un «(+0,0 %)» se pintaba como una subida.
+    const decisiones = { ...DECISIONES, decisiones: [{ ...DECISIONES.decisiones[0], cambio_pct: 0.04 }] }
+    servir({ ...BASE, '/api/theses/decisiones': { status: 200, json: decisiones } })
+    pintar()
+    // (Con expresión regular: el buscador de texto cambia el espacio duro por uno normal.)
+    const cambio = await screen.findByText(/^\(0,0.%\)$/)
+    expect(cambio.className.split(/\s+/)).not.toContain('text-emerald-700')
+    expect(cambio.className.split(/\s+/)).toContain('text-slate-500')
+  })
+})
+

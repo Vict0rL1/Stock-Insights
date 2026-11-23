@@ -55,6 +55,7 @@ type InformeR12 = {
   riesgos_sin_comprobar?: string[]
   catalysts: { type: string; when: string | null; detail: string | null; source: string; url?: string }[]
   catalysts_note?: string
+  catalysts_sin_comprobar?: string[]
 }
 
 describe('informe a fondo, revisión 12 (visual)', () => {
@@ -101,5 +102,32 @@ describe('informe a fondo, revisión 12 (visual)', () => {
     expect(screen.getByText(/Resultados previstos en los próximos 120 días/)).toBeInTheDocument()
     expect(screen.getByText('previsto el 6 oct 2026')).toBeInTheDocument()
     expect(screen.getByText('presentado el 1 ago 2026')).toBeInTheDocument()
+  })
+
+  it('con una fuente caída, la lista vacía de catalizadores no es «ninguno»', async () => {
+    // Revisión 13: el backend ya nombraba las fuentes que no respondieron, pero
+    // la pantalla seguía escribiendo «Ninguno identificado en los datos.».
+    servirInforme((informe) => {
+      informe.catalysts = []
+      informe.catalysts_sin_comprobar = ['calendario de resultados', 'documentos presentados ante la SEC']
+    })
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText(
+      'Sin comprobar. Fuentes que no respondieron: calendario de resultados y documentos presentados ante la SEC.',
+      {}, { timeout: 3000 },
+    )).toBeInTheDocument()
+    expect(screen.queryByText('Ninguno identificado en los datos.')).not.toBeInTheDocument()
+  })
+
+  it('con una fuente caída y algo en la lista, avisa de que puede estar incompleta', async () => {
+    servirInforme((informe) => {
+      informe.catalysts = [{ type: '10-Q', when: '2026-08-01', detail: 'Documento presentado ante la SEC', source: 'edgar' }]
+      informe.catalysts_sin_comprobar = ['calendario de resultados']
+    })
+    render(<DeepDiveSection symbol="ACME" />)
+    expect(await screen.findByText(
+      'La lista puede estar incompleta. Fuentes que no respondieron: calendario de resultados.',
+      {}, { timeout: 3000 },
+    )).toBeInTheDocument()
   })
 })

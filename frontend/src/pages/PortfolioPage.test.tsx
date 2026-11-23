@@ -112,5 +112,18 @@ describe('cifras de la cartera', () => {
     expect(await screen.findByText('5,97 %')).toBeInTheDocument()
     expect(screen.getByText(/quedan 0,03 % de margen/)).toBeInTheDocument()
   })
+
+  it('un P&L que se escribe cero no sale en verde (revisión 13)', async () => {
+    // Con `value >= 0`, «0,00 (0,0 %)» se pintaba como una ganancia.
+    const rutas: Rutas = structuredClone(base)
+    const cartera = rutas['/api/portfolio'].json as Cartera
+    Object.assign(cartera.positions[0], { unrealized_pnl: 0.001, unrealized_pct: 0.00001 })
+    servir(rutas)
+    render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
+    expect(await screen.findByText('Invertido')).toBeInTheDocument()
+    const pnl = [...fila('KO')!.querySelectorAll('span.inline-flex')].find((s) => s.textContent === '0,00(0,0 %)')!
+    expect(pnl.className.split(/\s+/)).not.toContain('text-emerald-600')
+    expect(pnl.className.split(/\s+/)).toContain('text-slate-500')
+  })
 })
 

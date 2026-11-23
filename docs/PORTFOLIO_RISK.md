@@ -23,12 +23,40 @@ Solo lee el histórico de la caché, salvo que se pida descargar.
 
 **El stop de cada posición, también fuera de la lista: `stops_de_la_cartera`.** Hoy
 lo pide en cada petición (`cartera` en `/api/signals/today`, fuera de la caché de
-la lista) para las posiciones abiertas que la lista del mercado no puntúa, que
-antes nadie miraba. La comparación es una sola, `decision.stop_perforado` (precio
+la lista) para TODAS las posiciones abiertas, también las que la lista del mercado
+no puntúa, que antes nadie miraba. La comparación es una sola, `decision.stop_perforado` (precio
 en o por debajo del stop; sin precio o sin stop, `None`: no se sabe), la misma del
 motor, del riesgo abierto (`risk_budget`) y de cada fila de `/api/portfolio`
 (`stop_perforado`), donde la tabla enseña el stop y el perforado en rojo. El
 panel de riesgo abierto nombra la posición que cuenta entera por su stop perforado.
+
+Desde la revisión 13 el repaso mira lo mismo que el Portafolio, cosa que antes no
+era cierta:
+
+- el stop es el de cada lote (`portfolio.stop_del_lote`, extraído de
+  `get_portfolio`: el fijado al abrir o, sin él, el recalculado desde el coste de
+  ESE lote, marcado `stop_por_clase` si es el punto medio de su clase); el símbolo
+  está perforado si lo está cualquiera de sus lotes, y se sirve el stop más alto
+  con `lotes`, `lotes_recalculados`, `lotes_por_clase` y `lotes_sin_stop`. Con el
+  stop agregado (`agregar_lotes`, que sigue siendo el del motor), un lote sin stop y
+  coste 130 perforado a 104 en el Portafolio salía «por encima» con el 70 del otro;
+- el precio es la cotización (`_cotizacion`, 60 s) de todas, con el último cierre
+  de la lista como reserva: perforado si lo perfora cualquiera de los precios que
+  haya; `por_encima` solo con un precio válido y todos los lotes con stop; un
+  precio viejo por encima del stop es `sin_comprobar` y su motivo dice la
+  antigüedad. Cada fila sirve `precio_fuente` (`cotizacion` o
+  `cierre_de_la_lista`), `precio_proveedor`, `precio_fecha` y todos los `precios`
+  mirados;
+- con las fuentes caídas, la cotización fallida se recuerda un minuto en
+  `MarketDataService` (`cache.RECORDAR_FALLO`): la primera petición paga los
+  reintentos (≈9 llamadas y 9 s de espera por posición) y las demás de ese minuto,
+  ninguno;
+- la lista cacheada guarda con qué cartera se calculó (`huella_cartera`,
+  `contexto_cartera.huella_de_cartera`; solo en la caché, la respuesta no la
+  lleva) y Hoy sirve `lista_desfasada`
+  (`cambios_de_cartera`: abiertas, cerradas y cambiadas desde entonces, y si
+  cambió el efectivo; `null` si es la misma; `error` si no se pudo comparar). La
+  caché de 6 h no cambia (M3).
 
 ## Contribución al riesgo: `portfolio_risk.contribucion_al_riesgo`
 

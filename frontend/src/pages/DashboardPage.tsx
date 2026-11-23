@@ -3,7 +3,10 @@ import { api } from '../api/client'
 import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
 import { fmtFecha, fmtNum, fmtPct, fmtPrecio, signoLeido, ZONA_MERCADO } from '../lib/formato'
 import { useDato } from '../lib/useDato'
-import type { Quote, SectorEntry } from '../api/types'
+import type { CalendarioMercado, Quote, SectorEntry } from '../api/types'
+
+/** Cuántos próximos resultados caben en el bloque; el resto se cuenta. */
+const MAX_EVENTOS = 40
 
 /** Verde, rojo o neutro según la variación que se LEE. Con `pct >= 0` un
  *  «0,00 %» salía en verde, como una subida (revisión 12, visual: Nasdaq 100,
@@ -66,7 +69,17 @@ export function DashboardPage() {
   const sectores = useDato(() => api.marketSectors().then((d) => d.sectors), 'sectores')
   const curva = useDato(() => api.yieldCurve(), 'curva')
   const macro = useDato(() => api.macro().then((d) => d.indicators), 'macro')
-  const eventos = useDato(() => api.calendar().then((d) => d.events), 'calendario')
+  // Un 200 con `error` es un fallo, con su «Reintentar»: solo se leía `events`,
+  // que llegaba vacío, y un calendario caído se pintaba «Ninguna empresa anuncia
+  // resultados en los próximos 14 días» (revisión 13).
+  const eventos = useDato(
+    () =>
+      api.calendar().then((d: CalendarioMercado) => {
+        if (d.error != null || d.events == null) throw new Error(d.error ?? 'la respuesta no trae la lista de resultados')
+        return { lista: d.events, total: d.total ?? null }
+      }),
+    'calendario',
+  )
 
   return (
     <div className="space-y-4">
@@ -209,26 +222,37 @@ export function DashboardPage() {
           <BloqueDatos
             carga={eventos}
             que="el calendario de resultados"
-            vacio={(d) => d.length === 0}
+            vacio={(d) => d.lista.length === 0}
             mensajeVacio="Ninguna empresa anuncia resultados en los próximos 14 días."
           >
-            {(lista) => (
-              <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
-                {lista.slice(0, 40).map((ev) => (
-                  <li
-                    key={`${ev.symbol}-${ev.date}`}
-                    className="flex items-center justify-between border-b border-slate-100 py-1"
-                  >
-                    <Link to={`/ticker/${ev.symbol}`} className="font-medium text-slate-700 hover:underline">
-                      {ev.symbol}
-                    </Link>
-                    <span className="text-xs text-slate-500">
-                      {fmtFecha(ev.date)}
-                      {ev.eps_estimate !== null ? ` · BPA est. ${fmtPrecio(ev.eps_estimate)}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+            {({ lista, total }) => (
+              <>
+                {/* Se recortaba a 40 (y el backend a 120) sin decirlo (revisión 13).
+                    Sin `total`, no consta cuántos hay: se dice de cuántos llegaron. */}
+                {(total ?? lista.length) > MAX_EVENTOS && (
+                  <p className="mb-1 text-[11px] text-slate-400">
+                    {total !== null
+                      ? `${fmtNum(MAX_EVENTOS, 0)} de ${fmtNum(total, 0)}, los más próximos.`
+                      : `Los ${fmtNum(MAX_EVENTOS, 0)} más próximos de los ${fmtNum(lista.length, 0)} que llegaron.`}
+                  </p>
+                )}
+                <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
+                  {lista.slice(0, MAX_EVENTOS).map((ev) => (
+                    <li
+                      key={`${ev.symbol}-${ev.date}`}
+                      className="flex items-center justify-between border-b border-slate-100 py-1"
+                    >
+                      <Link to={`/ticker/${ev.symbol}`} className="font-medium text-slate-700 hover:underline">
+                        {ev.symbol}
+                      </Link>
+                      <span className="text-xs text-slate-500">
+                        {fmtFecha(ev.date)}
+                        {ev.eps_estimate !== null ? ` · BPA est. ${fmtPrecio(ev.eps_estimate)}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </BloqueDatos>
         </section>

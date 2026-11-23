@@ -9,10 +9,14 @@ import type {
   VigilanciaTesis,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio, signoLeido } from '../lib/formato'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
+
+/** El color del cambio de precio desde la decisión, según el signo que se lee
+ *  (`signoLeido`): un cero en neutro. */
+const TONO_CAMBIO = { '1': 'text-emerald-700', '0': 'text-slate-500', '-1': 'text-red-700' } as const
 
 const TONO_ACCION: Record<string, string> = {
   comprar: 'bg-emerald-100 text-emerald-800',
@@ -365,9 +369,9 @@ function Decision({ d }: { d: DecisionRegistrada }) {
                 {' → '}
                 {fmtPrecio(d.precio_actual)}{' '}
                 {d.cambio_pct !== null && (
-                  <span
-                    className={d.cambio_pct >= 0 ? 'text-emerald-700' : 'text-red-700'}
-                  >
+                  // Del signo que se lee: con `>= 0`, un «(+0,0 %)» salía en
+                  // verde, como una subida (revisión 13).
+                  <span className={TONO_CAMBIO[signoLeido(fmtPct(d.cambio_pct, 1, { signo: true, enPuntos: true }))]}>
                     ({fmtPct(d.cambio_pct, 1, { signo: true, enPuntos: true })})
                   </span>
                 )}

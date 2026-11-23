@@ -53,6 +53,9 @@ _BASE: dict[str, str] = {
     "sin_comprobar": "sin comprobar",
     # El estado del stop de una posición en el repaso de Hoy (revisión 12, visual).
     "perforado": "perforado",
+    # De dónde sale el precio con que se mira ese stop (revisión 13).
+    "cotizacion": "cotización",
+    "cierre_de_la_lista": "último cierre de la lista",
     "sin_puntos": "sin puntos vigilables",
     "valido": "válido",
     "viejo": "viejo",

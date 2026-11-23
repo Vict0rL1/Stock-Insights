@@ -905,6 +905,25 @@ export interface TodayResponse {
    *  mercado. Se repasa en cada petición, fuera de la caché de la lista. Sin
    *  él (respuesta antigua) no se sabe y no se dice «nada urgente». */
   cartera?: StopsDeCartera
+  /** La lista se cachea 6 h con la cartera de cuando se puntuó; el repaso es de
+   *  ahora. null = calculada con la cartera de ahora; si no, qué cambió desde
+   *  entonces (o `error` si no se pudo comparar). Ausente en una respuesta
+   *  antigua. */
+  lista_desfasada?: ListaDesfasada | null
+}
+
+/** Qué cambió en la cartera desde que se calculó la lista (`contexto_cartera.cambios_de_cartera`). */
+export interface ListaDesfasada {
+  /** Abiertas después de calcularla: su decisión no es de posición. */
+  abiertas: string[]
+  /** Cerradas después: su decisión de posición ya no vale. */
+  cerradas: string[]
+  /** Con otra cantidad, coste medio, stop o número de lotes. */
+  cambiadas: string[]
+  /** El efectivo anotado cambió: el tamaño de las ideas es de antes. */
+  efectivo: boolean
+  /** No se pudo comparar: no se sabe si es la misma cartera. */
+  error?: string
 }
 
 /** Repaso del stop de la cartera (`contexto_cartera.stops_de_la_cartera`). */
@@ -917,18 +936,46 @@ export interface StopsDeCartera {
   error?: string
 }
 
+/** Un precio con que se miró el stop: la cotización (60 s, la del Portafolio)
+ *  o, como reserva, el último cierre de la lista. */
+export interface PrecioDelStop {
+  precio: number
+  fuente: 'cotizacion' | 'cierre_de_la_lista'
+  estado: 'valido' | 'viejo'
+  /** El proveedor (finnhub, yfinance…), si lo dijo. */
+  proveedor: string | null
+  /** De cuándo es el precio, con zona. */
+  fecha: string | null
+}
+
 export interface StopDePosicion {
   symbol: string
   en_lista: boolean
+  /** El precio que decide el estado: el que perfora el stop o, si ninguno, el
+   *  primero válido de `precios`. */
   precio: number | null
   precio_estado: 'valido' | 'viejo' | 'desconocido'
+  precio_fuente?: PrecioDelStop['fuente'] | null
+  precio_proveedor?: string | null
+  precio_fecha?: string | null
+  /** Todos los precios que se miraron, el más reciente primero. */
+  precios?: PrecioDelStop[]
   moneda: string | null
+  /** El más alto de los de sus lotes (`portfolio.stop_del_lote`, el del Portafolio). */
   stop: number | null
   stop_fijado_al_abrir: boolean
   stop_por_clase: boolean
-  /** Con la regla del motor: precio en o por debajo del stop. */
+  lotes?: number
+  /** Lotes sin stop guardado: el suyo se recalcula desde su coste. */
+  lotes_recalculados?: number
+  /** De esos, los que sin histórico usan el punto medio de su clase. */
+  lotes_por_clase?: number
+  /** Lotes sin stop ni coste con que calcularlo. */
+  lotes_sin_stop?: number
+  /** Fail-safe: perforado si lo perfora cualquiera de los precios; por encima
+   *  solo con un precio válido y todos los lotes con stop. */
   estado: 'perforado' | 'por_encima' | 'sin_comprobar'
-  /** Por qué no se pudo comprobar (sin precio, sin stop). */
+  /** Por qué no se pudo comprobar (sin precio, un lote sin stop, solo un precio viejo). */
   motivo: string | null
 }
 
@@ -972,6 +1019,19 @@ export interface EarningsEvent {
   eps_actual: number | null
   revenue_estimate: number | null
   revenue_actual: number | null
+}
+
+/** `GET /api/market/calendar`. Con el calendario caído, `events` y `total` son
+ *  null y `error` dice por qué: antes llegaba `events: []` y la pantalla decía
+ *  «Ninguna empresa anuncia resultados» (revisión 13). `total`: cuántos hay en
+ *  los 14 días, antes de recortar a los 120 más próximos que se sirven. */
+export interface CalendarioMercado {
+  events: EarningsEvent[] | null
+  total?: number | null
+  error?: string | null
+  source?: string
+  as_of?: string
+  cached?: boolean
 }
 
 // ---- Informe de analista (deep dive) ----
@@ -1112,6 +1172,10 @@ export interface DeepDiveReport {
   catalysts: DeepDiveCatalyst[]
   /** Qué hay en la lista de catalizadores: su ventana y su origen (revisión 12). */
   catalysts_note?: string
+  /** Fuentes de la lista que no respondieron («calendario de resultados»,
+   *  «documentos presentados ante la SEC»): con alguna, una lista vacía no es
+   *  «ninguno» (revisión 13). */
+  catalysts_sin_comprobar?: string[]
   verdict: Verdict
   /** Las fronteras con que el informe escribe cada cifra (revisión 11); falta en
    *  informes de antes. */
@@ -2254,7 +2318,7 @@ export interface AnalisisEmpresa {
       a_favor: string[]
       en_contra: string[]
       guidance: string | null
-      impacto_en_tesis?: { punto: string; estado: string }[]
+      impacto_en_tesis?: ImpactoEnTesis[]
     } | null
     proximo?: { evento: EventoCatalizador; expectativas: number } | null
   }
@@ -2284,15 +2348,24 @@ export interface ReglaQueCambio {
   ahora: { resultado: string; papel: string; valor?: number; umbral?: number } | null
 }
 
+export interface PuntoDeTesis {
+  punto: string
+  origen?: string
+  tesis_id?: number | null
+  disparador_id?: number | null
+}
+
 export interface CambiosAnalisis {
   primer_analisis?: boolean
   nota?: string
   categorias?: Record<string, CambioMetrica[]>
+  /** Cada punto, con `disparador_id` y `tesis_id` (revisión 13); los que vienen
+   *  de los resultados del trimestre, además, `origen: 'resultados'`. */
   tesis?: {
-    confirmados: { punto: string; detalle?: string }[]
-    deteriorados: { punto: string; detalle?: string }[]
-    invalidaciones: { punto: string; detalle?: string }[]
-    nuevos_riesgos: { punto: string; motivo?: string }[]
+    confirmados: (PuntoDeTesis & { detalle?: string })[]
+    deteriorados: (PuntoDeTesis & { detalle?: string })[]
+    invalidaciones: (PuntoDeTesis & { detalle?: string })[]
+    nuevos_riesgos: (PuntoDeTesis & { motivo?: string })[]
     estado: { antes: string | null; ahora: string | null }
   }
   decision?: {
@@ -2394,6 +2467,24 @@ export interface ComparacionMetrica {
   periodo_distinto?: { estimado_fin: string; real_fin: string; real_periodo: string | null; motivo: string }
 }
 
+/** Un punto de la tesis frente al trimestre. `tesis_id` y `disparador_id` (el
+ *  `id` de `tesis.disparadores` del análisis) dicen de qué tesis y de qué punto
+ *  es: la vigilancia anual y el trimestre cruzan el mismo punto, y las reglas se
+ *  capturan de todas las tesis del símbolo (revisión 13). Faltan en lecturas
+ *  congeladas antes. */
+export interface ImpactoEnTesis {
+  punto: string
+  estado: string
+  metrica?: string | null
+  real?: number | null
+  umbral?: number | null
+  operador?: string | null
+  previo?: number | null
+  motivo?: string
+  tesis_id?: number | null
+  disparador_id?: number | null
+}
+
 export interface LecturaEvento {
   evento: EventoCatalizador
   corte: string | null
@@ -2408,7 +2499,7 @@ export interface LecturaEvento {
   /** Métricas con real cuya única expectativa era de otro trimestre. */
   no_comparables?: string[]
   regla_clasificacion: string
-  impacto_en_tesis: { punto: string; estado: string; real?: number | null; umbral?: number | null; motivo?: string }[]
+  impacto_en_tesis: ImpactoEnTesis[]
   expectativas_por_fuente: Record<string, { metrica: string; fuente: string; valor: number | null; bajo: number | null; alto: number | null; operador: string | null; registrado_en: string; detalle: Record<string, unknown> | null }[]>
 }
 

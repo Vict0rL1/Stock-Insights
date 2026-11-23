@@ -51,19 +51,6 @@ DIAS_HISTORICO = 900
 
 
 
-def _puntos(barras: list[dict]) -> list[tuple[date, float]]:
-    puntos = []
-    for bar in barras or []:
-        cierre, ts = bar.get("close"), bar.get("ts")
-        if not cierre or not ts:
-            continue
-        try:
-            puntos.append((date.fromisoformat(str(ts)[:10]), float(cierre)))
-        except ValueError:
-            continue
-    return sorted(puntos)
-
-
 def _cierres(
     service: MarketDataService, symbol: str
 ) -> tuple[list[tuple[date, float]], list[tuple[date, float]]]:
@@ -80,14 +67,12 @@ def _cierres(
     de hace 6 días y la prima, inflada en 9 puntos, quedaba guardada
     (revisión 11). El largo solo aporta lo anterior a los recientes, para los
     movimientos en resultados de hace dos años; sin recientes no hay realizada.
+    El empalme es el del estrés del Portafolio (`_cierres_empalmados`), uno solo.
     """
-    from app.routers.portfolio import _historico_cacheado
+    from app.routers.portfolio import _cierres_empalmados
 
-    cache = getattr(service, "cache", None)
-    recientes = _puntos(_historico_cacheado(service, symbol))
-    largo = _puntos((cache.get("price_history_long", {"symbol": symbol}) or {}).get("bars")) if cache else []
-    desde = recientes[0][0] if recientes else date.max
-    return [p for p in largo if p[0] < desde] + recientes, recientes
+    todos, recientes, _ = _cierres_empalmados(service, symbol)
+    return todos, recientes
 
 
 def _fechas_de_resultados(

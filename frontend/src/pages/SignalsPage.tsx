@@ -14,6 +14,7 @@ import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
+import { listaDeSimbolos } from '../lib/simbolos'
 import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
 import { MarcoTabla } from '../components/MarcoTabla'
@@ -662,6 +663,9 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
   )
 }
 
+/** El tope del backend (`MAX_UNIVERSE` en `routers/signals.py`). */
+const MAX_UNIVERSO = 15
+
 function ManualMode() {
   const [universe, setUniverse] = useState('AAPL, MSFT, GOOGL, JNJ, KO, XOM, JPM, PG')
   const [useNews, setUseNews] = useState(false)
@@ -672,21 +676,19 @@ function ManualMode() {
   const [busy, setBusy] = useState<'score' | 'backtest' | 'rules' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const symbols = () =>
-    universe
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 15)
+  // Con `listaDeSimbolos`, como Screener y ETFs: un `.slice(0, 15)` dejaba fuera
+  // los que pasaban de quince sin decirlo, y un repetido ocupaba el sitio de
+  // otro distinto (revisión 13). Los que no caben se nombran antes de pulsar.
+  const { simbolos, descartados } = listaDeSimbolos(universe, MAX_UNIVERSO)
 
   const run = async (what: 'score' | 'backtest' | 'rules') => {
     setBusy(what)
     setError(null)
     try {
-      if (what === 'score') setResult(await api.scoreSignals(symbols(), useNews))
+      if (what === 'score') setResult(await api.scoreSignals(simbolos, useNews))
       else if (what === 'rules')
-        setRules(await api.runRuleBacktest(symbols(), 6, conDivisa))
-      else setBacktest(await api.runBacktest(symbols(), 12, 6))
+        setRules(await api.runRuleBacktest(simbolos, 6, conDivisa))
+      else setBacktest(await api.runBacktest(simbolos, 12, 6))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error')
     } finally {
@@ -698,7 +700,7 @@ function ManualMode() {
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <label className="mb-1 block text-xs font-medium text-slate-500">
-          Universo a puntuar (3–15 tickers, separados por coma)
+          Universo a puntuar (3–{MAX_UNIVERSO} tickers, separados por coma)
         </label>
         <textarea
           value={universe}
@@ -706,6 +708,13 @@ function ManualMode() {
           rows={2}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
         />
+        {descartados.length > 0 && (
+          <p role="status" className="mt-1 text-xs text-amber-800">
+            Solo caben {MAX_UNIVERSO} a la vez: {descartados.join(', ')}{' '}
+            {plural(descartados.length, 'queda', 'quedan')} fuera de la puntuación y de las validaciones. Quita
+            alguno para elegir cuáles entran.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             onClick={() => run('score')}

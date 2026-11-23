@@ -45,8 +45,11 @@ function bloques(md: string): Bloque[] {
     const numero = vineta ? null : NUMERO.exec(linea)
     // Una lista numerada solo corta un párrafo si empieza en 1, como en
     // CommonMark: «2025. Fue un año…» a media prosa no es una lista que empiece
-    // en el 2025.
-    const esItem = vineta !== null || (numero !== null && (parrafo.length === 0 || numero[1] === '1'))
+    // en el 2025. Dentro de una viñeta, igual: «- a» seguido de «2026. Abrió»
+    // abría una `<ol start="2026">` en vez de seguir la viñeta (revisión 13).
+    // Dentro de una lista numerada, cualquier número es el siguiente punto.
+    const empiezaLista = lista === null ? parrafo.length === 0 : lista.ordenada
+    const esItem = vineta !== null || (numero !== null && (empiezaLista || numero[1] === '1'))
     const esCorte = !linea.trim() || RAYA.test(linea) || TITULO.test(linea) || esItem
 
     if (esCorte && parrafo.length) {
@@ -64,7 +67,11 @@ function bloques(md: string): Bloque[] {
     }
     const titulo = TITULO.exec(linea)
     if (titulo) {
-      salida.push({ tipo: 'titulo', nivel: Math.min(titulo[1].length, 3) as 1 | 2 | 3, texto: titulo[2] })
+      // «# » a secas (o «## ##», solo con el cierre) corta el párrafo, pero no
+      // es un título: salía un `<h4>` vacío, que el lector de pantalla anuncia
+      // como encabezado (revisión 13).
+      const texto = titulo[2].replace(/^#+$/, '')
+      if (texto) salida.push({ tipo: 'titulo', nivel: Math.min(titulo[1].length, 3) as 1 | 2 | 3, texto })
       lista = null
       continue
     }
@@ -92,7 +99,27 @@ function bloques(md: string): Bloque[] {
 // cursiva, negrita y cursiva. Cada marca necesita un carácter que no sea blanco
 // pegado por dentro: «3 * 4 * 5» no es cursiva, y un «**» sin cerrar se queda
 // como está. La cursiva no cruza otro asterisco, para no tragarse una negrita.
-const EN_LINEA = /`([^`\n]+)`|\*\*\*(?=\S)([\s\S]*?\S)\*\*\*|\*\*(?=\S)([\s\S]*?\S)\*\*|\*(?=[^\s*])([^*]*?[^\s*])\*/
+//
+// Y el código manda dentro de las marcas: un código entero cuenta como una sola
+// pieza, y un acento grave solo va suelto si no cierra un código en su línea.
+// En «*a `b*` c*» la cursiva se cerraba en el asterisco de dentro del código y
+// lo partía; ahora es «a `b*` c» en cursiva, con «b*» como código (revisión 13).
+const G = '`'
+const CODIGO = String.raw`${G}([^${G}\n]+)${G}`
+// Lo que va dentro de una marca, pieza a pieza: un código entero, un acento
+// grave que no cierra ningún código en su línea, o cualquier otro carácter que
+// no esté en `excluidos`. La última pieza, además, no puede ser un blanco.
+const pieza = (excluidos: string) => String.raw`(?:${G}[^${G}\n]+${G}|${G}(?![^${G}\n]*${G})|[^${G}${excluidos}])`
+const marca = (m: string, primero: string, excluidos: string) =>
+  String.raw`${m}(?=${primero})(${pieza(excluidos)}*?${pieza(String.raw`\s` + excluidos)})${m}`
+const EN_LINEA = new RegExp(
+  [
+    CODIGO,
+    marca(String.raw`\*\*\*`, String.raw`\S`, ''),
+    marca(String.raw`\*\*`, String.raw`\S`, ''),
+    marca(String.raw`\*`, String.raw`[^\s*]`, '*'),
+  ].join('|'),
+)
 
 function enLinea(texto: string): ReactNode[] {
   const salida: ReactNode[] = []

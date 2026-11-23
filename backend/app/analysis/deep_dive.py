@@ -466,9 +466,35 @@ def _riesgos(
 VENTANA_RESULTADOS_DIAS = 120
 MAX_RESULTADOS = 4
 MAX_FILINGS = 3
+CALENDARIO = "calendario de resultados"
+FILINGS = "documentos presentados ante la SEC"
 
 
-def catalysts_note() -> str:
+def catalysts_sin_comprobar(earnings: list[dict] | None, filings: list[dict] | None) -> list[str]:
+    """Las fuentes de la lista que no respondieron (None; una lista vacía es que
+    no hay). Sin esto, con el calendario caído el informe decía «Resultados
+    previstos en los próximos 120 días…» sobre una lista vacía y el prompt
+    «Ninguno identificado»: un fallo convertido en «ninguno» (revisión 13)."""
+    return [nombre for nombre, lista in ((CALENDARIO, earnings), (FILINGS, filings)) if lista is None]
+
+
+def catalysts_note(sin_comprobar: list[str] | None = None) -> str:
+    sin = sin_comprobar or []
+    if CALENDARIO in sin and FILINGS in sin:
+        return (
+            "No se pudo consultar ni el calendario de resultados ni los documentos presentados ante la SEC: "
+            "no se sabe qué hay por venir, que no es lo mismo que no haya nada."
+        )
+    if CALENDARIO in sin:
+        return (
+            f"Los {MAX_FILINGS} últimos documentos presentados ante la SEC. No se pudo consultar el calendario "
+            f"de resultados: si hay resultados en los próximos {VENTANA_RESULTADOS_DIAS} días, no están aquí."
+        )
+    if FILINGS in sin:
+        return (
+            f"Resultados previstos en los próximos {VENTANA_RESULTADOS_DIAS} días (calendario). No se pudo "
+            "consultar la lista de documentos presentados ante la SEC: los últimos no están aquí."
+        )
     return (
         f"Resultados previstos en los próximos {VENTANA_RESULTADOS_DIAS} días (calendario) "
         f"y los {MAX_FILINGS} últimos documentos presentados ante la SEC."
@@ -476,12 +502,13 @@ def catalysts_note() -> str:
 
 
 def catalysts_section(
-    earnings: list[dict], filings: list[dict], events: list[dict]
+    earnings: list[dict] | None, filings: list[dict] | None, events: list[dict]
 ) -> list[dict]:
     """Fechas a vigilar sacadas de datos, no de opinión: los resultados previstos
-    (`earnings`, ya acotados a `VENTANA_RESULTADOS_DIAS`) y los últimos filings."""
+    (`earnings`, ya acotados a `VENTANA_RESULTADOS_DIAS`) y los últimos filings.
+    None es una fuente que no respondió (`catalysts_sin_comprobar` la nombra)."""
     catalysts = []
-    for event in earnings[:MAX_RESULTADOS]:
+    for event in (earnings or [])[:MAX_RESULTADOS]:
         catalysts.append(
             {
                 "type": "Resultados",
@@ -494,7 +521,7 @@ def catalysts_section(
                 "source": "calendario",
             }
         )
-    for filing in filings[:MAX_FILINGS]:
+    for filing in (filings or [])[:MAX_FILINGS]:
         catalysts.append(
             {
                 "type": filing.get("type"),
@@ -667,12 +694,13 @@ def assemble(
     quote: dict | None,
     risk: dict | None,
     signal: dict | None,
-    earnings: list[dict],
-    filings: list[dict],
+    earnings: list[dict] | None,
+    filings: list[dict] | None,
     events: list[dict],
     dcf: dict | None,
 ) -> dict:
-    """Informe completo. Función pura: nada aquí toca la red."""
+    """Informe completo. Función pura: nada aquí toca la red. `earnings` o
+    `filings` a None: esa fuente no respondió (no es que no haya)."""
     periods = financials.get("periods", [])
     ratios = financials.get("ratios") or derive_ratio_series(periods)
 
@@ -682,6 +710,7 @@ def assemble(
     debt = debt_section(periods, ratios, profile.get("market_cap"))
     cash_flow = cash_flow_section(periods, ratios)
     risks, riesgos_sin_comprobar = _riesgos(periods, ratios, risk, valuation)
+    catalizadores_sin = catalysts_sin_comprobar(earnings, filings)
 
     return {
         "symbol": symbol,
@@ -699,7 +728,8 @@ def assemble(
         "risks": risks,
         "riesgos_sin_comprobar": riesgos_sin_comprobar,
         "catalysts": catalysts_section(earnings, filings, events),
-        "catalysts_note": catalysts_note(),
+        "catalysts_note": catalysts_note(catalizadores_sin),
+        "catalysts_sin_comprobar": catalizadores_sin,
         "verdict": build_verdict(signal, valuation, growth, debt, margins),
         # Las fronteras con que el informe escribe cada cifra (`UMBRALES`).
         "umbrales": {clave: list(lista) for clave, lista in UMBRALES.items()},

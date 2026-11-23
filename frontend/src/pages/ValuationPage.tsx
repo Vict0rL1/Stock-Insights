@@ -200,8 +200,11 @@ export function Escenarios({
                         {etiqueta}
                       </span>
                       <div className="flex items-baseline gap-1">
+                        {/* Solo el WACC con `inputMode="decimal"`: el teclado de
+                            ese modo en iOS no trae «-», y el crecimiento y la
+                            perpetuidad admiten negativos (revisión 13). */}
                         <input
-                          inputMode="decimal"
+                          inputMode={campo === 'discount_rate' ? 'decimal' : undefined}
                           value={textos[clave] ?? textoDeCampo(s[campo] * 100, 1)}
                           onChange={(ev) => {
                             const texto = ev.target.value

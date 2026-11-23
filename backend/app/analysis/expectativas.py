@@ -285,7 +285,16 @@ def impacto_en_tesis(reglas: list[dict], reales: dict[str, dict], tesis: list[di
     `reglas` son expectativas con operador (lo que la tesis exige, p. ej.
     margen operativo ≥ 18 %). Debilitado = se cumple, pero el trimestre real está
     al menos un punto MÁS CERCA del umbral que el último conocido al registrarla.
+
+    Cada punto lleva `tesis_id` y `disparador_id` (el id del punto de la tesis,
+    el mismo que `tesis.disparadores[].id` del análisis). «Qué cambió» contaba dos
+    veces el mismo punto cruzado: la vigilancia lo mira con el ejercicio anual y
+    esto con el trimestre; y las reglas se capturan de TODAS las tesis del
+    símbolo mientras la pantalla enseña la más reciente (revisión 13). Con los
+    dos ids, la pantalla agrupa por punto y filtra por la tesis que enseña.
+    `tesis`: [{id, descripcion, tesis_id}] de los puntos conocidos.
     """
+    tesis_de = {t.get("id"): t.get("tesis_id") for t in tesis}
     salida = []
     for e in reglas:
         real = (reales.get(e.get("metrica")) or {}).get("valor")
@@ -296,14 +305,17 @@ def impacto_en_tesis(reglas: list[dict], reales: dict[str, dict], tesis: list[di
         if estado == "confirmado" and previo is not None and umbral is not None and real is not None:
             if abs(previo - umbral) - abs(real - umbral) >= 0.01:
                 estado = "debilitado"
+        disparador = detalle.get("trigger_id")
         salida.append({"punto": detalle.get("descripcion") or e.get("fuente"), "metrica": e.get("metrica"),
                        "estado": estado, "real": real, "umbral": umbral, "operador": e.get("operador"),
-                       "previo": previo})
+                       "previo": previo, "disparador_id": disparador,
+                       "tesis_id": detalle.get("tesis_id", tesis_de.get(disparador))})
     medidos = {e.get("detalle", {}).get("trigger_id") for e in reglas}
     for t in tesis:
         if t.get("id") not in medidos:
             salida.append({"punto": t.get("descripcion"), "metrica": None, "estado": "sin_resolver",
-                           "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)"})
+                           "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
+                           "disparador_id": t.get("id"), "tesis_id": t.get("tesis_id")})
     return salida
 
 

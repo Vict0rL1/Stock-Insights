@@ -141,11 +141,38 @@ describe('ficha de una empresa', () => {
     expect(document.body.textContent).not.toMatch(/0,06999/)
   })
 
-  it('en móvil las pestañas van en una fila que se desplaza, no en cinco (revisión 12, visual)', async () => {
+  it('el cambio del día toma el color de lo que se lee: un «0,00 (0,00 %)» no es una subida (revisión 13)', async () => {
+    // Con `change >= 0`, un cambio que se escribe cero salía en verde; Hoy y
+    // Mercado ya seguían a `signoLeido`.
+    const cabecera = async (symbol: string, cambio: number, pct: number) => {
+      servir({
+        [`/api/stocks/${symbol}/quote`]: ok({ ...cotizacion(symbol, cambio), change_pct: pct }),
+        [`/api/stocks/${symbol}/profile`]: ok(perfil(symbol, `${symbol} Corp`)),
+        [`/api/stocks/${symbol}/fundamentals`]: falla(404, 'sin fundamentales'),
+        [`/api/stocks/${symbol}/history?range=1Y`]: falla(404, 'sin histórico'),
+      })
+      const { unmount } = abrir(symbol)
+      const texto = await screen.findByText(/\(.*%\)$/)
+      const clases = texto.className.split(/\s+/)
+      unmount()
+      return { texto: texto.textContent, clases }
+    }
+    const cero = await cabecera('CERO', 0.001, 0.001)
+    expect(cero.texto).toBe('0,00 (0,00 %)')
+    expect(cero.clases).not.toContain('text-emerald-600')
+    expect(cero.clases).toContain('text-slate-500')
+    // El cambio se escribe cero pero el porcentaje no: manda el porcentaje.
+    expect((await cabecera('PCT', -0.004, -0.01)).clases).toContain('text-red-600')
+    expect((await cabecera('SUBE', 0.5, 0.54)).clases).toContain('text-emerald-600')
+  })
+
+  it('en móvil y en tableta las pestañas van en una fila que se desplaza, no en cinco (revisiones 12 y 13)', async () => {
     // A 390 px las once pestañas, partidas, ocupaban unos 200 px antes del
     // contenido. jsdom no aplica los puntos de corte: se comprueba que por
-    // debajo de `md` la fila no se parte y se desplaza en su franja (con la
-    // señal de que hay más, components/MarcoTabla.tsx), y que en escritorio sí.
+    // debajo de `xl` la fila no se parte y se desplaza en su franja (con la
+    // señal de que hay más, components/MarcoTabla.tsx), y que desde `xl` sí. Con
+    // el corte en `md`, entre 768 y 1279 px (con la barra lateral) volvían a
+    // ocupar tres o cuatro filas (revisión 13).
     servir({
       '/api/stocks/ACME/quote': ok(cotizacion('ACME', -1.2)),
       '/api/stocks/ACME/profile': ok(perfil('ACME', 'ACME Corp')),
@@ -158,8 +185,8 @@ describe('ficha de una empresa', () => {
     expect(botones).toHaveLength(11)
     const franja = botones[0].parentElement as HTMLElement
     const clases = franja.className.split(/\s+/)
-    expect(clases).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'md:flex-wrap', 'md:overflow-visible']))
-    expect(clases).not.toContain('flex-wrap')
+    expect(clases).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'xl:flex-wrap', 'xl:overflow-visible']))
+    for (const partida of ['flex-wrap', 'sm:flex-wrap', 'md:flex-wrap', 'lg:flex-wrap']) expect(clases).not.toContain(partida)
     expect(franja.hasAttribute('data-oculto-derecha')).toBe(true)
     // Cada pestaña en una línea: partida, la franja tendría dos alturas.
     for (const b of botones) expect(b.className.split(/\s+/)).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-nowrap']))

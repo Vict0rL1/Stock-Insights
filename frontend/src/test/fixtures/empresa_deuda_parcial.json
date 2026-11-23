@@ -58,6 +58,7 @@
     },
     "catalysts": [],
     "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
+    "catalysts_sin_comprobar": [],
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",

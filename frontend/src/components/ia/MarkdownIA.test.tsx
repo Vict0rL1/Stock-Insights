@@ -58,6 +58,37 @@ describe('el Markdown de la IA', () => {
     expect(b.textContent).toContain('-5 % en el día.')
   })
 
+  // Revisión 13: tres casos que el subconjunto pintaba mal.
+  it('un «#» sin texto corta el párrafo, pero no deja un encabezado vacío', () => {
+    const b = pintar('Antes\n# \nDespués\n##   ##')
+    expect(b.querySelector('h4, h5, h6')).toBeNull()
+    expect([...b.querySelectorAll('p')].map((p) => p.textContent)).toEqual(['Antes', 'Después'])
+  })
+
+  it('el código manda: una cursiva no se cierra en un asterisco de dentro del código', () => {
+    const b = pintar('*a `b*` c* y **d `e**` f**')
+    expect(b.querySelector('em')?.textContent).toBe('a b* c')
+    expect(b.querySelector('em > code')?.textContent).toBe('b*')
+    expect(b.querySelector('strong')?.textContent).toBe('d e** f')
+    expect(b.querySelector('strong > code')?.textContent).toBe('e**')
+    // Un acento grave sin pareja en su línea no impide la cursiva.
+    const c = pintar('*a ` b* y\n`x*y`')
+    expect(c.querySelector('em')?.textContent).toBe('a ` b')
+    expect(c.querySelector('code')?.textContent).toBe('x*y')
+  })
+
+  it('dentro de una viñeta, un número que no es «1.» sigue la viñeta y no abre una lista', () => {
+    const b = pintar('- a\n2026. Abrió en positivo.')
+    expect(b.querySelector('ol')).toBeNull()
+    expect([...b.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['a\n2026. Abrió en positivo.'])
+    // «1.» sí empieza una lista numerada, y dentro de una numerada cualquier
+    // número es el punto siguiente.
+    const c = pintar('- a\n1. uno\n2026. dos')
+    expect([...c.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['a'])
+    expect([...c.querySelectorAll('ol > li')].map((li) => li.textContent)).toEqual(['uno', 'dos'])
+    expect(c.querySelector('ol')?.hasAttribute('start')).toBe(false)
+  })
+
   it('el HTML del modelo se lee como texto: ni script ni imagen llegan al DOM', () => {
     const malicioso = '<script>alert(1)</script> **hola** <img src=x onerror="alert(2)"> [enlace](javascript:alert(3))'
     const b = pintar(malicioso)

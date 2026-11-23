@@ -227,6 +227,11 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
     Ese motivo lleva el porqué: sin él, una caída de las noticias se leía como
     «Nuevos riesgos: Si hay un recall», como si el recall hubiera aparecido
     (revisión de M1).
+
+    Cada punto lleva `disparador_id` y `tesis_id`, también los que vienen de los
+    resultados del trimestre (`impacto_evento`): el mismo punto cruzado salía dos
+    veces, una por el ejercicio y otra por el trimestre, y con los ids la
+    pantalla los agrupa (revisión 13).
     """
     previos = {d.get("id"): d for d in antes.get("disparadores") or []}
     salida = {"confirmados": [], "deteriorados": [], "invalidaciones": [], "nuevos_riesgos": [],
@@ -235,18 +240,19 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
     for d in ahora.get("disparadores") or []:
         p = previos.get(d.get("id"))
         texto = d.get("descripcion")
+        ids = {"disparador_id": d.get("id"), "tesis_id": ahora.get("id")}
         if p is None:
-            salida["nuevos_riesgos"].append({"punto": texto, "motivo": "punto de invalidación nuevo"})
+            salida["nuevos_riesgos"].append({**ids, "punto": texto, "motivo": "punto de invalidación nuevo"})
             continue
         aviso = f" {d['aviso']}" if d.get("aviso") else ""
         if d.get("salta") and not p.get("salta"):
-            salida["invalidaciones"].append({"punto": texto, "detalle": f"{d.get('detalle')}{aviso}"})
+            salida["invalidaciones"].append({**ids, "punto": texto, "detalle": f"{d.get('detalle')}{aviso}"})
         elif p.get("salta") and not d.get("salta") and d.get("medible"):
-            salida["confirmados"].append({"punto": texto, "detalle": "vuelve a cumplirse: " + str(d.get("detalle"))})
+            salida["confirmados"].append({**ids, "punto": texto, "detalle": "vuelve a cumplirse: " + str(d.get("detalle"))})
         elif p.get("medible") and not d.get("medible"):
             porque = d.get("detalle") or d.get("motivo")
             salida["nuevos_riesgos"].append({
-                "punto": texto,
+                **ids, "punto": texto,
                 "motivo": f"ya no se puede medir ({porque}): deja de vigilar" if porque
                 else "ya no se puede medir: deja de vigilar",
             })
@@ -261,11 +267,11 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
                 b_txt, _ = escribir_cifras(metrica, vb, u)
                 if dist_antes - dist_ahora >= 0.01:
                     salida["deteriorados"].append(
-                        {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
+                        {**ids, "punto": texto, "antes": va, "ahora": vb, "umbral": u,
                          "detalle": f"se acerca a su umbral ({a_txt} → {b_txt}, umbral {u_txt}){aviso}"})
                 elif dist_ahora - dist_antes >= 0.01:
                     salida["confirmados"].append(
-                        {"punto": texto, "antes": va, "ahora": vb, "umbral": u,
+                        {**ids, "punto": texto, "antes": va, "ahora": vb, "umbral": u,
                          "detalle": f"se aleja de su umbral ({a_txt} → {b_txt}){aviso}"})
     destino = {"invalidado": "invalidaciones", "debilitado": "deteriorados", "confirmado": "confirmados"}
     for i in impacto_evento or []:
@@ -273,7 +279,7 @@ def comparar_tesis(antes: dict, ahora: dict, impacto_evento: list[dict] | None =
             salida[destino[i["estado"]]].append({
                 "punto": i.get("punto"), "antes": i.get("previo"), "ahora": i.get("real"), "umbral": i.get("umbral"),
                 "detalle": f"según los resultados de {i.get('periodo')} (trimestre, no ejercicio)",
-                "origen": "resultados",
+                "origen": "resultados", "disparador_id": i.get("disparador_id"), "tesis_id": i.get("tesis_id"),
             })
     return salida
 
@@ -406,13 +412,29 @@ def _explicar_sin_datos(ra: dict, rb: dict, umbrales_ahora: list[float]) -> list
     if ahora is not None:
         return [f"Ahora no hay {_que_faltaba(ahora)} («{ahora.get('regla')}»: "
                 f"{etiqueta(ahora.get('resultado'))}) y el motor no puede decidir."]
+    nuevas = {id_: r for id_, r in rb.items() if id_ not in ra}
+    explican = {id_: r for id_, r in nuevas.items() if r.get("papel") in _PAPELES_QUE_EXPLICAN}
+    # Con posición y ninguna regla de venta cumplida, todas son «evaluada» y la
+    # acción es la de por defecto: «Sin datos → Mantener» acababa en «Ahora la
+    # acción sale de sus reglas:» sin nada detrás (revisión 13). Se dicen las
+    # evaluadas, con su resultado: una «desconocido» no pasa por «no cumple».
+    evaluadas = {id_: r for id_, r in nuevas.items() if r.get("papel") == "evaluada"}
+    if explican:
+        cabeza, reglas = "Ahora la acción sale de sus reglas:", explican
+    elif evaluadas:
+        todas_no = all(r.get("resultado") == "no_cumple" for r in evaluadas.values())
+        cabeza = ("Ahora decide el motor, no se cumple ninguna de sus reglas y queda la acción por defecto:"
+                  if todas_no else
+                  "Ahora decide el motor: ninguna de sus reglas se cumple con lo que se pudo comprobar (alguna "
+                  "quedó sin comprobar) y queda la acción por defecto:")
+        reglas = evaluadas
+    else:
+        cabeza, reglas = "Ahora decide el motor.", {}
     lineas = [f"Antes no había {_que_faltaba(antes)} («{antes.get('regla')}»: "
-              f"{etiqueta(antes.get('resultado'))}) y el motor no podía decidir. Ahora la acción "
-              "sale de sus reglas:"]
-    for id_, r in rb.items():
-        if id_ not in ra and r.get("papel") in _PAPELES_QUE_EXPLICAN:
-            leida = _leer_regla({"resultado": r.get("resultado"), **(r.get("datos") or {})}, id_, umbrales_ahora)
-            lineas.append(f"«{r.get('regla')}»: no se evaluaba → {leida}.")
+              f"{etiqueta(antes.get('resultado'))}) y el motor no podía decidir. {cabeza}"]
+    for id_, r in reglas.items():
+        leida = _leer_regla({"resultado": r.get("resultado"), **(r.get("datos") or {})}, id_, umbrales_ahora)
+        lineas.append(f"«{r.get('regla')}»: no se evaluaba → {leida}.")
     return lineas
 
 

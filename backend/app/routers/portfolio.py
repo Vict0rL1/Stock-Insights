@@ -23,7 +23,7 @@ from app.analysis.portfolio import (
     position_metrics,
 )
 from app.cache.cache import MarketDataService
-from app.config import settings
+from app.config import CACHE_TTL_SECONDS, settings
 from app.db.engine import get_session
 from app.db.models import (
     Alert,
@@ -92,14 +92,14 @@ def _edad_segundos(cache, payload: dict) -> float:
     return ((ahora() if callable(ahora) else datetime.now(timezone.utc)) - instante[0]).total_seconds()
 
 
-def _copias_cacheadas(service: MarketDataService, symbol: str, *, con_largo: bool) -> dict[str, list[dict]]:
+def _copias_cacheadas(service: MarketDataService, symbol: str) -> dict[str, list[dict]]:
     """Las copias guardadas de un símbolo que valen ahora, sin descargar nada:
     «año», el histórico de un año vigente o el mismo caducado hace menos de un
     día, y «largo», el que baja la propia Cartera para el riesgo, si se descargó
     hace menos de un día. El largo vive 7 días en la caché, y antes de la copia
     de un año de hace 7 h se servía uno de hace 6 días: la Cartera daba el stop
-    perforado y la ficha no (revisión 10). Sin `con_largo`, el largo solo se lee
-    si no hay copia de un año."""
+    perforado y la ficha no (revisión 10). El largo solo se lee si no hay copia
+    de un año."""
     cache = getattr(service, "cache", None)
     if cache is None:
         return {}
@@ -113,7 +113,7 @@ def _copias_cacheadas(service: MarketDataService, symbol: str, *, con_largo: boo
         copia = vencido("price_history", params) if vencido is not None else None
         if copia and copia.get("bars") and _edad_segundos(cache, copia) <= VENCIDO_MAX_SEGUNDOS:
             copias["año"] = copia["bars"]
-    if con_largo or not copias:
+    if not copias:
         largo = cache.get("price_history_long", {"symbol": symbol})
         if largo and largo.get("bars") and _edad_segundos(cache, largo) <= VENCIDO_MAX_SEGUNDOS:
             copias["largo"] = largo["bars"]
@@ -127,7 +127,7 @@ def _historico_cacheado(service: MarketDataService, symbol: str) -> list[dict]:
     para el stop, el estrés y el minigráfico: con lectores distintos, la misma
     fila tenía el stop medido y salía «sin histórico» en el estrés (revisión 9).
     El estrés no se queda en el año (`_series_cacheadas`)."""
-    copias = _copias_cacheadas(service, symbol, con_largo=False)
+    copias = _copias_cacheadas(service, symbol)
     return (copias.get("año") or copias.get("largo") or [])[-SESIONES_HISTORICO:]
 
 
@@ -186,43 +186,129 @@ def _volatilidad_de(
     return vol_diaria_pct(cierres)
 
 
+def stop_del_lote(service: MarketDataService, symbol: str, stop_guardado, coste) -> dict:
+    """El stop de UN lote abierto: el del Portafolio y el del repaso de Hoy.
+
+    El stop FIJADO al abrir manda. Solo los lotes anteriores a ese cambio (sin
+    stop guardado) lo recalculan desde SU coste, con la MISMA regla que la vista
+    Hoy (`_stop_pct` y la volatilidad del histórico guardado), y se marca. Sin
+    coste (0: un regalo, un spin-off) no hay stop anclado a él, como al abrirla;
+    se servía 0,0 «punto medio de su clase» (revisión 9).
+
+    Antes esto vivía dentro de `get_portfolio` y Hoy hacía otra cuenta con el
+    stop agregado de los lotes (el más alto de los fijados, ignorando los que no
+    tenían): un lote viejo sin stop y coste 130 estaba perforado a 104 en el
+    Portafolio y Hoy decía «por encima» con el stop 70 del otro lote (revisión 13).
+    """
+    clase = "cripto" if symbol.endswith("-USD") else "accion"
+    stop_fijado = datos.precio(stop_guardado)
+    vol = None
+    if stop_fijado is not None:
+        stop = stop_fijado
+    elif coste and coste > 0:
+        vol = _volatilidad_de(service, symbol)
+        stop = datos.redondear_precio(coste * (1 - _stop_pct(vol, clase) / 100))
+    else:
+        stop = None
+    return {
+        "stop": stop,
+        "stop_fijado_al_abrir": stop_fijado is not None,
+        # Recalculado sin histórico: el punto medio de su clase, no un stop
+        # medido. Fijarlo así sería congelar un supuesto (revisión 8).
+        "stop_por_clase": stop_fijado is None and stop is not None and vol is None,
+    }
+
+
 def _series_cacheadas(
     service: MarketDataService, symbols: list[str]
-) -> tuple[dict[str, list[tuple[date, float]]], list[str]]:
+) -> tuple[dict[str, list[tuple[date, float]]], list[str], dict[str, str]]:
     """Cierres diarios de la caché, para estresar la cartera. Nunca descarga.
 
-    Las mismas copias que el stop (`_copias_cacheadas`): si no hay histórico
-    guardado, esa posición no entra en el estrés en vez de gastar una llamada
-    por posición cada vez que se abre el portafolio, y se nombra. `peor_ventana`
-    solo cruza fechas comunes, así que una posición ausente encoge el histórico
-    compartido pero no lo falsea.
+    El tramo final, de las mismas copias que el stop (`_historico_cacheado`):
+    si no hay ninguna que valga ahora, esa posición no entra en el estrés en vez
+    de gastar una llamada por posición cada vez que se abre el portafolio, y se
+    nombra. `peor_ventana` solo cruza fechas comunes, así que una posición
+    ausente encoge el histórico compartido pero no lo falsea.
 
-    Pero entera y la más larga de las que valen, no recortada al año del stop:
+    Lo anterior, del largo mientras siga en la caché (`_cierres_empalmados`):
     con 252 sesiones como mucho, la ventana de 12 meses (que pide más de 252)
-    no cabía nunca y «Peor 12 meses seguidos» decía siempre que el histórico
-    no llegaba, mientras Cartera medía con dos años (revisión 12, visual).
-    Devuelve también las posiciones medidas sin un largo vigente: son las que
-    acortan el histórico común, y la nota lo dice.
+    no cabía nunca (revisión 12, visual); y con el largo solo si se descargó
+    hace menos de un día, al día siguiente de «Descargar histórico completo»
+    desaparecía «Peor 12 meses» y la nota decía «solo hay guardado el último
+    año» con 700 sesiones guardadas, que Cartera seguía usando (revisión 13).
+
+    Devuelve también las posiciones medidas sin ningún largo guardado (son las
+    que acortan el histórico común, y la nota lo dice) y el motivo de las que
+    tienen el largo pero ninguna copia reciente con que acabar la serie.
     """
     salida: dict[str, list[tuple[date, float]]] = {}
     sin_largo: list[str] = []
+    motivos: dict[str, str] = {}
     for symbol in symbols:
-        copias = _copias_cacheadas(service, symbol, con_largo=True)
-        puntos = []
-        # La más larga; a igualdad, la de un año, que es la más fresca.
-        for bar in max(copias.values(), key=len, default=[]):
-            cierre, ts = bar.get("close"), bar.get("ts")
-            if not cierre or not ts:
-                continue
-            try:
-                puntos.append((date.fromisoformat(str(ts)[:10]), float(cierre)))
-            except ValueError:
-                continue
-        if len(puntos) >= 60:
-            salida[symbol] = puntos
-            if "largo" not in copias:
+        todos, recientes, con_largo = _cierres_empalmados(service, symbol)
+        if not recientes:
+            if todos:
+                # Una serie que acaba hace días cortaría a todas las demás en esa
+                # fecha (`peor_ventana` cruza fechas comunes): fuera, y con su
+                # porqué, no «sin histórico guardado» con años guardados.
+                motivos[symbol] = (
+                    f"su histórico largo guardado acaba el {fmt_fecha(todos[-1][0])} y no hay copia de su "
+                    "último año de hace menos de un día: se refresca al abrir su ficha"
+                )
+            continue
+        if len(todos) >= 60:
+            salida[symbol] = todos
+            if not con_largo:
                 sin_largo.append(symbol)
-    return salida, sin_largo
+    return salida, sin_largo, motivos
+
+
+def _puntos(barras: list[dict] | None) -> list[tuple[date, float]]:
+    """(fecha, cierre) en orden, sin las barras sin cierre o sin fecha legible."""
+    puntos = []
+    for bar in barras or []:
+        cierre, ts = bar.get("close"), bar.get("ts")
+        if not cierre or not ts:
+            continue
+        try:
+            puntos.append((date.fromisoformat(str(ts)[:10]), float(cierre)))
+        except ValueError:
+            continue
+    return sorted(puntos)
+
+
+def _cierres_empalmados(
+    service: MarketDataService, symbol: str
+) -> tuple[list[tuple[date, float]], list[tuple[date, float]], bool]:
+    """(todos los cierres, los recientes, si hay largo guardado), sin descargar.
+
+    Los recientes salen del mismo lector que el stop (`_historico_cacheado`):
+    nunca una copia de días. El largo vive 7 días en la caché y solo aporta lo
+    anterior a los recientes; sin recientes, «todos» es el largo entero y quien
+    llama decide si le vale (Opciones lo usa para los resultados de hace dos
+    años; el estrés no, porque acabaría hace días).
+
+    En la costura, lo anterior se lleva a la escala de los recientes con el
+    cierre de una sesión que está en las dos copias: el largo (Yahoo) viene
+    ajustado por dividendos y el año puede venir de Twelve Data, que no; y un
+    split entre una descarga y otra parte la serie por la mitad. Empalmado sin
+    más, la costura era un salto de precio que no ocurrió, y el estrés lo leía
+    como una caída. Multiplicar un tramo entero por una constante no cambia
+    ninguno de sus rendimientos, que es lo único que miden el estrés y Opciones.
+    """
+    cache = getattr(service, "cache", None)
+    recientes = _puntos(_historico_cacheado(service, symbol))
+    largo = _puntos((cache.get("price_history_long", {"symbol": symbol}) or {}).get("bars")) if cache else []
+    if not recientes:
+        return largo, [], bool(largo)
+    desde = recientes[0][0]
+    anteriores = [p for p in largo if p[0] < desde]
+    del_largo = dict(largo)
+    comun = next(((d, v) for d, v in recientes if del_largo.get(d)), None)
+    # Sin ninguna sesión en común (no pasa con un largo de menos de 7 días y
+    # un año de recientes) no hay con qué medir la escala: se empalma tal cual.
+    factor = comun[1] / del_largo[comun[0]] if comun else 1.0
+    return [(d, v * factor) for d, v in anteriores] + recientes, recientes, bool(largo)
 
 
 def _cobertura_estres(pesos: dict[str, float], series: dict[str, list], motivos: dict[str, str] | None = None) -> dict:
@@ -298,7 +384,9 @@ def _precio_y_divisa(service: MarketDataService, symbol: str) -> tuple[float | N
 
 def _cotizacion(service: MarketDataService, symbol: str) -> tuple[float | None, str | None, dict]:
     """Precio, moneda y ESTADO del dato. El estado se tiraba: la cartera sumaba
-    precios rescatados de caché hace once minutos sin decirlo en ninguna parte."""
+    precios rescatados de caché hace once minutos sin decirlo en ninguna parte.
+    También de qué fuente: el repaso de Hoy escribe de dónde sale cada precio
+    (revisión 13)."""
     try:
         q = service.get("quote", symbol=symbol)
     except (DataNotFoundError, AllProvidersFailedError):
@@ -307,6 +395,7 @@ def _cotizacion(service: MarketDataService, symbol: str) -> tuple[float | None, 
         "estado": q.get("estado", "valido"),
         "antiguedad_segundos": q.get("antiguedad_segundos"),
         "publicado": q.get("as_of"),
+        "fuente": q.get("source"),
     }
 
 
@@ -855,24 +944,10 @@ def get_portfolio(
         metrics = position_metrics(
             {"quantity": position.quantity, "cost_basis": position.cost_basis}, price
         )
-        # El stop se recalcula con la MISMA regla que la vista Hoy, anclado a
-        # tu coste. Sin él no se puede sumar el riesgo abierto, que es el
-        # número que decide si una mala semana es un contratiempo o un agujero.
+        # El stop de cada lote (`stop_del_lote`, el mismo que repasa Hoy). Sin él
+        # no se puede sumar el riesgo abierto, que es el número que decide si una
+        # mala semana es un contratiempo o un agujero.
         clase = "cripto" if instrument.symbol.endswith("-USD") else "accion"
-        # El stop FIJADO al abrir manda. Solo las posiciones anteriores a ese
-        # cambio (sin stop guardado) lo recalculan, y se marca.
-        stop_fijado = datos.precio(position.stop)
-        vol = None
-        if stop_fijado is not None:
-            stop = stop_fijado
-        elif position.cost_basis and position.cost_basis > 0:
-            vol = _volatilidad_de(service, instrument.symbol)
-            stop = datos.redondear_precio(position.cost_basis * (1 - _stop_pct(vol, clase) / 100))
-        else:
-            # Coste 0 (un regalo, un spin-off): sin coste no hay stop anclado a
-            # él, como al abrirla; se servía 0,0 «punto medio de su clase»
-            # (revisión 9).
-            stop = None
         open_positions.append(
             {
                 "id": position.id,
@@ -881,11 +956,7 @@ def get_portfolio(
                 "sector": instrument.sector or "Sin clasificar",
                 "asset_class": clase,
                 "opened_at": _utc_iso(position.opened_at),
-                "stop": stop,
-                "stop_fijado_al_abrir": stop_fijado is not None,
-                # Recalculado sin histórico: el punto medio de su clase, no un
-                # stop medido. Fijarlo así sería congelar un supuesto (revisión 8).
-                "stop_por_clase": stop_fijado is None and stop is not None and vol is None,
+                **stop_del_lote(service, instrument.symbol, position.stop, position.cost_basis),
                 "price": price,
                 "precio_estado": estado_precio["estado"] if price is not None else "desconocido",
                 "precio_antiguedad_segundos": estado_precio["antiguedad_segundos"],
@@ -951,8 +1022,7 @@ def get_portfolio(
 
     monedas_estres = {p["symbol"]: p.get("currency") for p in convertidas}
     series_estres: dict[str, list[tuple[date, float]]] = {}
-    motivos_estres: dict[str, str] = {}
-    cacheadas, sin_largo = _series_cacheadas(service, list(pesos_estres))
+    cacheadas, sin_largo, motivos_estres = _series_cacheadas(service, list(pesos_estres))
     for symbol, serie in cacheadas.items():
         en_usd = convertir_serie(serie, monedas_estres.get(symbol), series_fx)
         if en_usd and len(en_usd) >= 60:
@@ -965,11 +1035,15 @@ def get_portfolio(
     if estres.get("suficiente") and estres.get("peor_ventana_pct") is None and cortas:
         # Por qué no llega y cómo se alarga: sin decirlo, el Portafolio daba
         # «no llega a 12 meses» y la Cartera medía dos años de las mismas
-        # posiciones (revisión 12, visual).
+        # posiciones (revisión 12, visual). Solo las que no tienen ningún largo
+        # guardado: decía «solo hay guardado el último año» de un largo de hace
+        # dos días que el estrés no usaba (revisión 13).
+        dias_largo = CACHE_TTL_SECONDS["price_history_long"] // 86400
         estres["peor_ventana_nota"] += (
             f" De {', '.join(cortas[:5])}{'…' if len(cortas) > 5 else ''} solo hay guardado el último año "
             f"(hasta {SESIONES_HISTORICO} sesiones): este estrés no descarga nada y usa el histórico largo "
-            "que baja Cartera («Descargar histórico completo») solo si se descargó hace menos de un día."
+            "que baja Cartera («Descargar histórico completo») mientras siga guardado "
+            f"({fmt_num(dias_largo, 0)} {plural(dias_largo, 'día', 'días')})."
         )
     return {
         "positions": [

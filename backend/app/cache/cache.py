@@ -26,6 +26,17 @@ from app.registro import log
 FACTOR_RESCATE = 30
 TECHO_RESCATE_SEGUNDOS = 7 * 24 * 3600
 
+# Los datos cuyo fallo total (todas las fuentes, sin copia que rescatar) se
+# recuerda durante su propio TTL, igual que un acierto. Con las fuentes caídas,
+# cada cotización fallida costaba tres intentos por fuente y 3 s de espera por
+# fuente; el repaso de stops de Hoy pide una por posición en cada petición y la
+# pantalla encadena hasta cinco: con tres posiciones, 27 llamadas y 27 s por
+# petición (revisión 13). Recordado, el fallo cuesta eso una vez por minuto y
+# las demás peticiones lo sirven sin llamar a nadie. Lo que haya llegado
+# mientras a la caché (otra pantalla que sí la consiguió) se sirve antes de
+# mirar el fallo recordado.
+RECORDAR_FALLO = frozenset({"quote"})
+
 
 def params_hash(params: dict) -> str:
     canonical = json.dumps(params, sort_keys=True, separators=(",", ":"), default=str)
@@ -182,6 +193,8 @@ class MarketDataService:
     def __init__(self, router, cache: CacheStore):
         self.router = router
         self.cache = cache
+        # (tipo, huella de parámetros) → (cuándo falló, motivo por fuente).
+        self._fallos: dict[tuple[str, str], tuple[datetime, dict]] = {}
 
     def get(self, data_type: str, **kwargs) -> dict:
         # Los kwargs con "_" son directivas para el router (p. ej. _order),
@@ -191,6 +204,15 @@ class MarketDataService:
         if cached is not None:
             cached["estado"] = Estado.VALIDO.value
             return cached
+        clave_fallo = (data_type, params_hash(cache_params))
+        recordado = self._fallos.get(clave_fallo)
+        if recordado is not None:
+            cuando, motivos = recordado
+            if (self.cache._now() - cuando).total_seconds() < self.cache.ttls.get(data_type, 0):
+                # El mismo fallo, sin volver a llamar (`RECORDAR_FALLO`): sigue
+                # siendo un fallo, nunca un dato.
+                raise AllProvidersFailedError(data_type, motivos)
+            self._fallos.pop(clave_fallo, None)
         try:
             payload = self.router.fetch(data_type, **kwargs)
         except AllProvidersFailedError as exc:
@@ -201,6 +223,8 @@ class MarketDataService:
             # respuesta, y taparla con caché vieja la contradiría.
             rescate = self.cache.get_vencido(data_type, cache_params)
             if rescate is None:
+                if data_type in RECORDAR_FALLO:
+                    self._fallos[clave_fallo] = (self.cache._now(), dict(exc.reasons))
                 raise
             minutos = rescate["antiguedad_segundos"] // 60
             log("cache").warning(

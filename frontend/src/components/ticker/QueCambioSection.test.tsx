@@ -2,9 +2,10 @@
  * Revisión 9: la fila de la puntuación en «Qué cambió» se escribía con dos
  * decimales: «0,15 → 0,35» junto a una traza que en el mismo panel decía 0,3496.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AnalisisEmpresaResponse } from '../../api/types'
 import empresaCompleta from '../../test/fixtures/empresa_completa.json'
 import { QueCambioSection } from './QueCambioSection'
 
@@ -162,6 +163,66 @@ describe('qué cambió, revisión 12 (visual)', () => {
     })
     expect(await screen.findByText(/Decisión del motor/)).toBeInTheDocument()
     expect(screen.queryByText(/Tu tesis/)).not.toBeInTheDocument()
+  })
+})
+
+describe('los puntos de la tesis cruzados, revisión 13', () => {
+  // «Tu tesis tiene 2 puntos de invalidación cruzados» con uno solo: el mismo
+  // punto cruzaba en la vigilancia (ejercicio) y en los resultados del trimestre,
+  // y se contaban las lecturas. Y las reglas del trimestre salen de todas las
+  // tesis del valor: un punto de otra tesis se contaba como de la que se enseña.
+  type Analisis = AnalisisEmpresaResponse['analisis']
+  type Impacto = NonNullable<NonNullable<Analisis['expectativas']['ultimo']>['impacto_en_tesis']>[number]
+  const MARGEN = 'Margen operativo = 16,0 %; el punto salta si cae por debajo de 18,0 %.'
+
+  function servir(impactos: Impacto[], { cruzaEnElEjercicio = true } = {}) {
+    const rutas = structuredClone((empresaCompleta as unknown as { rutas: Rutas }).rutas)
+    const a = (rutas['/api/empresa/ACME/analisis'].json as AnalisisEmpresaResponse).analisis
+    if (cruzaEnElEjercicio) Object.assign(a.tesis.disparadores![0], { salta: true, detalle: MARGEN })
+    a.expectativas.ultimo!.impacto_en_tesis = impactos
+    vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const r = rutas[url]
+      return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+    }))
+    render(<MemoryRouter><QueCambioSection symbol="ACME" /></MemoryRouter>)
+  }
+  const aviso = async () => (await screen.findByText(/Tu tesis «El margen aguanta» tiene/)).closest('div')!
+
+  it('el mismo punto en el ejercicio y en el trimestre es un punto, con sus dos lecturas', async () => {
+    // Sin identificadores (un backend de antes): por la descripción.
+    servir([{ punto: 'margen operativo < 18%', estado: 'invalidado' }, { punto: 'recall', estado: 'sin_resolver' }])
+    const bloque = await aviso()
+    expect(bloque).toHaveTextContent('tiene 1 punto de invalidación cruzado:')
+    expect(within(bloque).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(bloque).getByRole('listitem')).toHaveTextContent(
+      `margen operativo < 18% (${MARGEN}); también según los resultados de 2026-Q2: trimestre, no ejercicio`,
+    )
+  })
+
+  it('con el punto y la tesis que manda el backend, agrupa por punto y no por texto', async () => {
+    servir([{ punto: 'Margen operativo, trimestral', estado: 'invalidado', tesis_id: 1, disparador_id: 1 }])
+    const bloque = await aviso()
+    expect(bloque).toHaveTextContent('tiene 1 punto de invalidación cruzado:')
+    expect(within(bloque).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('un punto de otra tesis del mismo valor no se cuenta como de esta, pero se dice', async () => {
+    servir([
+      { punto: 'margen operativo < 18%', estado: 'invalidado', tesis_id: 1, disparador_id: 1 },
+      { punto: 'margen bruto < 40%', estado: 'invalidado', tesis_id: 7, disparador_id: 9 },
+    ])
+    const bloque = await aviso()
+    expect(bloque).toHaveTextContent('tiene 1 punto de invalidación cruzado:')
+    expect(bloque).toHaveTextContent(
+      '1 punto cruzado en los resultados del trimestre, de otra de tus tesis sobre este valor:· margen bruto < 40% (según los resultados de 2026-Q2',
+    )
+  })
+
+  it('sin `tesis_id`, un punto que no está entre los de esta tesis es de otra', async () => {
+    servir([{ punto: 'margen bruto < 40%', estado: 'invalidado' }], { cruzaEnElEjercicio: false })
+    expect(await screen.findByText(/de otra de tus tesis sobre este valor/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tu tesis «El margen aguanta» tiene/)).not.toBeInTheDocument()
   })
 })
 

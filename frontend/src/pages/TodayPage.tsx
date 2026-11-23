@@ -9,13 +9,25 @@ import type {
   Conviction,
   Decision,
   DecisionAction,
+  ListaDesfasada,
+  PrecioDelStop,
   Sizing,
   StopDePosicion,
   StopsDeCartera,
   TodayResponse,
 } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
+import {
+  fmtAntiguedad,
+  fmtFecha,
+  fmtFrente,
+  fmtNum,
+  fmtPct,
+  fmtPrecio,
+  plural,
+  signoLeido,
+  ZONA_MERCADO,
+} from '../lib/formato'
 import { coord } from '../lib/svg'
 import { mensajeDeError, useDato } from '../lib/useDato'
 
@@ -340,6 +352,84 @@ export function recuentos(data: TodayResponse | null): Recuentos {
     sinComprobar: posiciones.filter((p) => p.estado === 'sin_comprobar' && !vender.has(p.symbol)).length,
     repasada,
   }
+}
+
+/** «Mi cartera», a partir del repaso, que es de ahora, y no de las decisiones de
+ *  la lista, que pueden ser de hace 6 h. Con la lista cacheada, una posición
+ *  abierta después no salía en ninguna parte (su decisión no era de posición y
+ *  sí estaba en la lista), una cerrada después seguía como fila, y la pantalla
+ *  decía «Ninguna de tus posiciones está en EE. UU. — S&P 500» con una que lo
+ *  estaba (revisión 13). Sin repaso, como antes: las filas que la lista decide
+ *  como tuyas. */
+export function miCartera(data: TodayResponse | null): {
+  /** Decisiones de la lista sobre posiciones abiertas ahora. */
+  filas: DailySignal[]
+  /** Abiertas que la lista de este mercado no puntúa. */
+  fuera: StopDePosicion[]
+  /** En la lista, pero su decisión no es de posición: se abrieron después de calcularla. */
+  sinDecision: StopDePosicion[]
+} {
+  const s = data?.signals ?? []
+  const repaso = data?.cartera
+  if (repaso === undefined || repaso.abiertas === null || repaso.error) {
+    return { filas: s.filter((x) => x.decision.owned), fuera: [], sinDecision: [] }
+  }
+  const abiertas = new Set(repaso.posiciones.map((p) => p.symbol))
+  const filas = s.filter((x) => x.decision.owned && abiertas.has(x.symbol))
+  const decididas = new Set(filas.map((x) => x.symbol))
+  return {
+    filas,
+    fuera: repaso.posiciones.filter((p) => !p.en_lista),
+    sinDecision: repaso.posiciones.filter((p) => p.en_lista && !decididas.has(p.symbol)),
+  }
+}
+
+/** De dónde y de cuándo es el precio con que se miró un stop: «cotización de
+ *  finnhub, hace 3 min». El repaso daba como de ahora el último cierre de la
+ *  lista, de hasta 12 h, y no lo decía (revisión 13). */
+export function procedenciaDelPrecio(
+  p: Pick<PrecioDelStop, 'fuente' | 'proveedor' | 'fecha'>,
+): { texto: string; titulo: string } {
+  const de = `${etiqueta(p.fuente)}${p.proveedor ? ` de ${p.proveedor}` : ''}`
+  return {
+    texto: `${de}, ${p.fecha ? fmtAntiguedad(p.fecha) : 'sin fecha'}`,
+    titulo: p.fecha ? `${de} del ${fmtFecha(p.fecha, { hora: true, zona: ZONA_MERCADO })}` : de,
+  }
+}
+
+/** Qué stop es el que se enseña cuando no es el fijado al abrir de un solo lote:
+ *  el más alto de varios lotes, recalculado desde el coste o el punto medio de
+ *  su clase. Hoy enseñaba el más alto de los FIJADOS y callaba el lote sin stop
+ *  que el Portafolio daba por perforado (revisión 13). */
+export function notasDelStop(p: StopDePosicion): string[] {
+  const lotes = p.lotes ?? 1
+  const recalculados = p.lotes_recalculados ?? 0
+  const porClase = p.lotes_por_clase ?? 0
+  const notas: string[] = []
+  if (p.stop === null) return notas
+  const deQue = p.stop_por_clase
+    ? 'es el punto medio de su clase, no uno medido'
+    : !p.stop_fijado_al_abrir
+      ? 'no se fijó al abrir: se recalcula desde el coste, como en el Portafolio'
+      : null
+  if (lotes > 1) {
+    notas.push(`Es el más alto de los de sus ${lotes} lotes${deQue ? `, y ${deQue}` : ''}.`)
+    if (recalculados > 0 && p.stop_fijado_al_abrir) {
+      notas.push(
+        `${recalculados} de sus lotes no ${plural(recalculados, 'tiene', 'tienen')} stop fijado: el suyo se recalcula desde su coste${
+          porClase > 0 ? ` (${porClase} con el punto medio de su clase)` : ''
+        }.`,
+      )
+    }
+  } else if (deQue) {
+    notas.push(`Ese stop ${deQue}.`)
+  }
+  // Sin comprobar, ya lo dice su motivo; perforada por otro lote, también se dice.
+  const sinStop = p.lotes_sin_stop ?? 0
+  if (sinStop > 0 && p.estado !== 'sin_comprobar') {
+    notas.push(`${sinStop} de sus lotes no ${plural(sinStop, 'tiene', 'tienen')} stop ni coste con que calcularlo.`)
+  }
+  return notas
 }
 
 /** Fila de resumen: el estado del día en cifras grandes.
@@ -1020,15 +1110,23 @@ function RepasoDeStops({ repaso, mercado }: { repaso: StopsDeCartera | undefined
             Stop perforado en {perforadas.length} {plural(perforadas.length, 'posición', 'posiciones')}
           </h2>
           <ul className="mt-1 space-y-1 text-xs leading-relaxed text-red-800">
-            {perforadas.map((p) => (
-              <li key={p.symbol}>
-                {enlace(p.symbol)} cotiza a {fmtPrecio(p.precio, p.moneda)}, en o por debajo de su stop (
-                {fmtPrecio(p.stop, p.moneda)}).
-                {p.precio_estado === 'viejo' && ' Es un precio viejo: compruébalo en tu broker antes de actuar.'}
-                {p.stop_por_clase && ' Ese stop es el punto medio de su clase, no uno medido.'}
-                {!p.en_lista && ` No está en ${mercado}: la lista no la puntúa, pero su stop se mira igual.`}
-              </li>
-            ))}
+            {perforadas.map((p) => {
+              // Fail-safe: la perfora el último cierre de la lista aunque la
+              // cotización de ahora esté por encima. Se dice, con las dos cifras.
+              const cotizacion = p.precios?.find((x) => x.fuente === 'cotizacion')
+              return (
+                <li key={p.symbol}>
+                  {enlace(p.symbol)} cotiza a {fmtPrecio(p.precio, p.moneda)}
+                  <Procedencia p={p} />, en o por debajo de su stop ({fmtPrecio(p.stop, p.moneda)}).
+                  {p.precio_estado === 'viejo' && ' Es un precio viejo: compruébalo en tu broker antes de actuar.'}
+                  {p.precio_fuente === 'cierre_de_la_lista' &&
+                    cotizacion &&
+                    ` La cotización de ahora (${fmtPrecio(cotizacion.precio, p.moneda)}) está por encima: compruébalo en tu broker.`}
+                  {notasDelStop(p).map((n) => ` ${n}`)}
+                  {!p.en_lista && ` No está en ${mercado}: la lista no la puntúa, pero su stop se mira igual.`}
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}
@@ -1050,11 +1148,32 @@ function RepasoDeStops({ repaso, mercado }: { repaso: StopsDeCartera | undefined
   )
 }
 
-/** Las posiciones que este mercado no puntúa, en «Mi cartera». La pestaña
- *  contaba solo las de la lista («Mi cartera (1)» con tres abiertas) y las demás
- *  no salían en ninguna vista (revisión 12, visual). Sin decisión de la lista,
- *  solo su stop. */
-function FueraDeLaLista({ posiciones, mercado }: { posiciones: StopDePosicion[]; mercado: string }) {
+/** « (cotización de finnhub, hace 3 min)», con la fecha entera en ET al pasar
+ *  el ratón. Nada si la respuesta no lo dice (una anterior a la revisión 13). */
+function Procedencia({ p }: { p: StopDePosicion }) {
+  if (!p.precio_fuente) return null
+  const { texto, titulo } = procedenciaDelPrecio({
+    fuente: p.precio_fuente,
+    proveedor: p.precio_proveedor ?? null,
+    fecha: p.precio_fecha ?? null,
+  })
+  return <span title={titulo}> ({texto})</span>
+}
+
+/** Posiciones de las que Hoy solo sabe su stop, en «Mi cartera»: las que este
+ *  mercado no puntúa (la pestaña contaba solo las de la lista, «Mi cartera (1)»
+ *  con tres abiertas, y las demás no salían en ninguna vista; revisión 12,
+ *  visual) y las que se abrieron después de calcular la lista, que no salían en
+ *  ninguna parte (revisión 13). */
+function SoloSuStop({
+  posiciones,
+  titulo,
+  explicacion,
+}: {
+  posiciones: StopDePosicion[]
+  titulo: string
+  explicacion: string
+}) {
   if (posiciones.length === 0) return null
   const tono: Record<StopDePosicion['estado'], string> = {
     perforado: 'bg-red-100 text-red-800',
@@ -1063,10 +1182,8 @@ function FueraDeLaLista({ posiciones, mercado }: { posiciones: StopDePosicion[];
   }
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-800">Fuera de {mercado}</h3>
-      <p className="mt-1 text-xs text-slate-500">
-        La lista no las puntúa ni decide sobre ellas: de cada una, solo su stop.
-      </p>
+      <h3 className="text-sm font-semibold text-slate-800">{titulo}</h3>
+      <p className="mt-1 text-xs text-slate-500">{explicacion}</p>
       <ul className="mt-2 divide-y divide-slate-100">
         {posiciones.map((p) => (
           <li key={p.symbol} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
@@ -1074,16 +1191,47 @@ function FueraDeLaLista({ posiciones, mercado }: { posiciones: StopDePosicion[];
               {p.symbol}
             </Link>
             <span className="text-xs tabular-nums text-slate-600">
-              {fmtPrecio(p.precio, p.moneda)} · stop {fmtPrecio(p.stop, p.moneda)}
+              {fmtPrecio(p.precio, p.moneda)}
+              <Procedencia p={p} /> · stop {fmtPrecio(p.stop, p.moneda)}
             </span>
             <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${tono[p.estado]}`}>
               {etiqueta(p.estado)}
             </span>
             {p.motivo && <span className="text-xs text-slate-500">{p.motivo}</span>}
+            {notasDelStop(p).length > 0 && (
+              <span className="text-xs text-slate-500">{notasDelStop(p).join(' ')}</span>
+            )}
           </li>
         ))}
       </ul>
     </section>
+  )
+}
+
+/** La lista se calculó con otra cartera: se cachea 6 h con la de cuando se
+ *  puntuó, y una posición abierta o cerrada después, o el efectivo anotado,
+ *  dejaban sus decisiones y su tamaño en otra cartera sin decirlo; la nota del
+ *  tamaño decía «no tienes posiciones abiertas» junto a un repaso con dos
+ *  (revisión 13). Remite a «Actualizar», que la recalcula. */
+function AvisoListaDesfasada({ cambios, calculada }: { cambios: ListaDesfasada; calculada: string | undefined }) {
+  const lista = (simbolos: string[]) => simbolos.join(', ')
+  const partes = [
+    cambios.abiertas.length > 0 && `abriste ${lista(cambios.abiertas)}`,
+    cambios.cerradas.length > 0 && `cerraste ${lista(cambios.cerradas)}`,
+    cambios.cambiadas.length > 0 && `cambiaste la cantidad, el coste o el stop de ${lista(cambios.cambiadas)}`,
+    cambios.efectivo && 'cambió el efectivo anotado',
+  ].filter(Boolean)
+  return (
+    <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+      <span className="font-semibold">
+        {cambios.error
+          ? 'No se sabe si esta lista es de tu cartera de ahora. '
+          : `Esta lista se calculó${calculada ? ` ${fmtAntiguedad(calculada)}` : ''} con otra cartera. `}
+      </span>
+      {cambios.error ?? `Después ${partes.join('; ')}.`} Sus decisiones sobre tus posiciones y el
+      tamaño de las ideas son de entonces; el repaso del stop sí es de ahora. Pulsa «Actualizar» para
+      recalcularla.
+    </div>
   )
 }
 
@@ -1179,6 +1327,8 @@ export function TodayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market])
 
+  const cartera = useMemo(() => miCartera(data), [data])
+
   const rows = useMemo(() => {
     if (!data?.signals || !data.thresholds) return []
     let base = data.signals
@@ -1186,9 +1336,7 @@ export function TodayPage() {
     // comprar y qué vender, no quién puntúa alto.
     if (view === 'comprar') base = base.filter((s) => s.decision.action === 'comprar')
     else if (view === 'vigilar') base = base.filter((s) => s.decision.action === 'vigilar')
-    else if (view === 'cartera') {
-      base = base.filter((s) => s.decision.owned)
-    }
+    else if (view === 'cartera') base = cartera.filas
     if (sector !== null) base = base.filter((s) => s.context.sector_key === sector)
     const q = query.trim().toUpperCase()
     if (q) {
@@ -1198,7 +1346,7 @@ export function TodayPage() {
       )
     }
     return base
-  }, [data, view, sector, query])
+  }, [data, view, sector, query, cartera])
 
   const acciones = useMemo(() => recuentos(data), [data])
 
@@ -1280,6 +1428,10 @@ export function TodayPage() {
       )}
 
       {data?.signals && <RepasoDeStops repaso={data.cartera} mercado={data.market_name} />}
+
+      {data?.signals && data.lista_desfasada && (
+        <AvisoListaDesfasada cambios={data.lista_desfasada} calculada={data.as_of} />
+      )}
 
       {/* Con un solo mercado no hay nada que elegir y no se pinta. */}
       <BloqueDatos carga={mercados} que="los mercados">
@@ -1460,10 +1612,18 @@ export function TodayPage() {
           ) : (
           <>
           {view === 'cartera' && sector === null && (
-            <FueraDeLaLista
-              posiciones={(data.cartera?.posiciones ?? []).filter((p) => !p.en_lista)}
-              mercado={data.market_name}
-            />
+            <>
+              <SoloSuStop
+                posiciones={cartera.sinDecision}
+                titulo={`Sin decisión de la lista de ${data.market_name}`}
+                explicacion="Están en esta lista, pero se calculó antes de que las abrieras y no las decide como posiciones tuyas: de cada una, solo su stop. Pulsa «Actualizar» para recalcularla."
+              />
+              <SoloSuStop
+                posiciones={cartera.fuera}
+                titulo={`Fuera de ${data.market_name}`}
+                explicacion="La lista no las puntúa ni decide sobre ellas: de cada una, solo su stop."
+              />
+            </>
           )}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             {rows.length === 0 ? (
@@ -1513,10 +1673,14 @@ export function TodayPage() {
                     )}
                   </>
                 ) : view === 'cartera' && sector === null && acciones.repasada ? (
+                  // «Ninguna está en X» solo si es verdad: con la lista cacheada,
+                  // una abierta después sí estaba (revisión 13).
                   <p>
                     {acciones.cartera === 0
                       ? 'No tienes posiciones abiertas.'
-                      : `Ninguna de tus posiciones está en ${data.market_name}.`}
+                      : cartera.sinDecision.length > 0
+                        ? `La lista no trae decisión sobre tus posiciones de ${data.market_name}: se calculó antes de que las abrieras.`
+                        : `Ninguna de tus posiciones está en ${data.market_name}.`}
                   </p>
                 ) : (
                   <p>Nada que mostrar con este filtro.</p>

@@ -93,6 +93,7 @@
      "guardadas": 10,
      "ya_existian": 0
     },
+    "lista_desfasada": null,
     "market_description": "Los componentes del índice, por sector GICS. Todas reportan a la SEC, así que EDGAR cubre sus fundamentales gratis.",
     "market_key": "us_sp500",
     "market_name": "EE. UU. — S&P 500",
@@ -4824,6 +4825,7 @@
      "guardadas": 3,
      "ya_existian": 7
     },
+    "lista_desfasada": null,
     "market_description": "Los componentes del índice, por sector GICS. Todas reportan a la SEC, así que EDGAR cubre sus fundamentales gratis.",
     "market_key": "us_sp500",
     "market_name": "EE. UU. — S&P 500",

@@ -167,7 +167,7 @@ def test_el_stop_y_el_minigrafico_siguen_con_su_ano():
 
     service = FakeService(con_historico=(), con_largo=("AAPL",))
     assert len(_historico_cacheado(service, "AAPL")) == SESIONES_HISTORICO
-    series, sin_largo = _series_cacheadas(service, ["AAPL"])
+    series, sin_largo, _ = _series_cacheadas(service, ["AAPL"])
     assert len(series["AAPL"]) == 700 and sin_largo == []
 
 

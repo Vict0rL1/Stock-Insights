@@ -52,13 +52,8 @@ def agregar_lotes(lotes: list) -> dict | None:
     }
 
 
-def posiciones_para_decidir(session: Session, ahora: datetime | None = None) -> dict[str, dict]:
-    """{símbolo: posición agregada} de lo abierto en `ahora` (por defecto, hoy).
-
-    Antes la lista diaria hacía un dict por símbolo sobre las filas de lotes y
-    se quedaba con el último: con dos lotes, el coste y el stop del otro se
-    perdían en silencio.
-    """
+def lotes_abiertos(session: Session, ahora: datetime | None = None) -> dict[str, list[Position]]:
+    """{símbolo: sus lotes} de lo abierto en `ahora` (por defecto, hoy)."""
     filas = session.execute(
         select(Position, Instrument.symbol).join(Instrument, Position.instrument_id == Instrument.id)
     ).all()
@@ -69,11 +64,91 @@ def posiciones_para_decidir(session: Session, ahora: datetime | None = None) -> 
         cerrada = lote.closed_at is not None and (ahora is None or pit.disponible_en(lote.closed_at, ahora) is not False)
         if not cerrada:
             por_simbolo.setdefault(symbol, []).append(lote)
-    return {s: agregar_lotes(l) for s, l in por_simbolo.items()}
+    return por_simbolo
+
+
+def posiciones_para_decidir(session: Session, ahora: datetime | None = None) -> dict[str, dict]:
+    """{símbolo: posición agregada} de lo abierto en `ahora` (por defecto, hoy).
+
+    Antes la lista diaria hacía un dict por símbolo sobre las filas de lotes y
+    se quedaba con el último: con dos lotes, el coste y el stop del otro se
+    perdían en silencio.
+    """
+    return {s: agregar_lotes(l) for s, l in lotes_abiertos(session, ahora).items()}
+
+
+def huella_de_cartera(session: Session) -> dict:
+    """Con qué cartera se calcula algo que después se guarda: lo abierto ahora
+    por símbolo (cantidad, coste medio, stop y lotes, lo que lee el motor) y el
+    efectivo anotado vigente (lo que lee el tamaño).
+
+    La lista de Hoy se cachea 6 h con la cartera de cuando se puntuó (decisión
+    abierta, M3), pero el repaso de stops es de ahora: una posición abierta
+    después no salía en «Mi cartera» (su decisión no era de posición) ni en
+    «Fuera de la lista» (sí está en ella), y la nota del tamaño decía «no tienes
+    posiciones abiertas» junto a un repaso con dos (revisión 13). La lista
+    guarda esta huella y Hoy la compara con la de ahora (`cambios_de_cartera`).
+    """
+    from app.oportunidad import _ultimas_anotaciones
+
+    return {
+        "posiciones": {
+            s: {"cantidad": p["quantity"], "coste": p["cost_basis"], "stop": p["stop"], "lotes": p["lotes"]}
+            for s, p in sorted(posiciones_para_decidir(session).items())
+        },
+        "efectivo": {
+            c.moneda: {"importe": c.importe, "as_of": iso_utc(c.as_of)}
+            for c in sorted(_ultimas_anotaciones(session, datetime.now(timezone.utc)), key=lambda c: c.moneda)
+        },
+    }
+
+
+def cambios_de_cartera(antes: dict, ahora: dict) -> dict | None:
+    """Qué cambió entre dos huellas (`huella_de_cartera`), o None si nada."""
+    if antes == ahora:
+        return None
+    a, b = antes.get("posiciones") or {}, ahora.get("posiciones") or {}
+    return {
+        "abiertas": sorted(set(b) - set(a)),
+        "cerradas": sorted(set(a) - set(b)),
+        # Cantidad, coste medio, stop o número de lotes distintos: la decisión de
+        # la lista y el tamaño de sus ideas son de antes.
+        "cambiadas": sorted(s for s in set(a) & set(b) if a[s] != b[s]),
+        "efectivo": (antes.get("efectivo") or {}) != (ahora.get("efectivo") or {}),
+    }
 
 
 # Lo urgente arriba; lo que no se sabe, antes que lo que está bien.
 _ORDEN_DEL_STOP = {"perforado": 0, "sin_comprobar": 1, "por_encima": 2}
+
+# De dónde sale cada precio con que se mira un stop (`precio_fuente`).
+FUENTES_DEL_PRECIO = {"cotizacion": "la cotización", "cierre_de_la_lista": "el último cierre de la lista"}
+
+
+def _precios_para_el_stop(service, symbol: str, senal: dict | None) -> tuple[list[dict], str | None]:
+    """Los precios con que mirar el stop de `symbol`, el más reciente primero, y
+    la moneda de la cotización.
+
+    La cotización (`_cotizacion`, la misma de 60 s que usa el Portafolio) para
+    todas, y el último cierre de la lista como reserva si la empresa está en ella.
+    Con solo el de la lista, KO a 112 con el stop en 116 salía «por encima» en
+    Hoy (el cierre de la descarga masiva, 117, de hasta 12 h: 6 de caché de la
+    descarga y 6 de la lista) y perforada en el Portafolio; y en NASDAQ, donde KO
+    no está, perforada también: la misma posición cambiaba de estado según el
+    mercado elegido (revisión 13)."""
+    from app.routers.portfolio import _cotizacion
+
+    precios = []
+    cotizado, moneda, estado = _cotizacion(service, symbol)
+    if datos.precio(cotizado) is not None:
+        precios.append({"precio": datos.precio(cotizado), "fuente": "cotizacion", "estado": estado["estado"],
+                        "proveedor": estado.get("fuente"), "fecha": estado.get("publicado")})
+    bloque = (senal or {}).get("price") or {}
+    if datos.precio(bloque.get("last")) is not None:
+        precios.append({"precio": datos.precio(bloque["last"]), "fuente": "cierre_de_la_lista",
+                        "estado": bloque.get("estado") or "valido", "proveedor": bloque.get("source"),
+                        "fecha": bloque.get("as_of")})
+    return precios, moneda
 
 
 def stops_de_la_cartera(session: Session, service, senales: list[dict]) -> dict:
@@ -86,72 +161,97 @@ def stops_de_la_cartera(session: Session, service, senales: list[dict]) -> dict:
     en cada petición y no viaja en la caché de la lista: una posición abierta o
     un stop subido después de calcularla también cuentan.
 
-    De cada una: `perforado` o `por_encima` con la regla del motor
-    (`decision.stop_perforado`, en o por debajo), o `sin_comprobar` con su motivo
-    (sin precio, sin stop): no poder mirarlo no es «nada urgente». El precio es
-    el de la lista si la empresa está en ella (con el que decide el motor y que
-    enseña su fila) y, si no, su cotización. El stop, como en el motor: el más
-    protector de los fijados; sin ninguno, el que recalcula la decisión de la
-    lista o, fuera de ella, el de la cartera con la volatilidad guardada (sin
-    histórico, el punto medio de su clase, y se marca).
-    """
-    from app.analysis.decision import _stop_pct, stop_perforado
-    from app.routers.portfolio import _cotizacion, _volatilidad_de
+    El stop, el de CADA lote (`portfolio.stop_del_lote`, el mismo del
+    Portafolio): el fijado al abrir o, sin él, el recalculado desde el coste de
+    ese lote. Con el agregado de los lotes (el más alto de los fijados), un lote
+    viejo sin stop y coste 130 estaba perforado a 104 en el Portafolio y Hoy
+    decía «por encima» con el stop 70 del otro lote; y en la lista, sin
+    `levels` en su decisión, «sin stop» aunque hubiera coste (revisión 13). El
+    símbolo está perforado si lo está cualquiera de sus lotes, es decir, si lo
+    está el de stop más alto, que es el que se sirve.
 
-    posiciones = posiciones_para_decidir(session)
+    El precio (`_precios_para_el_stop`), fail-safe: `perforado` si lo perfora
+    cualquiera de los precios que haya (regla del motor, `stop_perforado`: en o
+    por debajo); `por_encima` solo con todos los lotes con stop y un precio
+    válido por encima; si no, `sin_comprobar` con su motivo (sin precio, un lote
+    sin stop, o solo un precio viejo). Un precio viejo por encima del stop daba
+    `por_encima` y la tarjeta, «nada urgente»: lo que no se puede comprobar
+    pasaba por lo que está bien (revisión 13).
+
+    Coste: una cotización por posición, de la caché de 60 s (la del Portafolio).
+    Con las fuentes caídas, la primera petición paga los reintentos (tres por
+    fuente, 3 s de espera por fuente y posición) y el fallo se recuerda un
+    minuto (`cache.RECORDAR_FALLO`): las pasadas que encadena la pantalla no
+    vuelven a llamar.
+    """
+    from app.analysis.decision import stop_perforado
+    from app.formato import GUION, fmt_antiguedad
+    from app.routers.portfolio import stop_del_lote
+
+    ahora = datetime.now(timezone.utc)
+    lotes = lotes_abiertos(session)
     por_simbolo = {s.get("symbol"): s for s in senales or []}
     monedas = dict(session.execute(
-        select(Instrument.symbol, Instrument.currency).where(Instrument.symbol.in_(list(posiciones)))
-    ).all()) if posiciones else {}
+        select(Instrument.symbol, Instrument.currency).where(Instrument.symbol.in_(list(lotes)))
+    ).all()) if lotes else {}
     filas = []
-    for symbol, posicion in posiciones.items():
+    for symbol, del_simbolo in lotes.items():
         senal = por_simbolo.get(symbol)
-        moneda = monedas.get(symbol)
-        if senal is not None:
-            cotizacion = senal.get("price") or {}
-            precio = datos.precio(cotizacion.get("last"))
-            precio_estado = cotizacion.get("estado") or "valido"
-        else:
-            precio, moneda_cotizada, estado = _cotizacion(service, symbol)
-            precio, moneda = datos.precio(precio), moneda_cotizada or moneda
-            precio_estado = estado["estado"]
-        if precio is None:
-            precio_estado = "desconocido"
-
-        stop, por_clase = datos.precio(posicion.get("stop")), False
-        decision = (senal or {}).get("decision") or {}
-        coste = datos.precio(posicion.get("cost_basis"))
-        if stop is None and decision.get("owned"):
-            stop = datos.precio((decision.get("levels") or {}).get("stop"))
-        elif stop is None and coste is not None:
-            vol = _volatilidad_de(service, symbol)
-            clase = "cripto" if symbol.endswith("-USD") else "accion"
-            stop = datos.redondear_precio(coste * (1 - _stop_pct(vol, clase) / 100))
-            por_clase = vol is None
-
-        perforado = stop_perforado(precio, stop)
+        precios, moneda_cotizada = _precios_para_el_stop(service, symbol, senal)
+        stops = [stop_del_lote(service, symbol, lote.stop, lote.cost_basis) for lote in del_simbolo]
+        con_stop = [s for s in stops if datos.precio(s["stop"]) is not None]
+        # El más protector: si un lote está perforado, el del stop más alto también.
+        mayor = max(con_stop, key=lambda s: (s["stop"], s["stop_fijado_al_abrir"])) if con_stop else None
+        perforan = [p for p in precios if mayor and stop_perforado(p["precio"], mayor["stop"])]
+        validos = [p for p in precios if p["estado"] == "valido"]
         motivo = None
-        if perforado is None:
-            motivo = (
-                "sin precio (ninguna fuente dio su cotización)" if precio is None
-                else "sin stop (ni fijado al abrir ni coste con que calcularlo)"
-            )
+        if perforan:
+            estado, elegido = "perforado", perforan[0]
+        elif not precios:
+            estado, elegido = "sin_comprobar", None
+            motivo = "sin precio (ninguna fuente dio su cotización)"
+        elif len(con_stop) < len(stops):
+            estado, elegido = "sin_comprobar", (validos or precios)[0]
+            faltan = len(stops) - len(con_stop)
+            motivo = ("sin stop" if len(stops) == 1 else f"{faltan} de sus {len(stops)} lotes sin stop") + (
+                " (ni fijado al abrir ni coste con que calcularlo)")
+        elif validos:
+            estado, elegido = "por_encima", validos[0]
+        else:
+            estado, elegido = "sin_comprobar", precios[0]
+            edad = fmt_antiguedad(elegido["fecha"], ahora)
+            motivo = (f"solo hay un precio viejo ({FUENTES_DEL_PRECIO[elegido['fuente']]}, "
+                      f"{'sin fecha' if edad == GUION else edad}): estaba por encima del stop, pero no se "
+                      "puede afirmar que lo siga")
         filas.append({
             "symbol": symbol,
             "en_lista": senal is not None,
-            "precio": precio,
-            "precio_estado": precio_estado,
-            "moneda": moneda,
+            "precio": elegido["precio"] if elegido else None,
+            "precio_estado": elegido["estado"] if elegido else "desconocido",
+            # De dónde y de cuándo es ese precio, para escribirlo junto a la cifra.
+            "precio_fuente": elegido["fuente"] if elegido else None,
+            "precio_proveedor": elegido["proveedor"] if elegido else None,
+            "precio_fecha": elegido["fecha"] if elegido else None,
+            # Todos los que se miraron, el más reciente primero: perforada por el
+            # cierre de la lista, la cotización de ahora puede estar por encima.
+            "precios": precios,
+            "moneda": moneda_cotizada or monedas.get(symbol),
             # Hacia abajo, como lo sirve el motor: es el umbral de «en o por debajo de».
-            "stop": datos.redondear_precio(stop, hacia="abajo"),
-            "stop_fijado_al_abrir": posicion.get("stop") is not None,
-            "stop_por_clase": por_clase,
-            "estado": "sin_comprobar" if perforado is None else "perforado" if perforado else "por_encima",
+            "stop": datos.redondear_precio(mayor["stop"], hacia="abajo") if mayor else None,
+            "stop_fijado_al_abrir": bool(mayor and mayor["stop_fijado_al_abrir"]),
+            "stop_por_clase": bool(mayor and mayor["stop_por_clase"]),
+            "lotes": len(stops),
+            # Lotes sin stop guardado: el suyo se recalcula desde su coste, como en
+            # el Portafolio, y sin histórico es el punto medio de su clase.
+            "lotes_recalculados": sum(1 for s in con_stop if not s["stop_fijado_al_abrir"]),
+            "lotes_por_clase": sum(1 for s in con_stop if s["stop_por_clase"]),
+            "lotes_sin_stop": len(stops) - len(con_stop),
+            "estado": estado,
             "motivo": motivo,
         })
     filas.sort(key=lambda f: (_ORDEN_DEL_STOP[f["estado"]], f["symbol"]))
     return {
-        "abiertas": len(posiciones),
+        "abiertas": len(lotes),
         "en_lista": sum(1 for f in filas if f["en_lista"]),
         "posiciones": filas,
     }

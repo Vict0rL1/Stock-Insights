@@ -10,7 +10,7 @@ import type {
   ReplayDecision,
   SaldosEfectivo,
   DcfResponse,
-  EarningsEvent,
+  CalendarioMercado,
   EtfComparison,
   EtfData,
   EtfRecommendation,
@@ -406,5 +406,5 @@ export const api = {
   marketSectors: () => fetchJson<{ sectors: SectorEntry[]; note: string }>('/api/market/sectors'),
   yieldCurve: () => fetchJson<YieldCurve>('/api/market/yield-curve'),
   macro: () => fetchJson<{ indicators: MacroIndicator[] }>('/api/market/macro'),
-  calendar: () => fetchJson<{ events: EarningsEvent[] }>('/api/market/calendar'),
+  calendar: () => fetchJson<CalendarioMercado>('/api/market/calendar'),
 }

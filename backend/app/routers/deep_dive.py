@@ -76,6 +76,20 @@ def _safe(service: MarketDataService, data_type: str, **kwargs):
         return None
 
 
+def _consultar(service: MarketDataService, data_type: str, **kwargs) -> tuple[dict | None, bool]:
+    """(respuesta, si la fuente no respondió). `_safe` junta «no lo tiene» con
+    «no respondió», y con el calendario caído la lista de catalizadores decía
+    «Resultados previstos en los próximos 120 días» sobre algo que nadie había
+    podido mirar (revisión 13). Que la fuente diga que no hay es una lista
+    vacía; que no conteste, «no se pudo comprobar»."""
+    try:
+        return service.get(data_type, **kwargs), False
+    except DataNotFoundError:
+        return None, False
+    except AllProvidersFailedError:
+        return None, True
+
+
 def _peer_signal(service: MarketDataService, symbol: str, metrics: dict) -> dict | None:
     """Puntúa la empresa contra sus pares para incluir la señal cuantitativa."""
     peers_payload = _safe(service, "peers", symbol=symbol)
@@ -147,7 +161,8 @@ def deep_dive(
     profile = _safe(service, "profile", symbol=symbol) or {"symbol": symbol}
     quote = _safe(service, "quote", symbol=symbol)
     history = _safe(service, "price_history", symbol=symbol, interval="1day", outputsize=5000)
-    filings_payload = _safe(service, "filings", symbol=symbol) or {}
+    filings_payload, filings_caidos = _consultar(service, "filings", symbol=symbol)
+    filings_payload = filings_payload or {}
 
     valuation = valuation_vs_history(
         periods,
@@ -181,13 +196,14 @@ def deep_dive(
     )
 
     today = datetime.now(timezone.utc).date()
-    calendar = _safe(
+    calendar, calendario_caido = _consultar(
         service,
         "earnings_calendar",
         start=today.isoformat(),
         end=(today + timedelta(days=VENTANA_RESULTADOS_DIAS)).isoformat(),
     )
-    earnings = [
+    # None, no []: «no se pudo consultar» no es «no hay ninguno».
+    earnings = None if calendario_caido else [
         e for e in (calendar or {}).get("events", []) if e.get("symbol") == symbol
     ]
 
@@ -200,7 +216,7 @@ def deep_dive(
         risk=risk,
         signal=signal,
         earnings=earnings,
-        filings=filings_payload.get("filings", []),
+        filings=None if filings_caidos else filings_payload.get("filings", []),
         events=[],
         dcf=_dcf_defaults(periods, quote),
     )
@@ -336,6 +352,18 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
     risks = "\n".join(
         f"- [{r['severity']}] {r['type']}: {r['evidence']}" for r in report.get("risks", [])
     )
+    # Lo que no se pudo mirar, con su nombre: la IA recibía «Ninguno relevante
+    # detectado» con la deuda/capital y la máxima caída sin calcular, y escribía
+    # un balance sin riesgos que nadie había comprobado (revisión 13). Un
+    # informe sin la lista (de antes de la revisión 12) no dice si faltó algo.
+    riesgos_sin = report.get("riesgos_sin_comprobar")
+    if riesgos_sin:
+        risks = (risks + "\n" if risks else "- Ninguno entre lo que se pudo comprobar\n") + (
+            f"- Sin comprobar por falta de datos (no es que no haya riesgo): {'; '.join(riesgos_sin)}"
+        )
+    elif not risks:
+        risks = "- Ninguno relevante detectado" if riesgos_sin is not None else (
+            "- Ninguno detectado (el informe no dice qué quedó sin comprobar)")
     # Previsto o ya presentado: la IA recibía los dos bajo «catalizadores
     # próximos» y un 10-Q del mes pasado pasaba por un catalizador por venir
     # (revisión 12, visual).
@@ -349,6 +377,13 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
         f"- {c['type']} ({cuando(c)}): {c.get('detail')}"
         for c in report.get("catalysts", [])[:6]
     )
+    # Con el calendario o los filings caídos llegaba «Ninguno identificado»: un
+    # fallo convertido en «ninguno» (revisión 13).
+    catalizadores_sin = report.get("catalysts_sin_comprobar") or []
+    if catalizadores_sin:
+        catalysts = (catalysts + "\n" if catalysts else "- Ninguno entre lo que se pudo consultar\n") + (
+            f"- No se pudo consultar (no se sabe qué traen): {'; '.join(catalizadores_sin)}"
+        )
 
     return f"""EMPRESA: {symbol} — {business.get('name') or 'sin nombre'}
 Sector: {business.get('sector') or 'desconocido'}
@@ -385,7 +420,7 @@ SEÑAL CUANTITATIVA (frente a sus pares)
 {(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_frente((report.get('quant_signal') or {}).get('score'), FRONTERAS_ETIQUETA, signo=True)}
 
 RIESGOS DETECTADOS EN LOS DATOS
-{risks or '- Ninguno relevante detectado'}
+{risks}
 
 CATALIZADORES ({report.get('catalysts_note') or 'fechas sacadas de los datos'})
 {catalysts or '- Ninguno identificado'}

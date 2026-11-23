@@ -53,6 +53,15 @@ describe('los supuestos de los escenarios', () => {
     expect(onCambiar).toHaveBeenLastCalledWith('bajista', 'discount_rate', expect.closeTo(0.085, 10))
   })
 
+  it('el crecimiento y la perpetuidad no piden el teclado decimal, que en iOS no trae «-»', () => {
+    // Revisión 13: con `inputMode="decimal"` no había forma de escribir en un
+    // iPhone un crecimiento o una perpetuidad negativos, que el backend admite.
+    const { wacc } = montar()
+    expect(screen.getByLabelText(/^Crecimiento FCF/).getAttribute('inputmode')).toBeNull()
+    expect(screen.getByLabelText(/^Perpetuidad/).getAttribute('inputmode')).toBeNull()
+    expect(wacc.getAttribute('inputmode')).toBe('decimal')
+  })
+
   it('un campo borrado o ilegible no es un 0 %: no llega a los supuestos y no deja recalcular', () => {
     const { onCambiar, wacc, recalcular } = montar()
     fireEvent.change(wacc, { target: { value: '' } })

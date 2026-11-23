@@ -3,7 +3,7 @@
  * adivinaba la causa («¿falta FINNHUB_API_KEY en .env?»). Un fallo dice lo que
  * pasó; una lista vacía dice que no hay resultados anunciados.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DashboardPage } from './DashboardPage'
@@ -47,6 +47,25 @@ describe('calendario de resultados del panel de mercado', () => {
     servir({ status: 200, json: { events: [] } })
     render(<MemoryRouter><DashboardPage /></MemoryRouter>)
     expect(await screen.findByText('Ninguna empresa anuncia resultados en los próximos 14 días.')).toBeInTheDocument()
+  })
+
+  it('un 200 con `error` es un fallo con «Reintentar», no «ninguna empresa» (revisión 13)', async () => {
+    servir({ status: 200, json: { events: null, total: null, error: 'finnhub: límite de llamadas' } })
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+    const fallo = await screen.findByText(/No se pudo cargar el calendario de resultados: finnhub: límite de llamadas/)
+    expect(within(fallo.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    expect(screen.queryByText('Ninguna empresa anuncia resultados en los próximos 14 días.')).not.toBeInTheDocument()
+  })
+
+  it('dice cuántos enseña de cuántos hay (revisión 13)', async () => {
+    const events = Array.from({ length: 120 }, (_, i) => ({
+      symbol: `S${String(i).padStart(3, '0')}`, date: '2026-11-30', hour: null, quarter: null, year: null,
+      eps_estimate: null, eps_actual: null, revenue_estimate: null, revenue_actual: null,
+    }))
+    servir({ status: 200, json: { events, total: 312, error: null } })
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+    expect(await screen.findByText('40 de 312, los más próximos.')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /^S\d{3}$/ })).toHaveLength(40)
   })
 })
 

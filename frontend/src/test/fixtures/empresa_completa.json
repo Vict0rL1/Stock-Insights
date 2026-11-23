@@ -58,6 +58,7 @@
     },
     "catalysts": [],
     "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
+    "catalysts_sin_comprobar": [],
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -1016,19 +1017,23 @@
        "guidance": null,
        "impacto_en_tesis": [
         {
+         "disparador_id": 1,
          "estado": "invalidado",
          "metrica": "operating_margin",
          "operador": "gte",
          "previo": 0.21,
          "punto": "margen operativo < 18%",
          "real": 0.11999999999999998,
+         "tesis_id": 1,
          "umbral": 0.18
         },
         {
+         "disparador_id": 2,
          "estado": "sin_resolver",
          "metrica": null,
          "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-         "punto": "recall"
+         "punto": "recall",
+         "tesis_id": 1
         }
        ],
        "sorpresa_ingresos": 0.033333
@@ -1821,8 +1826,10 @@
         "ahora": 0.11999999999999998,
         "antes": 0.21,
         "detalle": "según los resultados de 2026-Q2 (trimestre, no ejercicio)",
+        "disparador_id": 1,
         "origen": "resultados",
         "punto": "margen operativo < 18%",
+        "tesis_id": 1,
         "umbral": 0.18
        }
       ],
@@ -2595,7 +2602,7 @@
         "observaciones": 4,
         "trimestre_objetivo_fin": "2026-06-30"
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 3,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2618,7 +2625,7 @@
         "observaciones": 4,
         "trimestre_objetivo_fin": "2026-06-30"
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 4,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2641,7 +2648,7 @@
          0.4
         ]
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 5,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2664,7 +2671,7 @@
          0.21
         ]
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 6,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2704,19 +2711,23 @@
     "guidance_detalle": null,
     "impacto_en_tesis": [
      {
+      "disparador_id": 1,
       "estado": "invalidado",
       "metrica": "operating_margin",
       "operador": "gte",
       "previo": 0.21,
       "punto": "margen operativo < 18%",
       "real": 0.11999999999999998,
+      "tesis_id": 1,
       "umbral": 0.18
      },
      {
+      "disparador_id": 2,
       "estado": "sin_resolver",
       "metrica": null,
       "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-      "punto": "recall"
+      "punto": "recall",
+      "tesis_id": 1
      }
     ],
     "no_comparables": [],
@@ -2775,7 +2786,7 @@
         "valor": 306.353362
        },
        "etiqueta": "Ingresos",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "supera",
        "metrica": "revenue",
@@ -2796,7 +2807,7 @@
         "valor": 0.510589
        },
        "etiqueta": "BPA diluido",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "por_debajo",
        "metrica": "eps_diluted",
@@ -2817,7 +2828,7 @@
         "valor": 0.4
        },
        "etiqueta": "Margen bruto",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "en_linea",
        "metrica": "gross_margin",
@@ -2838,7 +2849,7 @@
         "valor": 0.21
        },
        "etiqueta": "Margen operativo",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "por_debajo",
        "metrica": "operating_margin",
@@ -6755,19 +6766,23 @@
        "guidance": null,
        "impacto_en_tesis": [
         {
+         "disparador_id": 1,
          "estado": "invalidado",
          "metrica": "operating_margin",
          "operador": "gte",
          "previo": 0.21,
          "punto": "margen operativo < 18%",
          "real": 0.11999999999999998,
+         "tesis_id": 1,
          "umbral": 0.18
         },
         {
+         "disparador_id": 2,
          "estado": "sin_resolver",
          "metrica": null,
          "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-         "punto": "recall"
+         "punto": "recall",
+         "tesis_id": 1
         }
        ],
        "sorpresa_ingresos": 0.033333

@@ -26,6 +26,7 @@ from app import datos
 from app import punto_en_el_tiempo as pit
 from app.analysis import expectativas as ev
 from app.etiquetas import etiqueta
+from app.formato import fmt_fecha
 from app.db.models import (
     TIPOS_DE_EVENTO,
     TIPOS_DE_FUENTE,
@@ -45,6 +46,18 @@ from app.registro import log
 # disparadores (crecimiento plurianual, noticias) queda «sin resolver».
 METRICAS_TESIS_TRIMESTRALES = {"gross_margin", "operating_margin", "net_margin"}
 INVERSO = {"lt": "gte", "lte": "gt", "gt": "lte", "gte": "lt"}
+
+# El método del modelo interno va en el nombre de la fuente. La v1 estimaba «el
+# siguiente trimestre al último conocido» aunque el evento fuera otro; desde la
+# revisión 12 estima el del evento (`_fin_objetivo`). Una fila v1 de otro
+# trimestre es inmutable y, con la restricción única (evento, métrica, tipo,
+# fuente), bloqueaba la corregida al recapturar: la respuesta daba el trimestre
+# nuevo y solo «ya_existian: 1», y la misma fuente quedaba con dos trimestres en
+# el evento (revisión 13). El método corregido es otra fuente: fila nueva y
+# legal, nada se actualiza. La calibración agrupa por `fuente_tipo`, así que v1
+# y v2 siguen siendo «modelo interno»; la fila v1 de otro trimestre queda fuera
+# de la lectura y de la calibración por `periodo_distinto`.
+FUENTE_MODELO_INTERNO = "app: modelo interno v2"
 
 
 class EventoConocido(Exception):
@@ -215,27 +228,54 @@ def _fin_objetivo(evento: CatalystEvent, trimestres: list[dict]) -> str | None:
     cuentan los trimestres fiscales que separan el último conocido del periodo del
     evento; sin un periodo legible, el último cierre anterior a la fecha prevista.
     Sin ninguna de las dos cosas no se sabe qué trimestre es, y no se supone."""
+    return _objetivo(evento, trimestres)[0]
+
+
+def _objetivo(evento: CatalystEvent, trimestres: list[dict]) -> tuple[str | None, str | None]:
+    """(`_fin_objetivo`, y si no lo hay, por qué). Con fecha prevista pero sin que
+    cierre otro trimestre antes, `sin_fuente` decía «sin periodo legible ni fecha
+    prevista», que era falso: la fecha estaba (revisión 13). Sin trimestres, el
+    motivo es de quien llama («no hay trimestres suficientes»)."""
     if evento.periodo_fin:
-        return evento.periodo_fin
+        return evento.periodo_fin, None
     conocido = next((q for q in trimestres if q.get("periodo") == evento.periodo), None)
     if conocido:
-        return conocido["end_date"]
+        return conocido["end_date"], None
     if not trimestres:
-        return None
+        return None, None
     ultimo = trimestres[-1]
     fin = date.fromisoformat(ultimo["end_date"])
     desde, hasta = _indice_trimestral(ultimo.get("periodo")), _indice_trimestral(evento.periodo)
     if desde is not None and hasta is not None:
-        return _mas_trimestres(fin, hasta - desde).isoformat()
+        return _mas_trimestres(fin, hasta - desde).isoformat(), None
     if evento.fecha_prevista:
         limite = date.fromisoformat(evento.fecha_prevista)
         n = 0
         while _mas_trimestres(fin, n + 1) <= limite:
             n += 1
+        if n:
+            return _mas_trimestres(fin, n).isoformat(), None
         # Con n = 0 el evento llega antes de que cierre otro trimestre: publicaría
         # uno ya conocido, y eso no se estima.
-        return _mas_trimestres(fin, n).isoformat() if n else None
-    return None
+        cual = f"{ultimo['periodo']}, que cierra el" if ultimo.get("periodo") else "el que cierra el"
+        return None, (
+            f"no se estima: la fecha prevista ({fmt_fecha(limite)}) es anterior al cierre del trimestre "
+            f"siguiente al último publicado ({cual} {fmt_fecha(fin)}), así que el evento publicaría uno ya conocido"
+        )
+    if hasta is not None:
+        return None, (
+            "no se sabe qué trimestre publica el evento (el último trimestre publicado no trae un periodo "
+            "legible con que contar hasta el del evento, y el evento no tiene fecha prevista)"
+        )
+    return None, "no se sabe qué trimestre publica el evento (sin periodo legible ni fecha prevista)"
+
+
+def _objetivo_guardado(x: Expectation) -> date | None:
+    """El cierre del trimestre que estimó una fila del modelo interno, si lo dice."""
+    try:
+        return date.fromisoformat(str((x.detalle or {}).get("trimestre_objetivo_fin"))[:10])
+    except ValueError:
+        return None
 
 
 def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime | None = None) -> dict:
@@ -305,13 +345,18 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
             sin.append("guidance: ninguna previsión verificada para este periodo en los reportes ya analizados")
 
     # 3) Modelo interno (determinista).
-    fin = _fin_objetivo(evento, trimestres)
+    fin, sin_objetivo = _objetivo(evento, trimestres)
     internas = ev.estimacion_interna(trimestres, fin) if fin else []
+    previas = [x for x in _expectativas(session, evento.id) if x.fuente_tipo == "modelo_interno"]
     for x in internas:
-        anotar({**x, "fuente": "app: modelo interno v1", "informacion_hasta": trimestres[-1].get("filed_at") if trimestres else ahora,
+        if not _anotar_modelo(x, fin, [p for p in previas if p.metrica == x["metrica"]], sin):
+            ya += 1
+            continue
+        anotar({**x, "fuente": FUENTE_MODELO_INTERNO,
+                "informacion_hasta": trimestres[-1].get("filed_at") if trimestres else ahora,
                 "detalle": {**x["detalle"], "trimestre_objetivo_fin": fin}}, "modelo_interno")
     if trimestres and fin is None:
-        sin.append("modelo interno: no se sabe qué trimestre publica el evento (sin periodo legible ni fecha prevista)")
+        sin.append(f"modelo interno: {sin_objetivo}")
     elif not internas:
         sin.append("modelo interno: no hay trimestres suficientes para estimar")
 
@@ -322,6 +367,39 @@ def capturar(session: Session, service, evento: CatalystEvent, ahora: datetime |
     session.commit()
     log("calculo").info("%s: %d expectativas capturadas para el evento %s", evento.symbol, len(registradas), evento.id)
     return {"registradas": registradas, "ya_existian": ya, "sin_fuente": sin, "trimestre_objetivo_fin": fin}
+
+
+def _anotar_modelo(x: dict, fin: str, previas: list[Expectation], sin: list[str]) -> bool:
+    """¿Se registra esta estimación del modelo interno? Una por métrica y trimestre:
+    si ya hay una del mismo trimestre (de esta versión o de la v1, que con el
+    trimestre bien elegido calculaba lo mismo), no se duplica, o el evento
+    contaría dos veces en la calibración del modelo. Si la que hay es de otro
+    trimestre, se registra aparte con `FUENTE_MODELO_INTERNO` y se dice: antes la
+    respuesta solo contaba «ya_existian: 1» (revisión 13)."""
+    objetivo = date.fromisoformat(fin)
+    nombre = etiqueta(x["metrica"])
+    otras = []
+    for p in previas:
+        guardado = _objetivo_guardado(p)
+        if guardado is None:
+            # No dice qué trimestre estimó: no se puede comprobar si es este.
+            sin.append(f"modelo interno: {nombre} ya tiene una estimación guardada («{p.fuente}») que no dice "
+                       "qué trimestre estimó; no se registra otra")
+            return False
+        if abs((guardado - objetivo).days) <= ev.MEDIO_TRIMESTRE_DIAS:
+            return False
+        otras.append((p, guardado))
+    for p, guardado in otras:
+        if p.fuente == FUENTE_MODELO_INTERNO:
+            sin.append(f"modelo interno: {nombre} ya tiene una estimación «{p.fuente}» del trimestre que cierra el "
+                       f"{fmt_fecha(guardado)}, no del que publica el evento ({fmt_fecha(objetivo)}); con la misma "
+                       "fuente no cabe otra, no se registra")
+            return False
+    for p, guardado in otras:
+        sin.append(f"modelo interno: la estimación de {nombre} guardada con «{p.fuente}» es del trimestre que cierra "
+                   f"el {fmt_fecha(guardado)}, no del que publica el evento ({fmt_fecha(objetivo)}): se conserva "
+                   f"(la lectura la deja fuera) y la de este trimestre se registra aparte, con «{FUENTE_MODELO_INTERNO}»")
+    return True
 
 
 def _reglas_de_tesis(session: Session, symbol: str, trimestres: list[dict], ahora: datetime) -> list[dict]:
@@ -482,7 +560,7 @@ def evaluar(session: Session, evento: CatalystEvent, ahora: datetime | None = No
         for tesis in session.execute(select(Thesis).where(Thesis.instrument_id == inst.id)).scalars():
             if not _sabido(tesis.created_at, ahora):
                 continue
-            disparadores += [{"id": t.id, "descripcion": t.descripcion}
+            disparadores += [{"id": t.id, "descripcion": t.descripcion, "tesis_id": tesis.id}
                              for t in session.execute(select(ThesisTrigger).where(ThesisTrigger.thesis_id == tesis.id)).scalars()
                              if _sabido(t.created_at, ahora)]
     return ev.evaluar_evento(

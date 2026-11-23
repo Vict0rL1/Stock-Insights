@@ -88,6 +88,10 @@ _PAYLOAD_KEYS = frozenset(
         "scored",
         "requested",
         "complete",
+        # Con qué cartera se calculó: sin ella no se puede decir si la lista
+        # cacheada está desfasada (revisión 13), así que lo guardado antes se
+        # recalcula una vez.
+        "huella_cartera",
     }
 )
 
@@ -1056,8 +1060,37 @@ def today(
         ) from exc
     # Fuera de `_today` y de su caché: el stop de tus posiciones se repasa en
     # cada petición, también el de las que no están en este mercado.
-    payload["cartera"] = _repaso_de_stops(session, service, payload.get("signals") or [])
-    return payload
+    # La huella se queda en la caché, no en la respuesta: la pantalla lee lo que
+    # cambió (`lista_desfasada`), no las cantidades y costes de cuando se puntuó.
+    # Una copia, no un `pop`: con una caché que guarda la referencia, quitarla
+    # aquí dejaba la lista guardada sin huella y la siguiente petición la
+    # recalculaba entera.
+    respuesta = {k: v for k, v in payload.items() if k != "huella_cartera"}
+    respuesta["cartera"] = _repaso_de_stops(session, service, payload.get("signals") or [])
+    respuesta["lista_desfasada"] = _lista_desfasada(session, payload.get("huella_cartera"))
+    return respuesta
+
+
+def _lista_desfasada(session: Session, antes: dict | None) -> dict | None:
+    """Si la lista se calculó con otra cartera, qué cambió desde entonces.
+
+    La lista se cachea 6 h con la cartera de cuando se puntuó (decisión abierta,
+    M3: aquí no se recalcula), y el repaso de stops es de ahora. Sin decirlo, una
+    posición abierta después no salía en «Mi cartera» ni en «Fuera de la lista»,
+    la pantalla afirmaba «Ninguna de tus posiciones está en EE. UU. — S&P 500» y
+    la nota del tamaño, «no tienes posiciones abiertas», junto a un repaso con
+    dos (revisión 13). None si es la misma; si no se puede comparar, se dice: no
+    saberlo no es «la misma»."""
+    from app.contexto_cartera import cambios_de_cartera, huella_de_cartera
+
+    try:
+        if antes is not None:
+            return cambios_de_cartera(antes, huella_de_cartera(session))
+    except Exception:  # noqa: BLE001 — la lista sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo comparar la cartera de la lista con la de ahora")
+    return {"abiertas": [], "cerradas": [], "cambiadas": [], "efectivo": False,
+            "error": "No se pudo comprobar si esta lista se calculó con tu cartera de ahora "
+                     "(el motivo está en el log del backend)."}
 
 
 def _repaso_de_stops(session: Session, service: MarketDataService, senales: list[dict]) -> dict:
@@ -1119,9 +1152,16 @@ def _today(
     # y el coste y el stop de los demás desaparecían. El stop que viaja es el
     # más protector de los fijados al abrir, no uno recalculado con la
     # volatilidad de hoy.
-    from app.contexto_cartera import posiciones_para_decidir
+    from app.contexto_cartera import huella_de_cartera, posiciones_para_decidir
 
     posiciones = posiciones_para_decidir(session)
+    # Con qué cartera se calcula: viaja en la caché y `today()` la compara con
+    # la de ahora (`_lista_desfasada`). Como el efectivo, no puede costar la lista.
+    try:
+        huella = huella_de_cartera(session)
+    except Exception:  # noqa: BLE001 — sin huella, Hoy dice que no puede comparar
+        log("riesgo").exception("Hoy: no se pudo tomar la huella de la cartera")
+        huella = None
     # El efectivo anotado (migración 0008) entra en los pesos de lo que ya
     # tienes, igual que en el coste de oportunidad (M3).
     efectivo = _efectivo_para_hoy(session, service)
@@ -1243,6 +1283,7 @@ def _today(
         "calibrated": calibrated,
         "momentum_source": momentum_source,
         "data_meta": universes_meta(),
+        "huella_cartera": huella,
         "note": (
             f"Puntuadas {len(ranked)} empresas de {requested} en "
             f"{sum(1 for s in sectors_meta if s['usable'])} sectores. Cada empresa "

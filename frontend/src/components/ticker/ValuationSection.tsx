@@ -170,18 +170,22 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <label className={labelCls}>
             FCF base ({moneda ? `${moneda}, ` : ''}año {defaults.fiscal_year ?? '—'})
+            {/* Sin `inputMode="decimal"`, como la deuda neta: una empresa que quema
+                caja tiene el FCF negativo y el teclado de iOS de ese modo no trae
+                «-» (revisión 13). */}
             <input
               className={inputCls}
-              inputMode="decimal"
               value={inputs.base_fcf}
               onChange={(e) => setInputs({ ...inputs, base_fcf: e.target.value })}
             />
           </label>
           <label className={labelCls}>
             Deuda neta{moneda ? ` (${moneda})` : ''}
+            {/* Sin `inputMode="decimal"`: el teclado de ese modo en iOS no trae
+                «-», y una empresa con más caja que deuda tiene la deuda neta
+                negativa; no había forma de escribirla (revisión 13). */}
             <input
               className={inputCls}
-              inputMode="decimal"
               value={inputs.net_debt}
               placeholder="desconocida: escríbela"
               onChange={(e) => setInputs({ ...inputs, net_debt: e.target.value })}
@@ -216,9 +220,12 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
               {/* Espacio duro antes del «(%)»: se quedaba solo en una línea. */}
               <label className="mb-1 block text-xs text-slate-500">
                 Crecimiento FCF&nbsp;(%/año)
+                {/* El crecimiento y la perpetuidad pueden ser negativos (un
+                    bajista que encoge): sin `inputMode="decimal"`, cuyo teclado
+                    de iOS no trae «-» (revisión 13). El WACC lo conserva: es
+                    siempre positivo. */}
                 <input
                   className={inputCls}
-                  inputMode="decimal"
                   value={inputs.scenarios[name].growth}
                   placeholder={defaults.suggested_growth_capped === null ? 'sin histórico: escríbelo' : undefined}
                   onChange={(e) => setScenario(name, 'growth', e.target.value)}
@@ -237,7 +244,6 @@ function Dcf({ symbol, defaults }: { symbol: string; defaults: ValuationDefaults
                 Crecimiento terminal&nbsp;(%)
                 <input
                   className={inputCls}
-                  inputMode="decimal"
                   value={inputs.scenarios[name].terminal}
                   onChange={(e) => setScenario(name, 'terminal', e.target.value)}
                 />

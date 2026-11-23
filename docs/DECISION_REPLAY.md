@@ -113,6 +113,22 @@ Antes no había una puntuación válida («Precio y puntuación válidos»: no c
 «Precio ≥ media de 200 sesiones + 2 %»: no se evaluaba → no cumple (92,00 frente a 96,68).
 ```
 
+Con posición y ninguna regla de venta cumplida no hay ninguna que decida (todas
+son `evaluada`) y la acción es la de por defecto, «Mantener». La explicación
+acababa entonces en «Ahora la acción sale de sus reglas:» sin nada detrás
+(revisión 13); ahora dice que no se cumple ninguna y enseña las evaluadas, con su
+resultado. Si alguna quedó «desconocido» (sin stop, sin media de 200 sesiones),
+no se escribe «no se cumple ninguna», sino que ninguna se cumple con lo que se
+pudo comprobar:
+
+```
+sin_datos → mantener
+Antes no había una puntuación válida (…) y el motor no podía decidir. Ahora decide el motor, no se cumple ninguna de sus reglas y queda la acción por defecto:
+«Puntuación ≤ -0,35»: no se evaluaba → no cumple (+0,10 frente a -0,35).
+«Precio en o bajo el stop de la posición»: no se evaluaba → no cumple (110,00 frente a 80,00).
+«Precio ≤ media de 200 sesiones − 1 %»: no se evaluaba → no cumple (110,00 frente a 99,00).
+```
+
 `cambiaria` lista, para cada acción alternativa, las condiciones con su umbral y
 la distancia actual (en puntos o en %). Sale de los mismos umbrales que deciden.
 

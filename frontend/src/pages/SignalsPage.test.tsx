@@ -103,4 +103,30 @@ describe('Señales', () => {
     const perdedora = screen.getByText('Media perdedora').nextElementSibling!
     expect(perdedora.className).toContain('text-red-600')
   })
+
+  it('el universo propio no recorta en silencio: nombra los que no caben y un repetido no ocupa sitio (revisión 13)', async () => {
+    // Un `.slice(0, 15)` dejaba fuera a los que pasaban de quince sin decirlo, y
+    // con «KO, ko» contaban dos.
+    servir({ status: 200, json: { universes: [], note: '' } })
+    const fetchBase = vi.mocked(fetch).getMockImplementation()!
+    const enviados: string[][] = []
+    vi.mocked(fetch).mockImplementation((e, init) => {
+      if (init?.method === 'POST') enviados.push((JSON.parse(String(init.body)) as { symbols: string[] }).symbols)
+      return fetchBase(e, init)
+    })
+    render(<MemoryRouter><SignalsPage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Universo propio' }))
+    const quince = Array.from({ length: 15 }, (_, i) => `S${i + 1}`)
+    // Los repetidos, al principio: con el recorte de antes ocupaban dos de los quince.
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: `S1, s1, S2, ${quince.join(', ')}, TARDE, ULTIMA` } })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Solo caben 15 a la vez: TARDE, ULTIMA quedan fuera de la puntuación y de las validaciones.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Validar reglas (comprar/vender)' }))
+    await vi.waitFor(() => expect(enviados).toHaveLength(1))
+    expect(enviados[0]).toEqual(quince)
+    // Con quince o menos, sin aviso.
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'KO, ko, PEP, MSFT' } })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
 })

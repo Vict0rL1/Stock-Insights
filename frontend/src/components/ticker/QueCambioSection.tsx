@@ -157,6 +157,71 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
   )
 }
 
+type Analisis = AnalisisEmpresaResponse['analisis']
+type Impacto = NonNullable<NonNullable<Analisis['expectativas']['ultimo']>['impacto_en_tesis']>[number]
+
+/** Un punto de invalidación cruzado, con sus dos lecturas: la de la vigilancia
+ *  (ejercicio) y la de los resultados del último trimestre. */
+interface PuntoCruzado {
+  id: number | null
+  descripcion: string
+  enEjercicio: boolean
+  /** Lo que dice la vigilancia del ejercicio; `null` si no dice nada. */
+  detalle: string | null
+  enTrimestre: boolean
+}
+
+// La descripción, para reconocer el mismo punto en las dos lecturas cuando el
+// backend no dice de qué punto sale la trimestral: las dos salen del mismo texto
+// del punto, pero una puede llegar con otras mayúsculas o espacios.
+const normalizar = (texto: string) => texto.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es')
+
+// El punto del que sale la lectura trimestral: `disparador_id`, el id del punto
+// de la tesis (el mismo que `tesis.disparadores[].id`; revisión 13).
+function idDelPunto(i: Impacto): number | null {
+  return typeof i.disparador_id === 'number' ? i.disparador_id : null
+}
+
+/** Qué lecturas trimestrales son de la tesis que se enseña y cuáles no. Con
+ *  `tesis_id`, lo dice el backend; sin él, un punto que no está entre los de esta
+ *  tesis es de otra del mismo valor (las reglas del trimestre salen de todas).
+ *  Sin la lista de puntos de la tesis no se puede saber, y cuenta como suyo,
+ *  como antes. */
+function esDeEstaTesis(i: Impacto, tesis: Analisis['tesis'] | undefined): boolean {
+  if (i.tesis_id != null && tesis?.id != null) return i.tesis_id === tesis.id
+  const suyos = tesis?.disparadores
+  if (!suyos?.length) return true
+  const id = idDelPunto(i)
+  return suyos.some((t) => (id !== null ? t.id === id : normalizar(t.descripcion) === normalizar(i.punto)))
+}
+
+/** Los puntos cruzados de la tesis, uno por punto: el mismo punto que cruza en la
+ *  vigilancia (ejercicio) y en los resultados del trimestre se contaba dos veces
+ *  («tiene 2 puntos» con uno solo), y los de otra tesis del mismo valor se
+ *  contaban como de esta (revisión 13). */
+function puntosCruzados(a: Analisis): { propios: PuntoCruzado[]; ajenos: PuntoCruzado[] } {
+  const propios: PuntoCruzado[] = (a.tesis?.disparadores ?? [])
+    .filter((t) => t.salta)
+    .map((t) => ({ id: t.id, descripcion: t.descripcion, enEjercicio: true, detalle: t.detalle, enTrimestre: false }))
+  const ajenos: PuntoCruzado[] = []
+  for (const i of a.expectativas?.ultimo?.impacto_en_tesis ?? []) {
+    if (i.estado !== 'invalidado') continue
+    const lista = esDeEstaTesis(i, a.tesis) ? propios : ajenos
+    const id = idDelPunto(i)
+    const mismo = lista.find((p) => (id !== null && p.id !== null ? p.id === id : normalizar(p.descripcion) === normalizar(i.punto)))
+    if (mismo) mismo.enTrimestre = true
+    else lista.push({ id, descripcion: i.punto, enEjercicio: false, detalle: null, enTrimestre: true })
+  }
+  return { propios, ajenos }
+}
+
+function textoDelPunto(p: PuntoCruzado, periodo: string): string {
+  const trimestre = `según los resultados de ${periodo}: trimestre, no ejercicio`
+  if (!p.enEjercicio) return `${p.descripcion} (${trimestre})`
+  const ejercicio = `${p.descripcion}${p.detalle ? ` (${p.detalle})` : ''}`
+  return p.enTrimestre ? `${ejercicio}; también ${trimestre}` : ejercicio
+}
+
 /**
  * Los puntos de la tesis que hoy están cruzados, junto a la decisión. Salían
  * solo en rojo al final del diff, debajo de nueve cambios, y el bloque de
@@ -164,26 +229,41 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
  * (revisión 12, visual). De lo que dice el análisis de ahora, no del diff: un
  * trimestre ya comparado deja de salir en el diff, y la tesis sigue rota.
  */
-function TesisInvalidada({ a }: { a: AnalisisEmpresaResponse['analisis'] }) {
+function TesisInvalidada({ a }: { a: Analisis }) {
   const ultimo = a.expectativas?.ultimo
-  const puntos = [
-    ...(a.tesis?.disparadores ?? []).filter((t) => t.salta).map((t) => `${t.descripcion}${t.detalle ? ` (${t.detalle})` : ''}`),
-    ...(ultimo?.impacto_en_tesis ?? [])
-      .filter((i) => i.estado === 'invalidado')
-      .map((i) => `${i.punto} (según los resultados de ${ultimo?.evento.periodo ?? 'el último evento'}: trimestre, no ejercicio)`),
-  ]
-  if (!puntos.length) return null
+  const periodo = ultimo?.evento.periodo ?? 'el último evento'
+  const { propios, ajenos } = puntosCruzados(a)
+  if (!propios.length && !ajenos.length) return null
   return (
     <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
-      <p className="font-semibold">
-        Tu tesis{a.tesis?.titulo ? ` «${a.tesis.titulo}»` : ''} tiene {puntos.length}{' '}
-        {plural(puntos.length, 'punto de invalidación cruzado', 'puntos de invalidación cruzados')}:
-      </p>
-      <ul className="mt-0.5 space-y-0.5">
-        {puntos.map((p, i) => (
-          <li key={i}>· {p}</li>
-        ))}
-      </ul>
+      {propios.length > 0 && (
+        <>
+          <p className="font-semibold">
+            Tu tesis{a.tesis?.titulo ? ` «${a.tesis.titulo}»` : ''} tiene {propios.length}{' '}
+            {plural(propios.length, 'punto de invalidación cruzado', 'puntos de invalidación cruzados')}:
+          </p>
+          <ul className="mt-0.5 space-y-0.5">
+            {propios.map((p, i) => (
+              <li key={i}>· {textoDelPunto(p, periodo)}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      {/* Los de otra tesis del mismo valor no se callan (un punto cruzado es un
+          aviso), pero tampoco se cuentan como de la que se enseña. */}
+      {ajenos.length > 0 && (
+        <>
+          <p className={propios.length ? 'mt-1 font-semibold' : 'font-semibold'}>
+            {ajenos.length} {plural(ajenos.length, 'punto cruzado', 'puntos cruzados')} en los resultados del trimestre, de
+            otra de tus tesis sobre este valor:
+          </p>
+          <ul className="mt-0.5 space-y-0.5">
+            {ajenos.map((p, i) => (
+              <li key={i}>· {textoDelPunto(p, periodo)}</li>
+            ))}
+          </ul>
+        </>
+      )}
       <p className="mt-1 text-[11px]">El motor de decisión no mira la tesis: esta decisión no la tiene en cuenta.</p>
     </div>
   )

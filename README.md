@@ -244,6 +244,13 @@ Notas: el endpoint de velas de Finnhub dejó de ser gratuito en 2024, por eso
 el histórico viene de Twelve Data. IEX Cloud cerró en 2024; Polygon.io ahora
 se llama Massive (no se usan).
 
+El calendario del panel de Mercado (`GET /api/market/calendar`) sirve los 120
+resultados más próximos de los 14 días y `total`, cuántos hay antes de recortar
+(la pantalla enseña 40 y dice «40 de N, los más próximos»). Si el calendario no
+responde, `events` y `total` son `null` y `error` dice por qué, y la pantalla lo
+pinta como fallo, con «Reintentar»: con `events: []` un calendario caído se leía
+«Ninguna empresa anuncia resultados en los próximos 14 días» (revisión 13).
+
 ## Cómo se minimiza el gasto de API
 
 El coste es una restricción de diseño, no una optimización posterior:
@@ -251,7 +258,7 @@ El coste es una restricción de diseño, no una optimización posterior:
 | Palanca | Detalle |
 |---|---|
 | **EDGAR primero** | Una descarga de `companyfacts` (gratis, caché 24 h) alimenta ratios, crecimiento, DCF, Altman Z y Piotroski F. **También la puntuación diaria**: los múltiplos salen del último ejercicio publicado más el precio que la descarga de momentum ya trajo, así que puntuar las 502 del índice cuesta **cero llamadas de Finnhub**. Antes iban ahí y su tier de 60/min se agotaba en los primeros 60 símbolos, dejando el resto sin puntuar y secando la cuota que necesitan noticias y calendario. |
-| **TTL por tipo de dato** | Cotización 1 min · histórico 15 min · fundamentales/filings 24 h · calendario 12 h · **pares 7 días · composición de ETFs 7 días**. |
+| **TTL por tipo de dato** | Cotización 1 min · histórico 15 min · fundamentales/filings 24 h · calendario 12 h · **pares 7 días · composición de ETFs 7 días**. Una cotización que fallan todas las fuentes (sin copia que rescatar) también se recuerda 1 min (`cache.RECORDAR_FALLO`): con las fuentes caídas, los reintentos (tres por fuente, 3 s de espera por fuente) se pagan una vez por minuto, no en cada petición. |
 | **Carga perezosa en la UI** | La vista de ticker solo pide datos de la pestaña abierta; el resto no gasta nada hasta que la abres. |
 | **LLM bajo demanda** | La interpretación de una noticia solo se genera con botón explícito, con `max_tokens` acotado, y se guarda con hash del prompt: repetirla no vuelve a llamar al API. |
 | **Screener acotado** | Evalúa el universo que le das (máx. 25 tickers) con fundamentales cacheados, en vez de fingir un barrido de mercado imposible con tiers gratuitos. |
@@ -340,7 +347,12 @@ anual y la valoración frente a su historia; los trimestres publicados después 
 el DCF precargado no entran en ella. Los riesgos hacen lo mismo con sus umbrales
 sin dato (`riesgos_sin_comprobar`), y los catalizadores dicen qué son
 (`catalysts_note`: resultados previstos a 120 días y los últimos documentos
-presentados), sin prometer un plazo. Es contexto para
+presentados), sin prometer un plazo. Si el calendario o la lista de documentos no
+responden, la lista vacía no es «ninguno»: `catalysts_sin_comprobar` nombra la
+fuente caída y la nota lo dice (una fuente que responde que no hay sigue siendo
+una lista vacía). La narrativa de la IA recibe las dos listas: sin ellas leía
+«Ninguno relevante detectado» con la deuda/capital sin calcular, y «Ninguno
+identificado» con el calendario caído (revisión 13). Es contexto para
 entender la empresa, no la decisión: quien dice comprar o vender es el motor de
 decisión de la vista **Hoy**, con sus reglas y sus niveles.
 
@@ -567,13 +579,40 @@ La lista solo decide sobre las empresas que puntúa; una posición de otro merca
 (una canadiense en `.TO`, una que no está en el S&P 500) quedaba fuera y su stop
 no lo miraba nadie: la cabecera decía «Para vender 0 · nada urgente» con un stop
 perforado. Ahora `/api/signals/today` trae `cartera` —calculado en cada petición,
-fuera de la caché de la lista— con cada posición abierta, su precio (el de la
-lista si está en ella; si no, su cotización), su stop y su estado con la regla
+fuera de la caché de la lista— con cada posición abierta y su estado con la regla
 del motor (`perforado`: en o por debajo del stop; `por_encima`; o `sin_comprobar`
-con su motivo, sin precio o sin stop). Lo perforado sale arriba en rojo y cuenta
-en «Para vender»; lo que no se pudo comprobar sale en ámbar y «nada urgente» solo
-se dice si se miró todo. «En cartera» cuenta todas las abiertas y dice cuántas
-quedan fuera de la lista; «Mi cartera» las enseña aparte, con su stop.
+con su motivo). Lo perforado sale arriba en rojo y cuenta en «Para vender»; lo que
+no se pudo comprobar sale en ámbar y «nada urgente» solo se dice si se miró todo.
+«En cartera» cuenta todas las abiertas y dice cuántas quedan fuera de la lista;
+«Mi cartera» las enseña aparte, con su stop.
+
+El repaso mira lo mismo que el Portafolio (revisión 13):
+
+- **Precio:** la cotización (caché de 1 min, la del Portafolio) de TODAS las
+  posiciones, y el último cierre de la lista solo como reserva. Antes, para las
+  de la lista, ese cierre (de hasta 12 h: 6 de la descarga y 6 de la lista): KO a
+  112 con el stop en 116 salía «por encima» en Hoy y perforada en el Portafolio.
+  Fail-safe: perforada si la perfora cualquiera de los precios que haya;
+  `por_encima` solo con un precio válido; un precio viejo por encima del stop es
+  `sin_comprobar`, con su antigüedad. Cada fila dice de dónde y de cuándo es su
+  precio (`precio_fuente`, `precio_proveedor`, `precio_fecha`; todos los mirados
+  en `precios`).
+- **Stop:** el de CADA lote, con la misma función que el Portafolio
+  (`portfolio.stop_del_lote`: el fijado al abrir o, sin él, el recalculado desde
+  el coste de ese lote). Un símbolo está perforado si lo está cualquiera de sus
+  lotes; se sirve el stop más alto y cuántos lotes lo recalculan (`lotes`,
+  `lotes_recalculados`, `lotes_por_clase`, `lotes_sin_stop`).
+- **Coste:** una cotización por posición y petición, de la caché; con las
+  fuentes caídas, el fallo se recuerda un minuto (ver «TTL por tipo de dato»).
+- **Lista desfasada:** la lista sigue cacheada 6 h con la cartera de cuando se
+  puntuó (decisión abierta, M3), pero guarda con qué cartera (`huella_cartera`:
+  posiciones abiertas y efectivo anotado; solo en la caché, no en la respuesta) y
+  Hoy sirve `lista_desfasada` con qué
+  cambió desde entonces (`abiertas`, `cerradas`, `cambiadas`, `efectivo`; o
+  `error` si no se pudo comparar; `null` si es la misma). La pantalla lo avisa y
+  remite a «Actualizar»; «Mi cartera» se construye con el repaso: las filas de
+  la lista, solo de lo abierto ahora; lo abierto después de puntuar, aparte y con
+  su stop.
 
 ### ¿Y funcionan? El backtest de reglas
 
@@ -831,16 +870,24 @@ el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
 su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
 silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
 en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
-«no perdía nada»), y el histórico sale de las mismas copias que el stop y el
+«no perdía nada»), y el tramo final sale de las mismas copias que el stop y el
 minigráfico: el de un año vigente, el mismo caducado hace menos de un día o el
 largo si se descargó hace menos de un día. El largo vive 7 días en la caché:
 servirlo antes que una copia de un año de hace horas daba el stop perforado en la
 Cartera y no en la ficha. El stop y el minigráfico se quedan con el último año; el
-estrés toma entera la más larga de esas copias, porque recortado a 252 sesiones
-la peor ventana de 12 meses (que pide más de 252) no salía nunca. Si aun así no
-llega, la nota dice con cuántas sesiones mide, entre qué fechas, y qué posiciones
-solo tienen el año guardado: el largo lo baja Cartera («Descargar histórico
-completo») y aquí vale un día.
+estrés empalma delante el largo mientras siga en la caché (`_cierres_empalmados`,
+el mismo empalme que Opciones), porque recortado a 252 sesiones la peor ventana
+de 12 meses (que pide más de 252) no salía nunca, y con el largo solo de menos de
+un día, al día siguiente de descargarlo «Peor 12 meses» desaparecía y la nota
+decía «solo hay guardado el último año» con 700 sesiones guardadas (revisión 13).
+En la costura, lo anterior se lleva a la escala de la copia reciente con una
+sesión común: el largo viene ajustado por dividendos y el año puede no estarlo, y
+un split entre las dos descargas partía la serie en una «caída» que no ocurrió.
+Una posición con el largo pero sin ninguna copia reciente queda fuera (acabaría
+hace días y cortaría a las demás), con ese motivo. Si aun así no llega, la nota
+dice con cuántas sesiones mide, entre qué fechas, y qué posiciones no tienen
+ningún largo guardado: lo baja Cartera («Descargar histórico completo») y vale
+mientras siga en la caché (7 días).
 
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
@@ -1272,7 +1319,9 @@ cuál.
   lector que la Cartera (el histórico de un año, o el largo si se descargó hace
   menos de un día; nunca una copia de días, que inflaba la prima). El histórico
   largo del estrés de cartera solo aporta lo anterior, para los resultados de
-  hace dos años. Pedirlo otra vez sería pagar dos veces por el mismo dato.
+  hace dos años, llevado a la escala de la copia reciente en la costura (el
+  mismo empalme que el estrés del Portafolio, revisión 13). Pedirlo otra vez
+  sería pagar dos veces por el mismo dato.
 
 ### Lo que no se hace
 

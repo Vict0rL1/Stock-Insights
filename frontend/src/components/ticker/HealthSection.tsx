@@ -29,18 +29,23 @@ export function HealthSection({ symbol }: { symbol: string }) {
 }
 
 /** «(1A)», y «parcial» si hay menos de un año de sesiones: el rótulo prometía
- *  un año tuviera la serie lo que tuviera (revisión 12, visual). */
+ *  un año tuviera la serie lo que tuviera (revisión 12, visual). Con un espacio
+ *  de verdad delante: con el hueco de `ml-1` el lector de pantalla y el
+ *  portapapeles leían «(1Aparcial)» (revisión 13). */
 function UnAno({ ventana }: { ventana: VentanaRiesgo }) {
   return (
     <>
       (1A
       {ventana.parcial && (
-        <span
-          className="ml-1 text-[10px] text-amber-800"
-          title={`Solo hay ${fmtNum(ventana.sesiones, 0)} ${plural(ventana.sesiones, 'sesión', 'sesiones')} de histórico; un año completo son ${fmtNum(ventana.pedidas, 0)}.`}
-        >
-          parcial
-        </span>
+        <>
+          {' '}
+          <span
+            className="text-[10px] text-amber-800"
+            title={`Solo hay ${fmtNum(ventana.sesiones, 0)} ${plural(ventana.sesiones, 'sesión', 'sesiones')} de histórico; un año completo son ${fmtNum(ventana.pedidas, 0)}.`}
+          >
+            parcial
+          </span>
+        </>
       )}
       )
     </>

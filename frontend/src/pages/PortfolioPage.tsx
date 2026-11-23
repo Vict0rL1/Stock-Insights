@@ -219,6 +219,7 @@ function DivisasPanel({ d }: { d: DivisasDeCartera }) {
   if (!d.mezcla_de_divisas && d.sin_convertir.length === 0) return null
   // También las que no se pudieron convertir: «USD + una fila CAD sin tipo» son dos.
   const divisas = new Set([...Object.keys(d.monedas), ...d.sin_convertir.flatMap((s) => (s.moneda ? [s.moneda] : []))])
+  const efectoDivisa = d.efecto_divisa_base == null ? null : fmtDinero(d.efecto_divisa_base, d.base, 0, { signo: true })
   return (
     <section className="rounded-xl border border-sky-200 bg-sky-50 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -252,12 +253,11 @@ function DivisasPanel({ d }: { d: DivisasDeCartera }) {
       {/* Lo que ha movido SOLO el tipo de cambio desde que compraste. Está
           dentro del P&L de arriba; aquí se separa porque es un riesgo distinto
           del de la acción, y uno que se suele olvidar. */}
-      {d.efecto_divisa_base != null && (
+      {efectoDivisa !== null && (
         <p className="mt-2 text-[11px] tabular-nums text-sky-900">
           Efecto divisa desde la compra:{' '}
-          <span className={d.efecto_divisa_base >= 0 ? 'text-emerald-700' : 'text-red-700'}>
-            {fmtDinero(d.efecto_divisa_base, d.base, 0, { signo: true })}
-          </span>{' '}
+          {/* Un «0 USD» en el color del párrafo, no en verde (revisión 13). */}
+          <span className={tonoLeido(efectoDivisa, 'text-emerald-700', 'text-red-700', '')}>{efectoDivisa}</span>{' '}
           <span className="text-sky-700">(incluido en el P&L)</span>
         </p>
       )}
@@ -354,15 +354,15 @@ function Recorrido({ d, conCodigo = false }: { d: HistorialDeCartera; conCodigo?
             <div className="text-[10px] uppercase tracking-wide text-slate-400">
               Rendimiento
             </div>
-            {/* Sin dato, en neutro: `?? 0` lo pintaba en verde (ítem 2.1). */}
+            {/* Sin dato, en neutro: `?? 0` lo pintaba en verde (ítem 2.1); y un
+                «+0,0 %», también (revisión 13). */}
             <div
-              className={`text-xl font-semibold tabular-nums ${
-                r.rendimiento_pct == null
-                  ? 'text-slate-500'
-                  : r.rendimiento_pct >= 0
-                    ? 'text-emerald-700'
-                    : 'text-red-700'
-              }`}
+              className={`text-xl font-semibold tabular-nums ${tonoLeido(
+                fmtPct(r.rendimiento_pct, 1, { signo: true, enPuntos: true }),
+                'text-emerald-700',
+                'text-red-700',
+                'text-slate-500',
+              )}`}
             >
               {fmtPct(r.rendimiento_pct, 1, { signo: true, enPuntos: true })}
             </div>
@@ -406,16 +406,31 @@ function Recorrido({ d, conCodigo = false }: { d: HistorialDeCartera; conCodigo?
 
 function Pnl({ value, pct, moneda = null }: { value: number | null; pct: number | null; moneda?: string | null }) {
   if (value === null) return <span className="text-slate-400">—</span>
-  const up = value >= 0
+  const importe = fmtDinero(value, moneda, 2, { signo: true })
+  const porcentaje = pct === null ? null : fmtPct(pct)
+  // Con `value >= 0`, un «0,00 USD (0,0 %)» salía en verde (revisión 13). Si el
+  // importe se escribe cero y el porcentaje no, manda el porcentaje: los dos
+  // tienen el mismo signo.
+  const delSigno = signoLeido(importe) !== 0 || porcentaje === null ? importe : porcentaje
+  const tono = tonoLeido(delSigno, 'text-emerald-600', 'text-red-600', 'text-slate-500')
   return (
     // Con `flex-wrap`, el porcentaje baja de línea si no cabe: entre el importe y
     // «(9,0 %)» no había por dónde partir, y a 390 px el porcentaje se salía de su
     // tarjeta y lo tapaba la de al lado (ítem 2.12).
-    <span className={`inline-flex flex-wrap items-baseline gap-x-1 tabular-nums font-medium ${up ? 'text-emerald-600' : 'text-red-600'}`}>
-      <span>{fmtDinero(value, moneda, 2, { signo: true })}</span>
-      {pct !== null && <span className="text-xs">({fmtPct(pct)})</span>}
+    <span className={`inline-flex flex-wrap items-baseline gap-x-1 tabular-nums font-medium ${tono}`}>
+      <span>{importe}</span>
+      {porcentaje !== null && <span className="text-xs">({porcentaje})</span>}
     </span>
   )
+}
+
+/** Verde, rojo o neutro según lo que se LEE: con `>= 0`, un «+0,00 USD» o un
+ *  «0,0 %» salían en verde en la cartera, como una ganancia, cuando Hoy y
+ *  Mercado ya seguían a `signoLeido` (revisión 13). El «—» de un dato ausente
+ *  se lee cero: en neutro. */
+function tonoLeido(escrito: string, sube: string, baja: string, neutro: string): string {
+  const signo = signoLeido(escrito)
+  return signo === 0 ? neutro : signo > 0 ? sube : baja
 }
 
 /** ¿Hay importes en más de una moneda en pantalla? `mezcla_de_divisas` solo
@@ -945,15 +960,15 @@ function WatchlistTab() {
                   {item.quote ? (
                     <span className="tabular-nums text-slate-700">
                       {fmtPrecio(item.quote.price)}
-                      {/* Sin variación, en neutro: `?? 0` la pintaba en verde (ítem 2.1). */}
+                      {/* Sin variación, en neutro: `?? 0` la pintaba en verde (ítem 2.1);
+                          y un «+0,00 %», también (revisión 13). */}
                       <span
-                        className={`ml-2 text-sm ${
-                          item.quote.change_pct == null
-                            ? 'text-slate-400'
-                            : item.quote.change_pct >= 0
-                              ? 'text-emerald-600'
-                              : 'text-red-600'
-                        }`}
+                        className={`ml-2 text-sm ${tonoLeido(
+                          fmtPct(item.quote.change_pct, 2, { signo: true, enPuntos: true }),
+                          'text-emerald-600',
+                          'text-red-600',
+                          'text-slate-400',
+                        )}`}
                       >
                         {fmtPct(item.quote.change_pct, 2, { signo: true, enPuntos: true })}
                       </span>

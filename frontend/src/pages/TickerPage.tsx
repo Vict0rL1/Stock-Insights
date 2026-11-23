@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { HistoryRange } from '../api/types'
+import type { HistoryRange, Quote } from '../api/types'
 import { FundamentalsGrid } from '../components/FundamentalsGrid'
 import { CompanyLogo } from '../components/CompanyLogo'
 import { FranjaDesplazable } from '../components/MarcoTabla'
@@ -17,7 +17,7 @@ import { QueCambioSection } from '../components/ticker/QueCambioSection'
 import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { CalidadSection } from '../components/ticker/CalidadSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
-import { decimalesPrecio, fmtCompacto, fmtNum, fmtPct, fmtPrecio } from '../lib/formato'
+import { decimalesPrecio, fmtCompacto, fmtNum, fmtPct, fmtPrecio, signoLeido } from '../lib/formato'
 // Un 404 del backend es «ninguna fuente lo tiene» (`DataNotFoundError`), no un
 // fallo: se resuelve a `null` y la pantalla lo dice como ausencia. Cualquier
 // otro error sigue siendo un error, con su motivo y «Reintentar» (ítem 2.1).
@@ -59,6 +59,25 @@ function lastNonNull(values: (number | null)[]): number | null {
     if (values[i] !== null) return values[i]
   }
   return null
+}
+
+/** El cambio del día como se escribe en la cabecera, y su color de lo escrito.
+ *  Con `change >= 0`, un «0,00 (0,00 %)» salía en verde, como una subida; Hoy y
+ *  Mercado ya seguían a `signoLeido` (revisión 13). Un cambio desconocido («—»)
+ *  tampoco es verde. Si el cambio se escribe cero y el porcentaje no (o al
+ *  revés), manda el que no es cero: los dos tienen siempre el mismo signo. */
+function cambioDelDia(q: Quote) {
+  // Con los decimales del PRECIO, no los del propio cambio: una acción de 0,003
+  // que sube 0,0004 salía «+0,00» (revisión 5), y con los suyos el ruido de
+  // float32 de Yahoo salía «+0,06999» sobre 172,87 (revisión 6).
+  const cambio = fmtNum(q.change, q.price != null ? decimalesPrecio(q.price) : 2, {
+    signo: true,
+    ceros: q.price == null || decimalesPrecio(q.price) === 2,
+  })
+  const pct = fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })
+  const delCambio = signoLeido(cambio)
+  const signo = delCambio !== 0 ? delCambio : signoLeido(pct)
+  return { cambio, pct, tono: signo === 0 ? 'text-slate-500' : signo > 0 ? 'text-emerald-600' : 'text-red-600' }
 }
 
 export function TickerPage() {
@@ -129,13 +148,6 @@ export function TickerPage() {
   const profile = perfil.estado === 'listo' ? perfil.datos : null
   const history = historico.estado === 'listo' ? historico.datos : null
   const rsi = history ? lastNonNull(history.indicators.rsi14) : null
-  // Un cambio desconocido no es verde: `(change ?? 0) >= 0` lo pintaba como subida.
-  const colorCambio =
-    quote?.change === null || quote?.change === undefined
-      ? 'text-slate-500'
-      : quote.change >= 0
-        ? 'text-emerald-600'
-        : 'text-red-600'
   const cap = profile?.market_cap ?? null
 
   return (
@@ -198,8 +210,10 @@ export function TickerPage() {
                     vacio={(q) => q === null}
                     mensajeVacio={`Precio no disponible: ninguna fuente configurada tiene cotización de ${symbol}.`}
                   >
-                    {(q) =>
-                      q && (
+                    {(q) => {
+                      if (!q) return null
+                      const c = cambioDelDia(q)
+                      return (
                         <>
                           <span className="text-3xl font-semibold tabular-nums text-slate-900">
                             {fmtPrecio(q.price)}
@@ -207,16 +221,12 @@ export function TickerPage() {
                               {q.currency ?? profile?.currency ?? ''}
                             </span>
                           </span>
-                          <span className={`text-lg font-medium tabular-nums ${colorCambio}`}>
-                            {/* Con los decimales del PRECIO, no los del propio cambio: una
-                                acción de 0,003 que sube 0,0004 salía «+0,00» (revisión 5), y
-                                con los suyos el ruido de float32 de Yahoo salía «+0,06999»
-                                sobre 172,87 (revisión 6). */}
-                            {fmtNum(q.change, q.price != null ? decimalesPrecio(q.price) : 2, { signo: true, ceros: q.price == null || decimalesPrecio(q.price) === 2 })} ({fmtPct(q.change_pct, 2, { signo: true, enPuntos: true })})
+                          <span className={`text-lg font-medium tabular-nums ${c.tono}`}>
+                            {c.cambio} ({c.pct})
                           </span>
                         </>
                       )
-                    }
+                    }}
                   </BloqueDatos>
                 </div>
                 </div>
@@ -237,18 +247,21 @@ export function TickerPage() {
           </header>
 
           {hayEmpresa && (
-            // Por debajo de `md`, una sola fila que se desplaza: partidas, las
+            // Por debajo de `xl`, una sola fila que se desplaza: partidas, las
             // once pestañas ocupaban cinco filas (unos 200 px) antes del
-            // contenido a 390 px (revisión 12, visual). En escritorio se parten
-            // como antes y la pestaña activa pisa la raya (`md:-mb-px`); en la
-            // franja no, que el píxel de más la haría desplazarse en vertical.
+            // contenido a 390 px (revisión 12, visual). El corte estaba en `md`,
+            // pero ahí aparece la barra lateral y la zona se estrecha: a 768 px
+            // volvían a ser cuatro filas (160 px) y a 820, tres (revisión 13).
+            // Desde `xl` caben en dos, como antes, y la pestaña activa pisa la
+            // raya (`xl:-mb-px`); en la franja no, que el píxel de más la haría
+            // desplazarse en vertical.
             <nav aria-label="Secciones de la ficha" className="border-b border-slate-200">
-              <FranjaDesplazable className="flex gap-1 md:flex-wrap md:overflow-visible">
+              <FranjaDesplazable className="flex gap-1 xl:flex-wrap xl:overflow-visible">
                 {TABS.map(({ id, label }) => (
                   <button
                     key={id}
                     onClick={() => setTab(id)}
-                    className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm md:-mb-px ${
+                    className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm xl:-mb-px ${
                       tab === id
                         ? 'border-slate-900 font-medium text-slate-900'
                         : 'border-transparent text-slate-500 hover:text-slate-700'

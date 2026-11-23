@@ -182,3 +182,39 @@ describe('Tesis (revisión del 2.1)', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('Tesis (revisión 13)', () => {
+  it('el movimiento sigue al signo que se lee: el «—» de un dato ausente y un «0,0 %» no son verdes', async () => {
+    // Con `(price_change_pct ?? 0) >= 0`, un precio que faltaba salía «—» en
+    // verde, como una subida, y un 0,04 % escrito «0,0 %», también.
+    const escenario = (scenario_id: number, symbol: string, price_change_pct: number | null) => ({
+      id: scenario_id, scenario_id, thesis_id: 3, symbol, kind: 'base' as const, assumptions: {}, value_low: null,
+      value_mid: null, value_high: null, price_at_creation: 60, created_at: '2026-01-05T15:00:00+00:00', days_elapsed: 270,
+      direction: null, outcome: null, price_change_pct, implied_upside_pct: null, reason: null, current_price: 61,
+    })
+    servir({
+      '/api/theses': { status: 200, json: { theses: [] } },
+      '/api/theses/track-record': {
+        status: 200,
+        json: {
+          ...REGISTRO,
+          scenarios: [escenario(1, 'SINDATO', null), escenario(2, 'CERO', 0.0004), escenario(3, 'SUBE', 0.05), escenario(4, 'BAJA', -0.05)],
+        },
+      },
+    })
+    pintar()
+    const movimiento = async (symbol: string) => {
+      const fila = (await screen.findByRole('link', { name: symbol })).closest('tr')!
+      const celda = fila.querySelectorAll('td')[6]
+      return { texto: celda.textContent, clases: celda.className.split(/\s+/) }
+    }
+    const sinDato = await movimiento('SINDATO')
+    expect(sinDato.texto).toBe('—')
+    expect(sinDato.clases).not.toContain('text-emerald-600')
+    const cero = await movimiento('CERO')
+    expect(cero.texto).toBe('0,0 %')
+    expect(cero.clases).not.toContain('text-emerald-600')
+    expect((await movimiento('SUBE')).clases).toContain('text-emerald-600')
+    expect((await movimiento('BAJA')).clases).toContain('text-red-600')
+  })
+})

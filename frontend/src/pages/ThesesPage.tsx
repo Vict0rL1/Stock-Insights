@@ -4,12 +4,16 @@ import { api, ApiError } from '../api/client'
 import { BloqueDatos } from '../components/EstadoDato'
 import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio } from '../lib/formato'
+import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio, signoLeido } from '../lib/formato'
 import { leerNumero } from '../lib/entrada'
 import { mensajeDeError, useDato } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
 
 const ESCENARIOS = ['bear', 'base', 'bull'] as const
+
+/** El color del cambio de precio desde el escenario, según el signo que se lee
+ *  (`signoLeido`): un cero o un «—» en neutro. */
+const TONO_CAMBIO = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' } as const
 
 /** Un 404 al borrar es que ya no existía (otro clic, otra pestaña): no es un
  *  fallo que enseñar (segunda revisión del 2.1). */
@@ -113,12 +117,11 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
                   <td className="px-2 py-1.5 tabular-nums">
                     {fmtPrecio(s.current_price)}
                   </td>
-                  <td
-                    className={`px-2 py-1.5 tabular-nums ${
-                      (s.price_change_pct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
-                    }`}
-                  >
-                    {s.price_change_pct !== null ? fmtPct(s.price_change_pct) : '—'}
+                  {/* Del signo que se lee: con `(x ?? 0) >= 0`, el «—» de un precio
+                      que falta y un «0,0 %» salían en verde, como una subida
+                      (revisión 13). */}
+                  <td className={`px-2 py-1.5 tabular-nums ${TONO_CAMBIO[signoLeido(fmtPct(s.price_change_pct))]}`}>
+                    {fmtPct(s.price_change_pct)}
                   </td>
                   <td className="px-2 py-1.5">
                     <OutcomeChip scenario={s} />

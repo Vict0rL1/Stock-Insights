@@ -233,7 +233,8 @@ con un test por punto que falla sin el arreglo:
 **Sigue abierto, para Victor** (M3): Hoy se cachea 6 h con la cartera y el efectivo de cuando se
 puntuó. Invalidar la caché al anotar efectivo dejaba la ficha sin puntuación (la toma de esa lista) y
 recalcular el tamaño al servirla contradice lo congelado. ¿Recalcular y congelar de nuevo al servir,
-o basta con «Actualizar»?
+o basta con «Actualizar»? (Revisión 13: sin tocar la caché, la lista guarda con qué cartera se calculó
+y Hoy dice qué cambió desde entonces, `lista_desfasada`, y remite a «Actualizar».)
 
 **Revisión independiente del 2.1** (`d05312c`, 3 bloques revisados y cada hallazgo verificado por
 otro agente; 16 confirmados o matizados). Arreglados en `c9eea22` y `d238798`:
@@ -843,7 +844,14 @@ cada uno en su worktree, con tests que fallan sin el arreglo; golden idéntico.
   servido como `cartera` en `/api/signals/today`), con un panel rojo y «Para vender» que las cuenta; sin
   precio dice «sin comprobar», nunca «nada urgente». Una sola regla (`decision.stop_perforado`). El
   Portafolio tiene columna Stop (`positions[].stop_perforado`) y el riesgo abierto nombra la posición.
-  Los recuentos de Hoy cuadran con la cartera.
+  Los recuentos de Hoy cuentan todas las abiertas. *Corregido en la revisión 13:* aquí decía que «cuadran
+  con la cartera», y no era cierto: el repaso usaba el último cierre de la lista y no la cotización (KO
+  a 112 con stop 116: perforada en el Portafolio, «por encima» en Hoy), daba `por_encima` con un precio
+  viejo, tomaba el stop agregado de los lotes y no el de cada uno, y la lista cacheada con otra cartera
+  dejaba fuera de «Mi cartera» lo abierto después de puntuar. Ahora el stop de cada lote es
+  `portfolio.stop_del_lote` (el del Portafolio), el precio es la cotización con el cierre de la lista
+  de reserva (fail-safe), un precio viejo por encima del stop es «sin comprobar», la cotización fallida
+  se recuerda un minuto (`cache.RECORDAR_FALLO`) y Hoy sirve `lista_desfasada` (golden idéntico).
 - **Pantalla:** las tablas con desplazamiento lo indican (`MarcoTabla`), las pestañas de la ficha caben
   en una fila en móvil, al navegar se vuelve arriba, el gráfico ya no se queda con la rueda; el Markdown
   de la IA se pinta (`MarkdownIA`, sin HTML del modelo) y sus botones se apagan con la IA apagada; los
@@ -869,6 +877,46 @@ cada uno en su worktree, con tests que fallan sin el arreglo; golden idéntico.
   «más pegadas / más sueltas», colores repetidos en la leyenda del gráfico, rotulación de ETFs
   (solapamiento, AUM/Patrimonio) y textos internos como «versión de los umbrales d252a79».
 
+### Decimotercera revisión (sobre `86dbd6a`, 21–23 nov)
+
+Cuatro revisores sobre el commit de la revisión visual (stop y Hoy, backend, pantallas, costuras entre
+backend y frontend); cada hallazgo verificado antes de arreglarlo. ~25 hallazgos, 16 distintos, todos
+arreglados en tres worktrees con un test que falla sin el arreglo; golden idéntico (11 «igual»).
+
+- **El repaso de stops de Hoy, igual que el Portafolio.** Ver la nota «Corregido en la revisión 13» de
+  la duodécima: cotización con el cierre de la lista de reserva (perforado si cualquiera lo perfora),
+  stop de cada lote (`portfolio.stop_del_lote`, extraído del Portafolio), precio viejo por encima del
+  stop = «sin comprobar», fuente y antigüedad del precio en pantalla, fallo total de cotización
+  recordado un minuto (`cache.RECORDAR_FALLO`; con las fuentes caídas eran 27 s por petición) y
+  `lista_desfasada` con lo que cambió en la cartera desde que se puntuó la lista (la huella se queda en
+  la caché, no viaja en la respuesta).
+- **Estrés y opciones:** con el histórico largo vigente y la copia de un año más reciente, se empalman
+  (`_cierres_empalmados`, reescalado en la costura) en vez de quedarse con uno; el motivo de «sin
+  histórico» viaja por posición.
+- **Informe a fondo:** el prompt de la IA recibe los umbrales sin comprobar; con el calendario o la SEC
+  caídos, la lista de catalizadores dice qué fuente no respondió (`catalysts_sin_comprobar`) en vez de
+  «Ninguno identificado».
+- **Expectativas:** el modelo interno corregido en la revisión 12 es otra fuente
+  (`app: modelo interno v2`): una fila v1 de otro trimestre es inmutable y bloqueaba la nueva. Una por
+  métrica y trimestre (±45 días), y cada estimación que no se registra dice por qué; con fecha prevista
+  pero sin trimestre que publicar, el motivo ya no dice «sin fecha prevista».
+- **Mercado:** el calendario caído es `events: null` con su `error` (antes, una lista vacía = «no hay
+  resultados»); la pantalla lo dice con «Reintentar» y cuenta «40 de N».
+- **Qué cambió:** «Sin datos → Mantener» explica la acción por defecto con las reglas evaluadas; cada
+  punto de tesis lleva `tesis_id` y `disparador_id`, y la pantalla agrupa el mismo punto que llegaba por
+  el ejercicio y por el trimestre (y separa los de otra tesis).
+- **Pantallas:** los campos del DCF que admiten negativos (FCF base, deuda neta, crecimientos) sin
+  `inputMode="decimal"`, cuyo teclado de iOS no trae «-»; las pestañas de la ficha en una fila desde
+  `xl`; el cambio del día de la cabecera con `signoLeido`; ceros neutros en Portafolio, Tesis y
+  Vigilancia (y sin `?? 0` en Tesis); «(1A parcial)» sin partirse; Markdown de la IA (encabezado vacío,
+  código, lista numerada interrumpida); Señales avisa de los símbolos que descarta por encima de 15.
+
+**Pendiente de Victor (revisión 13):** lo de la revisión 12 sigue abierto (golden `tesis`/`analisis`
+y `dcf_ficha`, reglas de la postura del informe, recortes del tamaño estructurados) y M3, que esta
+revisión no cambia: la lista sigue cacheada 6 h, ahora diciendo qué cambió. Bajas sin tocar: el caso
+de `_fin_objetivo` con un trimestre sin publicar entre el último conocido y el del evento, y que
+«Atrás» no restaura el desplazamiento.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -890,7 +938,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16). Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de

@@ -141,8 +141,10 @@ describe('salud y riesgo de la ficha', () => {
       },
     })
     const { container } = render(<HealthSection symbol="ACME" />)
-    expect((await screen.findByText(/^Máx\. drawdown/)).textContent).toBe('Máx. drawdown (1Aparcial)')
-    expect(screen.getByText(/^Beta vs\. SPY/).textContent).toBe('Beta vs. SPY (1Aparcial)')
+    // Con un espacio de verdad: con el hueco de `ml-1` se leía «(1Aparcial)» al
+    // copiar y con lector de pantalla (revisión 13).
+    expect((await screen.findByText(/^Máx\. drawdown/)).textContent).toBe('Máx. drawdown (1A parcial)')
+    expect(screen.getByText(/^Beta vs\. SPY/).textContent).toBe('Beta vs. SPY (1A parcial)')
     expect(container.textContent).toContain(
       'Ventana: 180 sesiones diarias, del 26 dic 2025 al 11 sept 2026 · parcial: un año completo son 252.',
     )
