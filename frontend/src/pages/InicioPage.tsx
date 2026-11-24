@@ -2,7 +2,9 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CalendarioMercado, IndexEntry, Portfolio, PortfolioPosition, PriceAlert, SectorEntry, Shortlist } from '../api/types'
+import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
+import { avisoDe, tamanoDeLaLista } from '../lib/avisos'
 import { fmtDinero, fmtFecha, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
 import { RUTAS, rutaCartera, rutaEmpresa, rutaExplorar } from '../lib/rutas'
 import { listaDeSimbolos } from '../lib/simbolos'
@@ -335,12 +337,16 @@ function Mercado({ indices, sectores }: { indices: CargaConReintento<IndexEntry[
 
 type Idea = Shortlist['ideas'][number]
 
-function TarjetaIdea({ idea }: { idea: Idea }) {
-  const n = idea.decision.levels
+/** Una idea de la lista corta con el mismo aviso que en Explorar
+ *  (`AvisoDeAccion`): «Comprar» con sus precios y su tamaño, o «Sin sitio»
+ *  cuando la cartera no deja tamaño. Antes decía «Comprar» aunque el tamaño
+ *  fuera 0 (petición del 24 nov: alertas de compra y venta más claras). */
+function TarjetaIdea({ idea, shortlist }: { idea: Idea; shortlist: Shortlist }) {
   const variacion = idea.price ? fmtPct(idea.price.change_pct, 2, { signo: true, enPuntos: true }) : ''
   const tono = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' }[signoLeido(variacion)]
+  const aviso = avisoDe({ decision: idea.decision, tamano: tamanoDeLaLista(idea.symbol, shortlist) })
   return (
-    <li className="flex flex-col gap-2.5 rounded-xl bg-slate-100 p-4">
+    <li className="flex flex-col gap-3 rounded-xl bg-slate-100 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold text-slate-900">
@@ -348,31 +354,15 @@ function TarjetaIdea({ idea }: { idea: Idea }) {
           </div>
           <div className="text-xs text-slate-400">{idea.context.sector_name}</div>
         </div>
-        <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
-          {idea.decision.label}
-        </span>
+        {idea.price && (
+          <div className="shrink-0 text-right">
+            <div className="font-semibold tabular-nums text-slate-900">{fmtPrecio(idea.price.last)}</div>
+            <div className={`text-xs tabular-nums ${tono}`}>{variacion}</div>
+          </div>
+        )}
       </div>
-      {idea.price && (
-        <div className="flex items-baseline gap-2">
-          <span className="text-xl font-semibold tabular-nums text-slate-900">{fmtPrecio(idea.price.last)}</span>
-          <span className={`text-sm tabular-nums ${tono}`}>{variacion}</span>
-        </div>
-      )}
+      <AvisoDeAccion aviso={aviso} />
       {idea.conviction.resumen && <p className="text-sm leading-snug text-slate-700">{idea.conviction.resumen}</p>}
-      {n && n.entrada_desde !== null && n.entrada_hasta !== null && (
-        <dl className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <dt className="text-slate-400">Comprar entre</dt>
-            <dd className="font-semibold tabular-nums text-slate-900">
-              {fmtPrecio(n.entrada_desde)}–{fmtPrecio(n.entrada_hasta)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-400">Vender si baja a</dt>
-            <dd className="font-semibold tabular-nums text-red-600">{fmtPrecio(n.stop)}</dd>
-          </div>
-        </dl>
-      )}
       <Link to={rutaEmpresa(idea.symbol)} className="mt-auto text-sm font-semibold text-sky-700 hover:underline">
         Ver por qué →
       </Link>
@@ -404,7 +394,7 @@ function IdeasAcciones() {
       ) : (
         <ul className="grid gap-3 lg:grid-cols-3">
           {ideas.map((i) => (
-            <TarjetaIdea key={i.symbol} idea={i} />
+            <TarjetaIdea key={i.symbol} idea={i} shortlist={d.shortlist} />
           ))}
         </ul>
       )}
