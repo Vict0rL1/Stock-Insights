@@ -169,13 +169,13 @@ cuenta los mismos avisos que el panel, por construcción.
 
 | Pieza | Commit | Notas |
 |---|---|---|
-| Menú, rutas, redirecciones, Inicio, Explorar, Avanzado | `d4779c6`, `93bdc88`, `0705045` | Rutas en `lib/rutas.ts`; las viejas redirigen con su consulta |
+| Menú, rutas, redirecciones, Inicio, Explorar, Avanzado | `d4779c6`, `93bdc88`, `0705045`, `c837d14` | Rutas en `lib/rutas.ts`; las viejas redirigen con su consulta |
 | Avisos de compra y venta | `5e1e03a` | En Explorar e Inicio |
 | Carga sin bloqueo | `2b49c66` | `vencida=aceptar`, `useListaDiaria`, `ProgresoAnalisis`; el presupuesto de descargas cuenta también EDGAR |
 | Mi cartera (3.1, 3.2) | `10ac2d2` | Posiciones · Riesgo · Tesis y vigilancia; se borran las cuatro páginas viejas |
 | Un solo DCF (3.3) | `c5a9806` | Comparación de supuestos en el README, «Un solo DCF» |
 | Pregúntale a la IA | `da31da5` | `POST /api/ia/preguntar` y `/coste` |
-| Ficha en cuatro pestañas | (pendiente de integrar) | |
+| Ficha en cuatro pestañas | `0fe65c2` | Pestañas viejas → nuevas en `lib/pestanasFicha.ts`; «Qué dice la app» con el mismo aviso que Inicio |
 
 Diferencia con el plan: Inicio no tiene «las 3 mejores ideas en ETFs» porque la app no tiene un
 universo de ETFs que puntuar; la pestaña ETFs explica qué es un ETF y lleva al comparador con los

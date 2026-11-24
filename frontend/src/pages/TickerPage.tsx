@@ -290,6 +290,9 @@ export function TickerPage() {
 
   return (
     <div className="space-y-4">
+      {/* Solo sin empresa elegida: con una abierta, la búsqueda de arriba (la de
+          todas las pantallas) ya está justo encima y eran dos cajas seguidas. */}
+      {!routeSymbol && (
       <form onSubmit={onSubmit} className="flex gap-2">
         <input
           value={input}
@@ -305,6 +308,7 @@ export function TickerPage() {
           Analizar
         </button>
       </form>
+      )}
 
       {symbol && noEncontrado && (
         <>

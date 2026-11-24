@@ -56,12 +56,12 @@ repositorio.
 - [ ] **2.13** Accesibilidad (axe-core, foco, aria-label, color no único) — estado: pendiente · commit: — · nota: —
 - [ ] **2.14** Rendimiento medido de Hoy — estado: pendiente · commit: — · nota: —
 
-## Fase 3 — Estructura (plan primero, `docs/PLAN_NAVEGACION.md`, esperar aprobación)
+## Fase 3 — Estructura (plan aprobado el 24 nov, `docs/PLAN_NAVEGACION.md`; hecha)
 
-- [ ] **3.1** Fusionar Portafolio y Cartera — estado: pendiente · commit: — · nota: —
-- [ ] **3.2** Fusionar Tesis y Vigilancia — estado: pendiente · commit: — · nota: —
-- [x] **3.3** Un solo DCF — estado: hecho (parche, pendiente de integrar) · commit: — · nota: se queda el del módulo (`POST /api/valuation/{s}`), con su dominio en `app/analysis/valuation.py` (`cimientos`, `escenarios_por_defecto`, `escenarios_con_rango`, `rango_global`). La pestaña Valoración de la ficha es un resumen de esa respuesta (`ResumenDcf`: rango global y un rango por escenario, «si va mal», «escenario base», «si va bien») con «Abrir el análisis completo» → `/valoracion?simbolo=…` (`rutaValoracion`); el informe completo calcula su `dcf` con las mismas funciones (el tercer DCF de M5) y lo pinta con el mismo componente. Portado al módulo: «Tus entradas» (deuda neta, FCF, acciones, años; se abren solas ante un 422) y el marcador `DeudaParcial`; el informe ya lee la deuda parcial. Arreglados M4 (por acción o nada) y la inversión bajista/alcista con crecimiento negativo (M5). `/api/stocks/{s}/valuation/{defaults,dcf}` quedan como alias obsoletos una versión (OpenAPI `deprecated`, cabeceras `Deprecation` y `Link`). Comparación de supuestos en el README, «Un solo DCF». Golden: 11 igual (`dcf_ficha` y `dcf_modulo` incluidos); `umbrales.py` apunta a las constantes movidas.
-- [ ] **3.4** Jerarquía de rankings («Investigar») — estado: pendiente · commit: — · nota: —
+- [x] **3.1** Fusionar Portafolio y Cartera — estado: hecho · commit: `10ac2d2` · nota: «Mi cartera» con sub-pestañas Posiciones · Riesgo · Tesis y vigilancia (`?pestana=`); una sola exposición por sector y una sola concentración; las páginas viejas se borran y sus rutas redirigen.
+- [x] **3.2** Fusionar Tesis y Vigilancia — estado: hecho · commit: `10ac2d2` · nota: sub-pestaña «Tesis y vigilancia» de Mi cartera (avisos, mis tesis, puntos de vigilancia, diario y lista de seguimiento). Pendiente: una tarjeta por tesis en vez de dos listas.
+- [x] **3.3** Un solo DCF — estado: hecho · commit: `c5a9806` · nota: se queda el del módulo (`POST /api/valuation/{s}`), con su dominio en `app/analysis/valuation.py` (`cimientos`, `escenarios_por_defecto`, `escenarios_con_rango`, `rango_global`). La pestaña Valoración de la ficha es un resumen de esa respuesta (`ResumenDcf`: rango global y un rango por escenario, «si va mal», «escenario base», «si va bien») con «Abrir el análisis completo» → `/valoracion?simbolo=…` (`rutaValoracion`); el informe completo calcula su `dcf` con las mismas funciones (el tercer DCF de M5) y lo pinta con el mismo componente. Portado al módulo: «Tus entradas» (deuda neta, FCF, acciones, años; se abren solas ante un 422) y el marcador `DeudaParcial`; el informe ya lee la deuda parcial. Arreglados M4 (por acción o nada) y la inversión bajista/alcista con crecimiento negativo (M5). `/api/stocks/{s}/valuation/{defaults,dcf}` quedan como alias obsoletos una versión (OpenAPI `deprecated`, cabeceras `Deprecation` y `Link`). Comparación de supuestos en el README, «Un solo DCF». Golden: 11 igual (`dcf_ficha` y `dcf_modulo` incluidos); `umbrales.py` apunta a las constantes movidas.
+- [x] **3.4** Jerarquía de rankings — estado: hecho · commit: `d4779c6` · nota: la decisión de compra sale de Explorar › Ideas de la app; Screener y Multifactor son «Con mis propios filtros» con el aviso «exploran; no deciden», y Señales vive en Herramientas avanzadas, que dice lo mismo. Sin cambios en la puntuación.
 
 ## Fase 4 — Salud del código (P3)
 
@@ -917,6 +917,41 @@ revisión no cambia: la lista sigue cacheada 6 h, ahora diciendo qué cambió. B
 de `_fin_objetivo` con un trimestre sin publicar entre el último conocido y el del evento, y que
 «Atrás» no restaura el desplazamiento.
 
+### Rediseño de la navegación (24 nov, `d4779c6`…`0fe65c2`)
+
+Victor: «para un usuario inexperto le costaría identificar cómo utilizar la aplicación (…) hay
+demasiadas pestañas (…) quiero un diseño más simple», y «que las alertas de compra y venta sean más
+claras». Plan y maqueta en `docs/PLAN_NAVEGACION.md`, aprobados el mismo día. Seis piezas, cinco
+de ellas en worktrees, cada una con tests que fallan sin el cambio; golden idéntico (11 «igual»).
+
+- **Menú de 15 entradas a 3** (Inicio, Explorar acciones y ETFs, Mi cartera) más Herramientas
+  avanzadas; barra inferior en el móvil; búsqueda por símbolo en todas las pantallas; rutas en
+  `lib/rutas.ts` y las viejas redirigen con su consulta (y un test impide escribirlas a mano).
+- **Inicio**: atención (stops, sin comprobar, alertas; un fallo de la cartera nunca es «nada
+  urgente»), 3 ideas, tu cartera, mercado, «Pregúntale a la IA» y próximos resultados.
+- **Avisos de compra y venta** (`lib/avisos.ts`, `AvisoDeAccion`): una acción por idea y por
+  posición, con su frase y sus cifras; «Sin sitio» cuando la idea no cabe en la cartera.
+- **Carga sin bloqueo**: la lista guardada al momento con su antigüedad (`vencida=aceptar`),
+  `useListaDiaria` compartido entre pantallas y una primera pasada de 40 empresas. El presupuesto
+  de descargas cuenta ahora también EDGAR.
+- **Mi cartera** (3.1, 3.2), **un solo DCF** (3.3), **Pregúntale a la IA**
+  (`POST /api/ia/preguntar`) y la **ficha en 4 pestañas** con «Qué dice la app» en una frase.
+
+**Pendiente de Victor (rediseño):**
+- DCF: con crecimiento medido negativo, los escenarios bajista y alcista se intercambian (antes el
+  bajista crecía más que el alcista); ningún golden lo toca. ¿Bueno?
+- DCF: el informe no precarga el DCF con FCF ≤ 0 o sin acciones y el módulo sí (golden
+  `dcf_modulo`, `fcf_negativo`). ¿Cuál de las dos vistas manda?
+- DCF inverso de las decisiones con sus propias constantes (9 % y 2,5 %), hoy iguales al escenario
+  base del módulo: ¿unirlas (ataría las decisiones al módulo) o dejarlas?
+- «Pregúntale a la IA» pide el coste estimado (`count_tokens`, no genera) cada vez que se abre
+  Inicio, porque las sugerencias envían al tocarlas. ¿Así, o sin ninguna llamada hasta pulsar?
+- «Explícamelo con IA» en la ficha abre el informe completo y su narrativa; no hay un endpoint
+  que explique la traza de la decisión.
+- Inicio no tiene ETFs del día: no hay universo de ETFs que puntuar.
+- Bajas: tesis y vigilancia siguen como dos listas; «PER» y «P/E» conviven en algunas pantallas;
+  la primera lista de una instalación nueva cubre uno o dos sectores hasta que avanzan las pasadas.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -938,7 +973,7 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16). Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16). Fase 3 hecha con el rediseño de la navegación del 24 nov. Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de

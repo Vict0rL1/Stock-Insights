@@ -6,8 +6,9 @@
  * fundamentales e histórico se tragaban su fallo: un error de histórico salía
  * «Sin histórico disponible…» y uno de perfil o fundamentales, nada.
  */
+import { useState } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Financials, History, Profile, Quote } from '../api/types'
 import empresaCompleta from '../test/fixtures/empresa_completa.json'
@@ -98,9 +99,23 @@ function Ubicacion() {
   return null
 }
 
+/** Cambiar de empresa con la ficha montada, como hace la búsqueda de arriba
+ *  (`Layout`): la ficha ya no trae su propia caja cuando hay una abierta. */
+function Buscar() {
+  const navigate = useNavigate()
+  const [texto, setTexto] = useState('')
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); void navigate(`/ticker/${texto.trim().toUpperCase()}`) }}>
+      <input placeholder="Símbolo" value={texto} onChange={(e) => setTexto(e.target.value)} />
+      <button type="submit">Analizar</button>
+    </form>
+  )
+}
+
 function abrir(symbol: string, consulta = '') {
   return render(
     <MemoryRouter initialEntries={[`/ticker/${symbol}${consulta}`]}>
+      <Buscar />
       <Routes>
         <Route path="/ticker/:symbol" element={<><TickerPage /><Ubicacion /></>} />
       </Routes>
