@@ -1,7 +1,7 @@
 /**
  * Capturas repetibles de todas las pantallas (ítem 0.6 del plan de correcciones).
  *
- *     npm run capturas -- <carpeta-de-salida> [--escenarios normal,con_ia] [--solo 01_hoy,13_cartera]
+ *     npm run capturas -- <carpeta-de-salida> [--escenarios normal,con_ia] [--solo 00_inicio,13_cartera]
  *
  * Una orden lo regenera todo: compila el frontend, levanta por escenario el
  * backend de demostración (`backend/tests/fixtures/servidor_demo.py`, datos
@@ -82,61 +82,54 @@ const pulsar = (texto: RegExp) => async (p: Page) => {
   await esperar(p)
 }
 
-// El menú de móvil (ítem 2.12), con clics de verdad: se abre, y desde él se
-// llega a otra pantalla y se cierra.
-const abrirMenu = async (p: Page) => {
-  await p.getByRole('button', { name: 'Menú' }).click({ timeout: 10000 })
-  await p.getByRole('link', { name: 'Cartera' }).waitFor({ state: 'visible', timeout: 5000 })
+// La barra de abajo del móvil (rediseño de la navegación), con clics de
+// verdad: desde Inicio se llega a la cartera y queda marcada como actual.
+const navegarAbajo = async (p: Page) => {
+  const abajo = p.getByRole('navigation', { name: 'Principal' }).last()
+  await abajo.getByRole('link', { name: 'Cartera' }).click({ timeout: 10000 })
+  await p.waitForURL('**/cartera', { timeout: 10000 })
+  await esperar(p)
+  if ((await abajo.getByRole('link', { name: 'Cartera' }).getAttribute('aria-current')) !== 'page')
+    throw new Error('la barra de abajo no marca la cartera como pantalla actual')
 }
 
 const TODAS: Pantalla[] = [
-  { nombre: '00_menu_abierto', ruta: '/hoy', soloMovil: true, accion: abrirMenu },
-  {
-    nombre: '00_menu_navega',
-    ruta: '/hoy',
-    soloMovil: true,
-    accion: async (p) => {
-      await abrirMenu(p)
-      await p.getByRole('link', { name: 'Cartera' }).click({ timeout: 10000 })
-      await p.waitForURL('**/cartera', { timeout: 10000 })
-      await esperar(p)
-      if ((await p.getByRole('button', { name: 'Menú' }).getAttribute('aria-expanded')) !== 'false')
-        throw new Error('el menú sigue abierto tras navegar')
-    },
-  },
-  { nombre: '01_hoy', ruta: '/hoy' },
+  { nombre: '00_inicio', ruta: '/' },
+  { nombre: '00_menu_navega', ruta: '/', soloMovil: true, accion: navegarAbajo },
+  { nombre: '01_explorar', ruta: '/explorar' },
   // La lista entera, con sus columnas: «Mejores ideas» son tarjetas y la lista de
   // señales no se medía nunca (revisión de A7).
-  { nombre: '01b_hoy_todas', ruta: '/hoy', accion: pulsar(/^Todas \(/) },
-  { nombre: '02_mercado', ruta: '/dashboard' },
+  { nombre: '01b_explorar_todas', ruta: '/explorar', accion: pulsar(/^Todas \(/) },
+  { nombre: '02_mercado', ruta: '/avanzado/mercado' },
   ...ficha('ACME'),
   { nombre: '13_cartera', ruta: '/cartera' },
   { nombre: '14_portafolio', ruta: '/portafolio' },
   { nombre: '15_tesis', ruta: '/tesis' },
   { nombre: '16_vigilancia', ruta: '/vigilancia' },
-  { nombre: '17_valoracion_modulo', ruta: '/valoracion' },
-  { nombre: '18_screener', ruta: '/screener' },
-  { nombre: '19_multifactor', ruta: '/multifactor' },
-  { nombre: '20_resultados', ruta: '/resultados' },
-  { nombre: '21_senales', ruta: '/senales' },
-  { nombre: '22_etfs', ruta: '/etfs' },
+  { nombre: '17_valoracion_modulo', ruta: '/avanzado/valoracion' },
+  { nombre: '18_screener', ruta: '/explorar?filtros=simples' },
+  { nombre: '19_multifactor', ruta: '/explorar?filtros=factores' },
+  { nombre: '20_resultados', ruta: '/avanzado/resultados' },
+  { nombre: '21_senales', ruta: '/avanzado/senales' },
+  { nombre: '22_etfs', ruta: '/explorar?tipo=etfs' },
   // La recomendación de ETFs: hasta la revisión de la Fase 0, «/api/etfs/{symbol}»
   // tapaba su ruta y este botón nunca había funcionado.
   {
     nombre: '22b_etfs_recomendar',
-    ruta: '/etfs',
+    ruta: '/explorar?tipo=etfs',
     accion: async (p) => {
       await p.getByPlaceholder(/Hasta 4 ETFs/).fill('INDX, TECX, TOTX')
       await pulsar(/Analizar y recomendar/)(p)
     },
   },
-  { nombre: '23_noticias', ruta: '/noticias' },
+  { nombre: '23_noticias', ruta: '/avanzado/noticias' },
+  { nombre: '24_avanzado', ruta: '/avanzado' },
 ]
 
 const ESCENARIOS: Record<string, Pantalla[]> = {
   normal: TODAS,
-  cartera_vacia: TODAS.filter((p) => ['01_hoy', '13_cartera', '14_portafolio'].includes(p.nombre)),
-  sin_candidatas: TODAS.filter((p) => p.nombre === '01_hoy'),
+  cartera_vacia: TODAS.filter((p) => ['00_inicio', '01_explorar', '13_cartera'].includes(p.nombre)),
+  sin_candidatas: TODAS.filter((p) => ['00_inicio', '01_explorar'].includes(p.nombre)),
   // Sin cotización: desde el ítem 2.1 la ficha enseña la cabecera (nombre del
   // perfil o símbolo), «Precio no disponible…» y todas sus pestañas; antes se
   // sustituía entera por «No se encontró el símbolo» aunque EDGAR tuviera datos.
@@ -145,7 +138,7 @@ const ESCENARIOS: Record<string, Pantalla[]> = {
   con_ia: [
     { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: 'Informe completo', accion: pulsar(/Redactar informe \(IA\)/) },
     { nombre: '08_ficha_que_cambio_ia', ruta: '/ticker/ACME', pestana: 'Qué cambió', accion: pulsar(/Resumir este diff con IA/) },
-    { nombre: '23_noticias_ia', ruta: '/noticias', accion: pulsar(/Por qué importa\? \(IA\)/) },
+    { nombre: '23_noticias_ia', ruta: '/avanzado/noticias', accion: pulsar(/Por qué importa\? \(IA\)/) },
   ],
 }
 

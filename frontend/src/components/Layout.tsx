@@ -130,7 +130,7 @@ function Buscador() {
     void navigate(rutaEmpresa(s))
   }
   return (
-    <form role="search" onSubmit={enviar} className="mb-5">
+    <form role="search" onSubmit={enviar} className="mx-auto mb-5 max-w-5xl">
       <div className="flex gap-2">
         <label htmlFor="buscador-global" className="sr-only">
           Buscar una empresa o un ETF por su símbolo
@@ -140,7 +140,7 @@ function Buscador() {
           type="search"
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
-          placeholder="Símbolo de una empresa o ETF: AAPL, SPY…"
+          placeholder="Busca por símbolo: AAPL, SPY…"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? 'buscador-error' : undefined}
           autoCapitalize="characters"

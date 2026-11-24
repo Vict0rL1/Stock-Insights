@@ -82,7 +82,7 @@ function Guia({ ocultar }: { ocultar: () => void }) {
           Entendido, ocultar
         </button>
       </div>
-      <ol className="grid gap-3 sm:grid-cols-3">
+      <ol className="grid gap-3 lg:grid-cols-3">
         {pasos.map(([titulo, texto], i) => (
           <li key={titulo} className="flex gap-3">
             <span
