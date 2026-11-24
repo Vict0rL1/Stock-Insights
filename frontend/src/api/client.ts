@@ -370,13 +370,18 @@ export const api = {
   // Motor de señales cuantitativas
   markets: () =>
     fetchJson<{ markets: MarketInfo[]; meta: UniversesMeta }>('/api/signals/markets'),
-  today: (market: string, refresh = false) =>
+  today: (market: string, refresh = false, budget?: number) =>
     fetchJson<TodayResponse>(
       `/api/signals/today?market=${encodeURIComponent(market)}${
         refresh ? '&refresh=true' : ''
-      }`,
+      }${budget === undefined ? '' : `&budget=${budget}`}`,
       SCAN_TIMEOUT_MS,
     ),
+  /** La lista guardada al momento, sin calcular nada: la vigente o, si caducó, la
+   *  última (`estado: 'viejo'`, con `antiguedad_segundos`). 404 si no hay ninguna.
+   *  Con el límite corto de siempre: no descarga nada, y si tarda es que algo va mal. */
+  todayGuardada: (market: string) =>
+    fetchJson<TodayResponse>(`/api/signals/today?market=${encodeURIComponent(market)}&vencida=aceptar`),
   universes: () =>
     fetchJson<{ universes: UniverseInfo[]; note: string }>('/api/signals/universes'),
   scanUniverse: (universe: string, topN: number) =>

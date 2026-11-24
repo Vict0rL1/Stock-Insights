@@ -459,11 +459,50 @@ día sin datos; a partir de ahí el botón sigue estando.
 El S&P 500 son ~500 empresas y los tiers gratuitos dan 60 llamadas/minuto. El
 limitador de cuota **descarta, no espera**, así que lanzar 500 llamadas de
 golpe puntuaría las primeras 60 y perdería el resto. En su lugar cada petición
-descarga como mucho 120 fundamentales nuevos, los cachea 24 h y deja el resto
-pendiente; la siguiente pasada sigue por donde iba, porque lo ya cacheado sale
-gratis. La UI muestra la barra de cobertura y un botón para continuar. Los
+descarga como mucho 120 fundamentales nuevos (`budget`, por defecto
+`DEFAULT_FETCH_BUDGET`), los cachea 24 h y deja el resto pendiente; la siguiente
+pasada sigue por donde iba, porque lo ya cacheado sale gratis. Cuenta **cada
+empresa que descarga algo, una vez**: su companyfacts de EDGAR o, si EDGAR no la
+tiene, sus fundamentales de Finnhub. Hasta noviembre de 2026 solo contaba el
+respaldo de Finnhub, y la primera pasada bajaba los ~500 companyfacts de EDGAR de
+una vez (varios MB cada uno: un par de minutos) por pequeño que fuera el
+presupuesto. La UI muestra la barra de cobertura y un botón para continuar. Los
 nombres de las empresas salen del propio archivo del universo: pedirlos al API
 costaría otras 500 llamadas por información puramente cosmética.
+
+### La primera carga, sin bloquear
+
+Sin lista vigente (caché de 6 h), Hoy se quedaba en «Puntuando el universo…» los
+minutos de una pasada. Ahora la pantalla (`frontend/src/hooks/useListaDiaria.ts`)
+pide primero **la lista guardada**, que no calcula nada:
+
+| Petición | Respuesta |
+|---|---|
+| `GET /api/signals/today?market=…&vencida=aceptar` con lista vigente | La de siempre (`cached: true`, sin `estado`). |
+| Ídem, con la lista caducada pero de la última semana (el margen de rescate de la caché) | Esa copia, al momento, con `estado: "viejo"`, `antiguedad_segundos` (null si no se sabe) y su `fetched_at`. **No recalcula ni congela instantáneas**: una lista servida es la decisión de cuando se calculó, que ya se congeló entonces. Una copia con la forma de otra versión no se sirve. |
+| Ídem, sin ninguna | `404` con el motivo en `detail` («No hay ninguna lista de … guardada, ni vigente ni de la última semana…»). |
+| `vencida` con otro valor, o junto a `refresh=true` | `422`: una pide lo guardado al momento y la otra recalcular. |
+
+En los tres casos de `200` el repaso de stops (`cartera`) y `lista_desfasada` se
+calculan en esa petición, como siempre: la lista puede ser de hace 9 h, el repaso
+de tus stops es de ahora.
+
+Con la copia caducada a la vista («Lista de hace 9 h; actualizando…»), la pantalla
+pide la normal detrás y la sustituye al llegar. Sin ninguna (primera vez, o más de
+una semana sin abrir la app), la primera pasada va **corta** (`budget=40`,
+`PRIMERA_PASADA`): unos segundos en vez de minutos y, aunque EDGAR fallara entero,
+40 llamadas a Finnhub dejan margen en su minuto para lo demás de la pantalla. Las
+cuatro pasadas automáticas de 120 completan el resto (40 + 4 × 120 = 520 ≥ 502)
+con la barra «Analizando el mercado en segundo plano: 312 de 502 empresas. Ya
+puedes usar la app; las ideas se completan solas.» Esa primera lista es
+**parcial y lo dice**: el presupuesto se gasta sector a sector, así que cubre los
+primeros sectores del universo.
+
+Las peticiones en vuelo y la última lista se comparten por mercado entre las
+pantallas que la usan: montar otra pantalla con la lista ya recibida no pide nada
+(si tiene más de un minuto, la pide una vez para tener el repaso de stops de
+ahora, y solo encadena pasadas si el backend la recalculó), y StrictMode no
+duplica ninguna petición.
 
 ### De dónde salen las listas
 

@@ -8,7 +8,7 @@
  *   con un día sin ideas, y la pestaña caía a la tabla de todas.
  * - Sin variación del día, el color es neutro: `?? 0` la pintaba en verde.
  */
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -166,5 +166,50 @@ describe('Hoy: cargas que fallan o faltan', () => {
     await act(async () => soltarSp500())
     expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
     expect(pedidas.filter((u) => u === HOY)).toHaveLength(1)
+  })
+})
+
+describe('Hoy: la primera carga no bloquea', () => {
+  /** Sirve las rutas del día y deja `retener` esperando hasta llamar a lo que devuelve. */
+  function servirReteniendo(rutas: Record<string, Ruta>, retener: string) {
+    let soltar: () => void = () => {}
+    vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL) => {
+      const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+      const r = rutas[url]
+      const respuesta = () => new Response(JSON.stringify(r ? r.json : { detail: `sin fixture: ${url}` }), { status: r ? r.status : 404 })
+      if (url === retener) return new Promise<Response>((ok) => { soltar = () => ok(respuesta()) })
+      return Promise.resolve(respuesta())
+    }))
+    return () => soltar()
+  }
+
+  it('sin lista vigente enseña al momento la guardada, con su antigüedad, y la de ahora la sustituye', async () => {
+    // Antes, «Puntuando el universo…» los minutos de una pasada, sin nada más.
+    const soltar = servirReteniendo(RUTAS, HOY)
+    pintar()
+    expect(await screen.findByText('Lista de hace 9 h; actualizando…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Puntuando…' })).toBeDisabled()
+    expect(screen.queryByText(/Puntuando el universo/)).toBeNull()
+
+    await act(async () => soltar())
+    await waitFor(() => expect(screen.queryByText(/Lista de hace 9 h/)).toBeNull())
+    expect(await screen.findByText(/Cobertura parcial: 240 de 502 empresas/, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('sin ninguna lista guardada, la primera pasada va corta y enseña lo que hay mientras sigue', async () => {
+    const corta = `${HOY}&budget=40`
+    const rutas = {
+      ...RUTAS,
+      [`${HOY}&vencida=aceptar`]: { status: 404, json: { detail: 'No hay ninguna lista de EE. UU. — S&P 500 guardada' } },
+      [corta]: RUTAS[HOY],
+    }
+    const soltar = servirReteniendo(rutas, corta)
+    pintar()
+    expect(await screen.findByText('Preparando la primera lista…')).toBeInTheDocument()
+    await act(async () => soltar())
+    expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
+    expect(screen.queryByText(/No se pudo cargar la lista de hoy/)).toBeNull()
+    expect(await screen.findByText(/Cobertura parcial/, {}, { timeout: 3000 })).toBeInTheDocument()
   })
 })

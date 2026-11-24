@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -742,4 +744,182 @@ def test_un_fallo_al_repasar_los_stops_no_cuesta_la_lista_ni_se_calla(client, mo
     data = c.get("/api/signals/today?market=us_sp500&budget=600").json()
     assert data["signals"]
     assert data["cartera"]["abiertas"] is None and "ninguna se ha comprobado" in data["cartera"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# La primera carga, sin bloquear (`vencida=aceptar`, docs/PLAN_NAVEGACION.md)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def con_reloj(session_factory):
+    """El doble de siempre con la caché DE VERDAD y un reloj que se adelanta a mano:
+    la lista caduca a las 6 h y `get_vencido` la rescata durante una semana."""
+    from app.cache.cache import CacheStore
+
+    reloj = {"t": datetime(2026, 11, 23, 15, 0, tzinfo=timezone.utc)}
+    service = MarketService()
+    service.cache = CacheStore(session_factory, now=lambda: reloj["t"])
+
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    with TestClient(app) as c:
+        yield c, service, reloj
+    app.dependency_overrides.clear()
+
+
+GUARDADA = "/api/signals/today?market=canada&vencida=aceptar"
+
+
+def test_sin_lista_vigente_la_guardada_se_sirve_al_momento_con_su_edad(con_reloj):
+    """Sin lista vigente (6 h), Hoy se quedaba en «Puntuando el universo…» los
+    minutos de una pasada. Ahora la copia caducada sale al momento, marcada como
+    vieja y con su antigüedad, sin recalcular nada; la normal la sustituye después."""
+    c, service, reloj = con_reloj
+    calculada = _completar(c, market="canada")
+    descargas = service.bulk_calls
+    reloj["t"] += timedelta(hours=9)
+
+    r = c.get(GUARDADA)
+    assert r.status_code == 200
+    vieja = r.json()
+    assert vieja["estado"] == "viejo" and vieja["antiguedad_segundos"] == 9 * 3600
+    assert vieja["cached"] is True and vieja["as_of"] == calculada["as_of"]
+    assert [s["symbol"] for s in vieja["signals"]] == [s["symbol"] for s in calculada["signals"]]
+    assert service.bulk_calls == descargas, "servir la copia no puede volver a puntuar"
+    # El repaso de stops y la comparación con la cartera siguen siendo de ahora.
+    assert vieja["cartera"]["abiertas"] == 0 and vieja["lista_desfasada"] is None
+    assert "huella_cartera" not in vieja
+
+    # La normal, después, sí recalcula, y no viene marcada.
+    nueva = c.get("/api/signals/today?market=canada").json()
+    assert "estado" not in nueva and nueva["cached"] is False
+    assert service.bulk_calls > descargas
+
+
+def test_la_lista_guardada_no_congela_instantaneas(con_reloj, monkeypatch):
+    """Una lista servida es la decisión de cuando se calculó, y ya se congeló
+    entonces: congelarla al servirla la fecharía como de hoy."""
+    from app.routers import signals as S
+
+    c, _, reloj = con_reloj
+    _completar(c, market="canada")
+    congeladas = []
+    monkeypatch.setattr(S.snapshots, "congelar_lista_diaria", lambda *a, **k: congeladas.append(a) or {"error": None})
+    reloj["t"] += timedelta(hours=9)
+    assert c.get(GUARDADA).json()["estado"] == "viejo"
+    assert congeladas == []
+
+
+def test_sin_ninguna_lista_guardada_da_404_y_lo_dice(con_reloj):
+    """Sin copia no hay nada que enseñar al momento: la pantalla espera a la normal
+    (y la pide con un presupuesto corto). Más de una semana es «ninguna»."""
+    c, service, reloj = con_reloj
+    r = c.get(GUARDADA)
+    assert r.status_code == 404
+    assert "No hay ninguna lista de Canadá" in r.json()["detail"]
+    assert service.bulk_calls == 0, "pedir la guardada no puede ponerse a puntuar"
+
+    _completar(c, market="canada")
+    reloj["t"] += timedelta(days=8)
+    assert c.get(GUARDADA).status_code == 404
+    assert c.get("/api/signals/today?market=marte&vencida=aceptar").json()["detail"] == "Mercado desconocido: marte"
+
+
+def test_con_lista_vigente_la_guardada_es_la_de_siempre(con_reloj):
+    c, service, _ = con_reloj
+    calculada = _completar(c, market="canada")
+    descargas = service.bulk_calls
+    guardada = c.get(GUARDADA).json()
+    assert "estado" not in guardada and "antiguedad_segundos" not in guardada
+    assert guardada["cached"] is True and guardada["as_of"] == calculada["as_of"]
+    assert service.bulk_calls == descargas
+    # Solo vale «aceptar», y no se combina con recalcular: una de las dos se
+    # perdería en silencio.
+    assert c.get("/api/signals/today?market=canada&vencida=si").status_code == 422
+    r = c.get("/api/signals/today?market=canada&vencida=aceptar&refresh=true")
+    assert r.status_code == 422 and "no se pueden pedir las dos" in r.json()["detail"]
+
+
+def test_servir_la_guardada_no_marca_la_copia_de_la_cache(client):
+    """Con una caché que devuelve su propia referencia (como la falsa de
+    `tests/fakes_empresa.py`), marcar la copia en su sitio la dejaba «vieja»
+    para siempre."""
+    c, service = client
+
+    class PorReferencia(FakeCache):
+        def get_vencido(self, data_type, params):
+            return self.vencidas.get(f"{data_type}|{self._key(params)}")
+
+    cache = PorReferencia()
+    cache.store, cache.vencidas = service.cache.store, {}
+    service.cache = cache
+    c.get("/api/signals/today?market=canada&budget=600")
+    clave = next(k for k in cache.store if k.startswith("daily_picks|"))
+    guardada = {**cache.store.pop(clave), "cached": True, "antiguedad_segundos": 3600}
+    cache.vencidas[clave] = guardada
+
+    servida = c.get(GUARDADA).json()
+    assert servida["estado"] == "viejo" and servida["antiguedad_segundos"] == 3600
+    assert "estado" not in guardada and "cartera" not in guardada
+
+
+def test_el_presupuesto_cuenta_tambien_las_descargas_de_edgar(session_factory):
+    """El presupuesto solo acotaba el respaldo de Finnhub: la primera pasada
+    descargaba los ~500 companyfacts de EDGAR de una vez y tardaba minutos, así
+    que pedirla con un presupuesto menor no la acortaba en nada. Ahora cada
+    empresa que descarga algo cuenta una vez, y lo ya guardado sigue gratis."""
+
+    class EdgarQueGuarda(MarketService):
+        def __init__(self):
+            super().__init__()
+            self.financial_calls = 0
+
+        def get(self, data_type, **kwargs):
+            if data_type == "financials":
+                # Como el servicio real: lo guardado sale de la caché sin descargar.
+                guardado = self.cache.get("financials", {"symbol": kwargs["symbol"]})
+                if guardado is not None:
+                    return guardado
+                self.financial_calls += 1
+                payload = {"source": "edgar", "as_of": iso_utc(), "periods": [{
+                    "end_date": "2024-12-31", "eps_diluted": 5.0, "equity": 1000.0, "revenue": 8000.0,
+                    "net_income": 500.0, "operating_income": 900.0, "interest_expense": 40.0,
+                    "shares_outstanding": 100.0, "cfo": 800.0, "capex": -150.0}]}
+                # Como el servicio real: lo descargado queda en la caché 24 h.
+                self.cache.set("financials", {"symbol": kwargs["symbol"]}, payload)
+                return payload
+            return super().get(data_type, **kwargs)
+
+    service = EdgarQueGuarda()
+
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        with TestClient(app) as c:
+            primera = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            assert service.financial_calls == 40 and primera["fetched_now"] == 40
+            assert primera["pending"] > 0 and primera["complete"] is False
+            segunda = c.get("/api/signals/today?market=us_sp500&budget=40&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    # Las 40 de la primera salen de la caché: la segunda descarga otras 40.
+    assert service.financial_calls == 80 and segunda["scored"] > primera["scored"]
+    assert service.fundamental_calls == 0
 

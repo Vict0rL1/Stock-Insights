@@ -4,6 +4,8 @@ import { api } from '../api/client'
 import type { CalendarioMercado, IndexEntry, Portfolio, PortfolioPosition, PriceAlert, SectorEntry, Shortlist } from '../api/types'
 import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
+import { ProgresoAnalisis } from '../components/ProgresoAnalisis'
+import { useListaDiaria } from '../hooks/useListaDiaria'
 import { avisoDe, tamanoDeLaLista } from '../lib/avisos'
 import { fmtDinero, fmtFecha, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
 import { RUTAS, rutaCartera, rutaEmpresa, rutaExplorar } from '../lib/rutas'
@@ -371,24 +373,24 @@ function TarjetaIdea({ idea, shortlist }: { idea: Idea; shortlist: Shortlist }) 
 }
 
 function IdeasAcciones() {
-  const lista = useDato(() => api.today(MERCADO), `lista-${MERCADO}`)
-  if (lista.estado === 'cargando') {
+  // La misma lista que Explorar, compartida (`useListaDiaria`): abrir Inicio y
+  // luego Explorar no repite la puntuación. Con una lista guardada de horas
+  // atrás se enseña al momento con su antigüedad y la nueva la sustituye.
+  const lista = useListaDiaria(MERCADO)
+  const d = lista.data
+  if (!d) {
     return (
-      <p role="status" className="text-sm text-slate-500">
-        Analizando el mercado: la primera vez del día puede tardar un par de minutos. Mientras, el resto de la página ya funciona.
-      </p>
+      <div className="space-y-2">
+        <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
+        {lista.error && <ErrorDeCarga que="las ideas de hoy" error={lista.error.mensaje} reintentar={lista.error.reintentar} />}
+      </div>
     )
   }
-  if (lista.estado === 'error') return <ErrorDeCarga que="las ideas de hoy" error={lista.error} reintentar={lista.reintentar} />
-  const d = lista.datos
   const ideas = (d.shortlist?.ideas ?? []).slice(0, 3)
   return (
     <div className="space-y-3">
-      {!d.complete && (
-        <p role="status" className="text-xs text-slate-500">
-          Analizadas {d.scored} de {d.requested} empresas: las ideas pueden cambiar cuando termine.
-        </p>
-      )}
+      <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
+      {lista.error && <ErrorDeCarga que="la lista de hoy" error={lista.error.mensaje} reintentar={lista.error.reintentar} />}
       {ideas.length === 0 ? (
         <p className="text-sm text-slate-600">Hoy ninguna empresa cumple todas las condiciones de compra. No comprar también es una decisión.</p>
       ) : (

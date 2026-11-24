@@ -174,7 +174,9 @@ describe('Hoy repasa el stop de toda la cartera', () => {
 
 describe('las tarjetas de ideas', () => {
   it('una variación de 0,00 % no se pinta como una subida', async () => {
-    servir((hoy) => { hoy.shortlist.ideas[0].price.change_pct = 0 })
+    // Por símbolo, no la primera: Hoy enseña la lista guardada y después la de
+    // ahora y sus pasadas, y no todas ordenan igual las ideas.
+    servir((hoy) => { hoy.shortlist.ideas.find((i) => i.symbol === 'HSY')!.price.change_pct = 0 })
     const ceros = await screen.findAllByText(/^[+-]?0,00\s%$/)
     expect(ceros.length).toBeGreaterThan(0)
     for (const cero of ceros) expect(cero.className).not.toMatch(/emerald|red/)
@@ -187,7 +189,7 @@ describe('las tarjetas de ideas', () => {
     const global = 'Ideas nuevas al 0\u00a0%: la cartera que YA tienes estima un 22,2\u00a0% de volatilidad.'
     let recortada = ''
     servir((hoy) => {
-      const idea = hoy.shortlist.ideas[0]
+      const idea = hoy.shortlist.ideas.find((i) => i.symbol === 'HSY')!
       recortada = idea.symbol
       idea.decision.levels.peso_bruto_pct = 6.1
       idea.peso_final_pct = 0

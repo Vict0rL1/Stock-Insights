@@ -24,7 +24,12 @@ Solo lee el histórico de la caché, salvo que se pida descargar.
 **El stop de cada posición, también fuera de la lista: `stops_de_la_cartera`.** Hoy
 lo pide en cada petición (`cartera` en `/api/signals/today`, fuera de la caché de
 la lista) para TODAS las posiciones abiertas, también las que la lista del mercado
-no puntúa, que antes nadie miraba. La comparación es una sola, `decision.stop_perforado` (precio
+no puntúa, que antes nadie miraba. También cuando se sirve al momento la lista
+guardada y caducada (`vencida=aceptar`, `estado: "viejo"`; README, «La primera
+carga, sin bloquear»): la lista es de cuando se calculó, el repaso es de ahora. Y
+las pantallas que comparten la lista (`useListaDiaria`) la vuelven a pedir al
+montar si la recibieron hace más de un minuto, lo que vive una cotización en la
+caché: un repaso de hace horas no se enseña como si fuera de ahora. La comparación es una sola, `decision.stop_perforado` (precio
 en o por debajo del stop; sin precio o sin stop, `None`: no se sabe), la misma del
 motor, del riesgo abierto (`risk_budget`) y de cada fila de `/api/portfolio`
 (`stop_perforado`), donde la tabla enseña el stop y el perforado en rojo. El

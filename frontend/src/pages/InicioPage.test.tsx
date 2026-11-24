@@ -143,7 +143,7 @@ describe('InicioPage', () => {
     expect(await screen.findByText('En orden')).toBeInTheDocument()
     expect(await screen.findByText('S&P 500 (SPY)')).toBeInTheDocument()
     // La lista (`/api/signals/today`) sigue pendiente y lo dice sin bloquear nada.
-    expect(screen.getByText(/Analizando el mercado/)).toBeInTheDocument()
+    expect(screen.getByText('Cargando la lista de hoy…')).toBeInTheDocument()
   })
 
   it('si la cartera no carga, no dice «nada urgente»: dice que no se comprobó', async () => {

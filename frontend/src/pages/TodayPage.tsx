@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DecisionExplicada } from '../components/DecisionExplicada'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { CompanyLogo } from '../components/CompanyLogo'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
+import { ProgresoAnalisis } from '../components/ProgresoAnalisis'
 import type {
   DailySignal,
   Conviction,
@@ -38,7 +39,8 @@ import {
   ZONA_MERCADO,
 } from '../lib/formato'
 import { coord } from '../lib/svg'
-import { mensajeDeError, useDato } from '../lib/useDato'
+import { useDato } from '../lib/useDato'
+import { useListaDiaria } from '../hooks/useListaDiaria'
 
 type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
 
@@ -1153,77 +1155,18 @@ function AvisoListaDesfasada({ cambios, calculada }: { cambios: ListaDesfasada; 
 /** `incrustada`: dentro de Explorar › Acciones, con su título como subtítulo (h2). */
 export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {}) {
   const [market, setMarket] = useState('us_sp500')
-  const [data, setData] = useState<TodayResponse | null>(null)
-  // La lista no va por `useDato`: encadena pasadas sola («Seguir
-  // completando») y cada una sustituye a la anterior sin vaciar lo que ya se
-  // ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
-  // repite la misma pasada (ítem 2.1).
-  const [error, setError] = useState<{ mensaje: string; reintentar: () => void } | null>(null)
-  // Cada carga que se inicia (cambio de mercado, «Actualizar», «Reintentar»)
-  // es una cadena con su número, y sus pasadas automáticas lo heredan. Una
-  // respuesta, buena o mala, de una cadena que ya no es la vigente se
-  // descarta: el aviso de una pasada vieja del S&P 500 quedaba encima de la
-  // lista buena, y su «Reintentar» cargaba el S&P 500 bajo el botón de otro
-  // mercado (revisión del 2.1). Descartar por mercado no bastaba: con
-  // S&P 500 → Canadá → S&P 500 la pasada vieja era «del mercado vigente»
-  // (segunda revisión del 2.1).
-  const cadena = useRef(0)
-  // Las peticiones en vuelo, por mercado y tipo de pasada: una cadena nueva que
-  // pide lo mismo se engancha a la que ya va. Al abrir Hoy con `npm run dev`
-  // (StrictMode) el efecto corre dos veces, y eran dos cadenas de hasta cuatro
-  // pasadas cada una: el doble de cuota de APIs gratuitas para lo mismo.
-  const enVuelo = useRef(new Map<string, Promise<TodayResponse>>())
-  const [busy, setBusy] = useState(false)
+  // La lista no va por `useDato`: se enseña la guardada mientras llega la de
+  // ahora, y encadena pasadas sola («Seguir completando») sin vaciar lo que ya
+  // se ve. Su fallo sí se dice igual que en el resto, con un «Reintentar» que
+  // repite la misma pasada (ítem 2.1). Las peticiones en vuelo y la última lista
+  // se comparten por mercado con las demás pantallas que la usan (Inicio,
+  // Explorar): `hooks/useListaDiaria.ts`.
+  const lista = useListaDiaria(market)
+  const { data, error, ocupado: busy } = lista
   const [view, setView] = useState<View>('ideas')
-  const [autoRondas, setAutoRondas] = useState(0)
   const [sector, setSector] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-
-  // Completar la cobertura a mano era pulsar el mismo botón tres o cuatro
-  // veces para llegar a lo que la app ya sabe que falta. Ahora encadena las
-  // pasadas sola, pero con tope: cada una gasta cuota de APIs gratuitas y
-  // agotarla en silencio dejaría el resto del día sin datos.
-  const MAX_PASADAS_AUTO = 4
-
-  const pedir = (which: string, refresh: boolean): Promise<TodayResponse> => {
-    const clave = `${which}|${refresh}`
-    const previa = enVuelo.current.get(clave)
-    if (previa) return previa
-    const promesa = api.today(which, refresh)
-    enVuelo.current.set(clave, promesa)
-    // Solo saca la petición del mapa: su fallo lo atiende `load`.
-    const soltar = () => {
-      if (enVuelo.current.get(clave) === promesa) enVuelo.current.delete(clave)
-    }
-    void promesa.then(soltar, soltar)
-    return promesa
-  }
-
-  const load = (which: string, refresh = false, autoPasada = 0, deCadena?: number) => {
-    const mia = deCadena ?? ++cadena.current
-    setBusy(true)
-    setError(null)
-    pedir(which, refresh).then(
-      (d) => {
-        if (mia !== cadena.current) return
-        setData(d)
-        if (!d.complete && autoPasada < MAX_PASADAS_AUTO) {
-          setAutoRondas(autoPasada + 1)
-          load(which, true, autoPasada + 1, mia)
-          return
-        }
-        setAutoRondas(0)
-        setBusy(false)
-      },
-      (e: unknown) => {
-        if (mia !== cadena.current) return
-        setError({ mensaje: mensajeDeError(e), reintentar: () => load(which, refresh, autoPasada) })
-        setAutoRondas(0)
-        setBusy(false)
-      },
-    )
-  }
 
   // Un fallo al pedir los mercados se dice: `() => undefined` lo callaba y el
   // selector desaparecía sin más (ítem 2.1).
@@ -1231,16 +1174,8 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
 
   useEffect(() => {
     // Al cambiar de mercado los filtros previos ya no aplican.
-    setData(null)
     setSector(null)
     setExpanded(null)
-    load(market)
-    // Al irse (otro mercado, otra pantalla, o el desmontaje de StrictMode) la
-    // cadena en marcha deja de ser la vigente.
-    return () => {
-      cadena.current += 1
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market])
 
   const cartera = useMemo(() => miCartera(data), [data])
@@ -1313,7 +1248,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
             </span>
           )}
           <button
-            onClick={() => load(market, true)}
+            onClick={lista.actualizar}
             disabled={busy}
             className="rounded-lg border border-slate-200 px-2.5 py-1 font-medium text-slate-600 transition-colors hover:bg-white disabled:opacity-50"
           >
@@ -1381,15 +1316,10 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
         }
       </BloqueDatos>
 
-      {busy && !data && (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm text-slate-600">Puntuando el universo…</p>
-          <p className="mt-1 text-xs text-slate-400">
-            La primera pasada del día descarga un fundamental por empresa y puede
-            tardar un par de minutos. Después queda en caché 6 h.
-          </p>
-        </div>
-      )}
+      {/* Antes, sin lista vigente, la pantalla se quedaba aquí en «Puntuando el
+          universo…» los minutos de una pasada. Ahora enseña la guardada con su
+          antigüedad, o la primera pasada corta, y dice cómo va el resto. */}
+      <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
 
       {error && <ErrorDeCarga que="la lista de hoy" error={error.mensaje} reintentar={error.reintentar} />}
 
@@ -1465,34 +1395,6 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                 ))}
             </div>
           </div>
-
-          {!data.complete && (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-medium text-sky-900">
-                  Cobertura parcial: {data.scored} de {data.requested} empresas
-                </div>
-                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sky-200">
-                  <div
-                    className="h-full bg-sky-500 transition-all"
-                    style={{ width: `${(data.scored / data.requested) * 100}%` }}
-                  />
-                </div>
-                <p className="mt-1.5 text-[11px] leading-snug text-sky-800">
-                  {autoRondas > 0
-                    ? `Completando sola (pasada ${autoRondas} de ${MAX_PASADAS_AUTO}). Las APIs gratuitas limitan cuántos fundamentales se descargan de una vez; lo descargado queda en caché 24 h, así que ninguna pasada repite trabajo.`
-                    : 'Las APIs gratuitas limitan cuántos fundamentales se descargan de una vez. Lo descargado queda en caché 24 h, así que cada pasada avanza y ninguna repite trabajo.'}
-                </p>
-              </div>
-              <button
-                onClick={() => load(market, true)}
-                disabled={busy}
-                className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-sky-700 disabled:opacity-50"
-              >
-                {busy ? `Descargando… ${autoRondas || ''}` : 'Seguir completando'}
-              </button>
-            </div>
-          )}
 
           {/* Sin lista corta, la vista de ideas lo dice: antes caía a la tabla
               de todas las puntuadas bajo «Mejores ideas (0)» (ítem 2.1). */}

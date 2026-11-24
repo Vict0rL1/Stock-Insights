@@ -114,14 +114,36 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
     return {"symbol": symbol, "rutas": rutas}
 
 
+def _lista_de_la_vispera(caso: str, con_cartera: bool, cuando) -> dict:
+    """La lista que guardó la API hace unas horas, con el mismo servicio falso y
+    una base aparte: lo que Hoy enseña al momento (`vencida=aceptar`) mientras
+    pide la de ahora. Tal como la guarda la caché (sin `cached`)."""
+    sv = ex.servicio_lista(caso)
+    with motor._cliente(sv) as c:
+        if con_cartera:
+            with _sesion() as s:
+                ex.sembrar_cartera_lista(s)
+        with time_machine.travel(cuando, tick=False):
+            c.get("/api/signals/today?market=us_sp500")
+    guardada = sv.cache.get("daily_picks", parametros_lista_diaria("us_sp500"))
+    return {k: v for k, v in guardada.items() if k != "cached"}
+
+
 def _hoy(caso: str, con_cartera: bool = False) -> dict:
     rutas: dict = {}
-    with motor._cliente(ex.servicio_lista(caso)) as c:
+    # Un día normal: la lista de hace 9 h ya caducó (6 h) y la caché la rescata.
+    # La pantalla la pide primero, y después la de ahora y sus pasadas.
+    antes = ex.AHORA - timedelta(hours=9)
+    vispera = _lista_de_la_vispera(caso, con_cartera, antes)
+    sv = ex.servicio_lista(caso)
+    sv.cache.guardar_vencida("daily_picks", parametros_lista_diaria("us_sp500"), vispera, antes, 9 * 3600)
+    with motor._cliente(sv) as c:
         if con_cartera:
             with _sesion() as s:
                 ex.sembrar_cartera_lista(s)
         _pedir(c, rutas, "/api/signals/markets")
-        for url in ("/api/signals/today?market=us_sp500", "/api/signals/today?market=us_sp500&refresh=true"):
+        for url in ("/api/signals/today?market=us_sp500&vencida=aceptar", "/api/signals/today?market=us_sp500",
+                    "/api/signals/today?market=us_sp500&refresh=true"):
             d = _pedir(c, rutas, url)
             # Las 502 filas pesan ~1 MB: se guardan las de la lista corta y las primeras.
             # Las cuentas (`scored`, `requested`, `counts`, sectores) siguen

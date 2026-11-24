@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -56,6 +57,7 @@ from app.analysis.markets import (
 from app.analysis.universes import get_universe, list_universes
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
+from app.datos import Estado
 from app.db.models import Instrument, LlmOutput, Position, WatchlistItem
 from app.deps import get_llm, get_service
 from app.formato import fmt_dinero, fmt_fecha, fmt_num, fmt_pct, plural
@@ -71,9 +73,14 @@ logger = logging.getLogger(__name__)
 
 MAX_UNIVERSE = 15  # tope de coste: cada símbolo cuesta llamadas de fundamentales
 
-# Fundamentales nuevos por petición de /today. Con Finnhub a 60/min, 120 deja
+# Fundamentales nuevos por petición de /today: cada empresa que necesita
+# descargar algo (el companyfacts de EDGAR o, si EDGAR no la tiene, los de
+# Finnhub) cuenta UNA vez; lo cacheado es gratis. Con Finnhub a 60/min, 120 deja
 # margen para que el resto de la app siga funcionando mientras se completa el
-# S&P 500 a lo largo de varias pasadas.
+# S&P 500 a lo largo de varias pasadas; y 120 companyfacts de varios MB (de 0,3
+# a 1 s cada uno) son una pasada de uno o dos minutos, por debajo de los 300/min
+# que la app se permite contra la SEC. La primera pasada de todas la pide más
+# corta el frontend (`useListaDiaria`, `PRIMERA_PASADA`).
 DEFAULT_FETCH_BUDGET = 120
 
 # Campos que la UI necesita sí o sí en la respuesta de /today. Sirven para
@@ -596,6 +603,15 @@ def _metrics_desde_edgar(
     return metrics, financials.get("source", "edgar")
 
 
+def _fundamentales_en_cache(service: MarketDataService, symbol: str) -> bool:
+    """Si hay estados de EDGAR o fundamentales de Finnhub de esta empresa en la
+    caché: con alguno, puntuarla no descarga nada que el presupuesto deba contar."""
+    return any(
+        service.cache.get(tipo, {"symbol": symbol}) is not None
+        for tipo in ("financials", "fundamentals")
+    )
+
+
 def _motivos_sin_puntuar(no_disponibles: list[dict], pendientes: list[str]) -> str:
     """Por qué no se puntuó, contado: «3 sin histórico suficiente, 2 pendientes
     de descargar». Antes el mensaje adivinaba («Revisa que FINNHUB_API_KEY esté
@@ -679,6 +695,19 @@ def _score_symbols(
         # si la empresa no está en la SEC se recurre al proveedor de pago, y
         # entonces sí consume presupuesto.
         precio = (price_map.get(symbol) or {}).get("last")
+        # El presupuesto cuenta también el companyfacts de EDGAR: antes solo
+        # acotaba el respaldo de Finnhub, y la primera pasada descargaba los ~500
+        # de EDGAR de una vez, sin tope; un presupuesto menor no la acortaba en
+        # nada. Una empresa cuesta UNA unidad aunque EDGAR no la tenga y se pida
+        # a Finnhub, y nada si ya hay algo suyo en la caché (los fundamentales de
+        # Finnhub solo se guardan si EDGAR no la tenía, y entonces EDGAR falla sin
+        # descargar nada: no hay ningún companyfacts para ese símbolo).
+        pagada = False
+        if budget is not None and precio and not _fundamentales_en_cache(service, symbol):
+            if not budget.spend():
+                pending.append(symbol)
+                continue
+            pagada = True
         metrics_edgar, fuente_edgar = _metrics_desde_edgar(service, symbol, precio)
         if metrics_edgar is not None:
             raw_by_symbol[symbol] = build_raw_factors(
@@ -691,7 +720,7 @@ def _score_symbols(
         if budget is not None:
             # Lo cacheado es gratis; solo lo nuevo consume presupuesto.
             fundamentals = service.cache.get("fundamentals", {"symbol": symbol})
-            if fundamentals is None and not budget.spend():
+            if fundamentals is None and not pagada and not budget.spend():
                 pending.append(symbol)
                 continue
         if fundamentals is None:
@@ -1034,6 +1063,14 @@ def today(
         le=600,
         description="Máximo de fundamentales NUEVOS a descargar en esta petición",
     ),
+    vencida: Literal["aceptar"] | None = Query(
+        None,
+        description=(
+            "«aceptar»: si no hay lista vigente, sirve al momento la última guardada aunque "
+            "haya caducado (`estado: viejo` y su `antiguedad_segundos`), sin recalcular ni "
+            "congelar instantáneas; 404 si no hay ninguna"
+        ),
+    ),
     service: MarketDataService = Depends(get_service),
     session: Session = Depends(get_session),
 ):
@@ -1044,8 +1081,20 @@ def today(
     envoltorio traduce cualquier excepción a un `detail` legible y deja la
     traza completa en el log del backend.
     """
+    if vencida is not None and refresh:
+        # Una pide la copia guardada al momento y la otra recalcular: servir una
+        # de las dos en silencio dejaría esperando minutos a quien pidió rapidez,
+        # o con una lista vieja a quien pidió la de ahora.
+        raise HTTPException(
+            status_code=422,
+            detail="«vencida=aceptar» pide la lista guardada y «refresh» pide recalcularla: no se pueden pedir las dos.",
+        )
     try:
-        payload = _today(market, refresh, budget, service, session)
+        payload = (
+            _lista_guardada(market, service)
+            if vencida is not None
+            else _today(market, refresh, budget, service, session)
+        )
     except HTTPException:
         raise  # 404/502 ya llevan su explicación
     except Exception as exc:  # noqa: BLE001 — se reporta, no se traga
@@ -1059,7 +1108,9 @@ def today(
             ),
         ) from exc
     # Fuera de `_today` y de su caché: el stop de tus posiciones se repasa en
-    # cada petición, también el de las que no están en este mercado.
+    # cada petición, también el de las que no están en este mercado, y también
+    # cuando se sirve la copia caducada (`vencida`): la lista es de entonces, el
+    # repaso es de ahora.
     # La huella se queda en la caché, no en la respuesta: la pantalla lee lo que
     # cambió (`lista_desfasada`), no las cantidades y costes de cuando se puntuó.
     # Una copia, no un `pop`: con una caché que guarda la referencia, quitarla
@@ -1069,6 +1120,64 @@ def today(
     respuesta["cartera"] = _repaso_de_stops(session, service, payload.get("signals") or [])
     respuesta["lista_desfasada"] = _lista_desfasada(session, payload.get("huella_cartera"))
     return respuesta
+
+
+def _mercado(market: str) -> dict:
+    try:
+        return load_market(market)
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail=f"Mercado desconocido: {market}"
+        ) from None
+
+
+def _lista_vigente(service: MarketDataService, cache_params: dict) -> dict | None:
+    """La lista guardada y vigente, o None.
+
+    Una respuesta guardada por una versión anterior de la app puede no tener
+    los campos que la UI espera, y servirla dejaba la pantalla en blanco. Se
+    valida la forma en vez de confiar solo en subir "v": así olvidarse de
+    subirla no vuelve a romper nada."""
+    cached = service.cache.get("daily_picks", cache_params)
+    if cached is not None and _PAYLOAD_KEYS <= cached.keys():
+        return cached
+    return None
+
+
+def _lista_guardada(market: str, service: MarketDataService) -> dict:
+    """La lista vigente o, si caducó, la última guardada, sin calcular nada
+    (`vencida=aceptar`).
+
+    Sin lista vigente (6 h), Hoy se quedaba en «Puntuando el universo…» los
+    minutos que tarda una pasada (docs/PLAN_NAVEGACION.md, «La primera carga, sin
+    bloquear»). La copia caducada —hasta el margen de rescate de la caché, una
+    semana— se sirve al momento MARCADA, `estado: viejo` con su
+    `antiguedad_segundos`, y la pantalla pide la normal detrás.
+
+    No congela instantáneas ni toca la caché: una lista servida es la decisión de
+    cuando se calculó, que ya se congeló entonces, y congelarla ahora la fecharía
+    como de hoy (igual que una servida vigente). Una copia con la forma de otra
+    versión no se sirve: la normal la recalcula.
+    """
+    datos_mercado = _mercado(market)
+    cache_params = parametros_lista_diaria(market)
+    vigente = _lista_vigente(service, cache_params)
+    if vigente is not None:
+        return vigente
+    leer_vencida = getattr(service.cache, "get_vencido", None)
+    copia = leer_vencida("daily_picks", cache_params) if leer_vencida is not None else None
+    if copia is None or not _PAYLOAD_KEYS <= copia.keys():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No hay ninguna lista de {datos_mercado['name']} guardada, ni vigente ni de "
+                "la última semana: hay que calcularla (la misma petición sin «vencida»)."
+            ),
+        )
+    # Un dict nuevo, no la copia marcada en su sitio: con una caché que guarda la
+    # referencia, la lista guardada se quedaría «vieja». Sin antigüedad conocida
+    # viaja None, no 0: no saberla no es «de ahora».
+    return {**copia, "estado": Estado.VIEJO.value, "antiguedad_segundos": copia.get("antiguedad_segundos")}
 
 
 def _lista_desfasada(session: Session, antes: dict | None) -> dict | None:
@@ -1129,21 +1238,12 @@ def _today(
     fundamentales nuevos (los ya cacheados salen gratis) y deja el resto en
     `pending`. Repetir con `refresh=true` sigue por donde iba hasta completar.
     """
-    try:
-        market_data = load_market(market)
-    except KeyError:
-        raise HTTPException(
-            status_code=404, detail=f"Mercado desconocido: {market}"
-        ) from None
+    market_data = _mercado(market)
 
     cache_params = parametros_lista_diaria(market)
     if not refresh:
-        cached = service.cache.get("daily_picks", cache_params)
-        # Una respuesta guardada por una versión anterior de la app puede no
-        # tener los campos que la UI espera, y servirla dejaba la pantalla en
-        # blanco. Se valida la forma en vez de confiar solo en subir "v": así
-        # olvidarse de subirla no vuelve a romper nada.
-        if cached is not None and _PAYLOAD_KEYS <= cached.keys():
+        cached = _lista_vigente(service, cache_params)
+        if cached is not None:
             return cached
 
     # Lo que ya tienes cambia la pregunta: sobre una posición abierta no se

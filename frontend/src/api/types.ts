@@ -910,6 +910,11 @@ export interface TodayResponse {
    *  entonces (o `error` si no se pudo comparar). Ausente en una respuesta
    *  antigua. */
   lista_desfasada?: ListaDesfasada | null
+  /** Solo en la copia caducada que se sirve al momento (`vencida=aceptar`):
+   *  `viejo`. La lista es de cuando se calculó; el repaso (`cartera`), de ahora. */
+  estado?: 'viejo'
+  /** Con `estado: viejo`, cuántos segundos tiene la copia; null = no se sabe. */
+  antiguedad_segundos?: number | null
 }
 
 /** Qué cambió en la cartera desde que se calculó la lista (`contexto_cartera.cambios_de_cartera`). */

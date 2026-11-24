@@ -18,7 +18,7 @@ red. Tres familias:
 from __future__ import annotations
 
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from app.db.models import CashBalance, Instrument, Position, Thesis, ThesisTrigger
 from app.providers.base import DataNotFoundError, iso_utc
@@ -250,6 +250,8 @@ class _CacheMemoria:
 
     def __init__(self):
         self.datos: dict[str, dict] = {}
+        # Lo caducado que `CacheStore.get_vencido` aún rescata, con su edad.
+        self.vencidas: dict[str, dict] = {}
 
     @staticmethod
     def _clave(tipo, params: dict) -> str:
@@ -258,6 +260,16 @@ class _CacheMemoria:
     def get(self, tipo, params):
         payload = self.datos.get(self._clave(tipo, params))
         return None if payload is None else {**payload, "cached": True}
+
+    def guardar_vencida(self, tipo, params, payload: dict, fetched_at: datetime, antiguedad_segundos: int):
+        """Una copia ya caducada: `get` no la ve y `get_vencido` la sirve con lo que
+        añade la caché de verdad (`cached`, `fetched_at`, `antiguedad_segundos`)."""
+        self.vencidas[self._clave(tipo, params)] = {
+            **payload, "cached": True, "fetched_at": fetched_at.isoformat(), "antiguedad_segundos": antiguedad_segundos}
+
+    def get_vencido(self, tipo, params):
+        payload = self.vencidas.get(self._clave(tipo, params))
+        return None if payload is None else dict(payload)
 
     def set(self, tipo, params, payload):
         self.datos[self._clave(tipo, params)] = payload
