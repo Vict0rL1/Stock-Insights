@@ -59,9 +59,12 @@ from app.registro import log
 # análisis con esquemas distintos no se comparan como si fueran lo mismo.
 ESQUEMA = 2
 
-# Supuestos del DCF inverso que se congelan con el análisis. Son los del
-# escenario base de la pestaña de valoración: el crecimiento implícito no es un
-# dato de la empresa, es una función de estos supuestos, y por eso viajan.
+# Supuestos del DCF inverso que se congelan con el análisis. Hoy valen lo mismo
+# que el escenario base del módulo de valoración, pero son SUYOS a propósito
+# (decisión de Victor, 24 nov): unirlos haría que retocar los supuestos del
+# módulo cambiara en silencio el crecimiento implícito, y con él decisiones y
+# comparaciones con instantáneas viejas. El crecimiento implícito no es un dato
+# de la empresa, es una función de estos supuestos, y por eso viajan.
 DESCUENTO_BASE = 0.09
 TERMINAL_BASE = 0.025
 ANOS_DCF = 5

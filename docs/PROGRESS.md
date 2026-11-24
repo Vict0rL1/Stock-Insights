@@ -945,9 +945,9 @@ de ellas en worktrees, cada una con tests que fallan sin el cambio; golden idén
 - «Pregúntale a la IA» pide el coste estimado (`count_tokens`, no genera texto) al abrir Inicio,
   para que las sugerencias envíen al tocarlas.
 
-**Pendiente de Victor (rediseño):**
-- DCF inverso de las decisiones con sus propias constantes (9 % y 2,5 %), hoy iguales al escenario
-  base del módulo: ¿unirlas (ataría las decisiones al módulo) o dejarlas?
+- El DCF inverso de las decisiones conserva sus propias constantes (`DESCUENTO_BASE` 9 % y
+  `TERMINAL_BASE` 2,5 %, `app/analisis_empresa.py`), aunque hoy coincidan con el escenario base
+  del módulo: unirlas ataría las decisiones a cualquier cambio de los supuestos del módulo.
 - «Explícamelo con IA» en la ficha abre el informe completo y su narrativa; no hay un endpoint
   que explique la traza de la decisión.
 - Inicio no tiene ETFs del día: no hay universo de ETFs que puntuar.
