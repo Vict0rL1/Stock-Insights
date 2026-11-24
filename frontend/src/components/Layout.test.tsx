@@ -1,14 +1,15 @@
 /**
- * Ítem 2.12 (auditoría del 19 oct): por debajo de 768 px la barra lateral es un
- * cajón que se abre con «Menú». Fija, ocupaba media pantalla de 390 px. Aquí se
- * prueba su comportamiento (jsdom no aplica el punto de corte de CSS; eso lo
- * prueban las capturas a 390 y 1440): se abre, y se cierra al navegar, con
- * Escape —devolviendo el foco a «Menú»— y tocando fuera.
+ * El menú del rediseño (`docs/PLAN_NAVEGACION.md`): tres sitios — Inicio,
+ * Explorar y Mi cartera — y las herramientas avanzadas aparte. En escritorio,
+ * barra lateral; en el móvil, barra inferior (jsdom no aplica los puntos de
+ * corte de CSS: las dos están en el árbol y se prueban las dos; lo visual lo
+ * prueban las capturas a 390 y 1440). Arriba, en todas las pantallas, la
+ * búsqueda por símbolo que lleva a la ficha.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Layout } from './Layout'
+import { Layout, simboloEscrito } from './Layout'
 
 // jsdom no desplaza: sin esto, cada navegación avisa de que `scrollTo` no existe.
 const arriba = vi.fn()
@@ -19,103 +20,86 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
-function pintar(ruta = '/hoy') {
+function Ficha() {
+  const { symbol } = useParams()
+  return <h1>Ficha {symbol}</h1>
+}
+
+function pintar(ruta = '/') {
   return render(
     <MemoryRouter initialEntries={[ruta]}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/hoy" element={<h1>Pantalla Hoy</h1>} />
+          <Route path="/" element={<h1>Pantalla Inicio</h1>} />
+          <Route path="/explorar" element={<h1>Pantalla Explorar</h1>} />
+          <Route path="/empresa/:symbol" element={<Ficha />} />
           <Route path="/cartera" element={<h1>Pantalla Cartera</h1>} />
+          <Route path="/avanzado" element={<h1>Pantalla Avanzado</h1>} />
         </Route>
       </Routes>
     </MemoryRouter>,
   )
 }
 
-const menu = () => screen.getByRole('button', { name: 'Menú' })
-const cajon = () => document.getElementById('navegacion')!
-const abierto = () => menu().getAttribute('aria-expanded') === 'true'
+const menus = () => screen.getAllByRole('navigation', { name: 'Principal' })
+const nombres = (nav: HTMLElement) => within(nav).getAllByRole('link').map((a) => a.textContent)
 
-describe('Layout: el menú en móvil', () => {
-  it('«Menú» abre el cajón y lleva el foco a «Cerrar»', () => {
+describe('Layout: el menú', () => {
+  it('tiene tres sitios y las herramientas avanzadas, en la barra lateral y en la de abajo', () => {
     pintar()
-    expect(abierto()).toBe(false)
-    expect(cajon().className).toMatch(/(^|\s)hidden(\s|$)/)
-    fireEvent.click(menu())
-    expect(abierto()).toBe(true)
-    expect(cajon().className).toMatch(/(^|\s)fixed(\s|$)/)
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cerrar' }))
+    const [lateral, abajo] = menus()
+    expect(nombres(lateral)).toEqual(['Inicio', 'Explorar acciones y ETFs', 'Mi cartera'])
+    expect(screen.getByRole('link', { name: 'Herramientas avanzadas' })).toBeInTheDocument()
+    expect(nombres(abajo)).toEqual(['Inicio', 'Explorar', 'Cartera', 'Más'])
   })
 
-  it('navegar desde el cajón lo cierra y enseña la pantalla elegida', () => {
+  it('marca dónde estás, y la ficha de una empresa cuenta como Explorar', () => {
+    pintar('/empresa/ACME')
+    for (const nav of menus()) {
+      const actual = within(nav).getAllByRole('link').filter((a) => a.getAttribute('aria-current') === 'page')
+      expect(actual.map((a) => a.textContent)).toEqual([nav === menus()[0] ? 'Explorar acciones y ETFs' : 'Explorar'])
+    }
+  })
+
+  it('Inicio solo está activo en la portada', () => {
+    pintar('/cartera')
+    expect(within(menus()[0]).getByRole('link', { name: 'Inicio' })).not.toHaveAttribute('aria-current')
+    expect(within(menus()[0]).getByRole('link', { name: 'Mi cartera' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('navegar desde la barra de abajo enseña la pantalla elegida', () => {
     pintar()
-    fireEvent.click(menu())
-    fireEvent.click(screen.getByRole('link', { name: 'Cartera' }))
-    expect(screen.getByText('Pantalla Cartera')).toBeInTheDocument()
-    expect(abierto()).toBe(false)
+    fireEvent.click(within(menus()[1]).getByRole('link', { name: 'Más' }))
+    expect(screen.getByRole('heading', { name: 'Pantalla Avanzado' })).toBeInTheDocument()
   })
+})
 
-  it('pulsar la pantalla en la que ya estás también lo cierra', () => {
+describe('Layout: la búsqueda de arriba', () => {
+  const buscar = (texto: string) => {
+    fireEvent.change(screen.getByLabelText('Buscar una empresa o un ETF por su símbolo'), { target: { value: texto } })
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
+    })
+  }
+
+  it('lleva a la ficha del símbolo, en mayúsculas y sin espacios', () => {
     pintar()
-    fireEvent.click(menu())
-    fireEvent.click(screen.getByRole('link', { name: 'Hoy' }))
-    expect(abierto()).toBe(false)
+    buscar('  brk.b ')
+    expect(screen.getByRole('heading', { name: 'Ficha BRK.B' })).toBeInTheDocument()
   })
 
-  it('Escape lo cierra y devuelve el foco a «Menú»', () => {
+  it('con algo que no puede ser un símbolo no navega y lo dice', () => {
     pintar()
-    fireEvent.click(menu())
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(abierto()).toBe(false)
-    expect(document.activeElement).toBe(menu())
+    buscar('hola mundo!')
+    expect(screen.getByRole('alert')).toHaveTextContent('Escribe el símbolo con letras y números')
+    expect(screen.getByRole('heading', { name: 'Pantalla Inicio' })).toBeInTheDocument()
   })
 
-  it('tocar fuera lo cierra y devuelve el foco a «Menú»', () => {
-    const { container } = pintar()
-    fireEvent.click(menu())
-    fireEvent.click(container.querySelector('.bg-black\\/60')!)
-    expect(abierto()).toBe(false)
-    expect(document.activeElement).toBe(menu())
-  })
-
-  it('abierto es modal: lo de detrás queda inerte y el cajón es un diálogo', () => {
-    // Revisión de A7: Mayús+Tab salía a «Menú», bajo el velo, y tras los enlaces
-    // el foco pasaba a la pantalla tapada.
-    const { container } = pintar()
-    fireEvent.click(menu())
-    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(true)
-    expect(container.querySelector('header')!.hasAttribute('inert')).toBe(true)
-    expect(cajon().getAttribute('role')).toBe('dialog')
-    expect(cajon().getAttribute('aria-modal')).toBe('true')
-    fireEvent.keyDown(window, { key: 'Escape' })
-    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(false)
-    expect(cajon().getAttribute('role')).toBeNull()
-  })
-
-  it('pulsar la pantalla en la que ya estás devuelve el foco a «Menú»', () => {
-    // Revisión 3: el enlace enfocado quedaba dentro del cajón oculto y el foco
-    // caía en BODY.
-    pintar()
-    fireEvent.click(menu())
-    fireEvent.click(screen.getByRole('link', { name: 'Hoy' }))
-    expect(document.activeElement).toBe(menu())
-  })
-
-  it('al pasar a escritorio (girar el móvil) el cajón se cierra y nada queda inerte', () => {
-    // Revisión 3: abierto a 390 px y girado a 844 px, el contenido quedaba
-    // `inert` sin forma visible de salir.
-    const oyentes: ((e: { matches: boolean }) => void)[] = []
-    vi.stubGlobal('matchMedia', () => ({
-      matches: false,
-      addEventListener: (_: string, f: (e: { matches: boolean }) => void) => oyentes.push(f),
-      removeEventListener: () => {},
-    }))
-    const { container } = pintar()
-    fireEvent.click(menu())
-    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(true)
-    act(() => oyentes.forEach((f) => f({ matches: true })))
-    expect(abierto()).toBe(false)
-    expect(container.querySelector('main')!.hasAttribute('inert')).toBe(false)
+  it('simboloEscrito acepta puntos y guiones y rechaza lo vacío y los espacios', () => {
+    expect(simboloEscrito('shop.to')).toBe('SHOP.TO')
+    expect(simboloEscrito('BTC-USD')).toBe('BTC-USD')
+    expect(simboloEscrito('   ')).toBeNull()
+    expect(simboloEscrito('a b')).toBeNull()
   })
 })
 
@@ -135,10 +119,10 @@ function Pantalla({ titulo }: { titulo: string }) {
 
 function pintarConFicha() {
   return render(
-    <MemoryRouter initialEntries={['/hoy']}>
+    <MemoryRouter initialEntries={['/']}>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/hoy" element={<Pantalla titulo="Pantalla Hoy" />} />
+          <Route path="/" element={<Pantalla titulo="Pantalla Hoy" />} />
           <Route path="/ticker/:symbol" element={<Pantalla titulo="Ficha" />} />
           <Route
             path="/cartera"

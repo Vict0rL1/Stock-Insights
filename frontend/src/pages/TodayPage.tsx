@@ -1235,7 +1235,8 @@ function AvisoListaDesfasada({ cambios, calculada }: { cambios: ListaDesfasada; 
   )
 }
 
-export function TodayPage() {
+/** `incrustada`: dentro de Explorar › Acciones, con su título como subtítulo (h2). */
+export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {}) {
   const [market, setMarket] = useState('us_sp500')
   const [data, setData] = useState<TodayResponse | null>(null)
   // La lista no va por `useDato`: encadena pasadas sola («Seguir
@@ -1365,7 +1366,11 @@ export function TodayPage() {
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Hoy</h1>
+          {incrustada ? (
+            <h2 className="text-xl font-semibold tracking-tight text-slate-900">Hoy</h2>
+          ) : (
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Hoy</h1>
+          )}
           {/* Antes explicaba de dónde salen los datos, que es lo último que
               hace falta al abrir. Lo que se quiere saber al llegar es cómo
               está el día: cuántas ideas hay y si toca hacer algo. */}

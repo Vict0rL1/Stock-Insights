@@ -12,6 +12,7 @@ import { etiqueta } from '../lib/etiquetas'
 import { fmtNum, fmtPct } from '../lib/formato'
 import { useDato } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
+import { rutaExplorar } from '../lib/rutas'
 
 const FAMILIAS: Familia[] = [
   'value',
@@ -203,7 +204,8 @@ type FilaPintada = Omit<FilaMultifactor, 'score' | 'puesto'> & {
   puesto: number | null
 }
 
-export function MultifactorPage() {
+/** `incrustada`: dentro de Explorar, con su título como subtítulo (h2) bajo el de la pantalla. */
+export function MultifactorPage({ incrustada = false }: { incrustada?: boolean } = {}) {
   const [market, setMarket] = useState('us_sp500')
   const [pesos, setPesos] = useState<Record<Familia, number>>({
     value: 0.25,
@@ -292,9 +294,13 @@ export function MultifactorPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-lg font-semibold text-slate-800">Screener multifactor</h1>
-        <Link to="/screener" className="text-xs text-sky-700 hover:underline">
-          ¿Buscas el screener por filtros? →
+        {incrustada ? (
+          <h2 className="text-lg font-semibold text-slate-800">Filtros por factores</h2>
+        ) : (
+          <h1 className="text-lg font-semibold text-slate-800">Screener multifactor</h1>
+        )}
+        <Link to={rutaExplorar({ filtros: 'simples' })} className="text-xs text-sky-700 hover:underline">
+          ¿Buscas filtrar por cifras (PER, dividendo…)? →
         </Link>
       </div>
 

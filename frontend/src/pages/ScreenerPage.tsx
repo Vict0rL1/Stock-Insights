@@ -52,7 +52,8 @@ const ESTILO_FILA: Record<ScreenRow['estado'], string> = {
   no_pasa: 'text-slate-400',
 }
 
-export function ScreenerPage() {
+/** `incrustada`: dentro de Explorar, con su título como subtítulo (h2) bajo el de la pantalla. */
+export function ScreenerPage({ incrustada = false }: { incrustada?: boolean } = {}) {
   // Si los presets no llegan se dice, con «Reintentar»: antes el fallo hacía
   // `setPresets([])` y la pantalla se quedaba en «Cargando presets…» para
   // siempre (ítem 2.1).
@@ -89,7 +90,11 @@ export function ScreenerPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-800">Screener</h1>
+      {incrustada ? (
+        <h2 className="text-lg font-semibold text-slate-800">Filtros por cifras</h2>
+      ) : (
+        <h1 className="text-lg font-semibold text-slate-800">Screener</h1>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Preset</h2>

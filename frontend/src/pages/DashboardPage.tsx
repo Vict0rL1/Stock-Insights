@@ -14,7 +14,7 @@ const MAX_EVENTOS = 40
 const TONO = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' } as const
 const BARRA = { '1': 'bg-emerald-400', '0': 'bg-slate-300', '-1': 'bg-red-400' } as const
 
-function ChangeChip({ pct }: { pct: number | null | undefined }) {
+export function ChangeChip({ pct }: { pct: number | null | undefined }) {
   if (pct === null || pct === undefined) return <span className="text-slate-400">—</span>
   const texto = fmtPct(pct, 2, { signo: true, enPuntos: true })
   return <span className={`font-medium tabular-nums ${TONO[signoLeido(texto)]}`}>{texto}</span>
@@ -24,7 +24,7 @@ function ChangeChip({ pct }: { pct: number | null | undefined }) {
  *  Las seis cotizaciones y los sectores no lo decían, mientras Macro y la curva
  *  sí; con el reloj en sábado, «Sectores hoy» no podía ser una sesión de hoy y
  *  nada lo avisaba (revisión 12, visual). La hora, en la del mercado. */
-function Procedencia({ quotes, className }: { quotes: (Quote | null)[]; className: string }) {
+export function Procedencia({ quotes, className }: { quotes: (Quote | null)[]; className: string }) {
   // Solo las válidas: las viejas o desconocidas ya llevan su `EstadoDato`, con
   // su fuente y su antigüedad, y las que faltan dicen que faltan.
   const validas = quotes.filter((q): q is Quote => q !== null && (q.estado === undefined || q.estado === 'valido'))

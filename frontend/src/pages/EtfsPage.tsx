@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { EtfComparison, EtfRecommendation } from '../api/types'
 import { EstadoDato } from '../components/EstadoDato'
@@ -81,19 +81,34 @@ function OverlapBar({ value }: { value: number }) {
 /** Los que compara el lado a lado del backend (`compare_etfs`). */
 const MAX_ETFS = 4
 
-export function EtfsPage() {
+/** `incrustada`: dentro de Explorar, con su título como subtítulo (h2) bajo el de la pantalla. */
+export function EtfsPage({ incrustada = false }: { incrustada?: boolean } = {}) {
   // Vacío, con el ejemplo en el texto de ayuda: llegaba relleno con «VOO, QQQ,
   // VTI», así que el límite de cuatro (que solo decía el texto de ayuda) no se
   // veía nunca, y lo tecleado se pegaba detrás («VTIINDX») (revisión 12, visual).
-  const [input, setInput] = useState('')
+  // `?simbolos=SPY,QQQ` (desde Inicio): llega relleno y se compara solo, una vez.
+  const [params] = useSearchParams()
+  const pedidos = params.get('simbolos') ?? ''
+  const [input, setInput] = useState(pedidos)
   const [data, setData] = useState<EtfComparison | null>(null)
   const [reco, setReco] = useState<EtfRecommendation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { simbolos: symbols, descartados } = listaDeSimbolos(input, MAX_ETFS)
 
-  const compare = async (e: React.FormEvent) => {
+  const compare = (e: React.FormEvent) => {
     e.preventDefault()
+    void comparar(symbols)
+  }
+  const comparados = useRef<string | null>(null)
+  useEffect(() => {
+    const lista = listaDeSimbolos(pedidos, MAX_ETFS).simbolos
+    if (lista.length === 0 || comparados.current === pedidos) return
+    comparados.current = pedidos
+    void comparar(lista)
+  }, [pedidos])
+
+  async function comparar(symbols: string[]) {
     if (symbols.length === 0) return
     setBusy(true)
     setError(null)
@@ -115,7 +130,11 @@ export function EtfsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-800">ETFs</h1>
+      {incrustada ? (
+        <h2 className="text-lg font-semibold text-slate-800">ETFs</h2>
+      ) : (
+        <h1 className="text-lg font-semibold text-slate-800">ETFs</h1>
+      )}
 
       <form onSubmit={compare} className="space-y-1.5">
         {/* El límite, a la vista también con el campo escrito: el texto de

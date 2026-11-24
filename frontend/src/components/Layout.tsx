@@ -1,49 +1,92 @@
-import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigationType } from 'react-router-dom'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
+import { RUTAS, rutaEmpresa } from '../lib/rutas'
 import { ApiUsageBar } from './ApiUsageBar'
 
-// Agrupado por intención, no por orden de construcción: lo primero es la
-// pregunta con la que se abre la app ("¿qué miro hoy?"), no el catálogo de
-// herramientas.
-const NAV_GROUPS: { title: string | null; items: { to: string; label: string }[] }[] = [
+/**
+ * El menú de la app: tres sitios y un cajón de herramientas avanzadas
+ * (`docs/PLAN_NAVEGACION.md`). Antes eran 15 entradas en tres grupos y nada
+ * decía por dónde empezar; un usuario sin experiencia no sabía si mirar «Hoy»,
+ * «Señales», «Screener» o «Multifactor», que eran cuatro listas de empresas.
+ *
+ * En escritorio, barra lateral. En el móvil, barra inferior con cuatro botones
+ * (Inicio, Explorar, Cartera, Más): con tres destinos sobra el cajón de antes,
+ * que había que abrir para cada cambio de pantalla.
+ */
+
+type Destino = {
+  to: string
+  label: string
+  corto: string
+  icono: ReactNode
+  /** Qué rutas cuentan como «estar aquí»: la ficha de una empresa es parte de Explorar. */
+  activo: (ruta: string) => boolean
+}
+
+const trazo = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+const DESTINOS: Destino[] = [
   {
-    title: null,
-    items: [
-      { to: '/hoy', label: 'Hoy' },
-      { to: '/dashboard', label: 'Mercado' },
-      { to: '/ticker', label: 'Acciones' },
-    ],
+    to: RUTAS.inicio,
+    label: 'Inicio',
+    corto: 'Inicio',
+    icono: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" {...trazo}>
+        <path d="M3 11l9-8 9 8" />
+        <path d="M5 10v10h14V10" />
+      </svg>
+    ),
+    activo: (r) => r === RUTAS.inicio,
   },
   {
-    title: 'Herramientas',
-    items: [
-      { to: '/screener', label: 'Screener' },
-      { to: '/multifactor', label: 'Multifactor' },
-      { to: '/resultados', label: 'Resultados' },
-      { to: '/valoracion', label: 'Valoración' },
-      { to: '/senales', label: 'Señales' },
-      { to: '/etfs', label: 'ETFs' },
-      { to: '/noticias', label: 'Noticias' },
-    ],
+    to: RUTAS.explorar,
+    label: 'Explorar acciones y ETFs',
+    corto: 'Explorar',
+    icono: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" {...trazo}>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M20 20l-4-4" />
+      </svg>
+    ),
+    activo: (r) => r.startsWith(RUTAS.explorar) || r.startsWith(RUTAS.empresa),
   },
   {
-    title: 'Mío',
-    items: [
-      { to: '/portafolio', label: 'Portafolio' },
-      { to: '/cartera', label: 'Cartera' },
-      { to: '/tesis', label: 'Tesis' },
-      { to: '/vigilancia', label: 'Vigilancia' },
-    ],
+    to: RUTAS.cartera,
+    label: 'Mi cartera',
+    corto: 'Cartera',
+    icono: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" {...trazo}>
+        <rect x="3" y="7" width="18" height="13" rx="2" />
+        <path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" />
+      </svg>
+    ),
+    activo: (r) => r.startsWith(RUTAS.cartera),
   },
 ]
+
+const AVANZADO: Destino = {
+  to: RUTAS.avanzado,
+  label: 'Herramientas avanzadas',
+  corto: 'Más',
+  icono: (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0" {...trazo}>
+      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
+    </svg>
+  ),
+  activo: (r) => r.startsWith(RUTAS.avanzado),
+}
 
 /** El logo y el nombre. El mismo dibujo que el favicon, en línea y no como
  *  <img>: así hereda el color del tema y no cuesta una petición. */
 function Marca({ lema = true }: { lema?: boolean }) {
   return (
-    // Sin lema (cabecera de móvil), centrado: arriba, el nombre quedaba 7 px
-    // por encima del centro del logo y del botón «Menú».
-    <div className={`flex gap-2.5 ${lema ? 'items-start' : 'items-center'}`}>
+    <Link to={RUTAS.inicio} className={`flex gap-2.5 ${lema ? 'items-start' : 'items-center'}`}>
       <svg viewBox="0 0 32 32" aria-hidden="true" className={`h-7 w-7 shrink-0 rounded-md bg-slate-900 ${lema ? 'mt-0.5' : ''}`}>
         <polyline
           points="5,22 10,17 14,19 19,11 23,14 27,7"
@@ -57,50 +100,72 @@ function Marca({ lema = true }: { lema?: boolean }) {
       </svg>
       <div>
         <div className="text-sm font-semibold tracking-tight text-slate-900">Análisis Bursátil</div>
-        {/* Decía «investigación, no señales» y la portada dice COMPRAR: una
-            de las dos mentía. La app sí da señales; lo que no hace es
-            predecir. */}
-        {lema && <div className="text-[11px] text-slate-400">reglas, no predicciones</div>}
+        {lema && <div className="text-[11px] text-slate-400">acciones y ETFs, sin predicciones</div>}
       </div>
-    </div>
+    </Link>
   )
 }
 
-/**
- * Por debajo de 768 px (`md`) la barra lateral es un cajón que se abre con
- * «Menú» (ítem 2.12, V2). Fija, ocupaba la mitad de una pantalla de 390 px:
- * el contenido se partía palabra a palabra y tapaba los botones, hasta el
- * punto de que las capturas tenían que pulsar «a la fuerza» (auditoría del
- * 19 oct). Se cierra al navegar, con Escape y tocando fuera.
- *
- * Abierto, es modal de verdad: la cabecera y el contenido quedan `inert` (ni el
- * tabulador ni un lector de pantalla llegan a lo que tapa el velo) y el cajón es
- * un `dialog`. Antes Mayús+Tab salía a «Menú», debajo del velo, y tras los
- * enlaces el foco pasaba a los botones de la pantalla tapada (revisión de A7).
- */
+/** Un símbolo se puede escribir con minúsculas y espacios; solo se rechaza lo
+ *  que no puede ser un símbolo (vacío o con caracteres raros), y se dice. */
+export function simboloEscrito(texto: string): string | null {
+  const s = texto.trim().toUpperCase()
+  return /^[A-Z0-9][A-Z0-9.\-^=]{0,14}$/.test(s) ? s : null
+}
+
+/** La búsqueda de arriba, en todas las pantallas: lleva a la ficha. */
+function Buscador() {
+  const navigate = useNavigate()
+  const [texto, setTexto] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const enviar = (e: FormEvent) => {
+    e.preventDefault()
+    const s = simboloEscrito(texto)
+    if (!s) {
+      setError('Escribe el símbolo con letras y números, por ejemplo AAPL o SPY.')
+      return
+    }
+    setError(null)
+    setTexto('')
+    void navigate(rutaEmpresa(s))
+  }
+  return (
+    <form role="search" onSubmit={enviar} className="mb-5">
+      <div className="flex gap-2">
+        <label htmlFor="buscador-global" className="sr-only">
+          Buscar una empresa o un ETF por su símbolo
+        </label>
+        <input
+          id="buscador-global"
+          type="search"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Símbolo de una empresa o ETF: AAPL, SPY…"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'buscador-error' : undefined}
+          autoCapitalize="characters"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
+        />
+        <button
+          type="submit"
+          className="min-h-11 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Buscar
+        </button>
+      </div>
+      {error && (
+        <p id="buscador-error" role="alert" className="mt-1 text-xs text-red-700">
+          {error}
+        </p>
+      )}
+    </form>
+  )
+}
+
 export function Layout() {
-  const [abierto, setAbierto] = useState(false)
   const { pathname, hash } = useLocation()
   const tipoNavegacion = useNavigationType()
-  const [ruta, setRuta] = useState(pathname)
   const rutaDesplazada = useRef(pathname)
-  const boton = useRef<HTMLButtonElement>(null)
-  const cerrar = useRef<HTMLButtonElement>(null)
-  const cajon = useRef<HTMLElement>(null)
-  const estabaAbierto = useRef(false)
-  // El foco vuelve a «Menú» DESPUÉS de cerrar: mientras el cajón está abierto la
-  // cabecera es `inert` y no se puede enfocar nada dentro.
-  const devolverFoco = useRef(false)
-  const cerrarYVolver = () => {
-    devolverFoco.current = true
-    setAbierto(false)
-  }
-  // Al cambiar de pantalla, en el mismo render: un efecto dejaría un render
-  // con el cajón abierto encima de la pantalla nueva.
-  if (ruta !== pathname) {
-    setRuta(pathname)
-    setAbierto(false)
-  }
   // Una pantalla nueva se abre por arriba (revisión 12, visual): la página no
   // se recarga y el navegador conservaba el desplazamiento de la anterior, así
   // que «Ver el análisis completo» desde la lista de Hoy abría la ficha unos
@@ -116,113 +181,49 @@ export function Layout() {
     if (ancla) ancla.scrollIntoView()
     else window.scrollTo(0, 0)
   }, [pathname, hash, tipoNavegacion])
-  useEffect(() => {
-    if (!abierto) {
-      // También si el foco se quedó en el cajón ya oculto o se perdió (pulsar la
-      // pantalla en la que ya estás, «Atrás» del navegador): caía en BODY
-      // (revisión 3).
-      const activo = document.activeElement
-      const perdido = activo === document.body || (cajon.current?.contains(activo) ?? false)
-      if (estabaAbierto.current && (devolverFoco.current || perdido)) boton.current?.focus()
-      devolverFoco.current = false
-      estabaAbierto.current = false
-      return
-    }
-    estabaAbierto.current = true
-    cerrar.current?.focus()
-    const alPulsar = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      devolverFoco.current = true
-      setAbierto(false)
-    }
-    // Al pasar a ≥ md (girar el móvil) el cajón deja de serlo: abierto, todo
-    // quedaba inerte y sin forma visible de salir (revisión 3).
-    const escritorio = typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 48rem)') : null
-    const alCambiar = (e: MediaQueryListEvent) => {
-      if (e.matches) setAbierto(false)
-    }
-    window.addEventListener('keydown', alPulsar)
-    escritorio?.addEventListener('change', alCambiar)
-    if (escritorio?.matches) setAbierto(false)
-    return () => {
-      window.removeEventListener('keydown', alPulsar)
-      escritorio?.removeEventListener('change', alCambiar)
-    }
-  }, [abierto])
+
+  const enlaceLateral = (d: Destino) => {
+    const activo = d.activo(pathname)
+    return (
+      <Link
+        key={d.to}
+        to={d.to}
+        aria-current={activo ? 'page' : undefined}
+        className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm transition-colors ${
+          activo ? 'bg-slate-100 font-semibold text-slate-900' : 'text-slate-600 hover:text-slate-900'
+        }`}
+      >
+        {d.icono}
+        {d.label}
+      </Link>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 md:flex">
-      <header
-        inert={abierto || undefined}
-        className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5 md:hidden"
-      >
+      <header className="sticky top-0 z-30 flex items-center border-b border-slate-200 bg-white px-4 py-2.5 md:hidden">
         <Marca lema={false} />
-        <button
-          ref={boton}
-          type="button"
-          aria-expanded={abierto}
-          aria-controls="navegacion"
-          onClick={() => setAbierto(true)}
-          className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
-        >
-          <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4">
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          Menú
-        </button>
       </header>
-      {abierto && (
-        <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={cerrarYVolver} />
-      )}
+
       <aside
-        ref={cajon}
-        id="navegacion"
         aria-label="Navegación"
-        role={abierto ? 'dialog' : undefined}
-        aria-modal={abierto || undefined}
-        className={`${
-          abierto ? 'fixed inset-y-0 left-0 z-50 flex w-64 overflow-y-auto shadow-xl' : 'hidden'
-        } shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-5 md:static md:z-auto md:flex md:w-56 md:overflow-visible md:shadow-none`}
+        className="hidden w-60 shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-5 md:flex"
       >
-        <div className="mb-6 flex items-start justify-between gap-2 px-3">
+        <div className="mb-6 px-3">
           <Marca />
-          <button
-            ref={cerrar}
-            type="button"
-            onClick={cerrarYVolver}
-            className="rounded-md px-2 py-1 text-sm text-slate-500 hover:text-slate-900 md:hidden"
-          >
-            Cerrar
-          </button>
         </div>
-        <nav className="flex flex-col gap-5">
-          {NAV_GROUPS.map((group, i) => (
-            <div key={group.title ?? i} className="flex flex-col gap-0.5">
-              {group.title && (
-                // `slate-400`: con `slate-300`, 1,9:1 de contraste a 10 px.
-                <div className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                  {group.title}
-                </div>
-              )}
-              {group.items.map(({ to, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  onClick={() => setAbierto(false)}
-                  className={({ isActive }) =>
-                    `rounded-md px-3 py-1.5 text-sm transition-colors ${
-                      isActive
-                        ? 'bg-slate-100 font-medium text-slate-900'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`
-                  }
-                >
-                  {label}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+        <nav aria-label="Principal" className="flex flex-col gap-1">
+          {DESTINOS.map(enlaceLateral)}
         </nav>
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <div className="mb-1 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+            Para usuarios avanzados
+          </div>
+          {enlaceLateral(AVANZADO)}
+          <p className="px-3 pt-1 text-[11px] leading-snug text-slate-400">
+            Mercado completo, señales y backtest, valoración DCF, calendario de resultados y noticias.
+          </p>
+        </div>
 
         <div className="mt-auto space-y-3 px-3 pt-6">
           <ApiUsageBar />
@@ -233,9 +234,35 @@ export function Layout() {
           </p>
         </div>
       </aside>
-      <main inert={abierto || undefined} className="min-w-0 flex-1 px-4 py-5 md:px-6 md:py-7">
+
+      <main className="min-w-0 flex-1 px-4 pb-28 pt-5 md:px-6 md:pb-10 md:pt-7">
+        <Buscador />
         <Outlet />
       </main>
+
+      {/* La barra de abajo del móvil: los mismos destinos, con su nombre corto.
+          `pb-28` en el contenido para que no tape lo último de la página. */}
+      <nav
+        aria-label="Principal"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 md:hidden"
+      >
+        {[...DESTINOS, AVANZADO].map((d) => {
+          const activo = d.activo(pathname)
+          return (
+            <Link
+              key={d.to}
+              to={d.to}
+              aria-current={activo ? 'page' : undefined}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg text-[12px] ${
+                activo ? 'font-semibold text-sky-700' : 'text-slate-500'
+              }`}
+            >
+              {d.icono}
+              {d.corto}
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   )
 }
