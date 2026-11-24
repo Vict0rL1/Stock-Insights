@@ -8,6 +8,7 @@ import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio, signoLeido } from '../../li
 import { leerNumero } from '../../lib/entrada'
 import { mensajeDeError, useDato, type CargaConReintento } from '../../lib/useDato'
 import { MarcoTabla } from '../MarcoTabla'
+import { rutaEmpresa } from '../../lib/rutas'
 
 const ESCENARIOS = ['bear', 'base', 'bull'] as const
 
@@ -100,7 +101,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
               {record.scenarios.map((s) => (
                 <tr key={s.scenario_id} className="border-b border-slate-100">
                   <td className="px-2 py-1.5">
-                    <Link to={`/ticker/${s.symbol}`} className="font-medium hover:underline">
+                    <Link to={rutaEmpresa(s.symbol)} className="font-medium hover:underline">
                       {s.symbol}
                     </Link>
                   </td>
@@ -305,7 +306,7 @@ export function MisTesis({ tesis, alCambiar }: { tesis: CargaConReintento<Thesis
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="font-semibold text-slate-800">
-                        <Link to={`/ticker/${thesis.symbol}`} className="hover:underline">
+                        <Link to={rutaEmpresa(thesis.symbol)} className="hover:underline">
                           {thesis.symbol}
                         </Link>
                         <span className="ml-2 font-normal">{thesis.title}</span>

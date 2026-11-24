@@ -14,6 +14,7 @@ import { AlertasDePrecio } from './AlertasDePrecio'
 import { estadoDelStop } from './atencion'
 import { EfectivoPanel } from './RiesgoYOportunidad'
 import { tonoLeido } from './tono'
+import { rutaEmpresa } from '../../lib/rutas'
 
 // Las cifras que se escriben aquí se guardan: con `parseFloat`, «1.250,50»
 // (como la app escribe un importe) era 1,25 y «12,5» era 12, sin aviso. Una
@@ -545,7 +546,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                                 >
                                   <td className="px-2 py-1.5">
                                     <Link
-                                      to={`/ticker/${p.symbol}`}
+                                      to={rutaEmpresa(p.symbol)}
                                       className="flex items-center gap-2 font-medium hover:underline"
                                     >
                                       <CompanyLogo symbol={p.symbol} size="sm" />

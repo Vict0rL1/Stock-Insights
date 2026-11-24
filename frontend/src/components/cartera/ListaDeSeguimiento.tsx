@@ -7,6 +7,7 @@ import { CompanyLogo } from '../CompanyLogo'
 import { BloqueDatos, EstadoDato } from '../EstadoDato'
 import { Sparkline } from '../Sparkline'
 import { tonoLeido } from './tono'
+import { rutaEmpresa } from '../../lib/rutas'
 
 /** La lista de seguimiento (antes «Watchlist», pestaña del Portafolio): lo que
  *  sigues sin tenerlo. Vive en Mi cartera › Tesis y vigilancia porque añadir
@@ -83,7 +84,7 @@ export function ListaDeSeguimiento({ alCambiar }: { alCambiar?: () => void }) {
                 <div className="flex items-center gap-2.5">
                   <CompanyLogo symbol={item.symbol} size="md" />
                   <div>
-                    <Link to={`/ticker/${item.symbol}`} className="font-medium hover:underline">
+                    <Link to={rutaEmpresa(item.symbol)} className="font-medium hover:underline">
                       {item.symbol}
                     </Link>
                     <span className="ml-2 text-xs text-slate-400">

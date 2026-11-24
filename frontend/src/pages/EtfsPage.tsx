@@ -8,6 +8,7 @@ import { fmtCompacto, fmtPct, plural } from '../lib/formato'
 import { listaDeSimbolos } from '../lib/simbolos'
 import { COLUMNA_FIJA } from '../lib/tablas'
 import { MarcoTabla } from '../components/MarcoTabla'
+import { rutaEmpresa } from '../lib/rutas'
 
 const ETF_ACTION_STYLES: Record<string, string> = {
   comprar: 'bg-emerald-600 text-white',
@@ -291,7 +292,7 @@ export function EtfsPage({ incrustada = false }: { incrustada?: boolean } = {}) 
                   <ul className="space-y-1 text-sm">
                     {etf.top_holdings.map((h) => (
                       <li key={h.symbol} className="flex justify-between border-b border-slate-100 py-1">
-                        <Link to={`/ticker/${h.symbol}`} className="text-slate-700 hover:underline">
+                        <Link to={rutaEmpresa(h.symbol)} className="text-slate-700 hover:underline">
                           {h.symbol}
                           <span className="ml-2 text-xs text-slate-400">{h.name ?? ''}</span>
                         </Link>

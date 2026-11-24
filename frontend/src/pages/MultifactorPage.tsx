@@ -12,7 +12,7 @@ import { etiqueta } from '../lib/etiquetas'
 import { fmtNum, fmtPct } from '../lib/formato'
 import { useDato } from '../lib/useDato'
 import { MarcoTabla } from '../components/MarcoTabla'
-import { rutaExplorar } from '../lib/rutas'
+import { rutaEmpresa, rutaExplorar } from '../lib/rutas'
 
 const FAMILIAS: Familia[] = [
   'value',
@@ -502,7 +502,7 @@ function FilaTabla({
         <td className="px-3 py-2 tabular-nums text-slate-400">{fila.puesto ?? '—'}</td>
         <td className="px-3 py-2">
           <Link
-            to={`/ticker/${fila.symbol}`}
+            to={rutaEmpresa(fila.symbol)}
             onClick={(e) => e.stopPropagation()}
             className="font-medium text-slate-800 hover:text-sky-700"
           >

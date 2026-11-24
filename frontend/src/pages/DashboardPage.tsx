@@ -4,6 +4,7 @@ import { BloqueDatos, EstadoDato } from '../components/EstadoDato'
 import { fmtFecha, fmtNum, fmtPct, fmtPrecio, signoLeido, ZONA_MERCADO } from '../lib/formato'
 import { useDato } from '../lib/useDato'
 import type { CalendarioMercado, Quote, SectorEntry } from '../api/types'
+import { rutaEmpresa } from '../lib/rutas'
 
 /** Cuántos próximos resultados caben en el bloque; el resto se cuenta. */
 const MAX_EVENTOS = 40
@@ -131,7 +132,7 @@ export function DashboardPage() {
                     return (
                       <li key={s.symbol} className="flex items-center gap-2 text-sm">
                         <Link
-                          to={`/ticker/${s.symbol}`}
+                          to={rutaEmpresa(s.symbol)}
                           className="w-44 shrink-0 truncate text-slate-600 hover:underline"
                         >
                           {s.label}
@@ -242,7 +243,7 @@ export function DashboardPage() {
                       key={`${ev.symbol}-${ev.date}`}
                       className="flex items-center justify-between border-b border-slate-100 py-1"
                     >
-                      <Link to={`/ticker/${ev.symbol}`} className="font-medium text-slate-700 hover:underline">
+                      <Link to={rutaEmpresa(ev.symbol)} className="font-medium text-slate-700 hover:underline">
                         {ev.symbol}
                       </Link>
                       <span className="text-xs text-slate-500">

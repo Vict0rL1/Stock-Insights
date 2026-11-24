@@ -41,6 +41,7 @@ import {
 import { coord } from '../lib/svg'
 import { useDato } from '../lib/useDato'
 import { useListaDiaria } from '../hooks/useListaDiaria'
+import { RUTAS, rutaEmpresa } from '../lib/rutas'
 
 type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
 
@@ -152,7 +153,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
       {decision.traza_en_ficha && symbol && (
         <p className="text-[11px] text-slate-500">
           El porqué regla a regla y qué cambiaría esta decisión están en la{' '}
-          <Link to={`/ticker/${symbol}`} className="font-medium underline">
+          <Link to={rutaEmpresa(symbol)} className="font-medium underline">
             ficha de {symbol}
           </Link>{' '}
           (pestaña «Qué cambió»).
@@ -265,7 +266,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
           aplicarlas en el periodo medido habría perdido dinero, o habría ganado
           menos que comprar a ciegas. La operación de arriba es lo que dictan las
           reglas, no una recomendación. Revisa el detalle en{' '}
-          <Link to="/senales" className="font-medium underline">
+          <Link to={RUTAS.senales} className="font-medium underline">
             Señales
           </Link>
           .
@@ -982,7 +983,7 @@ function SignalRow({
             </p>
           )}
           <Link
-            to={`/ticker/${signal.symbol}`}
+            to={rutaEmpresa(signal.symbol)}
             className="inline-block text-xs font-medium text-sky-700 hover:underline"
           >
             Ver el análisis completo de {signal.symbol} →
@@ -1025,7 +1026,7 @@ function RepasoDeStops({
             aviso={aviso}
             tamano="compacto"
             titulo={
-              <Link to={`/ticker/${symbol}`} className="text-sm font-semibold text-slate-900 underline">
+              <Link to={rutaEmpresa(symbol)} className="text-sm font-semibold text-slate-900 underline">
                 {symbol}
               </Link>
             }
@@ -1111,7 +1112,7 @@ function SoloSuStop({
               aviso={avisoDe({ stop: p })}
               tamano="compacto"
               titulo={
-                <Link to={`/ticker/${p.symbol}`} className="text-sm font-medium text-slate-900 hover:underline">
+                <Link to={rutaEmpresa(p.symbol)} className="text-sm font-medium text-slate-900 hover:underline">
                   {p.symbol}
                 </Link>
               }
@@ -1459,7 +1460,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                       Puede estar en otro mercado, o fuera del universo. Búscala
                       directamente en{' '}
                       <Link
-                        to={`/ticker/${query.trim().toUpperCase()}`}
+                        to={rutaEmpresa(query.trim().toUpperCase())}
                         className="font-medium text-sky-700 hover:underline"
                       >
                         Acciones

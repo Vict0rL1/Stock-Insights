@@ -18,6 +18,7 @@ import { listaDeSimbolos } from '../lib/simbolos'
 import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
 import { MarcoTabla } from '../components/MarcoTabla'
+import { rutaEmpresa } from '../lib/rutas'
 
 const LABEL_STYLES: Record<string, string> = {
   'muy favorable': 'bg-emerald-100 text-emerald-800',
@@ -79,7 +80,7 @@ function SignalCard({ signal, umbrales }: { signal: QuantSignal; umbrales?: numb
               <span className="text-xs font-medium text-slate-400">#{signal.rank}</span>
             )}
             <Link
-              to={`/ticker/${signal.symbol}`}
+              to={rutaEmpresa(signal.symbol)}
               className="font-semibold text-slate-800 hover:underline"
             >
               {signal.symbol}
@@ -443,7 +444,7 @@ function ScanMode() {
                 >
                   <span className="flex items-center gap-2">
                     <span className="w-6 text-xs text-slate-400">{row.rank ?? '—'}</span>
-                    <Link to={`/ticker/${row.symbol}`} className="hover:underline">
+                    <Link to={rutaEmpresa(row.symbol)} className="hover:underline">
                       {row.symbol}
                     </Link>
                   </span>

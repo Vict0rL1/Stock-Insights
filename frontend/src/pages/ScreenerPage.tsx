@@ -7,6 +7,7 @@ import { etiqueta } from '../lib/etiquetas'
 import { decimalesFrente, fmtFrente, fmtNum, fmtPct, plural } from '../lib/formato'
 import { listaDeSimbolos } from '../lib/simbolos'
 import { useDato } from '../lib/useDato'
+import { rutaEmpresa } from '../lib/rutas'
 
 /** El tope del backend (`MAX_UNIVERSE` en `routers/screener.py`). */
 const MAX_UNIVERSO = 25
@@ -199,7 +200,7 @@ export function ScreenerPage({ incrustada = false }: { incrustada?: boolean } = 
               >
                 <div className="flex items-center justify-between">
                   <Link
-                    to={`/ticker/${row.symbol}`}
+                    to={rutaEmpresa(row.symbol)}
                     className="font-medium text-slate-800 hover:underline"
                   >
                     {row.symbol}
