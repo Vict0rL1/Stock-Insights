@@ -102,10 +102,11 @@ const TODAS: Pantalla[] = [
   { nombre: '01b_explorar_todas', ruta: '/explorar', accion: pulsar(/^Todas \(/) },
   { nombre: '02_mercado', ruta: '/avanzado/mercado' },
   ...ficha('ACME'),
+  // Mi cartera (fase 3): Portafolio, Cartera, Tesis y Vigilancia en tres
+  // sub-pestañas. `/portafolio`, `/tesis` y `/vigilancia` redirigen aquí.
   { nombre: '13_cartera', ruta: '/cartera' },
-  { nombre: '14_portafolio', ruta: '/portafolio' },
-  { nombre: '15_tesis', ruta: '/tesis' },
-  { nombre: '16_vigilancia', ruta: '/vigilancia' },
+  { nombre: '13b_cartera_riesgo', ruta: '/cartera?pestana=riesgo' },
+  { nombre: '13c_cartera_tesis', ruta: '/cartera?pestana=tesis' },
   { nombre: '17_valoracion_modulo', ruta: '/avanzado/valoracion' },
   { nombre: '18_screener', ruta: '/explorar?filtros=simples' },
   { nombre: '19_multifactor', ruta: '/explorar?filtros=factores' },
@@ -128,7 +129,7 @@ const TODAS: Pantalla[] = [
 
 const ESCENARIOS: Record<string, Pantalla[]> = {
   normal: TODAS,
-  cartera_vacia: TODAS.filter((p) => ['00_inicio', '01_explorar', '13_cartera'].includes(p.nombre)),
+  cartera_vacia: TODAS.filter((p) => ['00_inicio', '01_explorar', '13_cartera', '13b_cartera_riesgo', '13c_cartera_tesis'].includes(p.nombre)),
   sin_candidatas: TODAS.filter((p) => ['00_inicio', '01_explorar'].includes(p.nombre)),
   // Sin cotización: desde el ítem 2.1 la ficha enseña la cabecera (nombre del
   // perfil o símbolo), «Precio no disponible…» y todas sus pestañas; antes se

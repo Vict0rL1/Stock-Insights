@@ -21,8 +21,8 @@ en `backend/app/etiquetas.py`; este documento fija las palabras.
 | Valor relativo frente a comparables | puntuación | | «z-score» solo dentro de una explicación técnica. |
 | Postura escrita sobre una empresa | tesis | | Con puntos de invalidación medibles. |
 | Lo que tienes de un valor | posición | | Varios lotes del mismo símbolo son una posición. |
-| Todo lo que tienes | cartera | | **Pendiente de la Fase 3** (fusión de «Portafolio» y «Cartera» en la navegación): hasta entonces conviven los dos nombres de pestaña. |
-| Lista de valores seguidos | lista de seguimiento | | **Pendiente de la Fase 3**: la pestaña aún se llama «Watchlist». |
+| Todo lo que tienes | cartera | | «Mi cartera» (`/cartera`) junta Portafolio, Cartera, Tesis y Vigilancia en tres sub-pestañas (fase 3, 3.1 y 3.2); el menú deja de nombrar «Portafolio» cuando entra la navegación nueva. |
+| Lista de valores seguidos | lista de seguimiento | | En Mi cartera › Tesis y vigilancia ya se llama así; quedan «watchlist» en textos de otras pantallas y del backend. |
 | Previsión que publica la propia empresa | guidance de la dirección | | Extraída por IA con cita verificada; nunca se presenta como dato calculado. |
 | Ganancia o pérdida | P&L | | «realizado» (posiciones cerradas) y «no realizado» (abiertas). |
 | Precio fuera de lo esperable | precio viejo | | Rescatado de caché porque todas las fuentes fallaron; siempre con su antigüedad. |

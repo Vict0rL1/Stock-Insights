@@ -7,8 +7,8 @@ import { DashboardPage } from './pages/DashboardPage'
 import { EarningsPage } from './pages/EarningsPage'
 import { ExplorarPage } from './pages/ExplorarPage'
 import { InicioPage } from './pages/InicioPage'
+import { MiCarteraPage } from './pages/MiCarteraPage'
 import { NewsPage } from './pages/NewsPage'
-import { PortfolioPage } from './pages/PortfolioPage'
 import { SignalsPage } from './pages/SignalsPage'
 import { TickerPage } from './pages/TickerPage'
 import { ValuationPage } from './pages/ValuationPage'
@@ -35,7 +35,7 @@ export function Rutas() {
         <Route path={RUTAS.explorar} element={<ExplorarPage />} />
         <Route path={RUTAS.empresa} element={<TickerPage />} />
         <Route path={`${RUTAS.empresa}/:symbol`} element={<TickerPage />} />
-        <Route path={RUTAS.cartera} element={<PortfolioPage />} />
+        <Route path={RUTAS.cartera} element={<MiCarteraPage />} />
         <Route path={RUTAS.avanzado} element={<AvanzadoPage />} />
         <Route path={RUTAS.mercado} element={<DashboardPage />} />
         <Route path={RUTAS.senales} element={<SignalsPage />} />

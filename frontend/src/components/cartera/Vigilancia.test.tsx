@@ -1,5 +1,6 @@
 /**
- * Revisión del 2.1 en Vigilancia:
+ * Revisión del 2.1 en Vigilancia (hoy, «Puntos de vigilancia» y «Diario de
+ * decisiones» en Mi cartera › Tesis y vigilancia; se pinta la pestaña entera):
  *
  * - Los puntos de invalidación seguían fuera de `useDato`: el fallo salía
  *   suelto, sin «Reintentar», y el registro de decisiones lo borraba.
@@ -10,8 +11,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DecisionesResponse, VigilanciaResponse } from '../api/types'
-import { VigilanciaPage } from './VigilanciaPage'
+import type { DecisionesResponse, VigilanciaResponse } from '../../api/types'
+import { TesisYVigilancia } from './TesisYVigilancia'
 
 const VIGILANCIA: VigilanciaResponse = {
   tesis: [
@@ -67,9 +68,15 @@ const BASE: Record<string, Respuesta> = {
   },
   '/api/theses': { status: 200, json: { theses: [] } },
   '/api/theses/vigilancia/metricas': { status: 200, json: { metricas: [], crecimientos: [], operadores: [], nota: '' } },
+  // Lo demás que pide la pestaña, vacío.
+  '/api/theses/track-record': {
+    status: 200,
+    json: { scenarios: [], summary: { total: 0, evaluable: 0, hits: 0, misses: 0, hit_rate: null, median_estimate_error_pct: null, note: '' } },
+  },
+  '/api/watchlist': { status: 200, json: { name: 'principal', items: [] } },
 }
 
-const pintar = () => render(<MemoryRouter><VigilanciaPage /></MemoryRouter>)
+const pintar = () => render(<MemoryRouter><TesisYVigilancia /></MemoryRouter>)
 
 afterEach(() => vi.unstubAllGlobals())
 

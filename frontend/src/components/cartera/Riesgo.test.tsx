@@ -1,5 +1,5 @@
 /**
- * Ítem 2.1 en la pantalla de Cartera:
+ * Ítem 2.1 en la pantalla de Cartera, hoy Mi cartera › Riesgo:
  *
  * - El análisis que no carga dice qué no cargó y se puede reintentar; antes era
  *   un motivo suelto en rojo.
@@ -9,11 +9,11 @@
  *   signo: `fmtPct(0, { signo: true })` no lo pone; un test que buscaba
  *   «+0,0» no podía fallar nunca. Revisión del 2.1.)
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import empresaCompleta from '../test/fixtures/empresa_completa.json'
-import { CarteraPage } from './CarteraPage'
+import empresaCompleta from '../../test/fixtures/empresa_completa.json'
+import { MiCarteraPage } from '../../pages/MiCarteraPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 
@@ -31,11 +31,12 @@ function servir(riesgo: { status: number; json: unknown }) {
   return fetchFalso
 }
 
-const pintar = () => render(<MemoryRouter><CarteraPage /></MemoryRouter>)
+const pintar = () =>
+  render(<MemoryRouter initialEntries={['/cartera?pestana=riesgo']}><MiCarteraPage /></MemoryRouter>)
 
 afterEach(() => vi.unstubAllGlobals())
 
-describe('pantalla de Cartera (ítem 2.1)', () => {
+describe('Mi cartera › Riesgo (ítem 2.1)', () => {
   it('si el análisis no carga, dice qué no cargó, con su motivo', async () => {
     servir({ status: 503, json: { detail: 'no hay precios en caché' } })
     pintar()
@@ -53,7 +54,9 @@ describe('pantalla de Cartera (ítem 2.1)', () => {
       },
     })
     pintar()
-    const posiciones = (await screen.findByText('Posiciones')).nextElementSibling!
+    // Dentro de su bloque: «Posiciones» es también el nombre de una pestaña.
+    const bloque = (await screen.findByRole('heading', { name: 'Concentración' })).closest('section')!
+    const posiciones = within(bloque).getByText('Posiciones').nextElementSibling!
     expect(posiciones.textContent).toBe('—')
     const apuestas = screen.getByText('Apuestas independientes').nextElementSibling!
     expect(apuestas.textContent).toBe('2,4')

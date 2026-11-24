@@ -1,11 +1,13 @@
 /**
  * Ítem 2.1: un fallo de carga se dice como fallo, con su motivo, y nunca como
  * «no hay». Parte de la respuesta REAL de la cartera de ACME
- * (`empresa_completa.json`) y rompe o retoca una ruta cada vez.
+ * (`empresa_completa.json`) y rompe o retoca una ruta cada vez. Eran las tres
+ * pestañas del Portafolio; hoy, Mi cartera: la cartera y las alertas en
+ * Posiciones, la lista de seguimiento (antes «Watchlist») en Tesis y vigilancia.
  *
  * - Alertas: es un control de riesgo. Con la carga fallida salían «Sin alertas
  *   configuradas.» y quien vigilaba un stop creía que no tenía ninguno.
- * - Watchlist: el fallo dejaba la lista en `[]` y decía «Watchlist vacía.».
+ * - Lista de seguimiento: el fallo dejaba la lista en `[]` y decía «Watchlist vacía.».
  * - Cartera y recorrido: el motivo salía suelto, sin decir qué no había cargado.
  * - Cerradas: el P&L realizado salía sin código de moneda con dos divisas.
  * - Precio: «viejo · N min» a mano, y el «desconocido» del backend no se decía.
@@ -13,8 +15,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import empresaCompleta from '../test/fixtures/empresa_completa.json'
-import { PortfolioPage } from './PortfolioPage'
+import empresaCompleta from '../../test/fixtures/empresa_completa.json'
+import { MiCarteraPage } from '../../pages/MiCarteraPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Cartera = {
@@ -23,9 +25,30 @@ type Cartera = {
   summary: Record<string, unknown>
 }
 
-vi.mock('../components/PriceChart', () => ({ PriceChart: () => null }))
+vi.mock('../PriceChart', () => ({ PriceChart: () => null }))
 
-const base = (empresaCompleta as { rutas: Rutas }).rutas
+// Lo que el paquete no trae y piden las mismas pestañas: alertas sin ninguna y
+// tesis, vigilancia y decisiones vacías. Sin esto, cada test pintaría además
+// sus fallos y sus «Reintentar».
+const base: Rutas = {
+  ...(empresaCompleta as { rutas: Rutas }).rutas,
+  '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+  '/api/theses': { status: 200, json: { theses: [] } },
+  '/api/theses/track-record': {
+    status: 200,
+    json: { scenarios: [], summary: { total: 0, evaluable: 0, hits: 0, misses: 0, hit_rate: null, median_estimate_error_pct: null, note: '' } },
+  },
+  '/api/theses/vigilancia': {
+    status: 200,
+    json: { tesis: [], total_saltan: 0, sin_disparadores: [], nota: '', aviso_sin_disparadores: null },
+  },
+  '/api/theses/sin-tesis': {
+    status: 200,
+    json: { posiciones_sin_tesis: [], watchlist_sin_tesis: [], posiciones_totales: 1, watchlist_total: 0, nota: '' },
+  },
+  '/api/theses/decisiones': { status: 200, json: { decisiones: [], coherencia: { decisiones: 0, nota: '' }, nota: '' } },
+  '/api/theses/vigilancia/metricas': { status: 200, json: { metricas: [], crecimientos: [], operadores: [], nota: '' } },
+}
 const falla = (motivo: string) => ({ status: 503, json: { detail: motivo } })
 
 function servir(rutas: Rutas) {
@@ -44,8 +67,11 @@ function con(cambios: (rutas: Rutas, cartera: Cartera) => void): Rutas {
   return rutas
 }
 
-const pintar = () => render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
-const pestaña = (nombre: string) => fireEvent.click(screen.getByRole('button', { name: nombre }))
+const pintar = (pestana = 'posiciones') =>
+  render(<MemoryRouter initialEntries={[`/cartera?pestana=${pestana}`]}><MiCarteraPage /></MemoryRouter>)
+// Los dos formularios de Posiciones, por su nombre: los dos piden un ticker.
+const compra = () => within(screen.getByRole('form', { name: 'Anotar una compra' }))
+const alerta = () => within(screen.getByRole('form', { name: 'Crear una alerta de precio' }))
 const fila = (simbolo: string) =>
   screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes(simbolo))
 
@@ -55,7 +81,6 @@ describe('alertas (ítem 2.1)', () => {
   it('si no cargan, lo dicen con su motivo; no salen «Sin alertas configuradas.»', async () => {
     servir({ ...base, '/api/portfolio/alerts': falla('la base de datos está bloqueada') })
     pintar()
-    pestaña('Alertas')
     expect(
       await screen.findByText('No se pudieron cargar las alertas: la base de datos está bloqueada'),
     ).toBeInTheDocument()
@@ -74,19 +99,17 @@ describe('alertas (ítem 2.1)', () => {
       },
     })
     pintar()
-    pestaña('Alertas')
     expect(await screen.findByText('Sin alertas configuradas.')).toBeInTheDocument()
     expect(screen.getByText('Nadie vigila las alertas.')).toBeInTheDocument()
   })
 })
 
-describe('watchlist (ítem 2.1)', () => {
-  it('si no carga, lo dice; no sale «Watchlist vacía.»', async () => {
+describe('lista de seguimiento (ítem 2.1)', () => {
+  it('si no carga, lo dice; no sale «Lista de seguimiento vacía.»', async () => {
     servir({ ...base, '/api/watchlist': falla('el servidor no respondió') })
-    pintar()
-    pestaña('Watchlist')
-    expect(await screen.findByText('No se pudo cargar la watchlist: el servidor no respondió')).toBeInTheDocument()
-    expect(screen.queryByText('Watchlist vacía.')).toBeNull()
+    pintar('tesis')
+    expect(await screen.findByText('No se pudo cargar la lista de seguimiento: el servidor no respondió')).toBeInTheDocument()
+    expect(screen.queryByText('Lista de seguimiento vacía.')).toBeNull()
   })
 
   it('una variación desconocida no se pinta en verde', async () => {
@@ -106,15 +129,14 @@ describe('watchlist (ítem 2.1)', () => {
         },
       },
     })
-    pintar()
-    pestaña('Watchlist')
+    pintar('tesis')
     const item = (await screen.findByText('KO')).closest('li')!
     const variacion = within(item).getByText('—')
     expect(variacion.className).not.toMatch(/emerald|red/)
   })
 })
 
-describe('watchlist: precio viejo (revisión del 2.1)', () => {
+describe('lista de seguimiento: precio viejo (revisión del 2.1)', () => {
   it('un precio rescatado de la caché se dice, con su antigüedad', async () => {
     servir({
       ...base,
@@ -135,8 +157,7 @@ describe('watchlist: precio viejo (revisión del 2.1)', () => {
         },
       },
     })
-    pintar()
-    pestaña('Watchlist')
+    pintar('tesis')
     const item = (await screen.findByText('KO')).closest('li')!
     expect(item.textContent).toContain('DATO VIEJO · yfinance · hace 24 h')
   })
@@ -295,10 +316,10 @@ describe('recargar tras una acción (revisión del 2.1)', () => {
     expect(await screen.findByText('Recorrido de la cartera')).toBeInTheDocument()
     rutas['/api/portfolio'] = 'pendiente'
     rutas['/api/portfolio/historial?descargar=false'] = 'pendiente'
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
-    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: '3' } })
-    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '150' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    fireEvent.change(compra().getByPlaceholderText('Ticker (p. ej. KO)'), { target: { value: 'pep' } })
+    fireEvent.change(compra().getByPlaceholderText('Nº de acciones'), { target: { value: '3' } })
+    fireEvent.change(compra().getByPlaceholderText('Precio de compra por acción'), { target: { value: '150' } })
+    fireEvent.click(compra().getByRole('button', { name: 'Anotar compra' }))
     await waitFor(() => expect(fetchFalso.mock.calls.filter(([u]) => u === '/api/portfolio')).toHaveLength(2))
     await waitFor(() =>
       expect(fetchFalso.mock.calls.filter(([u]) => String(u).startsWith('/api/portfolio/historial'))).toHaveLength(2),
@@ -311,24 +332,23 @@ describe('recargar tras una acción (revisión del 2.1)', () => {
   })
 })
 
-describe('refrescar en watchlist y alertas (segunda revisión del 2.1)', () => {
+describe('refrescar en la lista de seguimiento y en las alertas (segunda revisión del 2.1)', () => {
   // Volver a `reintentar` en estas dos no lo cazaba ningún test.
-  it('al añadir a la watchlist, la lista sigue a la vista mientras recarga', async () => {
+  it('al añadir a la lista de seguimiento, la lista sigue a la vista mientras recarga', async () => {
     const rutas: Record<string, { status: number; json: unknown } | 'pendiente'> = {
       ...base,
       '/api/watchlist': { status: 200, json: WATCHLIST },
       'POST /api/watchlist': { status: 200, json: { id: 5, symbol: 'KO' } },
     }
     const fetchFalso = servirConMetodo(rutas)
-    pintar()
-    pestaña('Watchlist')
+    pintar('tesis')
     expect(await screen.findByText('PEP')).toBeInTheDocument()
     rutas['/api/watchlist'] = 'pendiente'
     fireEvent.change(screen.getByPlaceholderText('Añadir ticker'), { target: { value: 'ko' } })
     fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
     await waitFor(() => expect(fetchFalso.mock.calls.filter(([u, i]) => u === '/api/watchlist' && !i?.method)).toHaveLength(2))
     expect(screen.getByText('PEP')).toBeInTheDocument()
-    expect(screen.getByText('Actualizando la watchlist…')).toBeInTheDocument()
+    expect(screen.getByText('Actualizando la lista de seguimiento…')).toBeInTheDocument()
     expect(screen.queryByText(/^Cargando/)).toBeNull()
   })
 
@@ -340,11 +360,10 @@ describe('refrescar en watchlist y alertas (segunda revisión del 2.1)', () => {
     }
     const fetchFalso = servirConMetodo(rutas)
     pintar()
-    pestaña('Alertas')
     expect(await screen.findByText('baja de 50,00')).toBeInTheDocument()
     rutas['/api/portfolio/alerts'] = 'pendiente'
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
-    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '45' } })
+    fireEvent.change(alerta().getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(alerta().getByPlaceholderText('Precio'), { target: { value: '45' } })
     fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
     await waitFor(() =>
       expect(fetchFalso.mock.calls.filter(([u, i]) => u === '/api/portfolio/alerts' && !i?.method)).toHaveLength(2),
@@ -367,18 +386,17 @@ describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
     vi.spyOn(window, 'prompt').mockReturnValue('60')
     pintar()
     await screen.findByText('Invertido')
-    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Cerrar' }))
+    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Anotar venta' }))
     expect(await screen.findByText('la posición ya está cerrada')).toBeInTheDocument()
   })
 
-  it('quitar de la watchlist rechazado dice su motivo', async () => {
+  it('quitar de la lista de seguimiento rechazado dice su motivo', async () => {
     servirConMetodo({
       ...base,
       '/api/watchlist': { status: 200, json: WATCHLIST },
       'DELETE /api/watchlist/4': { status: 409, json: { detail: 'la base de datos está bloqueada' } },
     })
-    pintar()
-    pestaña('Watchlist')
+    pintar('tesis')
     fireEvent.click(await screen.findByRole('button', { name: 'Quitar' }))
     expect(await screen.findByText('la base de datos está bloqueada')).toBeInTheDocument()
   })
@@ -391,11 +409,10 @@ describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
       'DELETE /api/portfolio/alerts/7': { status: 409, json: { detail: 'no se pudo borrar la alerta' } },
     })
     pintar()
-    pestaña('Alertas')
     fireEvent.click(await screen.findByRole('button', { name: 'Borrar' }))
     expect(await screen.findByText('no se pudo borrar la alerta')).toBeInTheDocument()
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
-    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '-1' } })
+    fireEvent.change(alerta().getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(alerta().getByPlaceholderText('Precio'), { target: { value: '-1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
     expect(await screen.findByText('el precio tiene que ser positivo')).toBeInTheDocument()
   })
@@ -420,10 +437,10 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
     const cuerpos = conCuerpos({ ...base, 'POST /api/portfolio/positions': { status: 200, json: { id: 5, symbol: 'PEP' } } })
     pintar()
     await screen.findByText('Invertido')
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
-    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: '1.000' } })
-    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '1.250,50' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    fireEvent.change(compra().getByPlaceholderText('Ticker (p. ej. KO)'), { target: { value: 'pep' } })
+    fireEvent.change(compra().getByPlaceholderText('Nº de acciones'), { target: { value: '1.000' } })
+    fireEvent.change(compra().getByPlaceholderText('Precio de compra por acción'), { target: { value: '1.250,50' } })
+    fireEvent.click(compra().getByRole('button', { name: 'Anotar compra' }))
     await waitFor(() => expect(cuerpos).toHaveLength(1))
     expect(cuerpos[0].cuerpo).toMatchObject({ quantity: 1000, cost_basis: 1250.5 })
   })
@@ -432,10 +449,10 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
     const cuerpos = conCuerpos(base)
     pintar()
     await screen.findByText('Invertido')
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'pep' } })
-    fireEvent.change(screen.getByPlaceholderText('Acciones'), { target: { value: 'diez' } })
-    fireEvent.change(screen.getByPlaceholderText('Coste/acción'), { target: { value: '150' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Añadir posición' }))
+    fireEvent.change(compra().getByPlaceholderText('Ticker (p. ej. KO)'), { target: { value: 'pep' } })
+    fireEvent.change(compra().getByPlaceholderText('Nº de acciones'), { target: { value: 'diez' } })
+    fireEvent.change(compra().getByPlaceholderText('Precio de compra por acción'), { target: { value: '150' } })
+    fireEvent.click(compra().getByRole('button', { name: 'Anotar compra' }))
     expect(await screen.findByText('«diez» no es un número de acciones: escribe p. ej. 1.250,50 o 98,5.')).toBeInTheDocument()
     expect(cuerpos).toHaveLength(0)
   })
@@ -445,7 +462,7 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
     vi.spyOn(window, 'prompt').mockReturnValue('1.250,00')
     pintar()
     await screen.findByText('Invertido')
-    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Cerrar' }))
+    fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Anotar venta' }))
     await waitFor(() => expect(cuerpos).toHaveLength(1))
     expect(cuerpos[0].cuerpo).toEqual({ exit_price: 1250 })
   })
@@ -457,10 +474,9 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
       'POST /api/portfolio/alerts': { status: 200, json: { id: 8 } },
     })
     pintar()
-    pestaña('Alertas')
     await screen.findByText('Sin alertas configuradas.')
-    fireEvent.change(screen.getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
-    fireEvent.change(screen.getByPlaceholderText('Precio'), { target: { value: '1.050' } })
+    fireEvent.change(alerta().getByPlaceholderText('Ticker'), { target: { value: 'ko' } })
+    fireEvent.change(alerta().getByPlaceholderText('Precio'), { target: { value: '1.050' } })
     fireEvent.click(screen.getByRole('button', { name: 'Crear alerta' }))
     await waitFor(() => expect(cuerpos).toHaveLength(1))
     expect(cuerpos[0].cuerpo).toMatchObject({ price: 1050 })

@@ -6,6 +6,7 @@
  *   desaparecía sin decir nada (falla abierto); decisiones y tesis enlazables,
  *   igual.
  * - Tesis: el registro de aciertos desaparecía.
+ *   (Las dos son hoy la pestaña Tesis y vigilancia de Mi cartera.)
  * - Resultados y Valoración: los atajos de la watchlist desaparecían.
  * - Barra de las API: si la primera consulta del uso fallaba, la barra entera
  *   desaparecía; y un fallo del estado de la IA no se distinguía de «sin IA».
@@ -14,9 +15,8 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiUsageBar } from '../components/ApiUsageBar'
+import { TesisYVigilancia } from '../components/cartera/TesisYVigilancia'
 import { EarningsPage } from './EarningsPage'
-import { ThesesPage } from './ThesesPage'
-import { VigilanciaPage } from './VigilanciaPage'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -47,7 +47,7 @@ describe('Vigilancia', () => {
       '/api/theses': falla('timeout'),
       '/api/theses/vigilancia/metricas': { status: 200, json: { metricas: [], crecimientos: [], operadores: [], nota: '' } },
     })
-    render(<MemoryRouter><VigilanciaPage /></MemoryRouter>)
+    render(<MemoryRouter><TesisYVigilancia /></MemoryRouter>)
     expect(await screen.findByText(/No se pudo cargar el recuento de posiciones sin tesis: la base no respondió/)).toBeInTheDocument()
     expect(await screen.findByText(/No se pudieron cargar las decisiones pasadas: timeout/)).toBeInTheDocument()
     expect(await screen.findByText(/No se pudieron cargar las tesis que se pueden enlazar: timeout/)).toBeInTheDocument()
@@ -57,7 +57,7 @@ describe('Vigilancia', () => {
 describe('Tesis', () => {
   it('un registro de aciertos que no carga se dice; no desaparece', async () => {
     servir({ '/api/theses': { status: 200, json: { theses: [] } }, '/api/theses/track-record': falla('sin precios') })
-    render(<MemoryRouter><ThesesPage /></MemoryRouter>)
+    render(<MemoryRouter><TesisYVigilancia /></MemoryRouter>)
     expect(await screen.findByText(/No se pudo cargar el registro de aciertos: sin precios/)).toBeInTheDocument()
   })
 })

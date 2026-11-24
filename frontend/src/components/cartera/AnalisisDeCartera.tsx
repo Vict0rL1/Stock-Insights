@@ -1,9 +1,11 @@
-import { useState } from 'react'
-import { ContribucionAlRiesgoPanel, CosteOportunidadPanel } from '../components/cartera/RiesgoYOportunidad'
-import { api } from '../api/client'
-import { CompanyLogo } from '../components/CompanyLogo'
-import { BloqueDatos } from '../components/EstadoDato'
-import { CurvaDeCrisis } from '../components/Sparkline'
+/**
+ * Los bloques del análisis de la cartera como UNA cosa (antes, la pantalla
+ * «Cartera»): correlación, concentración real, exposición agregada, lo que va
+ * dentro de los ETFs, características de factor y las tres crisis. Los compone
+ * `Riesgo.tsx`, la pestaña Riesgo de Mi cartera.
+ */
+import { CompanyLogo } from '../CompanyLogo'
+import { CurvaDeCrisis } from '../Sparkline'
 import type {
   CaracteristicasDeCartera,
   ConcentracionReal,
@@ -11,12 +13,11 @@ import type {
   ExposicionAgregada,
   LookThroughEtf,
   MatrizCorrelacion,
-} from '../api/types'
-import { etiqueta } from '../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../lib/formato'
-import { useDato } from '../lib/useDato'
-import { TABLA_COMPACTA } from '../lib/tablas'
-import { MarcoTabla } from '../components/MarcoTabla'
+} from '../../api/types'
+import { etiqueta } from '../../lib/etiquetas'
+import { fmtCompacto, fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
+import { TABLA_COMPACTA } from '../../lib/tablas'
+import { MarcoTabla } from '../MarcoTabla'
 
 /** Color de una celda de correlación.
  *
@@ -31,13 +32,13 @@ function tonoCorrelacion(v: number): string {
   return 'bg-emerald-100 text-emerald-800'
 }
 
-function Aviso({ children }: { children: React.ReactNode }) {
+export function Aviso({ children }: { children: React.ReactNode }) {
   return (
     <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{children}</p>
   )
 }
 
-function Seccion({
+export function Seccion({
   titulo,
   subtitulo,
   children,
@@ -56,7 +57,7 @@ function Seccion({
 }
 
 /** La matriz de correlación entre posiciones. */
-function Correlacion({ c }: { c: MatrizCorrelacion }) {
+export function Correlacion({ c }: { c: MatrizCorrelacion }) {
   if (!c.disponible || !c.matriz || !c.simbolos) {
     return <p className="text-sm text-slate-500">{c.nota}</p>
   }
@@ -127,7 +128,7 @@ function Correlacion({ c }: { c: MatrizCorrelacion }) {
 }
 
 /** Cuántas apuestas independientes hay detrás de N tickers. */
-function Concentracion({ c }: { c: ConcentracionReal }) {
+export function Concentracion({ c }: { c: ConcentracionReal }) {
   if (!c.disponible || c.apuestas_efectivas === undefined) {
     return <p className="text-sm text-slate-500">{c.nota}</p>
   }
@@ -193,7 +194,7 @@ function Concentracion({ c }: { c: ConcentracionReal }) {
   )
 }
 
-function Exposicion({ e, titulo }: { e: ExposicionAgregada; titulo: string }) {
+export function Exposicion({ e, titulo }: { e: ExposicionAgregada; titulo: string }) {
   const max = e.filas[0]?.peso_pct ?? 1
   return (
     <div>
@@ -222,7 +223,7 @@ function Exposicion({ e, titulo }: { e: ExposicionAgregada; titulo: string }) {
 }
 
 /** Exposición real a cada empresa: la directa más la que va dentro de un ETF. */
-function LookThrough({ lt }: { lt: LookThroughEtf }) {
+export function LookThrough({ lt }: { lt: LookThroughEtf }) {
   if (!lt.disponible) {
     return <p className="text-sm text-slate-500">{lt.nota}</p>
   }
@@ -287,7 +288,7 @@ function LookThrough({ lt }: { lt: LookThroughEtf }) {
   )
 }
 
-function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
+export function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
   const conDato = c.caracteristicas.filter((x) => x.valor !== null)
   if (conDato.length === 0) {
     return (
@@ -372,7 +373,7 @@ function Caracteristicas({ c }: { c: CaracteristicasDeCartera }) {
 }
 
 /** Una crisis, con su cobertura pegada al número. */
-function Crisis({ c }: { c: CrisisEstresada }) {
+export function Crisis({ c }: { c: CrisisEstresada }) {
   if (!c.medible) {
     return (
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -455,161 +456,6 @@ function Crisis({ c }: { c: CrisisEstresada }) {
 
       <p className="mt-2 text-xs leading-relaxed text-slate-600">{c.nota}</p>
       <p className="mt-1 text-[11px] text-slate-400">{c.contexto}</p>
-    </div>
-  )
-}
-
-export function CarteraPage() {
-  // La primera carga no descarga: veinte años por posición no se piden sin que
-  // nadie los haya pedido. El botón lo hace explícito y vuelve a pedir, ya
-  // descargando, sin quitar el análisis anterior mientras dura la descarga
-  // (con una clave por pulsación desaparecía durante minutos; revisión del 2.1).
-  const [descargas, setDescargas] = useState(0)
-  // El fallo salía como un motivo suelto, sin decir qué no había cargado y sin
-  // forma de reintentar (ítem 2.1).
-  const riesgo = useDato(() => api.riesgoDeCartera(descargas > 0), 'riesgo')
-  const cargando = riesgo.estado === 'cargando' || riesgo.refrescando
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-800">Cartera</h1>
-          <p className="text-xs text-slate-500">
-            Ocho análisis buenos de ocho empresas no son un análisis de la cartera:
-            las preguntas cambian.
-          </p>
-        </div>
-        {/* Sin ninguna posición no hay histórico que descargar: con la cartera
-            vacía se ofrecía igual (revisión 12, visual). Sin precio sí sale:
-            reintentar puede traerlo. */}
-        {!riesgo.datos?.sin_posiciones && (
-          <button
-            type="button"
-            onClick={() => {
-              setDescargas((n) => n + 1)
-              riesgo.refrescar()
-            }}
-            disabled={cargando}
-            className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-          >
-            {cargando ? 'Descargando…' : 'Descargar histórico completo'}
-          </button>
-        )}
-      </div>
-
-      {/* Riesgo por posición y coste de oportunidad: piden lo suyo y no dependen
-          de la descarga de décadas de precios de abajo. */}
-      <ContribucionAlRiesgoPanel />
-      <CosteOportunidadPanel />
-
-      <BloqueDatos carga={riesgo} que="el análisis de la cartera">
-        {(datos) => {
-          if (!datos.disponible) {
-            return (
-              <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                {datos.nota}
-              </p>
-            )
-          }
-          const faltanHistoricos = Object.keys(datos.sin_historico ?? {}).length
-          // Lo que no entra en los pesos. `sin_precio` viajaba en la respuesta desde el
-          // principio y no se pintaba: una posición sin cotización desaparecía del
-          // análisis sin que la pantalla lo dijera.
-          const fuera = [
-            ...(datos.sin_precio ?? []).map((s) => `${s} (sin precio)`),
-            ...(datos.sin_convertir ?? []).map((s) => `${s.symbol} (${s.moneda ?? 'moneda desconocida'})`),
-          ]
-          return (
-            <>
-              {fuera.length > 0 && (
-                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                  <p className="text-sm text-amber-900">
-                    {fuera.length} {plural(fuera.length, 'posición queda', 'posiciones quedan')} FUERA de todos los pesos de esta
-                    página: {fuera.join(', ')}. La concentración, la exposición y el estrés
-                    se calculan sin ellas — tu cartera real es más grande de lo que se ve
-                    aquí.
-                  </p>
-                </div>
-              )}
-
-              {faltanHistoricos > 0 && (
-                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-                  <p className="text-sm text-sky-900">
-                    {faltanHistoricos} {plural(faltanHistoricos, 'posición', 'posiciones')} sin histórico largo:{' '}
-                    {Object.keys(datos.sin_historico ?? {}).join(', ')}. El estrés de las
-                    crisis las cuenta como no cubiertas — pulsa «Descargar histórico
-                    completo» para incluirlas.
-                  </p>
-                </div>
-              )}
-
-              {datos.concentracion && (
-                <Seccion
-                  titulo="Concentración real"
-                  subtitulo="Diez posiciones que se mueven juntas son una apuesta repartida en diez recibos."
-                >
-                  <Concentracion c={datos.concentracion} />
-                </Seccion>
-              )}
-
-              {datos.correlacion && (
-                <Seccion
-                  titulo="Correlación entre posiciones"
-                  subtitulo="Si suben y bajan a la vez, tener ocho no es tener ocho."
-                >
-                  <Correlacion c={datos.correlacion} />
-                </Seccion>
-              )}
-
-              {datos.exposicion && (
-                <Seccion
-                  titulo="Exposición agregada"
-                  subtitulo="Dónde está el dinero cuando se suman todas las posiciones."
-                >
-                  <div className="grid gap-6 md:grid-cols-2">
-                    <Exposicion e={datos.exposicion.sector} titulo="Por sector" />
-                    <Exposicion e={datos.exposicion.geografia} titulo="Por geografía" />
-                  </div>
-                  <Aviso>{datos.nota_geografia}</Aviso>
-                </Seccion>
-              )}
-
-              {datos.look_through && (
-                <Seccion
-                  titulo="Lo que llevas dentro de los ETFs"
-                  subtitulo="Tu exposición a una empresa es la directa más la que va dentro del fondo."
-                >
-                  <LookThrough lt={datos.look_through} />
-                </Seccion>
-              )}
-
-              {datos.caracteristicas && (
-                <Seccion
-                  titulo="Características de factor"
-                  subtitulo="Hacia qué se inclina la cartera. Descriptivo, no estimado por regresión."
-                >
-                  <Caracteristicas c={datos.caracteristicas} />
-                </Seccion>
-              )}
-
-              {datos.estres && (
-                <Seccion
-                  titulo="Esta mezcla en 2008, 2020 y 2022"
-                  subtitulo="Crisis reales, fechas públicas, pesos de hoy."
-                >
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {datos.estres.crisis.map((c) => (
-                      <Crisis key={c.clave} c={c} />
-                    ))}
-                  </div>
-                  <Aviso>{datos.estres.aviso_general}</Aviso>
-                </Seccion>
-              )}
-            </>
-          )
-        }}
-      </BloqueDatos>
     </div>
   )
 }

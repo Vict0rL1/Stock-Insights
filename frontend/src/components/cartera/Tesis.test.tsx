@@ -1,5 +1,6 @@
 /**
- * Revisión del 2.1 en Tesis:
+ * Revisión del 2.1 en Tesis (hoy, «Mis tesis» en Mi cartera › Tesis y
+ * vigilancia; se pinta la pestaña entera, con el resto de sus cargas vacías):
  *
  * - La lista que no cargaba decía «Sin tesis guardadas»: el error solo se
  *   pintaba dentro del formulario cerrado y parecía que las tesis se habían
@@ -12,8 +13,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ThesisRecord, TrackRecord } from '../api/types'
-import { ThesesPage } from './ThesesPage'
+import type { ThesisRecord, TrackRecord } from '../../api/types'
+import { TesisYVigilancia } from './TesisYVigilancia'
 
 const TESIS: ThesisRecord = {
   id: 3, symbol: 'KO', title: 'Marca y dividendo', body_md: 'Porque sí.', assumptions: null,
@@ -27,7 +28,26 @@ const REGISTRO: TrackRecord = {
 
 type Respuesta = { status: number; json: unknown } | 'pendiente'
 
-function servir(rutas: Record<string, Respuesta>) {
+// Lo demás que pide la pestaña, vacío: sin esto, sus fallos y sus «Reintentar»
+// se mezclarían con lo que se prueba.
+const RESTO: Record<string, Respuesta> = {
+  '/api/theses/vigilancia': {
+    status: 200,
+    json: { tesis: [], total_saltan: 0, sin_disparadores: [], nota: '', aviso_sin_disparadores: null },
+  },
+  '/api/theses/sin-tesis': {
+    status: 200,
+    json: { posiciones_sin_tesis: [], watchlist_sin_tesis: [], posiciones_totales: 0, watchlist_total: 0, nota: '' },
+  },
+  '/api/theses/decisiones': { status: 200, json: { decisiones: [], coherencia: { decisiones: 0, nota: '' }, nota: '' } },
+  '/api/theses/vigilancia/metricas': { status: 200, json: { metricas: [], crecimientos: [], operadores: [], nota: '' } },
+  '/api/watchlist': { status: 200, json: { name: 'principal', items: [] } },
+}
+
+function servir(propias: Record<string, Respuesta>) {
+  // El mismo objeto que recibe el test: los que cambian una ruta a mitad de
+  // test (`rutas[x] = 'pendiente'`) lo cambian aquí.
+  const rutas = Object.assign(propias, { ...RESTO, ...propias })
   const pedidas: string[] = []
   vi.stubGlobal('fetch', vi.fn((e: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
@@ -40,7 +60,7 @@ function servir(rutas: Record<string, Respuesta>) {
   return pedidas
 }
 
-const pintar = () => render(<MemoryRouter><ThesesPage /></MemoryRouter>)
+const pintar = () => render(<MemoryRouter><TesisYVigilancia /></MemoryRouter>)
 
 afterEach(() => {
   vi.unstubAllGlobals()

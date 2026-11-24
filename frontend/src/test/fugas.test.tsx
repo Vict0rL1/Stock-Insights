@@ -29,7 +29,7 @@ import { ExpectativasSection } from '../components/ticker/ExpectativasSection'
 import { HistorialSection } from '../components/ticker/HistorialSection'
 import { QueCambioSection } from '../components/ticker/QueCambioSection'
 import { ValuationSection } from '../components/ticker/ValuationSection'
-import { PortfolioPage } from '../pages/PortfolioPage'
+import { MiCarteraPage } from '../pages/MiCarteraPage'
 import { TickerPage } from '../pages/TickerPage'
 import { TodayPage } from '../pages/TodayPage'
 import empresaCompleta from './fixtures/empresa_completa.json'
@@ -142,6 +142,14 @@ const EMPRESAS: [string, Escenario][] = [
   ['deuda parcial', empresaDeudaParcial as Escenario],
 ]
 
+// Mi cartera › Posiciones pide también las alertas de precio, que el paquete no
+// exporta: sin ninguna, como cuando la pestaña Alertas del Portafolio no se
+// pintaba aquí.
+const conAlertas = (e: Escenario): Escenario => ({
+  ...e,
+  rutas: { ...e.rutas, '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } } },
+})
+
 const encontradas = new Map<string, string[]>()
 const anotar = (sitio: string, textos: string[]) => {
   for (const [k, v] of fugas(sitio, textos)) encontradas.set(k, [...(encontradas.get(k) ?? []), ...v])
@@ -173,10 +181,10 @@ describe('fugas de texto en pantalla', () => {
         ['ficha/Valoración', <ValuationSection symbol={s} />],
         ['cartera/Contribución al riesgo', <ContribucionAlRiesgoPanel />],
         ['cartera/Coste de oportunidad', <CosteOportunidadPanel />],
-        ['cartera/Portafolio', <PortfolioPage />],
+        ['cartera/Posiciones', <MiCarteraPage />],
       ]
       for (const [sitio, ui] of secciones) {
-        const r = await pintar(e, ui)
+        const r = await pintar(conAlertas(e), ui)
         expect(r.sinFixture, sitio).toEqual([])
         anotar(sitio, r.textos)
         cleanup()

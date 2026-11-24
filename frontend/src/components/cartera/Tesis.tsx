@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, ApiError } from '../api/client'
-import { BloqueDatos } from '../components/EstadoDato'
-import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../api/types'
-import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio, signoLeido } from '../lib/formato'
-import { leerNumero } from '../lib/entrada'
-import { mensajeDeError, useDato } from '../lib/useDato'
-import { MarcoTabla } from '../components/MarcoTabla'
+import { api, ApiError } from '../../api/client'
+import { BloqueDatos } from '../EstadoDato'
+import type { ScenarioRecord, ThesisRecord, TrackRecord } from '../../api/types'
+import { etiqueta } from '../../lib/etiquetas'
+import { fmtAntiguedad, fmtFecha, fmtPct, fmtPrecio, signoLeido } from '../../lib/formato'
+import { leerNumero } from '../../lib/entrada'
+import { mensajeDeError, useDato, type CargaConReintento } from '../../lib/useDato'
+import { MarcoTabla } from '../MarcoTabla'
 
 const ESCENARIOS = ['bear', 'base', 'bull'] as const
 
@@ -49,7 +49,7 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
   const { summary } = record
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="mb-1 text-sm font-semibold text-slate-700">Registro de aciertos</h2>
+      <h3 className="mb-1 text-sm font-semibold text-slate-700">Registro de aciertos</h3>
       <p className="mb-3 text-xs text-slate-400">{summary.note}</p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -136,12 +136,17 @@ function TrackRecordPanel({ record }: { record: TrackRecord }) {
   )
 }
 
-export function ThesesPage() {
-  // La lista hacía `setError(e.message)`, y ese error solo se pintaba dentro
-  // del formulario de «Nueva tesis», cerrado por defecto: con la base caída la
-  // pantalla decía «Sin tesis guardadas» y parecía que las tesis se habían
-  // perdido (revisión del 2.1).
-  const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
+/** «Mis tesis», en Mi cartera › Tesis y vigilancia (era la pantalla Tesis).
+ *
+ *  `tesis` llega de la pestaña, que la comparte con el diario de decisiones (el
+ *  selector de tesis enlazable): una sola petición. La lista hacía
+ *  `setError(e.message)`, y ese error solo se pintaba dentro del formulario de
+ *  «Nueva tesis», cerrado por defecto: con la base caída la pantalla decía «Sin
+ *  tesis guardadas» y parecía que las tesis se habían perdido (revisión del
+ *  2.1). `alCambiar` refresca, tras crear o borrar una tesis, lo que de ella
+ *  depende en la pestaña (la lista, los puntos de vigilancia, el aviso de
+ *  posiciones sin tesis): en pantallas separadas bastaba con volver a entrar. */
+export function MisTesis({ tesis, alCambiar }: { tesis: CargaConReintento<ThesisRecord[]>; alCambiar: () => void }) {
   // El registro de aciertos hacía `() => setRecord(null)`: si fallaba, el panel
   // desaparecía y no se sabía si era un fallo o que aún no había nada (ítem 2.1).
   const registro = useDato(() => api.trackRecord(), 'registro')
@@ -156,7 +161,7 @@ export function ThesesPage() {
   // llegan. Al montar no hace falta: `useDato` ya los pide (antes el registro
   // se pedía dos veces, y cada vez cotizaba todos los símbolos).
   const load = () => {
-    tesis.refrescar()
+    alCambiar()
     registro.refrescar()
   }
 
@@ -229,9 +234,14 @@ export function ThesesPage() {
     'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none'
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-800">Tesis y escenarios</h1>
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold text-slate-800">Mis tesis</h2>
+          <p className="text-xs leading-relaxed text-slate-500">
+            Por qué compraste o vigilas cada empresa, escrito y fechado, para compararlo después con lo que pasó.
+          </p>
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -275,10 +285,6 @@ export function ThesesPage() {
         </form>
       )}
 
-      <BloqueDatos carga={registro} que="el registro de aciertos">
-        {(r) => <TrackRecordPanel record={r} />}
-      </BloqueDatos>
-
       {fallo && (
         <p role="alert" className="text-sm text-red-600">
           {fallo}
@@ -298,12 +304,12 @@ export function ThesesPage() {
                 <article key={thesis.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h2 className="font-semibold text-slate-800">
+                      <h3 className="font-semibold text-slate-800">
                         <Link to={`/ticker/${thesis.symbol}`} className="hover:underline">
                           {thesis.symbol}
                         </Link>
                         <span className="ml-2 font-normal">{thesis.title}</span>
-                      </h2>
+                      </h3>
                       <div className="text-xs text-slate-400">
                         Escrita el {fmtFecha(thesis.created_at, { hora: true })} · {fmtAntiguedad(thesis.created_at)}
                         {thesis.current_price !== null && ` · precio hoy ${fmtPrecio(thesis.current_price)}`}
@@ -361,6 +367,11 @@ export function ThesesPage() {
           )
         }
       </BloqueDatos>
-    </div>
+
+      {/* Después de las tesis: primero lo que escribiste, luego cómo te fue. */}
+      <BloqueDatos carga={registro} que="el registro de aciertos">
+        {(r) => <TrackRecordPanel record={r} />}
+      </BloqueDatos>
+    </section>
   )
 }

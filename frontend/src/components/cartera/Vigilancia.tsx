@@ -1,16 +1,20 @@
 import { useState, type ReactNode } from 'react'
-import { api, ApiError } from '../api/client'
-import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
+import { api, ApiError } from '../../api/client'
+import { BloqueDatos, ErrorDeCarga } from '../EstadoDato'
 import type {
+  DecisionesResponse,
   DecisionRegistrada,
   DisparadorVigilado,
   MetricasVigilables,
+  SinTesisResponse,
+  ThesisRecord,
   UnidadMetrica,
+  VigilanciaResponse,
   VigilanciaTesis,
-} from '../api/types'
-import { etiqueta } from '../lib/etiquetas'
-import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio, signoLeido } from '../lib/formato'
-import { mensajeDeError, useDato } from '../lib/useDato'
+} from '../../api/types'
+import { etiqueta } from '../../lib/etiquetas'
+import { fmtAntiguedad, fmtFrente, fmtNum, fmtPct, fmtPrecio, signoLeido } from '../../lib/formato'
+import { mensajeDeError, useDato, type CargaConReintento } from '../../lib/useDato'
 
 const ACCIONES = ['comprar', 'reforzar', 'mantener', 'reducir', 'vender', 'descartar']
 
@@ -412,89 +416,27 @@ function Decision({ d }: { d: DecisionRegistrada }) {
   )
 }
 
-export function VigilanciaPage() {
-  // Los puntos de invalidación seguían con `useState` y `setError`: sin
-  // «Cargando», el fallo salía suelto y sin «Reintentar», compartía `error` con
-  // el registro de decisiones (que lo borraba al empezar) y, si fallaba la
-  // recarga tras quitar un punto, el punto quitado seguía pintado como actual
-  // (revisión del 2.1).
-  const vigilancia = useDato(() => api.vigilancia(), 'vigilancia')
-  const vig = vigilancia.datos
-  // Decisiones, posiciones sin tesis, tesis enlazables y catálogo de métricas
-  // hacían `() => setX(null)` / `[]`: un fallo los borraba sin decir nada. El
-  // peor, el aviso de posiciones sin tesis, que desaparecía justo cuando no se
-  // había podido comprobar (ítem 2.1).
-  const dec = useDato(() => api.decisiones(), 'decisiones')
-  const sin = useDato(() => api.sinTesis(), 'sin-tesis')
-  const tesis = useDato(() => api.theses().then((d) => d.theses), 'tesis')
-  const metricas = useDato(() => api.metricasVigilables(), 'metricas')
-  const catalogo = [...(metricas.datos?.metricas ?? []), ...(metricas.datos?.crecimientos ?? [])]
-  const unidadDe = (clave: unknown) => catalogo.find((m) => m.clave === clave)?.unidad
-  const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
-  const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
-  const [error, setError] = useState<string | null>(null)
-  // «quitar» un punto hacía `await` sin capturar: un rechazo no decía nada y el
-  // punto seguía ahí (revisión del 2.1).
-  const [fallo, setFallo] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  // Tras registrar, añadir o quitar algo: todo se refresca sin vaciarse. Con
-  // una clave por versión pasaban por «Cargando», desaparecían «Decisiones
-  // pasadas» y el aviso, y el selector de tesis se quedaba sin opciones.
-  const cargar = () => {
-    vigilancia.refrescar()
-    dec.refrescar()
-    sin.refrescar()
-    tesis.refrescar()
-  }
-
-  const quitar = async (id: number) => {
-    setFallo(null)
-    try {
-      await api.deleteTrigger(id)
-      cargar()
-    } catch (e) {
-      // Un 404 es que ya no existía (otro clic, otra pestaña): no es un fallo.
-      if (e instanceof ApiError && e.status === 404) cargar()
-      else setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
-    }
-  }
-
-  const registrar = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      await api.registrarDecision({
-        symbol: form.symbol.trim().toUpperCase(),
-        accion: form.accion,
-        razonamiento: form.razonamiento,
-        thesis_id: form.thesis_id ? Number(form.thesis_id) : null,
-      })
-      setForm({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
-      cargar()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
+/** Lo urgente de la pestaña Tesis y vigilancia, arriba de todo: puntos de
+ *  invalidación cruzados, tesis sin puntos y posiciones sin tesis. Si no se
+ *  pudo comprobar qué posiciones no tienen tesis, se dice: callar el aviso
+ *  justo entonces era fallar abierto (ítem 2.1). */
+export function AvisosDeTesis({
+  vigilancia,
+  sin,
+}: {
+  vigilancia: VigilanciaResponse | null
+  sin: CargaConReintento<SinTesisResponse>
+}) {
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-800">Vigilancia de tesis</h1>
-      <p className="text-xs leading-relaxed text-slate-500">
-        Escribir «qué me haría cambiar de opinión» es la mitad fácil. La difícil es
-        acordarse de mirarlo dentro de ocho meses. Esta pantalla hace esa mitad.
-      </p>
-
-      {vig && vig.total_saltan > 0 && (
+    <>
+      {vigilancia && vigilancia.total_saltan > 0 && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900">
-          {vig.nota}
+          {vigilancia.nota}
         </p>
       )}
-      {vig && vig.aviso_sin_disparadores && (
+      {vigilancia && vigilancia.aviso_sin_disparadores && (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {vig.aviso_sin_disparadores}
+          {vigilancia.aviso_sin_disparadores}
         </p>
       )}
       {sin.estado === 'error' && (
@@ -505,6 +447,55 @@ export function VigilanciaPage() {
           {sin.datos.nota}
         </p>
       )}
+    </>
+  )
+}
+
+/** Los puntos de vigilancia de cada tesis (era la pantalla Vigilancia).
+ *
+ *  Los puntos de invalidación seguían con `useState` y `setError`: sin
+ *  «Cargando», el fallo salía suelto y sin «Reintentar», compartía `error` con
+ *  el registro de decisiones (que lo borraba al empezar) y, si fallaba la
+ *  recarga tras quitar un punto, el punto quitado seguía pintado como actual
+ *  (revisión del 2.1). `alCambiar` refresca la pestaña entera sin vaciarla. */
+export function PuntosDeVigilancia({
+  vigilancia,
+  alCambiar,
+}: {
+  vigilancia: CargaConReintento<VigilanciaResponse>
+  alCambiar: () => void
+}) {
+  // El catálogo de métricas hacía `() => setX(null)`: un fallo lo borraba sin
+  // decir nada (ítem 2.1).
+  const metricas = useDato(() => api.metricasVigilables(), 'metricas')
+  const catalogo = [...(metricas.datos?.metricas ?? []), ...(metricas.datos?.crecimientos ?? [])]
+  const unidadDe = (clave: unknown) => catalogo.find((m) => m.clave === clave)?.unidad
+  const [añadiendoA, setAñadiendoA] = useState<number | null>(null)
+  // «quitar» un punto hacía `await` sin capturar: un rechazo no decía nada y el
+  // punto seguía ahí (revisión del 2.1).
+  const [fallo, setFallo] = useState<string | null>(null)
+
+  const quitar = async (id: number) => {
+    setFallo(null)
+    try {
+      await api.deleteTrigger(id)
+      alCambiar()
+    } catch (e) {
+      // Un 404 es que ya no existía (otro clic, otra pestaña): no es un fallo.
+      if (e instanceof ApiError && e.status === 404) alCambiar()
+      else setFallo(`No se pudo quitar el punto de invalidación: ${mensajeDeError(e)}`)
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-slate-800">Puntos de vigilancia</h2>
+        <p className="text-xs leading-relaxed text-slate-500">
+          Escribir «qué me haría cambiar de opinión» es la mitad fácil. La difícil es
+          acordarse de mirarlo dentro de ocho meses: aquí se comprueba con los datos de hoy.
+        </p>
+      </div>
 
       {añadiendoA !== null && metricas.estado === 'error' && (
         <ErrorDeCarga que="el catálogo de métricas vigilables" error={metricas.error} reintentar={metricas.reintentar} />
@@ -515,7 +506,7 @@ export function VigilanciaPage() {
           metricas={metricas.datos}
           onHecho={() => {
             setAñadiendoA(null)
-            cargar()
+            alCambiar()
           }}
           onCancelar={() => setAñadiendoA(null)}
         />
@@ -531,22 +522,63 @@ export function VigilanciaPage() {
         {(v) =>
           v.tesis.length === 0 ? (
             <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-              Todavía no hay ninguna tesis escrita. Se crean al añadir una posición o
-              algo a la watchlist, o desde la pestaña Tesis.
+              Todavía no hay ninguna tesis escrita. Se crean al anotar una compra o al añadir
+              algo a la lista de seguimiento, o con «Nueva tesis», arriba.
             </p>
           ) : (
-            <>
+            <div className="space-y-4">
               {v.tesis.map((t) => (
                 <TarjetaTesis key={t.thesis_id} t={t} onAñadir={setAñadiendoA} onBorrar={quitar} unidadDe={unidadDe} />
               ))}
-            </>
+            </div>
           )
         }
       </BloqueDatos>
+    </section>
+  )
+}
 
-      {/* --- Registro de decisiones --- */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-slate-800">Registrar una decisión</h2>
+/** El diario de decisiones: registrar una y releer las pasadas, con el
+ *  razonamiento de entonces. Las decisiones y las tesis enlazables llegan de la
+ *  pestaña: con `() => setX(null)` / `[]` un fallo las borraba sin decir nada
+ *  (ítem 2.1). */
+export function DiarioDeDecisiones({
+  tesis,
+  dec,
+  alCambiar,
+}: {
+  tesis: CargaConReintento<ThesisRecord[]>
+  dec: CargaConReintento<DecisionesResponse>
+  alCambiar: () => void
+}) {
+  const [form, setForm] = useState({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const registrar = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.registrarDecision({
+        symbol: form.symbol.trim().toUpperCase(),
+        accion: form.accion,
+        razonamiento: form.razonamiento,
+        thesis_id: form.thesis_id ? Number(form.thesis_id) : null,
+      })
+      setForm({ symbol: '', accion: 'comprar', razonamiento: '', thesis_id: '' })
+      alCambiar()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-base font-semibold text-slate-800">Diario de decisiones</h2>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-800">Registrar una decisión</h3>
         <p className="mt-1 text-xs leading-relaxed text-slate-500">
           Con el razonamiento de ahora. Dentro de seis meses no vas a recordar lo
           que sabías: vas a recordar lo que pasó, y la memoria reescribe el pasado
@@ -573,7 +605,7 @@ export function VigilanciaPage() {
           <select
             value={form.thesis_id}
             onChange={(e) => setForm({ ...form, thesis_id: e.target.value })}
-            className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+            className="max-w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
           >
             <option value="">Sin tesis enlazada</option>
             {(tesis.datos ?? []).map((t) => (
@@ -603,16 +635,16 @@ export function VigilanciaPage() {
           {busy ? 'Guardando…' : 'Registrar'}
         </button>
         {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
-      </section>
+      </div>
 
       {dec.estado === 'error' && (
         <ErrorDeCarga que="las decisiones pasadas" error={dec.error} reintentar={dec.reintentar} />
       )}
       {dec.estado === 'listo' && dec.datos.decisiones.length > 0 && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-slate-800">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-800">
             Decisiones pasadas, con el razonamiento de entonces
-          </h2>
+          </h3>
           {dec.datos.coherencia.avisos && dec.datos.coherencia.avisos.length > 0 && (
             <ul className="mt-2 space-y-1">
               {dec.datos.coherencia.avisos.map((a) => (
@@ -628,8 +660,8 @@ export function VigilanciaPage() {
             ))}
           </ul>
           <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{dec.datos.nota}</p>
-        </section>
+        </div>
       )}
-    </div>
+    </section>
   )
 }

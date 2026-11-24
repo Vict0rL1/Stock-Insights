@@ -1,5 +1,6 @@
 /**
- * Ítem 2.1 en los paneles de riesgo y coste de oportunidad de Cartera:
+ * Ítem 2.1 en los paneles de riesgo y de efectivo de Mi cartera (el efectivo
+ * iba dentro del coste de oportunidad; hoy es su propio panel, en Posiciones):
  *
  * - El efectivo que no se pudo leer decía «ninguno — el motor lo trata como
  *   DESCONOCIDO»: se confundía con no haberlo anotado. Son cosas distintas.
@@ -9,7 +10,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import empresaCompleta from '../../test/fixtures/empresa_completa.json'
-import { ContribucionAlRiesgoPanel, CosteOportunidadPanel } from './RiesgoYOportunidad'
+import { ContribucionAlRiesgoPanel, EfectivoPanel } from './RiesgoYOportunidad'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 
@@ -31,7 +32,7 @@ afterEach(() => vi.unstubAllGlobals())
 describe('efectivo anotado (ítem 2.1)', () => {
   it('si no se pudo leer, lo dice; no sale «ninguno»', async () => {
     servir({ ...base, '/api/portfolio/efectivo': falla('la base de datos está bloqueada') })
-    render(<CosteOportunidadPanel />)
+    render(<EfectivoPanel />)
     expect(
       await screen.findByText('No se pudo cargar el efectivo anotado: la base de datos está bloqueada'),
     ).toBeInTheDocument()
@@ -42,7 +43,7 @@ describe('efectivo anotado (ítem 2.1)', () => {
   // del fallo no puede convertir un «ninguno» de verdad en un error.
   it('si se leyó y no hay ninguno, sí lo dice', async () => {
     servir({ ...base, '/api/portfolio/efectivo': { status: 200, json: { saldos: [], nota: null } } })
-    render(<CosteOportunidadPanel />)
+    render(<EfectivoPanel />)
     expect(
       await screen.findByText('ninguno — el motor lo trata como DESCONOCIDO, no como cero'),
     ).toBeInTheDocument()
@@ -51,7 +52,7 @@ describe('efectivo anotado (ítem 2.1)', () => {
   // Guarda de no regresión (pasa también con el código anterior).
   it('el anotado se enseña con su moneda', async () => {
     servir(base)
-    render(<CosteOportunidadPanel />)
+    render(<EfectivoPanel />)
     expect(await screen.findByText(/Efectivo anotado: 1\.500,00 USD/)).toBeInTheDocument()
   })
 })
@@ -72,7 +73,7 @@ describe('anotar efectivo (segunda revisión del 2.1)', () => {
       const r = base[url]
       return Promise.resolve(new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 }))
     }))
-    render(<CosteOportunidadPanel />)
+    render(<EfectivoPanel />)
     expect(await screen.findByText(/Efectivo anotado: 1\.500,00 USD/)).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText('Efectivo disponible'), { target: { value: '2000' } })
     fireEvent.click(screen.getByRole('button', { name: 'Anotar efectivo' }))
@@ -94,7 +95,7 @@ describe('efectivo escrito a mano (tercera pasada de la revisión del 2.1)', () 
       const r = base[url]
       return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
     }))
-    render(<CosteOportunidadPanel />)
+    render(<EfectivoPanel />)
     await screen.findByText(/Efectivo anotado/)
     fireEvent.change(screen.getByPlaceholderText('Efectivo disponible'), { target: { value: '10.000' } })
     fireEvent.click(screen.getByRole('button', { name: 'Anotar efectivo' }))

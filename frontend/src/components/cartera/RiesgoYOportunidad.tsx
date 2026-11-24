@@ -129,7 +129,10 @@ export function ContribucionAlRiesgoPanel() {
   )
 }
 
-export function CosteOportunidadPanel() {
+/** El efectivo sin invertir, en Mi cartera › Posiciones. Iba dentro del coste
+ *  de oportunidad (pantalla Cartera); el motor lo usa también para el tamaño
+ *  de una compra, y es dinero tuyo: se anota donde se anota lo demás. */
+export function EfectivoPanel() {
   // Con la carga fallida, `() => setEfectivo(null)` decía «ninguno — el motor lo
   // trata como DESCONOCIDO»: se leía como «no lo has anotado» y la invitación
   // era anotarlo otra vez (ítem 2.1). No haberlo anotado y no poder leerlo son
@@ -138,11 +141,7 @@ export function CosteOportunidadPanel() {
   const cargarEfectivo = efectivo.refrescar
   const [importe, setImporte] = useState('')
   const [moneda, setMoneda] = useState('USD')
-  const [ticker, setTicker] = useState('')
-  const [tipo, setTipo] = useState('')
-  const [res, setRes] = useState<AnalisisEmpresaResponse | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(false)
 
   const anotar = (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,23 +155,9 @@ export function CosteOportunidadPanel() {
     }
     api.anotarEfectivo({ moneda, importe: n }).then(() => { setImporte(''); setMsg(null); cargarEfectivo() }, (er: Error) => setMsg(er.message))
   }
-  const evaluar = (e: React.FormEvent) => {
-    e.preventDefault()
-    const s = ticker.trim().toUpperCase()
-    if (!s) return
-    const leido = tipo.trim() ? leerNumero(tipo) : null
-    if (tipo.trim() && leido === null) {
-      setMsg(`«${tipo}» no es un tipo en %: escribe p. ej. 19 o 21,5.`)
-      return
-    }
-    const t = leido === null ? null : leido / 100
-    setCargando(true)
-    setRes(null)
-    api.analisisEmpresa(s, t).then(setRes, (er: Error) => setMsg(er.message)).finally(() => setCargando(false))
-  }
 
   return (
-    <Caja titulo="Coste de oportunidad" subtitulo="¿Esta idea es MEJOR que lo que ya tienes? Si no lo es claramente, la respuesta es no hacer nada.">
+    <Caja titulo="Efectivo disponible" subtitulo="El dinero que tienes sin invertir. Con él la app decide cuánto comprar y compara ideas nuevas con lo que ya tienes.">
       <div className="space-y-3">
         <div className="text-xs text-slate-600">
           <BloqueDatos carga={efectivo} que="el efectivo anotado">
@@ -194,6 +179,40 @@ export function CosteOportunidadPanel() {
           </select>
           <button type="submit" className="rounded-md border border-slate-300 px-2 py-1 text-xs">Anotar efectivo</button>
         </form>
+        {msg && <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">{msg}</p>}
+      </div>
+    </Caja>
+  )
+}
+
+export function CosteOportunidadPanel() {
+  const [ticker, setTicker] = useState('')
+  const [tipo, setTipo] = useState('')
+  const [res, setRes] = useState<AnalisisEmpresaResponse | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(false)
+
+  const evaluar = (e: React.FormEvent) => {
+    e.preventDefault()
+    const s = ticker.trim().toUpperCase()
+    if (!s) return
+    const leido = tipo.trim() ? leerNumero(tipo) : null
+    if (tipo.trim() && leido === null) {
+      setMsg(`«${tipo}» no es un tipo en %: escribe p. ej. 19 o 21,5.`)
+      return
+    }
+    const t = leido === null ? null : leido / 100
+    setCargando(true)
+    setRes(null)
+    api.analisisEmpresa(s, t).then(setRes, (er: Error) => setMsg(er.message)).finally(() => setCargando(false))
+  }
+
+  return (
+    <Caja titulo="Coste de oportunidad" subtitulo="¿Esta idea es MEJOR que lo que ya tienes? Si no lo es claramente, la respuesta es no hacer nada.">
+      <div className="space-y-3">
+        {/* El efectivo con que compara se anota en Posiciones: dicho, para que
+            nadie lo busque aquí. */}
+        <p className="text-xs text-slate-500">Usa el efectivo que anotas en la pestaña Posiciones.</p>
         <form onSubmit={evaluar} className="flex flex-wrap gap-2">
           <input value={ticker} onChange={(e) => setTicker(e.target.value)} placeholder="Idea nueva (p. ej. MSFT)"
             className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs" />
