@@ -937,15 +937,17 @@ de ellas en worktrees, cada una con tests que fallan sin el cambio; golden idén
 - **Mi cartera** (3.1, 3.2), **un solo DCF** (3.3), **Pregúntale a la IA**
   (`POST /api/ia/preguntar`) y la **ficha en 4 pestañas** con «Qué dice la app» en una frase.
 
+**Decidido por Victor (24 nov), tal como está implementado:**
+- DCF con crecimiento medido negativo: los factores bajista y alcista se intercambian, de modo que
+  el bajista es siempre el más bajo (antes crecía más que el alcista). Ningún golden lo toca.
+- DCF con FCF ≤ 0 o sin acciones: el informe a fondo no lo precarga y el módulo sí lo valora, con
+  rangos negativos (golden `dcf_modulo`, `fcf_negativo`). Se quedan así las dos vistas.
+- «Pregúntale a la IA» pide el coste estimado (`count_tokens`, no genera texto) al abrir Inicio,
+  para que las sugerencias envíen al tocarlas.
+
 **Pendiente de Victor (rediseño):**
-- DCF: con crecimiento medido negativo, los escenarios bajista y alcista se intercambian (antes el
-  bajista crecía más que el alcista); ningún golden lo toca. ¿Bueno?
-- DCF: el informe no precarga el DCF con FCF ≤ 0 o sin acciones y el módulo sí (golden
-  `dcf_modulo`, `fcf_negativo`). ¿Cuál de las dos vistas manda?
 - DCF inverso de las decisiones con sus propias constantes (9 % y 2,5 %), hoy iguales al escenario
   base del módulo: ¿unirlas (ataría las decisiones al módulo) o dejarlas?
-- «Pregúntale a la IA» pide el coste estimado (`count_tokens`, no genera) cada vez que se abre
-  Inicio, porque las sugerencias envían al tocarlas. ¿Así, o sin ninguna llamada hasta pulsar?
 - «Explícamelo con IA» en la ficha abre el informe completo y su narrativa; no hay un endpoint
   que explique la traza de la decisión.
 - Inicio no tiene ETFs del día: no hay universo de ETFs que puntuar.
