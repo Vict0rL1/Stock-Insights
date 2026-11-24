@@ -1,8 +1,10 @@
 # Plan de navegación (fase 3, ampliada)
 
-Estado: **propuesta, pendiente de aprobación de Victor.** No se cambia ninguna ruta hasta
-que esté aprobada (`docs/FIX_PLAN.md`, fase 3). Maqueta navegable de las cuatro pantallas
-clave: https://claude.ai/artifact/92HRFFRVxe7aakgGQz15Xj (datos de demostración).
+Estado: **aprobado por Victor el 24 nov (las cuatro decisiones de abajo: sí) e implementado**
+en la rama `claude/great-goodall-0k3gv0` (ver «Cómo quedó» al final). Maqueta navegable de las
+cuatro pantallas clave: https://claude.ai/artifact/92HRFFRVxe7aakgGQz15Xj (datos de
+demostración). Junto con la aprobación, Victor pidió «que las alertas de compra y venta sean
+más claras»: es la sección «Avisos de compra y venta».
 
 ## Por qué
 
@@ -129,11 +131,37 @@ Cartera y Más (avanzadas). La búsqueda de empresa o ETF está arriba en todas 
 | C | Explorar (lista, filtros, ETFs) y Mi cartera (3.1, 3.2) | Capturas y tests de redirección |
 | D | «Pregúntale a la IA» y el DCF único (3.3) | Tests del endpoint y golden `dcf_ficha` |
 
-## Decisiones para Victor
+## Decisiones para Victor (respondidas el 24 nov: sí a las cuatro)
 
 1. ¿Apruebas el menú de tres entradas más «Herramientas avanzadas» y la ficha en cuatro
-   pestañas?
-2. ¿Se puede servir la lista anterior, con su antigüedad, mientras se recalcula?
+   pestañas? **Sí.**
+2. ¿Se puede servir la lista anterior, con su antigüedad, mientras se recalcula? **Sí.**
 3. «Pregúntale a la IA» libre (endpoint nuevo, gasta API): ¿sí, o bastan los botones de IA
-   de cada pantalla?
-4. El DCF único (3.3): ¿entra en este rediseño o después?
+   de cada pantalla? **Sí.**
+4. El DCF único (3.3): ¿entra en este rediseño o después? **En este.**
+
+## Avisos de compra y venta
+
+Cada idea y cada posición dice UNA cosa que hacer (`frontend/src/lib/avisos.ts`, pintada por
+`components/AvisoDeAccion.tsx`): comprar, comprar sin sitio («Buena idea, pero hoy no cabe en tu
+cartera»), esperar, evitar, vender, reducir, mantener o sin comprobar (verbo «Revisar»). Verbo
+grande con icono y color (nunca solo color), una frase y las cifras para actuar. Las frases salen
+solo de lo que ya decide el motor (acción, niveles, traza, `cambiaria`, peso final, recortes y
+repaso del stop): ninguna regla ni umbral nuevo. Sin precio nunca es «mantener». «Para vender»
+cuenta los mismos avisos que el panel, por construcción.
+
+## Cómo quedó
+
+| Pieza | Commit | Notas |
+|---|---|---|
+| Menú, rutas, redirecciones, Inicio, Explorar, Avanzado | `d4779c6`, `93bdc88`, `0705045` | Rutas en `lib/rutas.ts`; las viejas redirigen con su consulta |
+| Avisos de compra y venta | `5e1e03a` | En Explorar e Inicio |
+| Carga sin bloqueo | `2b49c66` | `vencida=aceptar`, `useListaDiaria`, `ProgresoAnalisis`; el presupuesto de descargas cuenta también EDGAR |
+| Mi cartera (3.1, 3.2) | `10ac2d2` | Posiciones · Riesgo · Tesis y vigilancia; se borran las cuatro páginas viejas |
+| Un solo DCF (3.3) | `c5a9806` | Comparación de supuestos en el README, «Un solo DCF» |
+| Pregúntale a la IA | `da31da5` | `POST /api/ia/preguntar` y `/coste` |
+| Ficha en cuatro pestañas | (pendiente de integrar) | |
+
+Diferencia con el plan: Inicio no tiene «las 3 mejores ideas en ETFs» porque la app no tiene un
+universo de ETFs que puntuar; la pestaña ETFs explica qué es un ETF y lleva al comparador con los
+que escriba el usuario (`/explorar?tipo=etfs&simbolos=…`).

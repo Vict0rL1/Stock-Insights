@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
 import type { ListaDesfasada, StopDePosicion, StopsDeCartera, TodayResponse } from '../api/types'
-import { TodayPage, miCartera, recortesDe, recuentos, tonoDeVariacion } from './TodayPage'
+import { ideasSinSitio, TodayPage, miCartera, recortesDe, recuentos, textoDeIdeas, tonoDeVariacion } from './TodayPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Hoy = {
@@ -322,5 +322,26 @@ describe('revisión 13: el repaso dice con qué precio y qué stop, y Mi cartera
     expect(c.filas).toEqual([])
     expect(c.sinDecision.map((p) => p.symbol)).toEqual(['CASY'])
     expect(c.fuera).toEqual([])
+  })
+})
+
+describe('cuántas ideas de compra caben hoy', () => {
+  // Con las cinco ideas en «Sin sitio», la cabecera decía «5 ideas de compra» sin más.
+  it('lo dice cuando ninguna o solo algunas caben en la cartera', () => {
+    expect(textoDeIdeas(5, 5)).toBe('5 ideas de compra (ninguna cabe hoy en tu cartera)')
+    expect(textoDeIdeas(5, 2)).toBe('5 ideas de compra (2 sin sitio en tu cartera)')
+    expect(textoDeIdeas(1, 0)).toBe('1 idea de compra')
+    expect(textoDeIdeas(0, 0)).toBe('0 ideas de compra')
+  })
+
+  it('cuenta como sin sitio las ideas cuyo tamaño final es 0 por los topes', () => {
+    const rutas = (hoyCompleto as unknown as { rutas: Record<string, { json: unknown }> }).rutas
+    const hoy = structuredClone(rutas['/api/signals/today?market=us_sp500'].json) as TodayResponse
+    const n = hoy.shortlist.ideas.length
+    expect(ideasSinSitio(hoy.shortlist)).toBe(
+      hoy.shortlist.ideas.filter((i) => i.peso_final_pct === 0 && (i.decision.levels?.peso_bruto_pct ?? 0) > 0).length,
+    )
+    expect(ideasSinSitio(null)).toBe(0)
+    expect(n).toBeGreaterThan(0)
   })
 })

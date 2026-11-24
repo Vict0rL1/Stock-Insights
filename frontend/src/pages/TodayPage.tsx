@@ -24,6 +24,7 @@ import {
   contextoDeLaFila,
   notasDelStop,
   recortesDe,
+  tamanoDeLaLista,
   type DatosDelAviso,
 } from '../lib/avisos'
 import { etiqueta } from '../lib/etiquetas'
@@ -328,6 +329,23 @@ export function recuentos(data: TodayResponse | null): Recuentos {
   }
 }
 
+/** Las ideas de la lista corta que hoy no caben en la cartera (aviso «Sin
+ *  sitio»: cumplen las reglas de compra, pero los topes dejan su tamaño en 0).
+ *  La cabecera decía «5 ideas de compra» con las cinco en «Sin sitio» debajo. */
+export function ideasSinSitio(shortlist: TodayResponse['shortlist'] | null | undefined): number {
+  if (!shortlist) return 0
+  return shortlist.ideas.filter(
+    (i) => avisoDe({ decision: i.decision, tamano: tamanoDeLaLista(i.symbol, shortlist) }).tipo === 'comprar_sin_sitio',
+  ).length
+}
+
+/** «5 ideas de compra (ninguna cabe hoy en tu cartera)», «(2 sin sitio en tu cartera)». */
+export function textoDeIdeas(n: number, sinSitio: number): string {
+  const base = `${n} ${plural(n, 'idea', 'ideas')} de compra`
+  if (n === 0 || sinSitio === 0) return base
+  return sinSitio === n ? `${base} (ninguna cabe hoy en tu cartera)` : `${base} (${sinSitio} sin sitio en tu cartera)`
+}
+
 /** «Mi cartera», a partir del repaso, que es de ahora, y no de las decisiones de
  *  la lista, que pueden ser de hace 6 h. Con la lista cacheada, una posición
  *  abierta después no salía en ninguna parte (su decisión no era de posición y
@@ -391,6 +409,7 @@ function SummaryStrip({
   // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
   // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
   const ideas = data.shortlist ? data.shortlist.ideas.length : null
+  const sinSitio = ideasSinSitio(data.shortlist)
   const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
     label: string
@@ -403,7 +422,12 @@ function SummaryStrip({
       label: 'Ideas de compra',
       valor: ideas === null ? '—' : String(ideas),
       tono: ideas === null ? 'text-slate-500' : 'text-emerald-700',
-      sub: ideas === null ? 'sin lista corta' : `de ${acciones.comprar} que califican`,
+      sub:
+        ideas === null
+          ? 'sin lista corta'
+          : sinSitio > 0
+            ? `${sinSitio === ideas ? 'ninguna cabe' : `${sinSitio} sin sitio`} hoy en tu cartera`
+            : `de ${acciones.comprar} que califican`,
       vista: 'ideas',
     },
     {
@@ -1229,7 +1253,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
             {data
               ? [
                   data.shortlist
-                    ? `${data.shortlist.ideas.length} ${plural(data.shortlist.ideas.length, 'idea', 'ideas')} de compra`
+                    ? textoDeIdeas(data.shortlist.ideas.length, ideasSinSitio(data.shortlist))
                     : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
                   acciones.sinComprobar > 0 ? `${acciones.sinComprobar} sin comprobar` : null,
