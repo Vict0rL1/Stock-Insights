@@ -2532,3 +2532,47 @@ export interface SaldosEfectivo {
   saldos: { moneda: string; importe: number; as_of: string; nota: string | null }[]
   nota: string | null
 }
+
+// --- «Pregúntale a la IA» (`POST /api/ia/preguntar`) ---------------------------
+
+/** Un bloque de lo ya calculado que se le pasa a la IA, con su fuente y su fecha. */
+export interface DatoContextoIA {
+  /** Interna: lista, cartera, mercado, ficha o criterios_etf. No se enseña. */
+  clave: string
+  titulo: string
+  fuente: string
+  /** ISO con zona; null en lo que no es un dato fechado (los umbrales de la app). */
+  fecha: string | null
+  estado: 'valido' | 'viejo'
+  antiguedad_segundos: number | null
+  nota: string | null
+}
+
+/** Lo que la app no tenía calculado: la IA no lo vio, y se le dijo que falta. */
+export interface DatoAusenteIA {
+  clave: string
+  titulo: string
+  motivo: string
+}
+
+/** `POST /api/ia/preguntar/coste`: lo que costaría y qué se le pasaría, sin llamar al modelo. */
+export interface CostePreguntaIA {
+  coste: CosteEstimado['coste']
+  datos_usados: DatoContextoIA[]
+  datos_ausentes: DatoAusenteIA[]
+  max_caracteres: number
+}
+
+export interface RespuestaPreguntaIA {
+  generado_por: 'ia'
+  pregunta: string
+  content_md: string
+  model: string
+  /** De una pregunta idéntica con los mismos datos: no se volvió a llamar al modelo. */
+  cached: boolean
+  creado_en: string | null
+  coste: { tokens_entrada: number | null; tokens_salida: number | null; usd: number | null; nota: string }
+  datos_usados: DatoContextoIA[]
+  datos_ausentes: DatoAusenteIA[]
+  aviso: string
+}

@@ -21,6 +21,7 @@ from app.routers import (
     expectativas,
     earnings,
     etfs,
+    ia,
     market,
     meta,
     news,
@@ -83,7 +84,10 @@ async def _error_de_validacion(request: Request, exc: RequestValidationError) ->
     from app.simbolos import mensaje_invalido
 
     for e in errores:
-        if e.get("type") == "string_pattern_mismatch" and any("symbol" in str(p) for p in e.get("loc", ())):
+        # «simbolo», el nombre en español de los cuerpos nuevos (`/api/ia/preguntar`).
+        if e.get("type") == "string_pattern_mismatch" and any(
+            "symbol" in str(p) or "simbolo" in str(p) for p in e.get("loc", ())
+        ):
             e["msg"] = mensaje_invalido(e.get("input"))
     return JSONResponse(
         status_code=422,
@@ -213,4 +217,5 @@ app.include_router(snapshots.router)
 app.include_router(empresa.router)
 app.include_router(expectativas.router)
 app.include_router(options.router)
+app.include_router(ia.router)
 app.include_router(meta.router)

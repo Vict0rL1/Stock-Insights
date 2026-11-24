@@ -46,8 +46,9 @@ from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import EarningsAnalysis
 from app.deps import get_llm, get_service
-from app.formato import fmt_num
 from app.llm.base import LLMProvider, LLMUnavailableError
+# La tarifa y la cuenta, compartidas con «Pregúntale a la IA» (`llm/coste.py`).
+from app.llm.coste import coste_estimado as _coste_estimado
 from app.llm.earnings_llm import (
     SYSTEM,
     AnalisisTrimestre,
@@ -68,16 +69,6 @@ router = APIRouter(prefix="/api/earnings", tags=["earnings"])
 # Formularios que traen lenguaje de la dirección. El 10-K entra porque el cuarto
 # trimestre no tiene 10-Q: la comparación se rompería justo una vez al año.
 FORMULARIOS = ("10-Q", "10-K", "8-K")
-
-# Tarifa del API de Claude en USD por millón de tokens (entrada, salida), para
-# enseñar el coste ANTES de gastarlo. Antes era una sola, la de Opus 5, escrita
-# a mano aunque el modelo fuera otro. Un modelo que no está aquí no tiene
-# estimación: inventarle un precio sería peor que decir que no se sabe.
-TARIFAS_USD_POR_MTOK = {
-    "claude-sonnet-5-5": (2.0, 10.0),
-    "claude-opus-5-5": (4.0, 20.0),
-    "claude-opus-5": (5.0, 25.0),
-}
 
 
 class AnalizarRequest(BaseModel):
@@ -145,37 +136,6 @@ def _preparar(service: MarketDataService, symbol: str, filing: dict) -> dict:
             ),
         )
     return {"documento": doc, "secciones": secciones, "filing": filing}
-
-
-def _coste_estimado(entrada: int | None, modelo: str | None, salida: int = 4000, motivo: str | None = None) -> dict:
-    if entrada is None:
-        return {
-            "tokens_entrada": None,
-            "usd_estimado": None,
-            "nota": f"{motivo} El coste no se puede estimar de antemano." if motivo else
-                    "No se pudieron contar los tokens; el coste no se puede estimar de antemano.",
-        }
-    tarifa = TARIFAS_USD_POR_MTOK.get(modelo or "")
-    if tarifa is None:
-        return {
-            "tokens_entrada": entrada,
-            "usd_estimado": None,
-            "nota": (
-                f"~{fmt_num(entrada, 0)} tokens de entrada. No hay tarifa conocida para el modelo "
-                f"{modelo or 'configurado'}: el coste no se puede estimar de antemano."
-            ),
-        }
-    usd = entrada / 1e6 * tarifa[0] + salida / 1e6 * tarifa[1]
-    return {
-        "tokens_entrada": entrada,
-        "usd_estimado": round(usd, 4),
-        "nota": (
-            f"~{fmt_num(entrada, 0)} tokens de entrada. Estimación a la tarifa de {modelo} "
-            f"({fmt_num(tarifa[0], 2, ceros=False)} USD/M entrada, "
-            f"{fmt_num(tarifa[1], 2, ceros=False)} USD/M salida), "
-            f"asumiendo ~{fmt_num(salida, 0)} tokens de salida."
-        ),
-    }
 
 
 def _guardar(session: Session, **campos) -> EarningsAnalysis:

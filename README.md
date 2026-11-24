@@ -2066,6 +2066,49 @@ proyecto (las demás tienen tier gratuito), así que solo corre cuando pulsas
 uno de esos botones, con `max_tokens` acotado, y el resultado se guarda por
 hash del prompt: repetir la misma consulta no vuelve a cobrar.
 
+#### «Pregúntale a la IA» (`POST /api/ia/preguntar`)
+
+Una pregunta libre (o una sugerencia: «Resúmeme el día», «Explícame la mejor
+idea de hoy», «¿Qué ETF sirve para empezar?») que Claude contesta con **lo que
+la app ya calculó y nada más** (`app/pregunta_ia.py`; el bloque es
+`components/ia/PreguntaIA.tsx`, para Inicio). El contexto sale solo de la caché
+y de la base, **sin descargar nada**: preguntar no dispara la lista del día ni
+una cotización por posición.
+
+| Bloque | De dónde sale | Fecha |
+|---|---|---|
+| Lista del día del mercado | la caché de `/api/signals/today`: vigente (6 h) o la última copia caducada (`get_vencido`, hasta 7 días), marcada VIEJA con su antigüedad | la de su cálculo |
+| Tu cartera y sus stops | las posiciones abiertas y `stops_de_la_cartera` con los precios guardados: sin precio guardado, o con solo el cierre de una lista vieja, el stop queda «sin comprobar», nunca «por encima» | la de cada precio |
+| El mercado | las cotizaciones guardadas de los índices del panel de Mercado | la de cada cotización |
+| La ficha (`simbolo`) | su fila de la lista y su último análisis congelado, sin el «objetivo» de los niveles | la del análisis |
+| Cómo compara la app los ETFs | los umbrales de `analysis/etf_picks.py` | — (son reglas) |
+
+Lo que no está guardado no se calcula: va en `datos_ausentes` y el prompt le
+dice a la IA que falta. Las instrucciones: español claro para quien empieza,
+solo cifras del contexto y con su fecha, decir cuándo falta un dato, sin precios
+objetivo ni predicciones, y recordar que la decisión es tuya. La pregunta (500
+caracteres como mucho) va delimitada como dato y no puede cerrar su delimitador.
+
+- **Cuerpo:** `{ pregunta, mercado?, simbolo? }` (`mercado` por defecto
+  `us_sp500`; uno desconocido, un símbolo inválido o una pregunta vacía o de más
+  de 500 caracteres son un 422 en español, sin llamar al modelo).
+- **Respuesta:** `generado_por: "ia"`, `content_md` (Markdown), `model`,
+  `cached`, `creado_en`, `coste` (tokens de entrada y salida que dio el API y su
+  precio a la tarifa del modelo; desde caché, sin coste nuevo), `datos_usados`
+  (cada bloque con `titulo`, `fuente`, `fecha`, `estado` `valido`/`viejo`,
+  `antiguedad_segundos` y `nota`), `datos_ausentes` y `aviso`.
+- **Antes de enviar:** `POST /api/ia/preguntar/coste`, mismo cuerpo con la
+  pregunta opcional, cuenta los tokens con `count_tokens` (sin generar nada) y da
+  el coste estimado (`coste_estimado`, la misma tarifa que Resultados, ahora en
+  `app/llm/coste.py`) y los datos que se pasarían. El bloque lo pide al
+  montarse, porque las sugerencias envían al tocarlas.
+- **Sin `ANTHROPIC_API_KEY`:** las dos rutas responden **503** con cómo
+  añadirla; el bloque lo explica (`.env`, `./start.sh`) en vez de desaparecer.
+  Un fallo del modelo es un 502 con su motivo.
+- **Caché:** la respuesta se guarda en `llm_outputs` (`kind = pregunta_ia`) por
+  la huella del modelo, las instrucciones y el prompt: la misma pregunta con los
+  mismos datos no vuelve a cobrar.
+
 ## Alertas que avisan con la app cerrada
 
 Las alertas de precio existían desde la fase 5, pero se evaluaban **dentro del

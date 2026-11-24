@@ -63,7 +63,17 @@ class AnthropicProvider(LLMProvider):
         text = next((b.text for b in response.content if b.type == "text"), "")
         if not text:
             raise LLMUnavailableError("Respuesta vacía del modelo")
-        return {"content": text, "model": response.model}
+        # Lo que gastó, con la misma forma que `extract`: «Pregúntale a la IA»
+        # enseña el coste de cada respuesta, no solo el estimado antes de enviar.
+        usage = getattr(response, "usage", None)
+        return {
+            "content": text,
+            "model": response.model,
+            "usage": {
+                "entrada": getattr(usage, "input_tokens", None),
+                "salida": getattr(usage, "output_tokens", None),
+            },
+        }
 
     def extract(self, system: str, prompt: str, schema: type) -> dict:
         """Extracción validada contra un esquema Pydantic.

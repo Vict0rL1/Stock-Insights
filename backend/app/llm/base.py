@@ -27,7 +27,10 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def interpret(self, system: str, prompt: str) -> dict:
-        """-> {content: str (markdown), model: str}"""
+        """-> {content: str (markdown), model: str, usage?: {entrada, salida}}
+
+        `usage` es opcional: un proveedor que no da el recuento de tokens no lo
+        trae, y quien enseña el coste dice entonces que no se conoce."""
         ...
 
     def extract(self, system: str, prompt: str, schema: type) -> dict:

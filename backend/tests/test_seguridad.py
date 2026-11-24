@@ -36,6 +36,11 @@ def esquema():
     return app.openapi()
 
 
+def _es_simbolo(nombre: str) -> bool:
+    """«symbol» y, en los cuerpos nuevos en español, «simbolo» (`/api/ia/preguntar`)."""
+    return "symbol" in nombre or "simbolo" in nombre
+
+
 def _con_simbolo(esquema):
     """(método, ruta, dónde, nombre, esquema del campo) de cada símbolo de la API."""
     componentes = esquema.get("components", {}).get("schemas", {})
@@ -48,12 +53,12 @@ def _con_simbolo(esquema):
     for ruta, ops in esquema["paths"].items():
         for metodo, op in ops.items():
             for p in op.get("parameters", []):
-                if "symbol" in p["name"]:
+                if _es_simbolo(p["name"]):
                     yield metodo, ruta, p["in"], p["name"], p.get("schema", {})
             cuerpo = (((op.get("requestBody") or {}).get("content") or {}).get("application/json") or {})
             if "schema" in cuerpo:
                 for nombre, campo in (resolver(cuerpo["schema"]).get("properties") or {}).items():
-                    if "symbol" in nombre:
+                    if _es_simbolo(nombre):
                         yield metodo, ruta, "body", nombre, campo
 
 
@@ -151,6 +156,8 @@ def test_un_simbolo_malicioso_es_un_422_en_espanol_y_nunca_una_llamada(esquema, 
     ("/api/signals/score", {"symbols": ["AAPL", "MSFT", "<b>"]}),
     ("/api/news/interpret", {"headline": "x", "symbol": "AAPL$"}),
     ("/api/expectativas/eventos", {"symbol": "..", "tipo": "earnings"}),
+    ("/api/ia/preguntar", {"pregunta": "x", "simbolo": "AAPL;DROP"}),
+    ("/api/ia/preguntar/coste", {"simbolo": "<b>"}),
 ])
 def test_un_simbolo_malicioso_en_un_cuerpo_tambien(cliente, ruta, cuerpo):
     c, espia = cliente

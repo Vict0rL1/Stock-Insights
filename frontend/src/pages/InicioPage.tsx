@@ -5,6 +5,7 @@ import type { CalendarioMercado, IndexEntry, Portfolio, PortfolioPosition, Price
 import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import { ProgresoAnalisis } from '../components/ProgresoAnalisis'
+import { PreguntaIA } from '../components/ia/PreguntaIA'
 import { useListaDiaria } from '../hooks/useListaDiaria'
 import { avisoDe, tamanoDeLaLista } from '../lib/avisos'
 import { fmtDinero, fmtFecha, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
@@ -562,9 +563,13 @@ export function InicioPage() {
         </Tarjeta>
       </div>
 
-      <Tarjeta titulo="Próximos días" id="proximos-t">
-        <ProximosDias cartera={cartera} calendario={calendario} />
-      </Tarjeta>
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Lo que la IA dice va aparte y etiquetado; solo usa lo ya calculado. */}
+        <PreguntaIA mercado={MERCADO} />
+        <Tarjeta titulo="Próximos días" id="proximos-t">
+          <ProximosDias cartera={cartera} calendario={calendario} />
+        </Tarjeta>
+      </div>
 
       <p className="text-xs leading-relaxed text-slate-400">
         Herramienta personal: sugiere a partir de reglas escritas y datos con su fuente y su fecha. No es asesoría

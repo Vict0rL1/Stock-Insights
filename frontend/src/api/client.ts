@@ -68,6 +68,8 @@ import type {
   RiskResponse,
   SectorEntry,
   YieldCurve,
+  CostePreguntaIA,
+  RespuestaPreguntaIA,
 } from './types'
 
 export class ApiError extends Error {
@@ -406,4 +408,9 @@ export const api = {
   yieldCurve: () => fetchJson<YieldCurve>('/api/market/yield-curve'),
   macro: () => fetchJson<{ indicators: MacroIndicator[] }>('/api/market/macro'),
   calendar: () => fetchJson<CalendarioMercado>('/api/market/calendar'),
+  // «Pregúntale a la IA»: el coste antes de enviar (sin llamar al modelo) y la pregunta.
+  costePreguntaIA: (body: { pregunta?: string; mercado?: string; simbolo?: string }) =>
+    postJson<CostePreguntaIA>('/api/ia/preguntar/coste', body),
+  preguntarIA: (body: { pregunta: string; mercado?: string; simbolo?: string }) =>
+    postJson<RespuestaPreguntaIA>('/api/ia/preguntar', body),
 }
