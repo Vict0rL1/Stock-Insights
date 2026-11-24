@@ -58,6 +58,21 @@ Cartera y Más (avanzadas). La búsqueda de empresa o ETF está arriba en todas 
 | **Novedades** | Qué cambió, Resultados vs expectativas, Filings y noticias de la empresa |
 | *Más detalle (enlace)* | Informe completo, Opciones, Decisiones y replay |
 
+Cómo quedó (fase B):
+
+- La pestaña va en la URL: `?pestana=resumen|numeros|valoracion|novedades|detalle`, o el nombre
+  de una sección (`salud`, `filings`…). Acepta también los once identificadores de antes; la
+  tabla de traducción es `PESTANAS_VIEJAS` en `frontend/src/lib/pestanasFicha.ts` (con
+  `pestanaNueva()` para las redirecciones). Números abre Fundamentales; Novedades, «Qué cambió»
+  (que congela al abrirse, como antes); «Más detalle» no abre nada hasta elegir.
+- «Qué dice la app» lee el análisis con `GET /api/empresa/{s}/analisis?congelar=false` (el
+  parámetro ya existía): abrir la ficha no congela instantáneas. La frase sale de la traza del
+  motor (`frontend/src/lib/queDiceLaApp.ts`), probada contra decisiones reales de `decide()`
+  (`frontend/src/test/fixtures/decisiones_motor.json`, exportadas por el backend).
+- «Explícamelo con IA» (solo con la IA encendida) abre «Más detalle › Informe completo» y pide
+  su narrativa una vez. Los términos se explican con `components/Termino.tsx`, con las
+  definiciones en `frontend/src/lib/glosario.ts`.
+
 ### Redirecciones (las rutas viejas siguen funcionando)
 
 | Ruta vieja | Va a |

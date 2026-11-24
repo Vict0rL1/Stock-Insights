@@ -2263,14 +2263,31 @@ export interface AnalisisEmpresa {
     ejercicio?: string
     publicado?: string
     metricas: Record<string, MetricaDerivada & Linaje>
-    trimestre?: { periodo: string | null; publicado: string | null } | null
+    /** El último trimestre presentado, con su linaje: las cifras clave de la ficha. */
+    trimestre?: {
+      periodo: string | null
+      publicado: string | null
+      periodo_fin?: string | null
+      revenue?: Linaje
+      revenue_yoy?: MetricaDerivada
+      operating_margin?: MetricaDerivada
+    } | null
+    fuente?: string
     motivo?: string
   }
   valoracion: {
     estado: string
     pe?: MetricaDerivada
     fcf_yield?: MetricaDerivada
-    dcf_inverso?: { estado: string; crecimiento_implicito?: number | null; rango?: { bajo: number; alto: number } | null; motivo?: string | null; nota?: string }
+    dcf_inverso?: {
+      estado: string
+      crecimiento_implicito?: number | null
+      rango?: { bajo: number; alto: number } | null
+      /** Descuento y crecimiento terminal en fracción; `anos`, los de la proyección. */
+      supuestos?: { descuento: number; terminal: number; anos: number }
+      motivo?: string | null
+      nota?: string
+    }
   }
   tesis: {
     estado: string

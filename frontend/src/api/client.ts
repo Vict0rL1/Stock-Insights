@@ -182,6 +182,12 @@ export const api = {
       `/api/empresa/${encodeURIComponent(symbol)}/analisis${tipoImpositivo != null ? `?tipo_impositivo=${tipoImpositivo}` : ''}`,
       120_000,
     ),
+  /** El mismo análisis, SIN congelar instantánea: lo que la ficha enseña al
+   *  abrirse («Qué dice la app»). Abrir una ficha es leer, no escribir: con el
+   *  de arriba cada visita guardaría una instantánea inmutable. Congela solo
+   *  «Qué cambió», al abrirlo. */
+  leerAnalisisEmpresa: (symbol: string) =>
+    fetchJson<AnalisisEmpresaResponse>(`/api/empresa/${encodeURIComponent(symbol)}/analisis?congelar=false`, 120_000),
   historialEmpresa: (symbol: string) =>
     fetchJson<{
       symbol: string

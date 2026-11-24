@@ -117,7 +117,10 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
                     f"/api/stocks/{symbol}/fundamentals", f"/api/stocks/{symbol}/history?range=1Y",
                     f"/api/stocks/{symbol}/financials",
                     "/api/meta/llm", f"/api/deep-dive/{symbol}?history_years=10",
-                    "/api/portfolio", "/api/portfolio/historial?descargar=false"):
+                    "/api/portfolio", "/api/portfolio/historial?descargar=false",
+                    # «Qué dice la app», en la cabecera: el análisis sin congelar.
+                    # El último, para no cambiar lo que responden los de arriba.
+                    f"/api/empresa/{symbol}/analisis?congelar=false"):
             _pedir(c, rutas, url)
         # La pestaña Valoración: el resumen del único DCF (ítem 3.3), el mismo que
         # abre el módulo completo con el símbolo.
@@ -167,12 +170,67 @@ def _hoy(caso: str, con_cartera: bool = False) -> dict:
     return {"rutas": rutas}
 
 
+def _decisiones() -> dict:
+    """Lo que el motor decide en cada caso que «Qué dice la app» cuenta con su
+    frase (`frontend/src/lib/queDiceLaApp.ts`): la frase se prueba contra la
+    traza de verdad, con los textos y los umbrales del motor, no contra una
+    escrita a mano que se desactualiza sola."""
+    from app.analysis.decision import decide
+
+    def precio(last, sma200=94.78, **extra):
+        return {"last": last, "sma200": sma200, "above_sma200": None if sma200 is None else last > sma200,
+                "daily_vol_pct": 1.6, "drawdown_pct": -8.0, "estado": "valido", **extra}
+
+    viejo = {"estado": "viejo", "antiguedad_segundos": 1200}
+    posicion = {"cost_basis": 80.0, "quantity": 10, "stop": 70.0}
+    casos = {
+        # La maqueta aprobada: buena empresa con el precio bajo su media.
+        "vigilar_bajo_la_media": decide({"score": 0.6}, precio(92.0)),
+        "vigilar_dentro_de_la_banda": decide({"score": 0.6}, precio(95.5)),
+        "vigilar_sin_media": decide({"score": 0.6}, precio(92.0, sma200=None)),
+        "vigilar_por_resultados": decide({"score": 0.6}, precio(104.0), resultados_en="2026-09-15"),
+        "vigilar_por_precio_viejo": decide({"score": 0.6}, precio(104.0, **viejo)),
+        "comprar": decide({"score": 0.6}, precio(104.0)),
+        "ninguna": decide({"score": 0.12}, precio(92.0)),
+        "ninguna_con_resultados": decide({"score": 0.12}, precio(92.0), resultados_en="2026-09-15"),
+        "evitar": decide({"score": -0.52}, precio(92.0)),
+        "mantener": decide({"score": 0.4}, precio(100.0), posicion),
+        "mantener_con_precio_viejo": decide({"score": 0.4}, precio(100.0, **viejo), posicion),
+        # Recibidas en un spin-off: coste 0 y sin stop guardado, no hay con qué comparar.
+        "mantener_sin_stop": decide({"score": 0.4}, precio(100.0), {"cost_basis": 0.0, "quantity": 10}),
+        # La auditoría del 19 oct: una acción de céntimos con el stop en 0,004.
+        "vender_por_stop": decide({"score": 0.4}, precio(0.003, sma200=0.0035),
+                                  {"cost_basis": 0.005, "quantity": 1000, "stop": 0.004}),
+        "vender_por_puntuacion_y_stop": decide({"score": -0.5}, precio(60.0), posicion),
+        "reducir": decide({"score": 0.4}, precio(90.0), posicion),
+        "sin_datos": decide({"score": None}, precio(92.0)),
+        "sin_datos_ni_precio": decide({"score": None}, None),
+    }
+    # Y una decisión por cada combinación de papeles que el motor produce sobre
+    # el universo del golden master (`tests/golden/motor.py`): si el motor
+    # aprende una combinación nueva, el frontend se entera de que no tiene frase.
+    from tests.golden import motor as golden
+
+    combinaciones: dict[str, dict] = {}
+    entradas = [(s, p, pos, {}) for s in golden.SCORES for p in golden.PRECIOS.values() for pos in golden.POSICIONES.values()]
+    entradas += [(s, p, None, {"resultados_en": "2026-09-16"}) for s in golden.SCORES for p in golden.PRECIOS.values()]
+    for s, p, pos, kw in entradas:
+        d = golden._decide(s, p, pos, **kw)
+        papeles = sorted(f"{r['id']}:{r['resultado']}:{r['papel']}" for r in d["reglas"] if r["papel"] != "evaluada")
+        clave = "|".join([d["action"], "con_posicion" if d["owned"] else "sin_posicion", *papeles])
+        texto = json.dumps(d, ensure_ascii=False)
+        if clave not in combinaciones and "NaN" not in texto and "Infinity" not in texto:
+            combinaciones[clave] = d
+    return {"casos": casos, "combinaciones": combinaciones}
+
+
 ESCENARIOS = {
     "empresa_completa": lambda: _empresa("completa", "una_posicion", con_historia=True),
     "empresa_vacia": lambda: _empresa("todo_ausente", "vacia", con_historia=False),
     "empresa_deuda_parcial": lambda: _empresa("deuda_parcial", "fx_invertido", con_historia=False),
     "hoy_completo": lambda: _hoy("dia_completo_502"),
     "hoy_sin_candidatas": lambda: _hoy("dia_sin_candidatas", con_cartera=True),
+    "decisiones_motor": _decisiones,
 }
 
 

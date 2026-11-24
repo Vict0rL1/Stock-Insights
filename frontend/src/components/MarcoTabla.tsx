@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode, type RefObject } from 'react'
 
 /** Lo que queda fuera de la vista a cada lado de un marco con desplazamiento
  *  horizontal. `desde` y `hasta` son los anchos de las columnas fijas a la
@@ -171,11 +171,16 @@ export function MarcoTabla({
  * la franja que se desplaza (su `flex`, y `md:overflow-visible` si en escritorio
  * vuelve a partirse en varias filas).
  */
-export function FranjaDesplazable({ className = '', children }: { className?: string; children: ReactNode }) {
+export function FranjaDesplazable({
+  className = '',
+  children,
+  ...atributos
+}: { className?: string; children: ReactNode } & Omit<HTMLAttributes<HTMLDivElement>, 'className' | 'children' | 'style'>) {
   const franja = useRef<HTMLDivElement>(null)
   const ocultos = useOcultos(franja)
+  // `atributos`: el `role="tablist"` y su teclado en las pestañas de la ficha.
   return (
-    <div ref={franja} className={`overflow-x-auto ${className}`.trim()} style={mascara(ocultos)} {...datosOcultos(ocultos)}>
+    <div ref={franja} {...atributos} className={`overflow-x-auto ${className}`.trim()} style={mascara(ocultos)} {...datosOcultos(ocultos)}>
       {children}
     </div>
   )

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse, CambioMetrica, CosteOportunidad, RiesgoEnCartera } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
@@ -10,7 +10,7 @@ import { DecisionExplicada } from '../DecisionExplicada'
 import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 
-const NIVEL: Record<string, string> = {
+export const NIVEL: Record<string, string> = {
   alta: 'bg-emerald-100 text-emerald-800',
   media: 'bg-amber-100 text-amber-800',
   baja: 'bg-red-100 text-red-800',
@@ -158,6 +158,24 @@ export function CosteOportunidadResumen({ oc }: { oc: CosteOportunidad }) {
 }
 
 type Analisis = AnalisisEmpresaResponse['analisis']
+
+/** Cada factor de la confianza con su estado y su motivo, y la regla que los
+ *  junta. Aquí y en la cabecera de la ficha («Qué dice la app»). */
+export function FactoresDeConfianza({ confianza }: { confianza: Analisis['confianza'] }) {
+  return (
+    <>
+      <ul className="mt-2 space-y-0.5 text-xs">
+        {confianza.factores.map((f) => (
+          <li key={f.id}>
+            <span className={`font-medium ${FACTOR[f.estado]}`}>{etiqueta(f.estado)}</span>{' '}
+            <span className="text-slate-700">{f.factor}:</span> <span className="text-slate-500">{f.detalle}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-[10px] text-slate-400">Regla: {confianza.regla}</p>
+    </>
+  )
+}
 type Impacto = NonNullable<NonNullable<Analisis['expectativas']['ultimo']>['impacto_en_tesis']>[number]
 
 /** Un punto de invalidación cruzado, con sus dos lecturas: la de la vigilancia
@@ -229,7 +247,7 @@ function textoDelPunto(p: PuntoCruzado, periodo: string): string {
  * (revisión 12, visual). De lo que dice el análisis de ahora, no del diff: un
  * trimestre ya comparado deja de salir en el diff, y la tesis sigue rota.
  */
-function TesisInvalidada({ a }: { a: Analisis }) {
+export function TesisInvalidada({ a, pie }: { a: Analisis; pie?: ReactNode }) {
   const ultimo = a.expectativas?.ultimo
   const periodo = ultimo?.evento.periodo ?? 'el último evento'
   const { propios, ajenos } = puntosCruzados(a)
@@ -265,6 +283,7 @@ function TesisInvalidada({ a }: { a: Analisis }) {
         </>
       )}
       <p className="mt-1 text-[11px]">El motor de decisión no mira la tesis: esta decisión no la tiene en cuenta.</p>
+      {pie}
     </div>
   )
 }
@@ -336,15 +355,7 @@ function QueCambio({ symbol, datos }: { symbol: string; datos: AnalisisEmpresaRe
           <summary className="cursor-pointer text-xs font-semibold text-slate-700">
             Confianza {a.confianza.nivel}: calidad de la evidencia (no convicción de nadie)
           </summary>
-          <ul className="mt-2 space-y-0.5 text-xs">
-            {a.confianza.factores.map((f) => (
-              <li key={f.id}>
-                <span className={`font-medium ${FACTOR[f.estado]}`}>{etiqueta(f.estado)}</span>{' '}
-                <span className="text-slate-700">{f.factor}:</span> <span className="text-slate-500">{f.detalle}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1 text-[10px] text-slate-400">Regla: {a.confianza.regla}</p>
+          <FactoresDeConfianza confianza={a.confianza} />
         </details>
         {a.faltan.length > 0 && (
           <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">

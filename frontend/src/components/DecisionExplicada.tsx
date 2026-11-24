@@ -15,7 +15,7 @@ const PAPEL: Record<string, { texto: string; tono: string }> = {
   evaluada: { texto: 'evaluada', tono: 'bg-slate-100 text-slate-500' },
 }
 
-const RESULTADO: Record<string, { texto: string; tono: string }> = {
+export const RESULTADO: Record<string, { texto: string; tono: string }> = {
   cumple: { texto: '✓ cumple', tono: 'text-emerald-700' },
   no_cumple: { texto: '✗ no cumple', tono: 'text-slate-500' },
   desconocido: { texto: '? desconocido', tono: 'text-amber-800' },
@@ -57,13 +57,31 @@ function distanciaPct(d: number): string {
   return fmtPct(d, decimales, { enPuntos: true, signo: true, ceros: decimales === 2 })
 }
 
+/** Los umbrales de cada cifra de una traza: lo que `cifrasDeRegla` necesita. */
+export function umbralesDeTraza(reglas: ReglaTraza[]): Map<number, number[]> {
+  return umbralesPorCifra(
+    reglas.map((r) => ({ valor: r.datos?.valor, umbral: r.datos?.umbral, precio: REGLAS_DE_PRECIO.has(r.id) })),
+  )
+}
+
+/** «0,60 frente a 0,35»: el valor de una regla frente a su umbral, escritos como
+ *  en la traza (los precios como precios; la puntuación, frente a todos sus
+ *  umbrales). `null` si la regla no compara cifras. El resumen de la ficha
+ *  («Lo que comprueba la app») lo escribe igual que «¿Por qué esta decisión?». */
+export function cifrasDeRegla(r: ReglaTraza, umbrales: Map<number, number[]>): string | null {
+  if (r.datos?.valor === undefined || r.datos?.umbral === undefined) return null
+  const precio = REGLAS_DE_PRECIO.has(r.id)
+  return (
+    `${valor(r.datos.valor, precio, deSuCifra(umbrales, r.datos.valor, r.datos.umbral))} frente a ` +
+    valor(r.datos.umbral, precio, typeof r.datos.umbral === 'number' ? [r.datos.umbral] : [])
+  )
+}
+
 export function PorQue({ reglas }: { reglas: ReglaTraza[] }) {
   // Primero lo que movió la decisión; lo meramente evaluado, al final.
   const orden = ['decide', 'modifica', 'bloquea', 'a_favor', 'informa', 'evaluada']
   const ordenadas = [...reglas].sort((a, b) => orden.indexOf(a.papel) - orden.indexOf(b.papel))
-  const umbrales = umbralesPorCifra(
-    reglas.map((r) => ({ valor: r.datos?.valor, umbral: r.datos?.umbral, precio: REGLAS_DE_PRECIO.has(r.id) })),
-  )
+  const umbrales = umbralesDeTraza(reglas)
   return (
     // Más aire entre reglas que dentro de una: en móvil cada regla ocupa dos o
     // tres líneas y, con `space-y-1` frente a `gap-2`, la etiqueta de una parecía
@@ -72,17 +90,12 @@ export function PorQue({ reglas }: { reglas: ReglaTraza[] }) {
       {ordenadas.map((r) => {
         const p = PAPEL[r.papel] ?? PAPEL.evaluada
         const res = RESULTADO[r.resultado] ?? RESULTADO.desconocido
-        const tieneCifras = r.datos?.valor !== undefined && r.datos?.umbral !== undefined
+        const cifras = cifrasDeRegla(r, umbrales)
         return (
           <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${p.tono}`}>{p.texto}</span>
             <span className="text-slate-700">{r.regla}</span>
-            {tieneCifras && (
-              <span className="tabular-nums text-slate-500">
-                ({valor(r.datos.valor, REGLAS_DE_PRECIO.has(r.id), deSuCifra(umbrales, r.datos.valor, r.datos.umbral))}{' '}
-                frente a {valor(r.datos.umbral, REGLAS_DE_PRECIO.has(r.id), typeof r.datos.umbral === 'number' ? [r.datos.umbral] : [])})
-              </span>
-            )}
+            {cifras !== null && <span className="tabular-nums text-slate-500">({cifras})</span>}
             <span className={`font-medium ${res.tono}`}>{res.texto}</span>
             {r.efecto && r.papel !== 'evaluada' && (
               <span className="text-slate-400">→ {etiqueta(r.efecto, { mayuscula: true })}</span>

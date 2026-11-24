@@ -6,10 +6,13 @@
  * fundamentales e histórico se tragaban su fallo: un error de histórico salía
  * «Sin histórico disponible…» y uno de perfil o fundamentales, nada.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Financials, History, Profile, Quote } from '../api/types'
+import empresaCompleta from '../test/fixtures/empresa_completa.json'
+import empresaDeudaParcial from '../test/fixtures/empresa_deuda_parcial.json'
+import { PESTANAS_VIEJAS } from '../lib/pestanasFicha'
 import { TickerPage } from './TickerPage'
 
 // El gráfico dibuja en un canvas que jsdom no tiene; aquí basta con saber de
@@ -87,15 +90,30 @@ function servir(rutas: Record<string, Respuesta>) {
   )
 }
 
-function abrir(symbol: string) {
+/** Dónde está la página: la pestaña vive en la URL (`?pestana=`). */
+let ubicacion = ''
+function Ubicacion() {
+  const l = useLocation()
+  ubicacion = l.pathname + l.search
+  return null
+}
+
+function abrir(symbol: string, consulta = '') {
   return render(
-    <MemoryRouter initialEntries={[`/ticker/${symbol}`]}>
+    <MemoryRouter initialEntries={[`/ticker/${symbol}${consulta}`]}>
       <Routes>
-        <Route path="/ticker/:symbol" element={<TickerPage />} />
+        <Route path="/ticker/:symbol" element={<><TickerPage /><Ubicacion /></>} />
       </Routes>
     </MemoryRouter>,
   )
 }
+
+const pestana = (nombre: string) => screen.findByRole('tab', { name: nombre })
+const abrirPestana = async (nombre: string) => fireEvent.click(await pestana(nombre))
+/** Las peticiones que congelan una instantánea: el análisis SIN `congelar=false`. */
+const queCongelan = (symbol: string) =>
+  vi.mocked(fetch).mock.calls.map(([e]) => String(e)).filter((u) => u === `/api/empresa/${symbol}/analisis`)
+const pedidas = () => vi.mocked(fetch).mock.calls.map(([e]) => String(e))
 
 describe('ficha de una empresa', () => {
   it('sin cotización en ninguna fuente (404), la cabecera y las pestañas siguen ahí', async () => {
@@ -115,13 +133,15 @@ describe('ficha de una empresa', () => {
     // El nombre, del perfil; el 404 de fundamentales e histórico es «no lo
     // tiene», no un fallo.
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Vacía Corp')
+    expect(await screen.findByText('Sin histórico disponible para VACIA en las fuentes configuradas.')).toBeInTheDocument()
+    // Las pestañas existen y cargan lo que EDGAR sí tiene: en «Números»,
+    // los fundamentales básicos (sin fuente) y los estados de EDGAR.
+    await abrirPestana('Números')
     expect(
       await screen.findByText('Ninguna fuente configurada tiene fundamentales básicos de VACIA.'),
     ).toBeInTheDocument()
-    expect(screen.getByText('Sin histórico disponible para VACIA en las fuentes configuradas.')).toBeInTheDocument()
-    // Las pestañas existen y cargan lo que EDGAR sí tiene.
-    fireEvent.click(screen.getByRole('button', { name: 'Fundamentales' }))
     expect(await screen.findByText(/Estados financieros anuales/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Más detalle (avanzado)' }))
     expect(screen.getByRole('button', { name: 'Decisiones y replay' })).toBeInTheDocument()
   })
 
@@ -166,13 +186,13 @@ describe('ficha de una empresa', () => {
     expect((await cabecera('SUBE', 0.5, 0.54)).clases).toContain('text-emerald-600')
   })
 
-  it('en móvil y en tableta las pestañas van en una fila que se desplaza, no en cinco (revisiones 12 y 13)', async () => {
+  it('cuatro pestañas en una fila que no se parte; «Más detalle» aparte (revisiones 12 y 13 y plan de navegación)', async () => {
     // A 390 px las once pestañas, partidas, ocupaban unos 200 px antes del
-    // contenido. jsdom no aplica los puntos de corte: se comprueba que por
-    // debajo de `xl` la fila no se parte y se desplaza en su franja (con la
-    // señal de que hay más, components/MarcoTabla.tsx), y que desde `xl` sí. Con
-    // el corte en `md`, entre 768 y 1279 px (con la barra lateral) volvían a
-    // ocupar tres o cuatro filas (revisión 13).
+    // contenido. Ahora son cuatro (docs/PLAN_NAVEGACION.md) y caben en una fila
+    // (las capturas lo miden a 390 px). jsdom no aplica los puntos de corte: se
+    // comprueba que la fila no se parte en ningún ancho y que, si una pantalla
+    // aún más estrecha no las cupiera, se desplaza en su franja con la señal de
+    // que hay más (components/MarcoTabla.tsx) en vez de partirse.
     servir({
       '/api/stocks/ACME/quote': ok(cotizacion('ACME', -1.2)),
       '/api/stocks/ACME/profile': ok(perfil('ACME', 'ACME Corp')),
@@ -180,16 +200,20 @@ describe('ficha de una empresa', () => {
       '/api/stocks/ACME/history?range=1Y': falla(404, 'sin histórico'),
     })
     abrir('ACME')
-    const pestanas = await screen.findByRole('navigation', { name: 'Secciones de la ficha' })
-    const botones = within(pestanas).getAllByRole('button')
-    expect(botones).toHaveLength(11)
-    const franja = botones[0].parentElement as HTMLElement
-    const clases = franja.className.split(/\s+/)
-    expect(clases).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto', 'xl:flex-wrap', 'xl:overflow-visible']))
-    for (const partida of ['flex-wrap', 'sm:flex-wrap', 'md:flex-wrap', 'lg:flex-wrap']) expect(clases).not.toContain(partida)
-    expect(franja.hasAttribute('data-oculto-derecha')).toBe(true)
-    // Cada pestaña en una línea: partida, la franja tendría dos alturas.
-    for (const b of botones) expect(b.className.split(/\s+/)).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-nowrap']))
+    const lista = await screen.findByRole('tablist', { name: 'Pestañas de la ficha' })
+    const tabs = within(lista).getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Resumen', 'Números', 'Valoración', 'Novedades'])
+    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false'])
+    const clases = lista.className.split(/\s+/)
+    expect(clases).toEqual(expect.arrayContaining(['flex', 'overflow-x-auto']))
+    for (const partida of ['flex-wrap', 'sm:flex-wrap', 'md:flex-wrap', 'lg:flex-wrap', 'xl:flex-wrap']) expect(clases).not.toContain(partida)
+    expect(lista.hasAttribute('data-oculto-derecha')).toBe(true)
+    // Cada pestaña en una línea: partida, la fila tendría dos alturas.
+    for (const t of tabs) expect(t.className.split(/\s+/)).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-nowrap']))
+    // «Más detalle» no es una quinta pestaña: va fuera de la fila.
+    const mas = screen.getByRole('button', { name: 'Más detalle (avanzado)' })
+    expect(lista.contains(mas)).toBe(false)
+    expect(screen.getByRole('navigation', { name: 'Secciones de la ficha' }).contains(mas)).toBe(true)
   })
 
   it('una cotización que no carga se dice como fallo, con su motivo, y se puede reintentar', async () => {
@@ -206,6 +230,8 @@ describe('ficha de una empresa', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('ACME')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('sin perfil en las fuentes configuradas')
     expect(await screen.findByText('Gráfico de ACME')).toBeInTheDocument()
+    // Con la cotización caída, las pestañas siguen ahí y abren lo suyo.
+    await abrirPestana('Números')
     expect(screen.getByRole('button', { name: 'Salud y riesgo' })).toBeInTheDocument()
 
     rutas['/api/stocks/ACME/quote'] = ok(cotizacion('ACME', -1.2))
@@ -222,6 +248,8 @@ describe('ficha de una empresa', () => {
     })
     abrir('ACME')
     expect(await screen.findByText('No se pudo cargar el perfil: perfil caído')).toBeInTheDocument()
+    // Los fundamentales básicos viven ahora en «Números».
+    await abrirPestana('Números')
     expect(
       await screen.findByText('No se pudieron cargar los fundamentales básicos: fundamentales caídos'),
     ).toBeInTheDocument()
@@ -252,7 +280,7 @@ describe('ficha de una empresa', () => {
     })
     abrir('ACME')
     expect(await screen.findByText('Gráfico de ACME')).toBeInTheDocument()
-    fireEvent.change(screen.getByPlaceholderText(/Ticker/), { target: { value: 'otra' } })
+    fireEvent.change(screen.getByPlaceholderText(/Símbolo/), { target: { value: 'otra' } })
     fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
     expect(await screen.findByText('Cargando el histórico…')).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 1, name: /Otra Corp/ })).toBeInTheDocument()
@@ -283,7 +311,7 @@ describe('ficha de una empresa', () => {
       '/api/stocks/VACIA/financials': ok(financieros('VACIA')),
     })
     abrir('VACIA')
-    expect(await screen.findByRole('button', { name: 'Fundamentales' })).toBeInTheDocument()
+    expect(await pestana('Números')).toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(/No se encontró el símbolo/)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('sin perfil en las fuentes configuradas')
   })
@@ -298,10 +326,13 @@ describe('ficha de una empresa', () => {
       '/api/stocks/AAPLL/history?range=1Y': falla(404, 'sin histórico'),
       '/api/stocks/AAPLL/financials': falla(404, 'AAPLL no está registrado en la SEC'),
     })
-    abrir('AAPLL')
+    abrir('AAPLL', '?pestana=cambios')
     expect(await screen.findByText('No se encontró el símbolo «AAPLL» en las fuentes configuradas.')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Qué cambió' })).toBeNull()
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    // Ni aunque la URL pida «Qué cambió»; ni siquiera el análisis que no congela.
+    expect(pedidas().filter((u) => u.startsWith('/api/empresa/AAPLL/analisis'))).toEqual([])
   })
 
   it('las pestañas no se abren hasta saber que el símbolo existe', async () => {
@@ -311,9 +342,11 @@ describe('ficha de una empresa', () => {
       '/api/stocks/ACME/fundamentals': 'pendiente',
       '/api/stocks/ACME/history?range=1Y': 'pendiente',
     })
-    abrir('ACME')
+    abrir('ACME', '?pestana=cambios')
     expect(await screen.findByText('Cargando la cotización…')).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Qué cambió' })).toBeNull()
+    expect(pedidas().filter((u) => u.startsWith('/api/empresa/ACME/analisis'))).toEqual([])
   })
 
   it('cambiar de símbolo con «Qué cambió» abierto no pide el análisis del nuevo antes de saber si existe', async () => {
@@ -331,15 +364,17 @@ describe('ficha de una empresa', () => {
     }
     servir(rutas)
     abrir('ACME')
-    fireEvent.click(await screen.findByRole('button', { name: 'Qué cambió' }))
-    fireEvent.change(screen.getByPlaceholderText(/Ticker/), { target: { value: 'aapll' } })
+    // «Novedades» abre «Qué cambió», que congela.
+    await abrirPestana('Novedades')
+    expect(screen.getByRole('button', { name: 'Qué cambió' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.change(screen.getByPlaceholderText(/Símbolo/), { target: { value: 'aapll' } })
     fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
     expect(await screen.findByText(/No se encontró el símbolo «AAPLL»/)).toBeInTheDocument()
-    const pedidas = vi.mocked(fetch).mock.calls.map(([e]) => String(e))
     // La de ACME sí se pidió: la pestaña estaba abierta y el filtro mira bien.
-    expect(pedidas.some((u) => u.startsWith('/api/empresa/ACME/analisis'))).toBe(true)
-    // El análisis es lo que congela; el historial (solo lectura) sí se mira.
-    expect(pedidas.filter((u) => u.startsWith('/api/empresa/AAPLL/analisis'))).toEqual([])
+    expect(queCongelan('ACME')).toHaveLength(1)
+    // El análisis es lo que congela; el historial (solo lectura) sí se mira. Y
+    // de AAPLL ni el que no congela: no se sabe si existe.
+    expect(pedidas().filter((u) => u.startsWith('/api/empresa/AAPLL/analisis'))).toEqual([])
   })
 
   it('volver a un símbolo no reabre la pestaña que tenía: «Qué cambió» no se vuelve a pedir solo', async () => {
@@ -356,15 +391,20 @@ describe('ficha de una empresa', () => {
     }
     servir(rutas)
     abrir('ACME')
-    fireEvent.click(await screen.findByRole('button', { name: 'Qué cambió' }))
-    const analisis = () => vi.mocked(fetch).mock.calls.filter(([e]) => String(e).startsWith('/api/empresa/ACME/analisis')).length
+    await abrirPestana('Novedades')
+    // Solo cuenta el que congela: el de «Qué dice la app» (`congelar=false`) se
+    // pide en cada visita y no guarda nada.
+    const analisis = () => queCongelan('ACME').length
     expect(analisis()).toBe(1)
+    expect(ubicacion).toBe('/ticker/ACME?pestana=novedades')
     for (const s of ['otra', 'acme']) {
-      fireEvent.change(screen.getByPlaceholderText(/Ticker/), { target: { value: s } })
+      fireEvent.change(screen.getByPlaceholderText(/Símbolo/), { target: { value: s } })
       fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
       expect(await screen.findByRole('heading', { level: 1, name: new RegExp(`${s.toUpperCase()} Corp`) })).toBeInTheDocument()
     }
     expect(await screen.findByText('Gráfico de ACME')).toBeVisible()
+    expect(await pestana('Resumen')).toHaveAttribute('aria-selected', 'true')
+    expect(ubicacion).toBe('/ticker/ACME')
     expect(analisis()).toBe(1)
   })
 
@@ -407,5 +447,188 @@ describe('ficha de una empresa', () => {
     ] })
     fireEvent.click(within(fallo.closest('[role="alert"]') as HTMLElement).getByRole('button', { name: 'Reintentar' }))
     expect(await screen.findByRole('button', { name: 'Replay' })).toBeInTheDocument()
+  })
+})
+
+// --- La ficha en cuatro pestañas (docs/PLAN_NAVEGACION.md) ----------------------
+
+/** Las respuestas REALES del backend sobre el paquete de casos extremos. */
+const rutasDe = (f: { rutas: Record<string, { status: number; json: unknown }> }, extra: Record<string, Respuesta> = {}) =>
+  ({ ...(f.rutas as Record<string, Respuesta>), ...extra })
+
+/** El texto que se lee, sin las definiciones de los términos (ocultas hasta tocarlos). */
+function leido(el: Element): string {
+  const copia = el.cloneNode(true) as Element
+  copia.querySelectorAll('[role="tooltip"]').forEach((t) => t.remove())
+  // Sin tocar el espacio duro: es parte de cómo se escribe una cifra («96,68 USD»).
+  return (copia.textContent ?? '').replace(/[ \t\n]+/g, ' ').trim()
+}
+
+const ACME_SIMPLE: Record<string, Respuesta> = {
+  '/api/stocks/ACME/quote': ok(cotizacion('ACME', -1.2)),
+  '/api/stocks/ACME/profile': ok(perfil('ACME', 'ACME Corp')),
+  '/api/stocks/ACME/fundamentals': falla(404, 'sin fundamentales'),
+  '/api/stocks/ACME/history?range=1Y': ok(historico('ACME')),
+}
+
+// Lo primero que pide cada sección al abrirse: prueba de que está montada.
+const PIDE: Record<string, string> = {
+  fundamentales: '/api/stocks/ACME/financials',
+  salud: '/api/stocks/ACME/health',
+  calidad: '/api/empresa/ACME/calidad',
+  cambios: '/api/empresa/ACME/analisis',
+  expectativas: '/api/expectativas/eventos?symbol=ACME',
+  filings: '/api/stocks/ACME/filings',
+  informe: '/api/deep-dive/ACME?history_years=10',
+  opciones: '/api/options/ACME',
+  historial: '/api/empresa/ACME/historial',
+  valoracion: '/api/valuation/ACME',
+}
+
+describe('la ficha en cuatro pestañas', () => {
+  it('«Qué dice la app» cuenta la decisión del motor en una frase, y abrir la ficha no congela nada', async () => {
+    servir(rutasDe(empresaDeudaParcial))
+    abrir('PARC')
+    const bloque = await screen.findByRole('region', { name: 'Qué dice la app' })
+    await waitFor(() => expect(leido(bloque)).toMatch(/Es una buena empresa/))
+    expect(leido(bloque)).toContain(
+      'Es una buena empresa frente a las de su sector y su precio va al alza. ' +
+        'La app sugiere comprar entre 101,92 y 106,08\u00a0USD, y salir si cierra a 95,68\u00a0USD o menos (su stop).',
+    )
+    // La acción, con lo que significa a un toque; la confianza, con su porqué.
+    // La acción, con el mismo aviso que Inicio y Explorar (`AvisoDeAccion`).
+    expect(bloque.querySelector('[data-aviso]')?.textContent).toMatch(/Comprar/)
+    expect(leido(bloque)).toMatch(/Confianza baja/)
+    expect(leido(bloque)).toContain('Por qué la confianza es baja: 5 puntos débiles en los datos que la respaldan')
+    expect(within(bloque).getByRole('link', { name: 'Anotar una compra' })).toHaveAttribute('href', '/cartera')
+    // Con la IA apagada no hay botón de IA que no lleve a nada.
+    expect(within(bloque).queryByRole('button', { name: 'Explícamelo con IA' })).toBeNull()
+    // Se lee sin congelar: una visita a la ficha no deja una instantánea inmutable.
+    expect(pedidas()).toContain('/api/empresa/PARC/analisis?congelar=false')
+    expect(queCongelan('PARC')).toEqual([])
+  })
+
+  it('el Resumen enseña lo que comprueba la app (✓ / ✗ / ?) y las cifras clave, explicadas', async () => {
+    servir(rutasDe(empresaDeudaParcial))
+    abrir('PARC')
+    const reglas = await screen.findByRole('region', { name: 'Lo que comprueba la app' })
+    const items = within(reglas).getAllByRole('listitem').slice(0, 2).map(leido)
+    expect(items).toEqual([
+      '✓cumple: Es mejor que las empresas de su sector. Puntuación ≥ +0,35 (0,60 frente a 0,35)',
+      '✓cumple: Su precio va al alza. Precio ≥ media de 200 sesiones + 2\u00a0% (104,00 frente a 96,68)',
+    ])
+    // Y la traza entera, plegada debajo: la de siempre, no otra explicación.
+    expect(within(reglas).getByText('Ver todas las reglas y qué cambiaría la decisión')).toBeInTheDocument()
+    expect(within(reglas).getByText('¿Por qué esta decisión?')).toBeInTheDocument()
+    const cifras = screen.getByRole('region', { name: 'Cifras clave, explicadas' })
+    expect(within(cifras).getByRole('button', { name: 'PER (precio / beneficio)' })).toHaveAccessibleDescription(/BPA/)
+    expect(leido(cifras)).toContain('Al precio de hoy pagas 63,0 veces lo que ganó por acción en su último ejercicio.')
+    expect(leido(cifras)).toContain('Fuente: EDGAR · presentado el 10 feb 2026')
+    fireEvent.click(within(cifras).getByRole('button', { name: 'Más cifras en «Números»' }))
+    expect(await pestana('Números')).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('una tesis tuya con un punto cruzado se avisa en el Resumen, aunque el motor no la mire', async () => {
+    servir(rutasDe(empresaCompleta))
+    abrir('ACME')
+    const aviso = await screen.findByText(/Tu tesis «El margen aguanta» tiene 1 punto de invalidación cruzado/)
+    const caja = aviso.parentElement as HTMLElement
+    expect(leido(caja)).toContain('margen operativo < 18%')
+    expect(within(caja).getByRole('link', { name: 'Revisar mi tesis' })).toHaveAttribute('href', '/cartera?pestana=tesis')
+  })
+
+  it.each(Object.entries(PESTANAS_VIEJAS))('la pestaña vieja «%s» (?pestana=) abre su sitio nuevo y su sección', async (vieja, vista) => {
+    servir(ACME_SIMPLE)
+    abrir('ACME', `?pestana=${vieja}`)
+    if (vista.pestana === 'detalle') {
+      expect(await screen.findByRole('button', { name: 'Más detalle (avanzado)' })).toHaveAttribute('aria-pressed', 'true')
+      for (const t of await screen.findAllByRole('tab')) expect(t).toHaveAttribute('aria-selected', 'false')
+    } else {
+      const nombre = { resumen: 'Resumen', numeros: 'Números', valoracion: 'Valoración', novedades: 'Novedades' }[vista.pestana]
+      expect(await pestana(nombre)).toHaveAttribute('aria-selected', 'true')
+    }
+    if (vista.seccion) {
+      const boton = screen.getAllByRole('button').find((b) => b.getAttribute('aria-pressed') === 'true' && b.textContent !== 'Más detalle (avanzado)')
+      expect(boton?.textContent).toBe(
+        { fundamentales: 'Fundamentales', salud: 'Salud y riesgo', calidad: 'Calidad de beneficios', cambios: 'Qué cambió',
+          expectativas: 'Resultados vs expectativas', filings: 'Filings', informe: 'Informe completo', opciones: 'Opciones',
+          historial: 'Decisiones y replay' }[vista.seccion],
+      )
+    }
+    // La sección de verdad está abierta: ha pedido lo suyo (y ninguna otra).
+    const suya = PIDE[vieja]
+    if (suya) await waitFor(() => expect(pedidas()).toContain(suya))
+    for (const [otra, url] of Object.entries(PIDE)) if (otra !== vieja) expect(pedidas(), otra).not.toContain(url)
+  })
+
+  it('la pestaña y la sección van a la URL, con los identificadores nuevos', async () => {
+    servir(ACME_SIMPLE)
+    abrir('ACME')
+    await abrirPestana('Números')
+    expect(ubicacion).toBe('/ticker/ACME?pestana=numeros')
+    fireEvent.click(screen.getByRole('button', { name: 'Salud y riesgo' }))
+    expect(ubicacion).toBe('/ticker/ACME?pestana=salud')
+    fireEvent.click(screen.getByRole('button', { name: 'Más detalle (avanzado)' }))
+    expect(ubicacion).toBe('/ticker/ACME?pestana=detalle')
+    // «Más detalle» no abre nada solo: cada sección cuesta su carga.
+    for (const url of [PIDE.informe, PIDE.opciones, PIDE.historial]) expect(pedidas()).not.toContain(url)
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+    expect(ubicacion).toBe('/ticker/ACME?pestana=opciones')
+    await abrirPestana('Resumen')
+    expect(ubicacion).toBe('/ticker/ACME')
+  })
+
+  it('con el teclado, las flechas mueven el foco entre pestañas sin abrirlas; Intro la abre', async () => {
+    // Abrir cuesta llamadas (y «Qué cambió» congela): pasar por encima no abre.
+    servir(ACME_SIMPLE)
+    abrir('ACME')
+    const resumen = await pestana('Resumen')
+    expect(resumen).toHaveAttribute('tabIndex', '0')
+    expect(screen.getByRole('tab', { name: 'Números' })).toHaveAttribute('tabIndex', '-1')
+    resumen.focus()
+    const lista = screen.getByRole('tablist')
+    fireEvent.keyDown(lista, { key: 'ArrowRight' })
+    fireEvent.keyDown(lista, { key: 'ArrowRight' })
+    fireEvent.keyDown(lista, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Novedades' }))
+    expect(resumen).toHaveAttribute('aria-selected', 'true')
+    expect(queCongelan('ACME')).toEqual([])
+    fireEvent.keyDown(lista, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(resumen)
+    fireEvent.keyDown(lista, { key: 'End' })
+    fireEvent.click(document.activeElement as HTMLElement)
+    expect(screen.getByRole('tab', { name: 'Novedades' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('«Explícamelo con IA», con la IA encendida, abre el informe completo y lo redacta una vez', async () => {
+    servir(
+      rutasDe(empresaDeudaParcial, {
+        '/api/meta/llm': ok({ configured: true, model: 'demo' }),
+        '/api/deep-dive/PARC/narrative': ok({ generated_by: 'llm', content_md: 'Narrativa de demostración.', model: 'demo', disclaimer: 'Aviso de IA.' }),
+      }),
+    )
+    // El estado de la IA se pide una vez para toda la app (`lib/llm.ts`): con
+    // módulos nuevos, el «apagada» de los tests de antes no cuenta aquí.
+    vi.resetModules()
+    const { TickerPage: FichaNueva } = await import('./TickerPage')
+    render(
+      <MemoryRouter initialEntries={['/ticker/PARC']}>
+        <Routes>
+          <Route path="/ticker/:symbol" element={<FichaNueva />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Explícamelo con IA' }))
+    expect(screen.getByRole('button', { name: 'Más detalle (avanzado)' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Informe completo' })).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByText('Narrativa de demostración.')).toBeInTheDocument()
+    const redactadas = () => pedidas().filter((u) => u === '/api/deep-dive/PARC/narrative').length
+    expect(redactadas()).toBe(1)
+    // Volver a la sección no la vuelve a pedir (gasta API).
+    await abrirPestana('Resumen')
+    fireEvent.click(screen.getByRole('button', { name: 'Más detalle (avanzado)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Informe completo' }))
+    expect(await screen.findByText(/Redactar informe \(IA\)/)).toBeInTheDocument()
+    expect(redactadas()).toBe(1)
   })
 })

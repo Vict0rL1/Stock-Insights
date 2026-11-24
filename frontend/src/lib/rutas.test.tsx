@@ -90,3 +90,22 @@ describe('rutas: las viejas llevan a las nuevas', () => {
     }
   })
 })
+
+describe('rutas: nadie escribe a mano una ruta vieja', () => {
+  // Al renombrar /ticker → /empresa quedaron diecisiete enlaces escritos a mano
+  // en nueve archivos; la redirección los salvaba, pero cada uno era un salto
+  // de más y un historial con la ruta vieja. Las pantallas piden la ruta a
+  // `lib/rutas.ts`; esto lo comprueba en el código fuente.
+  const fuentes = import.meta.glob('../**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+  const viejas = /(`|'|")\/(ticker|hoy|dashboard|portafolio|tesis|vigilancia|screener|multifactor|senales|etfs|resultados|noticias|valoracion)(\/|\?|`|'|")/
+
+  it('ningún archivo de la app enlaza a una ruta vieja', () => {
+    // Sin comentarios: contar la historia de una ruta vieja está bien; enlazarla, no.
+    const sinComentarios = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const culpables = Object.entries(fuentes)
+      .filter(([ruta]) => !/\.test\.tsx?$/.test(ruta) && ruta !== '../App.tsx' && ruta !== './rutas.ts')
+      .filter(([, texto]) => viejas.test(sinComentarios(texto)))
+      .map(([ruta]) => ruta)
+    expect(culpables).toEqual([])
+  })
+})

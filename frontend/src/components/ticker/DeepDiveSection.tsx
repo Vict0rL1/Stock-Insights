@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
 import type {
   DeepDiveNarrative,
@@ -128,7 +128,18 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
   )
 }
 
-export function DeepDiveSection({ symbol }: { symbol: string }) {
+/** `redactarAlAbrir`: la ficha llega aquí desde «Explícamelo con IA» y la
+ *  narrativa se pide sola, una vez, en cuanto el informe está (y se avisa con
+ *  `alRedactar` para que volver a esta sección no la pida otra vez). */
+export function DeepDiveSection({
+  symbol,
+  redactarAlAbrir = false,
+  alRedactar,
+}: {
+  symbol: string
+  redactarAlAbrir?: boolean
+  alRedactar?: () => void
+}) {
   // Un 404 es que EDGAR no tiene sus estados (desde que la ruta da 502 si EDGAR
   // no respondió): ausencia, sin «Reintentar» (segunda revisión del 2.1).
   const carga = useDato(() => ausenteSi404(api.deepDive(symbol)), symbol)
@@ -137,19 +148,36 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
   // nuevo: la narrativa del anterior no se queda bajo el informe del nuevo.
   return (
     <BloqueDatos carga={carga} que="el informe" ausente={(m) => m}>
-      {(report) => <Informe symbol={symbol} report={report} llm={llm} />}
+      {(report) => (
+        <Informe symbol={symbol} report={report} llm={llm} redactarAlAbrir={redactarAlAbrir} alRedactar={alRedactar} />
+      )}
     </BloqueDatos>
   )
 }
 
-function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveReport; llm: LlmStatus | null }) {
+function Informe({
+  symbol,
+  report,
+  llm,
+  redactarAlAbrir,
+  alRedactar,
+}: {
+  symbol: string
+  report: DeepDiveReport
+  llm: LlmStatus | null
+  redactarAlAbrir: boolean
+  alRedactar?: () => void
+}) {
   const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
   // El fallo de la narrativa es de la narrativa: antes sustituía la sección
   // entera y el informe calculado desaparecía por un 503 de la IA (ítem 2.1).
   const [errorNarrativa, setErrorNarrativa] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const seccionNarrativa = useRef<HTMLElement>(null)
+  // Una sola vez aunque el efecto corra dos (StrictMode): cada pedida gasta API.
+  const pedida = useRef(false)
 
-  const writeNarrative = async () => {
+  const writeNarrative = useCallback(async () => {
     setBusy(true)
     setErrorNarrativa(null)
     try {
@@ -159,7 +187,17 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
     } finally {
       setBusy(false)
     }
-  }
+  }, [symbol, report])
+
+  const configurada = llm?.configured === true
+  useEffect(() => {
+    if (!redactarAlAbrir || !configurada || pedida.current) return
+    pedida.current = true
+    alRedactar?.()
+    // La narrativa va al final del informe: sin esto, el toque no se veía hacer nada.
+    seccionNarrativa.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    void writeNarrative()
+  }, [redactarAlAbrir, configurada, alRedactar, writeNarrative])
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
   const sinComprobar = report.riesgos_sin_comprobar ?? []
@@ -426,7 +464,7 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
           Sin ANTHROPIC_API_KEY la sección entera desaparece: el informe
           calculado se sostiene solo. */}
       {(narrative || llm?.configured) && (
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section ref={seccionNarrativa} className="rounded-xl border border-slate-200 bg-white p-4">
         {!narrative ? (
           <>
             <h3 className="text-sm font-semibold text-slate-700">Narrativa del informe</h3>

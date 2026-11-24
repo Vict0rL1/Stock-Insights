@@ -49,28 +49,46 @@ const ANCHOS = [
   { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true, comprobar: true },
 ]
 
-type Pantalla = { nombre: string; ruta: string; pestana?: string; accion?: (p: Page) => Promise<void>; soloMovil?: boolean }
+// `pestana`: lo que se pulsa por su nombre antes de fotografiar, en orden (una
+// pestaña de la ficha y, si junta varias secciones, la sección).
+type Pantalla = { nombre: string; ruta: string; pestana?: string | string[]; accion?: (p: Page) => Promise<void>; soloMovil?: boolean }
 
-const PESTANAS_FICHA: [string, string][] = [
-  ['03_ficha_resumen', 'Resumen'],
-  ['04_ficha_informe', 'Informe completo'],
-  ['05_ficha_fundamentales', 'Fundamentales'],
-  ['06_ficha_valoracion', 'Valoración'],
-  ['07_ficha_salud', 'Salud y riesgo'],
-  ['08_ficha_que_cambio', 'Qué cambió'],
-  ['09_ficha_expectativas', 'Resultados vs expectativas'],
-  ['10_ficha_calidad', 'Calidad de beneficios'],
-  ['11_ficha_historial', 'Decisiones y replay'],
-  ['12_ficha_opciones', 'Opciones'],
-  ['12b_ficha_filings', 'Filings'],
+// La ficha en cuatro pestañas y «Más detalle» (docs/PLAN_NAVEGACION.md): cada
+// sección de las once de antes sigue teniendo su captura, con su nombre de antes.
+const MAS_DETALLE = 'Más detalle (avanzado)'
+const PESTANAS_FICHA: [string, string[]][] = [
+  ['03_ficha_resumen', ['Resumen']],
+  ['04_ficha_informe', [MAS_DETALLE, 'Informe completo']],
+  ['05_ficha_fundamentales', ['Números', 'Fundamentales']],
+  ['06_ficha_valoracion', ['Valoración']],
+  ['07_ficha_salud', ['Números', 'Salud y riesgo']],
+  ['08_ficha_que_cambio', ['Novedades', 'Qué cambió']],
+  ['09_ficha_expectativas', ['Novedades', 'Resultados vs expectativas']],
+  ['10_ficha_calidad', ['Números', 'Calidad de beneficios']],
+  ['11_ficha_historial', [MAS_DETALLE, 'Decisiones y replay']],
+  ['12_ficha_opciones', [MAS_DETALLE, 'Opciones']],
+  ['12b_ficha_filings', ['Novedades', 'Filings']],
 ]
 
-const ficha = (symbol: string, cuales?: string[]): Pantalla[] =>
-  PESTANAS_FICHA.filter(([n]) => !cuales || cuales.includes(n)).map(([nombre, pestana]) => ({
+const ficha = (symbol: string, cuales?: string[]): Pantalla[] => [
+  ...PESTANAS_FICHA.filter(([n]) => !cuales || cuales.includes(n)).map(([nombre, pestana]) => ({
     nombre,
     ruta: `/ticker/${symbol}`,
     pestana,
-  }))
+  })),
+  // Una ruta vieja con su pestaña de antes llega a su sitio nuevo.
+  ...(!cuales || cuales.includes('07b_ficha_pestana_vieja')
+    ? [{ nombre: '07b_ficha_pestana_vieja', ruta: `/ticker/${symbol}?pestana=salud` }]
+    : []),
+]
+
+/** Pulsa una pestaña (o, si no hay pestaña con ese nombre, el botón). */
+async function pulsarPestana(p: Page, nombre: string) {
+  const tab = p.getByRole('tab', { name: nombre, exact: true })
+  const destino = (await tab.count()) ? tab : p.getByRole('button', { name: nombre, exact: true })
+  if (!(await destino.count())) throw new Error(`no aparece la pestaña o el botón «${nombre}»`)
+  await destino.first().click({ timeout: 10000 })
+}
 
 const pulsar = (texto: RegExp) => async (p: Page) => {
   const boton = p.getByRole('button', { name: texto }).first()
@@ -137,8 +155,10 @@ const ESCENARIOS: Record<string, Pantalla[]> = {
   // La demo ya no inventa una cotización para VACIA.
   empresa_sin_datos: [{ nombre: '03_ficha_sin_cotizacion', ruta: '/ticker/VACIA' }],
   con_ia: [
-    { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: 'Informe completo', accion: pulsar(/Redactar informe \(IA\)/) },
-    { nombre: '08_ficha_que_cambio_ia', ruta: '/ticker/ACME', pestana: 'Qué cambió', accion: pulsar(/Resumir este diff con IA/) },
+    // «Explícamelo con IA», arriba de la ficha: abre el informe y lo redacta.
+    { nombre: '03b_ficha_explicame_ia', ruta: '/ticker/ACME', accion: pulsar(/^Explícamelo con IA$/) },
+    { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: [MAS_DETALLE, 'Informe completo'], accion: pulsar(/Redactar informe \(IA\)/) },
+    { nombre: '08_ficha_que_cambio_ia', ruta: '/ticker/ACME', pestana: ['Novedades', 'Qué cambió'], accion: pulsar(/Resumir este diff con IA/) },
     { nombre: '23_noticias_ia', ruta: '/avanzado/noticias', accion: pulsar(/Por qué importa\? \(IA\)/) },
   ],
 }
@@ -173,8 +193,8 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
       try {
         await p.goto(WEB + pantalla.ruta, { waitUntil: 'networkidle', timeout: 30000 })
         await esperar(p)
-        if (pantalla.pestana) {
-          await p.getByRole('button', { name: pantalla.pestana, exact: true }).click()
+        for (const nombre of [pantalla.pestana ?? []].flat()) {
+          await pulsarPestana(p, nombre)
           await esperar(p)
         }
         if (pantalla.accion) await pantalla.accion(p)
