@@ -16,9 +16,10 @@ precios y no ejecuta órdenes**.
 - **Toda cifra lleva fuente y fecha.** El backend nunca entrega un número sin
   `source` y `as_of`; la UI lo muestra siempre (badge junto a cada bloque),
   incluyendo si el dato viene de caché y desde cuándo.
-- **Sin predicciones puntuales.** El DCF devuelve escenarios bajista/base/
-  alcista con supuestos editables y una matriz de sensibilidad, nunca un
-  precio objetivo único.
+- **Sin predicciones puntuales.** El DCF devuelve un rango por escenario
+  bajista/base/alcista con supuestos editables y dice qué supuesto mueve más
+  el resultado, nunca un precio objetivo. Hay uno solo, el del módulo
+  Valoración, y la ficha y el informe enseñan su resumen.
 - **Lo calculado ≠ lo generado por LLM.** Indicadores y ratios se calculan a
   partir de datos; el contenido de IA aparece con etiqueta morada, modelo
   usado y disclaimer, y queda registrado en `llm_outputs`.
@@ -308,7 +309,7 @@ endpoint HTTP → MarketDataService → CacheStore (SQLite, TTL por tipo de dato
 |---|---|
 | **Hoy** | Pantalla de entrada. S&P 500, NASDAQ y grandes canadienses puntuadas, cruzadas con tu cartera y resueltas en una acción concreta —comprar, vigilar, mantener, reducir, vender— con precio de entrada, stop, objetivo y tamaño. Ver abajo. |
 | **Mercado** | Índices vía ETFs proxy, sectores SPDR, curva de rendimientos y spread 10A-2A, macro FRED, próximos resultados. |
-| **Acciones** | Gráfico de velas con SMA/RSI/MACD, fundamentales, estados financieros de EDGAR, DCF por escenarios con sensibilidad, Altman Z / Piotroski F, riesgo (beta, volatilidad, drawdown), filings e insiders. |
+| **Acciones** | Gráfico de velas con SMA/RSI/MACD, fundamentales, estados financieros de EDGAR, resumen del DCF del módulo Valoración (un rango por escenario y el enlace al análisis completo), Altman Z / Piotroski F, riesgo (beta, volatilidad, drawdown), filings e insiders. |
 | **Noticias** | Feed por ticker o general, con interpretación de IA bajo demanda claramente etiquetada. |
 | **ETFs** | Composición, expense ratio, AUM, desglose sectorial, comparador y **solapamiento entre ETFs**. |
 | **Screener** | Filtros combinables con presets que documentan su lógica de inversión. |
@@ -1631,6 +1632,56 @@ más o menos lo que la empresa ya hace, ni exige un cambio»: tranquilizador y s
 sentido. Ahora razona sobre el rango entero, y cuando el histórico cae dentro dice
 lo único informativo que hay que decir — que no decide la empresa, decide tu tasa
 de descuento, y dónde está la frontera.
+
+### Un solo DCF (ítem 3.3)
+
+Había tres DCF con supuestos distintos, y la misma empresa valía una cosa u otra
+según la pantalla. Ahora hay uno, el de este módulo (`POST /api/valuation/{s}`,
+funciones en `app/analysis/valuation.py`: `cimientos`, `escenarios_por_defecto`,
+`escenarios_con_rango`, `rango_global`). La pestaña Valoración de la ficha enseña
+un resumen de esa misma respuesta —un rango por escenario, «si va mal», «escenario
+base» y «si va bien», nunca un valor suelto— con el botón **Abrir el análisis
+completo**, que abre el módulo con la empresa (`/valoracion?simbolo=ACME`; el
+enlace lo construye `rutaValoracion` en `components/valoracion/ruta.ts`). El
+informe completo calcula su `dcf` con las mismas funciones y lo pinta con el mismo
+componente (`ResumenDcf`). Un test del backend comprueba que el informe y el módulo
+dan los mismos rangos y otro del frontend, que la ficha y el módulo los escriben
+igual con las mismas respuestas del backend.
+
+Lo que tenía cada uno:
+
+| | Módulo (el que se queda) | Ficha (`/api/stocks/{s}/valuation/{defaults,dcf}`) | Informe (`dcf` precargado) |
+|---|---|---|---|
+| Crecimiento de partida | CAGR del FCF; si no, de ingresos; si no, un 3 % **declarado** como supuesto. Tope del 15 %; un negativo medido se respeta | El mismo CAGR, acotado a [0 %, 15 %]: un negativo medido subía a 0 %; sin histórico, campo vacío | El mismo, tope del 15 %; sin histórico, el 3 % sin declararlo |
+| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más) | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
+| WACC bajista / base / alcista | 11 / 9 / 8 % | 11 / 10 / 9 % | 12 / 10 / 9 % |
+| Perpetuidad | 1,5 / 2,5 / 3,0 % | 2,0 / 2,5 / 3,0 % | 1,5 / 2,5 / 3,0 % |
+| Años | 5 (editable de 3 a 10) | 5 (editable) | 5 |
+| Resultado | Un rango por escenario (±2 pp de crecimiento, ±1 pp de WACC, tres cifras significativas), rango global y qué supuesto manda | Un valor por escenario (tres precios objetivo) y la matriz WACC × crecimiento | Un valor por escenario |
+| Deuda neta desconocida | 422 que lo dice | Campo vacío que hay que escribir | Cada escenario «indeterminado» |
+| Deuda parcial (Ronda 2) | `deuda_parcial` y `nota_deuda` | `deuda_parcial` y `nota_deuda` | No la leía (`total_debt`) |
+| Sin acciones | 422 | Valor total de la empresa en vez de por acción, también en la matriz «valor/acción» (M4) | No se precargaba |
+| Entradas editables | Por API sí; en pantalla solo los escenarios | FCF, deuda neta, acciones y años | No |
+
+Lo que se portó al módulo: los campos **Tus entradas** (deuda neta, FCF de partida,
+acciones y años; vacío es el dato del filing, nunca un cero), que se abren solos
+cuando el backend no puede valorar por un dato que falta —el 422 decía «escríbela en
+el campo de deuda neta» y no había campo—; el marcador de deuda parcial compartido
+con Salud y el informe (`DeudaParcial`), y en el informe, la deuda parcial que no
+leía. Arreglos de paso: con crecimiento negativo el escenario bajista crecía más que
+el alcista (M5), y la matriz de sensibilidad y la sensibilidad ordenada caían al
+valor total de la empresa con `value_per_share or equity_value` (M4): ahora es por
+acción o nada. No se portó el valor total sin acciones ni la matriz WACC ×
+crecimiento: la sensibilidad ordenada la sustituye y mezclar unidades era el fallo.
+
+**`GET /api/stocks/{s}/valuation/defaults` y `POST /api/stocks/{s}/valuation/dcf`
+son alias obsoletos durante una versión**: responden lo de siempre (el golden
+`dcf_ficha` lo congela), van marcados `deprecated` en OpenAPI y con las cabeceras
+`Deprecation: true` y `Link: </api/valuation/{s}>; rel="successor-version"`, y su
+aritmética es la de `app/analysis/valuation.py`. Se retiran en la siguiente. El
+frontend ya no los llama. El `dcf` de `/api/deep-dive/{s}` cambió de forma: era
+`{scenarios: {bear, base, bull}, …}` con un valor por escenario y ahora es
+`{escenarios, rango_global, entradas}`, la misma forma que el módulo.
 
 ## Reportes trimestrales: extracción con el API de Claude
 

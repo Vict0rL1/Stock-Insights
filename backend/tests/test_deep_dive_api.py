@@ -151,9 +151,63 @@ def test_veredicto_lleva_invalidadores_y_disclaimer(client):
 def test_dcf_precargado_con_escenarios(client):
     dcf = client.get("/api/deep-dive/AAPL").json()["dcf"]
     assert dcf is not None
-    assert set(dcf["scenarios"]) == {"bear", "base", "bull"}
-    valores = [dcf["scenarios"][k]["value_per_share"] for k in ("bear", "base", "bull")]
-    assert valores[0] < valores[1] < valores[2]  # ordenados por construcción
+    assert set(dcf["escenarios"]) == {"bajista", "base", "alcista"}
+    rangos = [dcf["escenarios"][k]["rango"] for k in ("bajista", "base", "alcista")]
+    assert all(r["disponible"] for r in rangos)
+    # Un rango por escenario, nunca un valor suelto (tres valores son tres precios objetivo).
+    assert all(r["bajo"] < r["centro"] < r["alto"] for r in rangos)
+    assert rangos[0]["centro"] < rangos[1]["centro"] < rangos[2]["centro"]
+
+
+def test_el_dcf_del_informe_es_el_del_modulo(client):
+    """Ítem 3.3: el informe se hacía su propio DCF (WACC 12/10/9 %, crecimiento ±4
+    puntos, un valor por escenario). Con las mismas cuentas tiene que dar los
+    mismos rangos que el módulo Valoración, que es lo que enseña la ficha."""
+    informe = client.get("/api/deep-dive/AAPL").json()["dcf"]
+    modulo = client.post("/api/valuation/AAPL").json()
+    assert informe["escenarios"] == modulo["escenarios"]
+    assert informe["rango_global"] == modulo["rango_global"]
+    for k in ("base_fcf", "net_debt", "shares_outstanding", "precio_actual", "fiscal_year", "years"):
+        assert informe["entradas"][k] == modulo["entradas"][k], k
+
+
+@pytest.mark.parametrize("quitar, parcial", [(("short_term_debt",), ["short_term_debt"]),
+                                             (("long_term_debt", "short_term_debt"), None)])
+def test_el_dcf_del_informe_lee_la_deuda_parcial_y_la_desconocida(session_factory, quitar, parcial):
+    """M5: el informe sumaba la deuda con `total_debt` y no decía que fuera
+    parcial. Sin deuda ninguna, ningún escenario sale con valor: no se valora como
+    si la empresa no debiera nada."""
+
+    class SinDeuda(DeepDiveService):
+        def get(self, data_type, **kwargs):
+            r = super().get(data_type, **kwargs)
+            if data_type == "financials":
+                r["periods"] = [{**p, **{k: None for k in quitar}} for p in r["periods"]]
+            return r
+
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_service] = SinDeuda
+    app.dependency_overrides[get_session] = sesion
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        dcf = TestClient(app).get("/api/deep-dive/AAPL").json()["dcf"]
+    finally:
+        app.dependency_overrides.clear()
+    assert dcf["entradas"]["deuda_parcial"] == parcial
+    if parcial:
+        assert "sobreestimado" in dcf["entradas"]["nota_deuda"]
+        assert all(e["rango"]["disponible"] for e in dcf["escenarios"].values())
+    else:
+        assert dcf["entradas"]["net_debt"] is None
+        assert not any(e["rango"]["disponible"] for e in dcf["escenarios"].values())
+        assert all(e["rango"]["faltan"] == ["deuda neta"] for e in dcf["escenarios"].values())
+        assert dcf["rango_global"] is None
 
 
 def test_crecimiento_y_margenes_coherentes_con_los_datos(client):

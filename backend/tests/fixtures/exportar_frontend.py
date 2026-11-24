@@ -54,6 +54,15 @@ def _pedir(c, rutas: dict, url: str) -> dict:
     return rutas[url]["json"]
 
 
+def _publicar(c, rutas: dict, url: str, cuerpo: dict) -> dict:
+    """Un POST que la pantalla hace al cargar (la valoración de la ficha, sin
+    supuestos propios). El fetch falso del frontend sirve por URL, sin mirar el
+    método ni el cuerpo: se guarda el del primer render."""
+    r = c.post(url, json=cuerpo)
+    rutas[url] = {"status": r.status_code, "json": r.json()}
+    return rutas[url]["json"]
+
+
 def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
     from app import expectativas as seg
 
@@ -108,9 +117,11 @@ def _empresa(caso: str, cartera: str, con_historia: bool) -> dict:
                     f"/api/stocks/{symbol}/fundamentals", f"/api/stocks/{symbol}/history?range=1Y",
                     f"/api/stocks/{symbol}/financials",
                     "/api/meta/llm", f"/api/deep-dive/{symbol}?history_years=10",
-                    f"/api/stocks/{symbol}/valuation/defaults", "/api/portfolio",
-                    "/api/portfolio/historial?descargar=false"):
+                    "/api/portfolio", "/api/portfolio/historial?descargar=false"):
             _pedir(c, rutas, url)
+        # La pestaña Valoración: el resumen del único DCF (ítem 3.3), el mismo que
+        # abre el módulo completo con el símbolo.
+        _publicar(c, rutas, f"/api/valuation/{symbol}", {})
     return {"symbol": symbol, "rutas": rutas}
 
 

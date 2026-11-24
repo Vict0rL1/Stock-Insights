@@ -98,8 +98,11 @@ Cartera y Más (avanzadas). La búsqueda de empresa o ETF está arriba en todas 
 
 - `/api/signals/today`: parámetro nuevo `vencida` (arriba). README y `docs/PORTFOLIO_RISK.md`
   se actualizan en el mismo commit.
-- `/api/stocks/{s}/valuation/dcf`: alias obsoleto durante una versión cuando entre 3.3; la
-  ficha pasa a `/api/valuation/{s}`.
+- `/api/stocks/{s}/valuation/dcf` y `/api/stocks/{s}/valuation/defaults`: alias obsoletos
+  durante una versión (3.3, hecho); la ficha pasa a `/api/valuation/{s}` y el módulo abre con
+  `?simbolo=` (`rutaValoracion`, `components/valoracion/ruta.ts`; la redirección de
+  `/valoracion` a `/avanzado/valoracion` debe conservar la consulta). El `dcf` de
+  `/api/deep-dive/{s}` pasa a la forma del módulo (`escenarios`, `rango_global`, `entradas`).
 - `/api/ia/preguntar`: nuevo, solo en la fase D.
 - Ningún otro endpoint cambia: las pantallas nuevas reúnen los que ya existen.
 

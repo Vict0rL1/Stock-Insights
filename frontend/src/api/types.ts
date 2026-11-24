@@ -163,47 +163,6 @@ export interface Health extends Sourced {
   market_cap_used: number | null
 }
 
-export interface ValuationDefaults extends Sourced {
-  symbol: string
-  base_fcf: number | null
-  net_debt: number | null
-  /** Partidas de deuda que el filing no trae y cuentan como cero (null: ninguna). */
-  deuda_parcial?: string[] | null
-  nota_deuda?: string | null
-  shares_outstanding: number | null
-  /** La moneda del FCF y de la deuda neta (EDGAR solo se lee en USD). */
-  moneda?: string | null
-  historical_growth: Financials['growth']
-  suggested_growth_capped: number | null
-  current_price: number | null
-  fiscal_year?: string
-  note: string
-}
-
-export interface ScenarioAssumptions {
-  growth_rate: number
-  discount_rate: number
-  terminal_growth: number
-}
-
-export interface DcfScenarioResult {
-  assumptions: Record<string, number | null>
-  value_per_share: number | null
-  equity_value: number
-  terminal_weight: number | null
-}
-
-export interface DcfResponse {
-  symbol: string
-  scenarios: Record<string, DcfScenarioResult>
-  sensitivity: {
-    growth_rates: number[]
-    rows: { discount_rate: number; values: (number | null)[] }[]
-  } | null
-  current_price: number | null
-  computed_by: string
-}
-
 export interface PeersResponse extends Sourced {
   symbol: string
   peers: { symbol: string; metrics: Record<string, number | null>; source: string }[]
@@ -1158,14 +1117,9 @@ export interface DeepDiveReport {
     reading: string
   }
   valuation: ValuationHistory
-  dcf: {
-    scenarios: Record<string, DcfScenarioResult>
-    base_fcf: number
-    net_debt: number
-    shares_outstanding: number
-    current_price: number | null
-    note: string
-  } | null
+  /** El DCF del módulo Valoración con los datos del informe (ítem 3.3): mismas
+   *  funciones, mismos rangos. Null sin FCF positivo o sin acciones. */
+  dcf: ResumenValoracion | null
   quant_signal: QuantSignal | null
   risk_metrics: {
     annualized_volatility: number | null
@@ -1714,6 +1668,25 @@ export interface Valoracion {
   nota_supuestos: string
   disclaimer: string
   computed_by: string
+}
+
+/** Lo que pinta el resumen del DCF (`ResumenDcf`, ítem 3.3): la parte de
+ *  `Valoracion` que trae también el `dcf` del informe completo. Una sola forma
+ *  para las dos vistas; aquí la deuda neta puede faltar (el informe no da 422). */
+export interface ResumenValoracion {
+  escenarios: Record<string, EscenarioValoracion>
+  rango_global: RangoGlobal | null
+  entradas: {
+    base_fcf: number
+    net_debt: number | null
+    deuda_parcial?: string[] | null
+    nota_deuda?: string | null
+    shares_outstanding: number | null
+    precio_actual: number | null
+    fiscal_year: number | string | null
+    years: number
+    source: string
+  }
 }
 
 // ---------------------------------------------------------------------------

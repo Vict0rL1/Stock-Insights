@@ -5,6 +5,7 @@
  * dice la ventana que hay y la marca como parcial.
  */
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import empresaCompleta from '../test/fixtures/empresa_completa.json'
 import { DeepDiveSection } from './ticker/DeepDiveSection'
@@ -33,7 +34,7 @@ describe('ventana de las tasas de crecimiento', () => {
       const r = rutas[url]
       return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
     }))
-    const { container } = render(<DeepDiveSection symbol="ACME" />)
+    const { container } = render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     const rotulos = await screen.findAllByText(/^(?:Ingresos|BPA), crec\. anual/, { selector: 'dt' }, { timeout: 3000 })
     const textos = rotulos.map((r) => r.textContent)
     expect(textos).toContain('Ingresos, crec. anual 1Aparcial')

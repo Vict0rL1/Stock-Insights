@@ -7,10 +7,8 @@ puedas leer el informe entero sin gastar nada en Claude.
 
 from __future__ import annotations
 
-from app import datos
 from app.formato import fmt_compacto, fmt_fecha, fmt_frente, fmt_num, fmt_pct, fmt_precio
 from app.llm.signal_llm import FRONTERAS_ETIQUETA
-from app.routers.valuation import CRECIMIENTO_SUPUESTO
 
 from datetime import datetime, timedelta, timezone
 
@@ -20,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.analysis.deep_dive import VENTANA_RESULTADOS_DIAS, assemble, frente
 from app.analysis.health import ALTMAN_RIESGO, ALTMAN_SEGURA
 from app.analysis.factors import build_raw_factors, composite_score, family_scores, zscores
-from app.analysis.fundamentals import derive_ratio_series, growth_summary
+from app.analysis.fundamentals import derive_ratio_series, nota_deuda_parcial
 from app.analysis.signal import build_signal
 from app.analysis.valuation_history import valuation_vs_history
 from app.cache.cache import MarketDataService
@@ -218,66 +216,51 @@ def deep_dive(
         earnings=earnings,
         filings=None if filings_caidos else filings_payload.get("filings", []),
         events=[],
-        dcf=_dcf_defaults(periods, quote),
+        dcf=_dcf_defaults(periods, quote, financials.get("source", "edgar")),
     )
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
     return report
 
 
-def _dcf_defaults(periods: list[dict], quote: dict | None) -> dict | None:
-    """Punto de partida del DCF con los datos del informe, para no obligar a
-    ir a otra pestaña a calcularlo."""
-    from app.analysis.fundamentals import free_cash_flow, total_debt
-    from app.analysis.valuation import scenario_set
+def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict | None:
+    """El DCF del módulo Valoración con los datos del informe, para no obligar a
+    ir a otra pestaña a verlo.
 
-    latest = periods[-1]
-    fcf = free_cash_flow(latest)
-    shares = latest.get("shares_outstanding")
-    if fcf is None or fcf <= 0 or not shares:
+    Era un tercer DCF con sus propios supuestos (WACC 12/10/9 %, crecimiento ±4
+    puntos), un valor puntual por escenario y una deuda sin «parcial» (M5). Ahora
+    son las MISMAS funciones que `POST /api/valuation/{s}` sin cuerpo: los mismos
+    rangos que la pestaña Valoración y que el módulo, y la misma forma de datos
+    (`escenarios`, `rango_global`, `entradas`) para pintarlos con el mismo
+    componente (`ResumenDcf`), que explica de dónde salen y enlaza al módulo.
+    """
+    from app.analysis.valuation import ANOS, cimientos, escenarios_con_rango, escenarios_por_defecto, rango_global
+
+    c = cimientos(periods)
+    fcf, acciones = c["base_fcf"], c["shares_outstanding"]
+    # Sin FCF positivo o sin acciones, el informe no lo precarga (como antes); el
+    # módulo sí lo intenta y dice qué falta.
+    if fcf is None or fcf <= 0 or not acciones:
         return None
-
-    growth = growth_summary(periods)
-    # Misma pareja de fallos que en `routers/valuation.py`: el `or` encadenado
-    # convertía la ausencia en un supuesto no declarado, y un crecimiento real
-    # de 0.0 en ese mismo supuesto por ser *falsy*.
-    medido = datos.numero(growth.get("fcf_cagr"))
-    if medido is None:
-        medido = datos.numero(growth.get("revenue_cagr"))
-    crecimiento_supuesto = medido is None
-    base_growth = min(CRECIMIENTO_SUPUESTO if crecimiento_supuesto else medido, 0.15)
-
-    # Y la deuda: sin ella no hay valor por acción. `scenario_set` propaga el
-    # `indeterminado` de `dcf`, así que se le pasa None y la respuesta dice que
-    # falta, en vez de valorar la empresa como si no debiera nada.
-    debt = total_debt(latest)
-    net_debt = (
-        debt - (datos.numero(latest.get("cash")) or 0.0)
-        if datos.numero(debt) is not None
-        else None
+    # Sin deuda neta, cada escenario sale «no disponible» con el motivo: nunca
+    # como si la empresa no debiera nada.
+    escenarios = escenarios_con_rango(
+        escenarios_por_defecto(c["crecimiento"]), fcf, c["net_debt"], acciones, ANOS,
     )
-
-    scenarios = scenario_set(
-        {
-            "bear": {"growth_rate": max(base_growth - 0.04, -0.02), "discount_rate": 0.12, "terminal_growth": 0.015},
-            "base": {"growth_rate": base_growth, "discount_rate": 0.10, "terminal_growth": 0.025},
-            "bull": {"growth_rate": base_growth + 0.04, "discount_rate": 0.09, "terminal_growth": 0.03},
-        },
-        base_fcf=fcf,
-        years=5,
-        net_debt=net_debt,
-        shares_outstanding=shares,
-    )
+    precio = (quote or {}).get("price")
     return {
-        "scenarios": scenarios,
-        "base_fcf": fcf,
-        "net_debt": net_debt,
-        "shares_outstanding": shares,
-        "current_price": (quote or {}).get("price"),
-        "note": (
-            "Supuestos de partida derivados del histórico, acotados al 15\u00a0% de "
-            "crecimiento. Edítalos en la pestaña Valoración: el resultado es muy "
-            "sensible a la tasa de descuento y al crecimiento terminal."
-        ),
+        "escenarios": escenarios,
+        "rango_global": rango_global(escenarios, precio),
+        "entradas": {
+            "base_fcf": fcf,
+            "net_debt": c["net_debt"],
+            "deuda_parcial": c["deuda_parcial"],
+            "nota_deuda": nota_deuda_parcial(c["deuda_parcial"]) if c["deuda_parcial"] else None,
+            "shares_outstanding": acciones,
+            "precio_actual": precio,
+            "fiscal_year": c["fiscal_year"],
+            "years": ANOS,
+            "source": source,
+        },
     }
 
 

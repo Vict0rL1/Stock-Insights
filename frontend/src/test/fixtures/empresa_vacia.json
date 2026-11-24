@@ -2907,29 +2907,11 @@
    },
    "status": 404
   },
-  "/api/stocks/VACIA/valuation/defaults": {
+  "/api/valuation/VACIA": {
    "json": {
-    "as_of": "2026-09-12T14:35:00+00:00",
-    "base_fcf": null,
-    "cached": false,
-    "current_price": null,
-    "deuda_parcial": null,
-    "fiscal_year": "2025",
-    "historical_growth": {
-     "eps_cagr": null,
-     "fcf_cagr": null,
-     "revenue_cagr": null,
-     "years": 0
-    },
-    "net_debt": null,
-    "nota_deuda": null,
-    "note": "Punto de partida calculado desde estados financieros reales; edita cada supuesto según tu propia tesis.",
-    "shares_outstanding": null,
-    "source": "edgar",
-    "suggested_growth_capped": null,
-    "symbol": "VACIA"
+    "detail": "No se pudo calcular el flujo de caja libre del último ejercicio (faltan flujo operativo o capex en el filing). Puedes escribirlo tú en el campo de FCF de partida si lo tienes."
    },
-   "status": 200
+   "status": 422
   }
  },
  "symbol": "VACIA"

@@ -116,11 +116,14 @@ class ScenarioAssumptions(BaseModel):
 
 
 class DcfRequest(BaseModel):
+    """Cuerpo del alias obsoleto `POST /api/stocks/{s}/valuation/dcf` (ítem 3.3): se
+    va con él en la próxima versión. El DCF de la app es `POST /api/valuation/{s}`."""
+
     base_fcf: float
     years: int = 5
     # Sin valor por defecto: un 0.0 aquí valoraba a una empresa de deuda
     # DESCONOCIDA como si no debiera nada. Sin deuda neta, el endpoint lo dice.
     net_debt: float | None = None
     shares_outstanding: float | None = None
-    # bajista / base / alcista; la UI manda los tres, pero se acepta cualquiera.
+    # bajista / base / alcista (bear/base/bull); se acepta cualquier nombre.
     scenarios: dict[str, ScenarioAssumptions]

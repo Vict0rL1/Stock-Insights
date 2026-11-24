@@ -51,7 +51,7 @@ describe('fallo de carga de cada sección de la ficha', () => {
     ['Historial', <HistorialSection symbol="ACME" />, 'No se pudo cargar el historial de decisiones: sin datos en el test'],
     ['Opciones', <OptionsSection symbol="ACME" />, 'No se pudo cargar la cadena de opciones: sin datos en el test'],
     // Antes: «No hay datos para prellenar el DCF: …», un fallo contado como falta de datos.
-    ['Valoración', <ValuationSection symbol="ACME" />, 'No se pudieron cargar los valores de partida del DCF: sin datos en el test'],
+    ['Valoración', <ValuationSection symbol="ACME" />, 'No se pudo cargar la valoración: sin datos en el test'],
     ['Expectativas', <ExpectativasSection symbol="ACME" />, 'No se pudieron cargar los eventos: sin datos en el test'],
   ]
   for (const [sitio, ui, frase] of casos) {
@@ -84,7 +84,8 @@ describe('un 404 es que la fuente no lo tiene, no un fallo (revisión del 2.1)',
     '/api/stocks/SHOP.TO/financials': EDGAR,
     '/api/stocks/SHOP.TO/peers': 'finnhub: sin pares para SHOP.TO',
     '/api/stocks/SHOP.TO/health': EDGAR,
-    '/api/stocks/SHOP.TO/valuation/defaults': EDGAR,
+    '/api/valuation/SHOP.TO':
+      'Sin estados financieros de la SEC para SHOP.TO. Las empresas no estadounidenses y los ETFs no presentan 10-K, así que la valoración por DCF no las cubre.',
     '/api/stocks/SHOP.TO/filings': EDGAR,
     '/api/options/SHOP.TO':
       'SHOP.TO no cotiza opciones, o no hay cadena disponible: yfinance: SHOP.TO no cotiza opciones. Muchas empresas pequeñas y casi todas las no estadounidenses no tienen mercado de opciones.',
@@ -105,7 +106,7 @@ describe('un 404 es que la fuente no lo tiene, no un fallo (revisión del 2.1)',
       'Sin pares con los que comparar: finnhub: sin pares para SHOP.TO',
     ]],
     ['Salud', <HealthSection symbol="SHOP.TO" />, [`Sin datos de salud financiera: ${EDGAR}`]],
-    ['Valoración', <ValuationSection symbol="SHOP.TO" />, [`No hay datos para prellenar el DCF: ${EDGAR}`]],
+    ['Valoración', <ValuationSection symbol="SHOP.TO" />, [`Sin valoración: ${DETALLES['/api/valuation/SHOP.TO']}`]],
     ['Filings', <FilingsSection symbol="SHOP.TO" />, [`Sin filings: ${EDGAR}`]],
     ['Opciones', <OptionsSection symbol="SHOP.TO" />, [DETALLES['/api/options/SHOP.TO']]],
     ['Calidad', <CalidadSection symbol="SHOP.TO" />, [DETALLES['/api/empresa/SHOP.TO/calidad']]],

@@ -8,12 +8,13 @@ import type {
   UmbralInforme,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, fmtPrecio, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
 import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
+import { ResumenDcf } from '../valoracion/ResumenDcf'
 import { Ventana } from '../Ventana'
 
 const STANCE_STYLES: Record<string, string> = {
@@ -331,36 +332,13 @@ function Informe({ symbol, report, llm }: { symbol: string; report: DeepDiveRepo
 
       <ValuationBlock report={report} />
 
+      {/* El mismo DCF que la pestaña Valoración y el módulo (ítem 3.3): antes
+          era un tercero, con WACC 12/10/9 % y un valor puntual por escenario. */}
       {report.dcf && (
-        <Section title="Valor intrínseco (DCF precargado)">
-          <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            {(['bear', 'base', 'bull'] as const).map((kind) => {
-              const sc = report.dcf!.scenarios[kind]
-              if (!sc) return null
-              const vs =
-                sc.value_per_share !== null && report.price
-                  ? sc.value_per_share / report.price - 1
-                  : null
-              return (
-                <div key={kind} className="rounded-lg border border-slate-200 p-3">
-                  <div className="text-xs text-slate-500">
-                    {etiqueta(kind, { mayuscula: true })}
-                  </div>
-                  <div className="text-xl font-semibold tabular-nums">
-                    {fmtPrecio(sc.value_per_share)}
-                  </div>
-                  {/* Qué mide: «terminal 63,8 %» se leía como el crecimiento
-                      terminal, que en la pestaña Valoración es 2,0, 2,5 y 3,0
-                      (revisión 12, visual). */}
-                  <div className="text-xs text-slate-500">
-                    {vs !== null && `${fmtPct(vs)} vs. precio · `}el valor terminal es el{' '}
-                    {fmtPct(sc.terminal_weight)} del valor de empresa
-                  </div>
-                </div>
-              )
-            })}
+        <Section title="¿Cuánto podría valer? (DCF)">
+          <div className="mt-2">
+            <ResumenDcf datos={report.dcf} symbol={symbol} />
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">{report.dcf.note}</p>
         </Section>
       )}
 

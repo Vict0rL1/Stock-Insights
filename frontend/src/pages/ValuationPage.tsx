@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react'
-import { api } from '../api/client'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { api, ApiError } from '../api/client'
 import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   Comparables,
@@ -13,6 +14,9 @@ import { leerNumero, textoDeCampo } from '../lib/entrada'
 import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
 import { MarcoTabla } from '../components/MarcoTabla'
+import { DeudaParcial } from '../components/ticker/DeudaParcial'
+import { BarraRango, textoRango } from '../components/valoracion/ResumenDcf'
+import { PARAM_SIMBOLO } from '../components/valoracion/ruta'
 
 const ESCENARIOS = ['bajista', 'base', 'alcista'] as const
 type NombreEscenario = (typeof ESCENARIOS)[number]
@@ -25,46 +29,6 @@ const TONO: Record<NombreEscenario, string> = {
 
 const pct = (v: number | null | undefined, d = 1) => fmtPct(v, d)
 
-/** La barra del rango, con el precio actual marcado encima.
- *
- *  Es deliberadamente una BARRA y no un número: enseñar «vale 280 $» sería el
- *  precio objetivo que este módulo no produce. Lo que se ve es la horquilla y
- *  dónde cae el precio dentro (o fuera) de ella. */
-function BarraRango({
-  bajo,
-  alto,
-  actual,
-  tono = 'bg-slate-400',
-}: {
-  bajo: number
-  alto: number
-  actual?: number | null
-  tono?: string
-}) {
-  const min = Math.min(bajo, actual ?? bajo)
-  const max = Math.max(alto, actual ?? alto)
-  const span = max - min || 1
-  const izq = ((bajo - min) / span) * 100
-  const ancho = ((alto - bajo) / span) * 100
-  const marca = actual !== null && actual !== undefined ? ((actual - min) / span) * 100 : null
-  return (
-    <div className="relative h-6">
-      <div className="absolute top-2.5 h-1 w-full rounded-full bg-slate-200" />
-      <div
-        className={`absolute top-2.5 h-1 rounded-full ${tono}`}
-        style={{ left: `${izq}%`, width: `${Math.max(ancho, 1)}%` }}
-      />
-      {marca !== null && (
-        <div
-          className="absolute top-0.5 h-5 w-0.5 bg-slate-900"
-          style={{ left: `calc(${marca}% - 1px)` }}
-          title={`Precio actual: ${fmtPrecio(actual)}`}
-        />
-      )}
-    </div>
-  )
-}
-
 function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -73,7 +37,7 @@ function RangoGlobalPanel({ g }: { g: RangoGlobal }) {
       </h2>
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-2xl font-semibold tabular-nums text-slate-900">
-          {fmtValorRedondo(g.bajo)} – {fmtValorRedondo(g.alto)}
+          {textoRango(g.bajo, g.alto)}
         </span>
         {g.precio_actual !== null && (
           <span className="text-sm text-slate-500">
@@ -113,12 +77,15 @@ export function Escenarios({
   onCambiar,
   onAplicar,
   busy,
+  bloqueado = false,
 }: {
   data: Valoracion
   supuestos: Record<string, SupuestosEscenario>
   onCambiar: (n: string, campo: keyof SupuestosEscenario, v: number) => void
   onAplicar: () => void
   busy: boolean
+  /** Algo fuera de los escenarios no se puede leer (tus entradas): no se recalcula. */
+  bloqueado?: boolean
 }) {
   const precio = data.entradas.precio_actual
   const [textos, setTextos] = useState<Record<string, string>>({})
@@ -238,7 +205,7 @@ export function Escenarios({
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           onClick={onAplicar}
-          disabled={busy || vacios.length > 0 || ilegibles.length > 0}
+          disabled={busy || bloqueado || vacios.length > 0 || ilegibles.length > 0}
           className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? 'Calculando…' : 'Recalcular con mis supuestos'}
@@ -473,25 +440,121 @@ export function ComparablesPanel({ c }: { c: Comparables }) {
   )
 }
 
+type CampoEntrada = 'net_debt' | 'base_fcf' | 'shares_outstanding' | 'years'
+type EntradasPropias = Partial<Record<CampoEntrada, number>>
+type TextosEntrada = Partial<Record<CampoEntrada, string>>
+
+/** Las entradas que se pueden escribir encima de las del filing: las que tenía el
+ *  DCF de la ficha y le faltaban al módulo (ítem 3.3). Sobre todo la deuda neta:
+ *  sin ella en el filing, el backend se niega a valorar («escríbela en el campo de
+ *  deuda neta») y aquí no había campo. Nunca se rellena con cero: vacío es «la del
+ *  filing», y si el filing no la trae, no se calcula. */
+const CAMPOS_ENTRADA: { campo: CampoEntrada; rotulo: string; modo?: 'decimal' | 'numeric' }[] = [
+  // Sin `inputMode="decimal"`: la deuda neta de una empresa con más caja que
+  // deuda y el FCF de una que quema caja son negativos, y ese teclado de iOS no
+  // trae «-» (revisión 13).
+  { campo: 'net_debt', rotulo: 'Deuda neta' },
+  { campo: 'base_fcf', rotulo: 'FCF de partida' },
+  { campo: 'shares_outstanding', rotulo: 'Acciones en circulación', modo: 'decimal' },
+  { campo: 'years', rotulo: 'Años de proyección', modo: 'numeric' },
+]
+
+/** Lo escrito, con la convención de la app (`leerNumero`). Lo que no se lee —o
+ *  unos años fuera de 3 a 10, o acciones que no son positivas— va a `ilegibles`
+ *  con su nombre y no se manda: no se calcula con un número a medias. */
+export function leerEntradas(textos: TextosEntrada): { valores: EntradasPropias; ilegibles: string[] } {
+  const valores: EntradasPropias = {}
+  const ilegibles: string[] = []
+  for (const { campo, rotulo } of CAMPOS_ENTRADA) {
+    const t = (textos[campo] ?? '').trim()
+    if (t === '') continue
+    const n = leerNumero(t)
+    const valido =
+      n !== null &&
+      (campo === 'years' ? Number.isInteger(n) && n >= 3 && n <= 10 : campo === 'shares_outstanding' ? n > 0 : true)
+    if (valido) valores[campo] = n
+    else ilegibles.push(`${rotulo.toLowerCase()} («${t}»)`)
+  }
+  return { valores, ilegibles }
+}
+
+function EntradasPanel({
+  textos,
+  onCambiar,
+  data,
+  abierto,
+}: {
+  textos: TextosEntrada
+  onCambiar: (campo: CampoEntrada, texto: string) => void
+  data: Valoracion | null
+  abierto: boolean
+}) {
+  // De partida, el dato del filing que se está usando: escribir encima es una
+  // decisión, no un campo que ya venga relleno.
+  const delFiling = (campo: CampoEntrada): string => {
+    if (!data) return 'la del filing'
+    const v = data.entradas[campo]
+    return campo === 'years' ? String(v) : textoDeCampo(v, 0) || 'desconocido'
+  }
+  return (
+    <details open={abierto} className="mt-3">
+      <summary className="cursor-pointer text-xs font-medium text-slate-600">
+        Tus entradas (opcional): deuda neta, FCF, acciones y años
+      </summary>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+        Vacío es el dato del filing. Lo que escribas sustituye al del filing en los tres escenarios; la deuda
+        neta puede ser negativa si la empresa tiene más caja que deuda.
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {CAMPOS_ENTRADA.map(({ campo, rotulo, modo }) => (
+          <label key={campo} className="flex flex-col justify-between gap-0.5 text-xs text-slate-500">
+            {rotulo}
+            <input
+              inputMode={modo}
+              value={textos[campo] ?? ''}
+              placeholder={delFiling(campo)}
+              onChange={(e) => onCambiar(campo, e.target.value)}
+              className="w-full rounded border border-slate-300 px-2 py-1 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
+            />
+          </label>
+        ))}
+      </div>
+    </details>
+  )
+}
+
 export function ValuationPage() {
-  const [entrada, setEntrada] = useState('')
+  // El símbolo llega por la URL (`?simbolo=ACME`, el enlace «Abrir el análisis
+  // completo» de la ficha) y cada valoración lo deja en ella: la URL dice qué
+  // empresa se está viendo, y atrás vuelve a la anterior.
+  const [params, setParams] = useSearchParams()
+  const pedido = (params.get(PARAM_SIMBOLO) ?? '').trim().toUpperCase()
+  const [entrada, setEntrada] = useState(pedido)
   const [symbol, setSymbol] = useState('')
   const [data, setData] = useState<Valoracion | null>(null)
   const [supuestos, setSupuestos] = useState<Record<string, SupuestosEscenario>>({})
+  const [textosEntrada, setTextosEntrada] = useState<TextosEntrada>({})
+  // Las entradas tuyas con que se calculó lo que se ve, para decir cuáles son tuyas.
+  const [usadas, setUsadas] = useState<EntradasPropias>({})
+  // El backend no pudo valorar por un dato que falta en el filing (422).
+  const [faltaDato, setFaltaDato] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Cada valoración monta los escenarios de nuevo: lo escrito a medias en un
   // campo no se queda encima de los supuestos que acaban de llegar.
   const [version, setVersion] = useState(0)
+  const leidas = leerEntradas(textosEntrada)
 
   const correr = useCallback(
-    async (s: string, escenarios?: Record<string, SupuestosEscenario>) => {
+    async (s: string, escenarios?: Record<string, SupuestosEscenario>, entradas: EntradasPropias = {}) => {
       setBusy(true)
       setError(null)
+      setFaltaDato(false)
       try {
-        const d = await api.valorar(s, escenarios ? { escenarios } : {})
+        const d = await api.valorar(s, { ...(escenarios ? { escenarios } : {}), ...entradas })
         setData(d)
         setSymbol(s)
+        setUsadas(entradas)
         setSupuestos(
           Object.fromEntries(
             Object.entries(d.escenarios).map(([k, v]) => [k, { ...v.supuestos }]),
@@ -501,12 +564,35 @@ export function ValuationPage() {
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error')
         setData(null)
+        // Un 422 es un dato que falta en el filing: se abren los campos para
+        // escribirlo. «Reintentar» tal cual daría lo mismo.
+        setFaltaDato(e instanceof ApiError && e.status === 422)
       } finally {
         setBusy(false)
       }
     },
     [],
   )
+
+  // Con `?simbolo=` se valora al abrir, sin pulsar nada, y sin las entradas
+  // escritas para otra empresa. Una vez por símbolo: React monta dos veces en
+  // StrictMode y sin la guarda la valoración llegaba dos veces al backend.
+  const valorado = useRef<string | null>(null)
+  useEffect(() => {
+    if (!pedido || valorado.current === pedido) return
+    valorado.current = pedido
+    setEntrada(pedido)
+    setTextosEntrada({})
+    void correr(pedido)
+  }, [pedido, correr])
+
+  // La misma empresa se vuelve a valorar con tus entradas; otra cambia la URL y
+  // el efecto de arriba la valora desde cero.
+  const valorar = (s: string) => {
+    if (s === pedido) void correr(s, undefined, leidas.valores)
+    else setParams({ [PARAM_SIMBOLO]: s })
+  }
+  const tuya = (campo: CampoEntrada) => (usadas[campo] !== undefined ? ' (la tuya)' : '')
 
   return (
     <div className="space-y-4">
@@ -523,7 +609,7 @@ export function ValuationPage() {
           onSubmit={(e) => {
             e.preventDefault()
             const s = entrada.trim().toUpperCase()
-            if (s) void correr(s)
+            if (s) valorar(s)
           }}
           className="flex flex-wrap items-center gap-2"
         >
@@ -531,22 +617,40 @@ export function ValuationPage() {
             value={entrada}
             onChange={(e) => setEntrada(e.target.value)}
             placeholder="AAPL"
+            aria-label="Símbolo"
             className="w-36 rounded-lg border border-slate-300 px-3 py-1.5 text-sm uppercase focus:border-sky-500 focus:outline-none"
           />
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || leidas.ilegibles.length > 0}
             className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
             {busy ? 'Calculando…' : 'Valorar'}
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
         </form>
+        {/* Solo con una empresa elegida: son entradas de ESA empresa, y al
+            cambiar de empresa se vacían. */}
+        {pedido && (
+          <EntradasPanel
+            textos={textosEntrada}
+            onCambiar={(campo, texto) => setTextosEntrada((prev) => ({ ...prev, [campo]: texto }))}
+            data={data}
+            abierto={faltaDato || Object.values(textosEntrada).some((t) => t.trim() !== '')}
+          />
+        )}
+        {leidas.ilegibles.length > 0 && (
+          <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+            No se puede leer {leidas.ilegibles.join(', ')}. Escribe las cifras como en el resto de la app,
+            p.&nbsp;ej. 1.250.000 o -3,5, los años en número entero de 3 a 10 y las acciones mayores que cero:
+            no se calcula con un número a medias.
+          </p>
+        )}
         <AtajosWatchlist
           actual={symbol}
           elegir={(s) => {
             setEntrada(s)
-            void correr(s)
+            valorar(s)
           }}
         />
       </section>
@@ -560,10 +664,11 @@ export function ValuationPage() {
             data={data}
             supuestos={supuestos}
             busy={busy}
+            bloqueado={leidas.ilegibles.length > 0}
             onCambiar={(n, campo, v) =>
               setSupuestos((prev) => ({ ...prev, [n]: { ...prev[n], [campo]: v } }))
             }
-            onAplicar={() => correr(symbol, supuestos)}
+            onAplicar={() => correr(symbol, supuestos, leidas.valores)}
           />
           <InversoPanel inv={data.dcf_inverso} />
           <ComparablesPanel c={data.comparables} />
@@ -573,19 +678,27 @@ export function ValuationPage() {
               De dónde salen las entradas
             </h3>
             <dl className="mt-2 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              {[
-                ['FCF de partida', fmtCompacto(data.entradas.base_fcf)],
-                ['Deuda neta', fmtCompacto(data.entradas.net_debt) + (data.entradas.deuda_parcial ? ' (parcial)' : '')],
-                ['Acciones', fmtCompacto(data.entradas.shares_outstanding)],
-                ['Ejercicio', String(data.entradas.fiscal_year ?? '—')],
-              ].map(([k, v]) => (
-                <div key={k}>
-                  <dt className="text-[10px] uppercase tracking-wide text-slate-400">
-                    {k}
-                  </dt>
-                  <dd className="tabular-nums text-slate-800">{v}</dd>
-                </div>
-              ))}
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-slate-400">FCF de partida</dt>
+                <dd className="tabular-nums text-slate-800">{fmtCompacto(data.entradas.base_fcf) + tuya('base_fcf')}</dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-slate-400">Deuda neta</dt>
+                <dd className="tabular-nums text-slate-800">{fmtCompacto(data.entradas.net_debt) + tuya('net_debt')}</dd>
+                {/* El mismo marcador que Salud y el informe (Ronda 2): qué partida
+                    cuenta como cero. Antes, aquí solo «(parcial)». */}
+                <DeudaParcial falta={data.entradas.deuda_parcial} />
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-slate-400">Acciones</dt>
+                <dd className="tabular-nums text-slate-800">
+                  {fmtCompacto(data.entradas.shares_outstanding) + tuya('shares_outstanding')}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[10px] uppercase tracking-wide text-slate-400">Ejercicio</dt>
+                <dd className="tabular-nums text-slate-800">{String(data.entradas.fiscal_year ?? '—')}</dd>
+              </div>
             </dl>
             {data.entradas.nota_deuda && (
               <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
@@ -594,7 +707,8 @@ export function ValuationPage() {
             )}
             <p className="mt-2 text-[11px] text-slate-400">
               Estados financieros de {data.entradas.source}, ejercicio{' '}
-              {String(data.entradas.fiscal_year)}. Crecimiento histórico (
+              {String(data.entradas.fiscal_year)}; proyección a {data.entradas.years} años{tuya('years')}.
+              Crecimiento histórico (
               <Ventana anos={data.entradas.crecimiento_historico.years} />):{' '}
               ingresos {pct(data.entradas.crecimiento_historico.revenue_cagr)} ·
               FCF {pct(data.entradas.crecimiento_historico.fcf_cagr)} · BPA{' '}

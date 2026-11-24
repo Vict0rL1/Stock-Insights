@@ -9,7 +9,6 @@ import type {
   LecturaEvento,
   ReplayDecision,
   SaldosEfectivo,
-  DcfResponse,
   CalendarioMercado,
   EtfComparison,
   EtfData,
@@ -67,9 +66,7 @@ import type {
   RiesgoDeCartera,
   SeñalesDeOpciones,
   RiskResponse,
-  ScenarioAssumptions,
   SectorEntry,
-  ValuationDefaults,
   YieldCurve,
 } from './types'
 
@@ -229,18 +226,6 @@ export const api = {
   // Fase 2
   financials: (symbol: string) => fetchJson<Financials>(`/api/stocks/${encodeURIComponent(symbol)}/financials`),
   health: (symbol: string) => fetchJson<Health>(`/api/stocks/${encodeURIComponent(symbol)}/health`),
-  valuationDefaults: (symbol: string) =>
-    fetchJson<ValuationDefaults>(`/api/stocks/${encodeURIComponent(symbol)}/valuation/defaults`),
-  dcf: (
-    symbol: string,
-    body: {
-      base_fcf: number
-      years: number
-      net_debt: number | null
-      shares_outstanding: number | null
-      scenarios: Record<string, ScenarioAssumptions>
-    },
-  ) => postJson<DcfResponse>(`/api/stocks/${encodeURIComponent(symbol)}/valuation/dcf`, body),
   peers: (symbol: string) => fetchJson<PeersResponse>(`/api/stocks/${encodeURIComponent(symbol)}/peers`),
   risk: (symbol: string) => fetchJson<RiskResponse>(`/api/stocks/${encodeURIComponent(symbol)}/risk`),
   filings: (symbol: string) => fetchJson<FilingsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/filings`),
@@ -285,9 +270,18 @@ export const api = {
     postJson<AnalisisResponse>(`/api/earnings/${encodeURIComponent(symbol)}/analizar`, body),
   earningsHistorial: (symbol: string) =>
     fetchJson<EarningsHistorial>(`/api/earnings/${encodeURIComponent(symbol)}`),
+  // El único DCF (ítem 3.3): el módulo, la pestaña Valoración de la ficha y el
+  // informe. Las entradas que mandes sustituyen a las del filing; sin ellas, las
+  // del filing (`/api/stocks/{s}/valuation/{defaults,dcf}` son alias obsoletos).
   valorar: (
     symbol: string,
-    body: { escenarios?: Record<string, SupuestosEscenario>; years?: number } = {},
+    body: {
+      escenarios?: Record<string, SupuestosEscenario>
+      years?: number
+      base_fcf?: number
+      net_debt?: number
+      shares_outstanding?: number
+    } = {},
   ) => postJson<Valoracion>(`/api/valuation/${encodeURIComponent(symbol)}`, body),
   vigilancia: () => fetchJson<VigilanciaResponse>('/api/theses/vigilancia'),
   metricasVigilables: () =>

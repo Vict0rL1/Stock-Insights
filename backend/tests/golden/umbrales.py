@@ -253,11 +253,11 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
     "app.analisis_empresa.DIAS_NOTICIAS": [(28, "analisis")],
     "app.routers.signals.SPARK_MIN_PUNTOS": [(42, "hoy")],
     "app.routers.signals.TOLERANCIA_HISTORIAL": [(0.025, "hoy")],
-    "app.routers.valuation.FACTOR_CRECIMIENTO": [({"bajista": 0.8, "base": 2.0, "alcista": 3.0}, "dcf_modulo")],
-    "app.routers.valuation.DESCUENTO": [({"bajista": 0.22, "base": 0.18, "alcista": 0.16}, "dcf_modulo")],
-    "app.routers.valuation.TERMINAL": [({"bajista": 0.03, "base": 0.05, "alcista": 0.06}, "dcf_modulo")],
-    "app.routers.valuation.CRECIMIENTO_SUPUESTO": [(0.06, "dcf_modulo")],
-    "app.routers.valuation.CRECIMIENTO_MAXIMO": [(0.075, "dcf_modulo")],
+    "app.analysis.valuation.FACTOR_CRECIMIENTO": [({"bajista": 0.8, "base": 2.0, "alcista": 3.0}, "dcf_modulo")],
+    "app.analysis.valuation.DESCUENTO": [({"bajista": 0.22, "base": 0.18, "alcista": 0.16}, "dcf_modulo")],
+    "app.analysis.valuation.TERMINAL": [({"bajista": 0.03, "base": 0.05, "alcista": 0.06}, "dcf_modulo")],
+    "app.analysis.valuation.CRECIMIENTO_SUPUESTO": [(0.06, "dcf_modulo")],
+    "app.analysis.valuation.CRECIMIENTO_MAXIMO": [(0.075, "dcf_modulo")],
 }
 
 # Lo que no es una decisión, o no la ve el golden por una razón dicha aquí.
@@ -292,7 +292,7 @@ EXENTOS: dict[str, str] = {
     "app.routers.signals.MAX_UNIVERSE": "tope de coste de llamadas, no una decisión",
     "app.routers.signals.DEFAULT_FETCH_BUDGET": "tope de coste de llamadas, no una decisión",
     "app.routers.valuation.MAX_PARES": "cuántos comparables se piden: tope de coste",
-    "app.routers.valuation.ANOS": (
+    "app.analysis.valuation.ANOS": (
         "valor por defecto de un campo de la petición (se fija al definir el modelo y no se puede mover en "
         "caliente); comprobado a mano: con ANOS = 10, dcf_modulo cambia"),
 }

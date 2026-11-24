@@ -1,170 +1,117 @@
 /**
- * Ítem 2.1, Valoración: sin crecimiento sugerido (el backend no puede medirlo,
- * p. ej. con menos de dos ejercicios), `suggested_growth_capped ?? 0.05` precargaba un
- * 5 % en el escenario base (y 2 % y 8 % en los otros) sin decirlo en ningún
- * sitio. Un supuesto que nadie eligió no se precarga: el campo va vacío, se dice
- * por qué y no se calcula hasta que haya un valor escrito.
+ * Ítem 3.3, un solo DCF. La pestaña Valoración de la ficha tenía su propio DCF
+ * (`/api/stocks/{s}/valuation/{defaults,dcf}`), con supuestos escritos en el
+ * frontend (WACC 11/10/9 %, crecimiento ±3 puntos) distintos de los del módulo
+ * Valoración y un valor por escenario: la misma empresa tenía dos valoraciones
+ * según la pantalla. Ahora es un resumen de `POST /api/valuation/{s}`, el mismo
+ * que abre el módulo con el símbolo. Con las respuestas REALES del backend
+ * (`backend/tests/fixtures/exportar_frontend.py`).
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Valoracion } from '../../api/types'
+import { fmtValorRedondo } from '../../lib/formato'
 import empresaCompleta from '../../test/fixtures/empresa_completa.json'
+import empresaDeudaParcial from '../../test/fixtures/empresa_deuda_parcial.json'
+import empresaVacia from '../../test/fixtures/empresa_vacia.json'
+import { ValuationPage } from '../../pages/ValuationPage'
+import { textoRango } from '../valoracion/ResumenDcf'
+import { rutaValoracion } from '../valoracion/ruta'
 import { ValuationSection } from './ValuationSection'
 
 type Rutas = Record<string, { status: number; json: unknown }>
-const ACME = (empresaCompleta as { rutas: Rutas }).rutas
-const DEFAULTS = ACME['/api/stocks/ACME/valuation/defaults'].json as Record<string, unknown>
+type Escenario = { symbol: string; rutas: Rutas }
+const ESCENARIOS = ['bajista', 'base', 'alcista'] as const
 
 afterEach(() => vi.unstubAllGlobals())
 
-function servir(defaults: Record<string, unknown>) {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(defaults), { status: 200 })))
+/** Sirve las rutas del fixture por URL, como el test de fugas, y apunta qué se pidió. */
+function servir(rutas: Rutas) {
+  const pedidas: { url: string; metodo: string; cuerpo: unknown }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+    pedidas.push({ url, metodo: init?.method ?? 'GET', cuerpo: init?.body ? JSON.parse(String(init.body)) : null })
+    const r = url === '/api/watchlist' ? { status: 200, json: { items: [] } } : rutas[url]
+    return new Response(JSON.stringify(r ? r.json : { detail: `sin fixture: ${url}` }), { status: r ? r.status : 404 })
+  }))
+  return pedidas
 }
 
-const crecimientos = () =>
-  screen.getAllByLabelText('Crecimiento FCF (%/año)').map((i) => (i as HTMLInputElement).value)
+const valoracionDe = (e: Escenario) => e.rutas[`/api/valuation/${e.symbol}`].json as Valoracion
 
-describe('DCF sin crecimiento histórico', () => {
-  it('no precarga un crecimiento inventado: lo deja vacío, dice por qué y no calcula', async () => {
-    servir({ ...DEFAULTS, suggested_growth_capped: null })
-    render(<ValuationSection symbol="ACME" />)
-    expect(await screen.findByText(/^Sin crecimiento histórico con el que precargarlo: escribe el tuyo/)).toBeInTheDocument()
-    expect(crecimientos()).toEqual(['', '', ''])
-    const calcular = screen.getByRole('button', { name: 'Calcular rango de valor' })
-    expect(calcular).toBeDisabled()
-
-    // Con el crecimiento escrito en los tres escenarios, ya se puede calcular.
-    for (const campo of screen.getAllByLabelText('Crecimiento FCF (%/año)')) {
-      fireEvent.change(campo, { target: { value: '4' } })
+describe('la pestaña Valoración de la ficha', () => {
+  it('es un resumen del módulo: un rango por escenario, sin precio objetivo, y el enlace al análisis completo', async () => {
+    const acme = empresaCompleta as Escenario
+    const pedidas = servir(acme.rutas)
+    render(<MemoryRouter><ValuationSection symbol="ACME" /></MemoryRouter>)
+    const v = valoracionDe(acme)
+    expect(await screen.findByText(textoRango(v.rango_global!.bajo, v.rango_global!.alto))).toBeInTheDocument()
+    for (const [n, titulo] of [['bajista', 'Si va mal'], ['base', 'Escenario base'], ['alcista', 'Si va bien']] as const) {
+      const r = v.escenarios[n].rango
+      const tarjeta = screen.getByText(titulo).closest('div')!.parentElement!
+      expect(within(tarjeta).getByText(textoRango(r.bajo, r.alto))).toBeInTheDocument()
+      // Ni el centro suelto: tres valores puntuales son tres precios objetivo.
+      expect(within(tarjeta).queryByText(fmtValorRedondo(r.centro))).toBeNull()
     }
-    expect(calcular).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Abrir el análisis completo' })).toHaveAttribute('href', rutaValoracion('ACME'))
+    expect(screen.getByRole('link', { name: 'Abrir el análisis completo' })).toHaveAttribute('href', '/avanzado/valoracion?simbolo=ACME')
+    // Una sola petición, al módulo, sin supuestos propios: nada del DCF viejo.
+    expect(pedidas).toEqual([{ url: '/api/valuation/ACME', metodo: 'POST', cuerpo: {} }])
+    expect(screen.queryByRole('button', { name: 'Calcular rango de valor' })).toBeNull()
   })
 
-  it('con crecimiento sugerido lo precarga como antes y no avisa', async () => {
-    servir(DEFAULTS)
-    render(<ValuationSection symbol="ACME" />)
-    expect(await screen.findByRole('button', { name: 'Calcular rango de valor' })).toBeEnabled()
-    // Con coma decimal, como el resto de la app (revisión 12, visual: «8.1»).
-    expect(crecimientos()).toEqual(['8,1', '11,1', '14,1'])
-    expect(screen.queryByText(/Sin crecimiento histórico/)).toBeNull()
+  it('con deuda parcial lo dice, con la misma nota que el módulo', async () => {
+    const parc = empresaDeudaParcial as Escenario
+    servir(parc.rutas)
+    render(<MemoryRouter><ValuationSection symbol={parc.symbol} /></MemoryRouter>)
+    const nota = valoracionDe(parc).entradas.nota_deuda!
+    expect(nota).toMatch(/deuda a corto plazo/)
+    expect(await screen.findByText(`Deuda parcial. ${nota}`)).toBeInTheDocument()
+  })
+
+  it('sin un dato que el filing no trae dice cuál y lleva al módulo, donde se escribe; sin «Reintentar»', async () => {
+    // El backend responde 422 (aquí falta el FCF): no es un fallo de carga.
+    const vacia = empresaVacia as Escenario
+    servir(vacia.rutas)
+    render(<MemoryRouter><ValuationSection symbol={vacia.symbol} /></MemoryRouter>)
+    const motivo = (vacia.rutas[`/api/valuation/${vacia.symbol}`].json as { detail: string }).detail
+    expect(vacia.rutas[`/api/valuation/${vacia.symbol}`].status).toBe(422)
+    expect(await screen.findByText(motivo)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrir el análisis completo' })).toHaveAttribute('href', rutaValoracion(vacia.symbol))
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).toBeNull()
   })
 })
 
-describe('el resultado del DCF', () => {
-  it('escribe los valores por acción como precios y la matriz con tres cifras significativas', async () => {
-    // Revisión 4: con fmtNum, el valor por acción de 0,004 salía «0,00» y la
-    // matriz era «0» en todas las celdas. Revisión 5: con los decimales de un
-    // precio la matriz decía «170,63», una precisión que el método no tiene.
-    const resultado = {
-      symbol: 'ACME', current_price: 0.003, computed_by: 'app',
-      scenarios: Object.fromEntries(['bear', 'base', 'bull'].map((n) => [n, {
-        value_per_share: 0.004, equity_value: 1e6, terminal_weight: 0.6, enterprise_value: 1e6,
-      }])),
-      sensitivity: { growth_rates: [0.06, 0.08], rows: [{ discount_rate: 0.09, values: [170.63, 0.05328] }] },
-    }
-    vi.stubGlobal('fetch', vi.fn(async (_e: RequestInfo | URL, init?: RequestInit) =>
-      new Response(JSON.stringify(init?.method === 'POST' ? resultado : DEFAULTS), { status: 200 })))
-    render(<ValuationSection symbol="ACME" />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Calcular rango de valor' }))
-    expect(await screen.findByText('171')).toBeInTheDocument()
-    expect(screen.getByText('0,0533')).toBeInTheDocument()
-    expect(screen.queryByText('170,63')).toBeNull()
-    expect(screen.getAllByText('0,004')).toHaveLength(3)
-  })
-})
-
-
-describe('los campos del DCF, con la convención de la app', () => {
-  // Revisión 12, visual: los campos llevaban punto decimal («8.1», «11.0») junto
-  // a textos con «10,0 %», y se leían con `parseFloat`: «8,5» calculaba con 8 sin
-  // avisar y «1.250» era 1,25. El FCF y la deuda iban sin moneda y, con una
-  // empresa real, como «108807000000».
-  function servirYCapturar(defaults: Record<string, unknown>) {
-    const enviados: Record<string, unknown>[] = []
-    vi.stubGlobal('fetch', vi.fn(async (_e: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'POST') {
-        enviados.push(JSON.parse(String(init.body)) as Record<string, unknown>)
-        return new Response(JSON.stringify({ symbol: 'ACME', current_price: 92, scenarios: {}, sensitivity: null }), { status: 200 })
+describe('las mismas fixtures dan los mismos rangos en las dos vistas', () => {
+  // La condición de hecho del ítem 3.3: la ficha y el módulo, cada uno con sus
+  // peticiones de verdad contra las mismas respuestas del backend, enseñan los
+  // mismos rangos. Antes la ficha pedía otro endpoint y daba otros números.
+  for (const [nombre, e] of [['completa', empresaCompleta], ['deuda parcial', empresaDeudaParcial]] as const) {
+    it(nombre, async () => {
+      const { symbol, rutas } = e as Escenario
+      const pedidas = servir(rutas)
+      const ficha = render(<MemoryRouter><ValuationSection symbol={symbol} /></MemoryRouter>).container
+      const modulo = render(
+        <MemoryRouter initialEntries={[rutaValoracion(symbol)]}><ValuationPage /></MemoryRouter>,
+      ).container
+      const v = valoracionDe(e as Escenario)
+      const global = textoRango(v.rango_global!.bajo, v.rango_global!.alto)
+      expect(await within(ficha).findByText(global)).toBeInTheDocument()
+      expect(await within(modulo).findByText(global)).toBeInTheDocument()
+      for (const n of ESCENARIOS) {
+        const { bajo, centro, alto } = v.escenarios[n].rango
+        expect(within(ficha).getByText(textoRango(bajo, alto))).toBeInTheDocument()
+        // El módulo escribe además el centro, en medio: «bajo – centro – alto».
+        const fila = `${fmtValorRedondo(bajo)} – ${fmtValorRedondo(centro)} – ${fmtValorRedondo(alto)}`
+        expect(within(modulo).getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === fila)).toBeInTheDocument()
       }
-      return new Response(JSON.stringify(defaults), { status: 200 })
-    }))
-    return enviados
+      // Las dos vistas, del mismo endpoint y sin supuestos propios.
+      expect(pedidas.filter((p) => p.url.startsWith('/api/valuation/'))).toEqual([
+        { url: `/api/valuation/${symbol}`, metodo: 'POST', cuerpo: {} },
+        { url: `/api/valuation/${symbol}`, metodo: 'POST', cuerpo: {} },
+      ])
+      expect(pedidas.some((p) => p.url.includes('/valuation/dcf') || p.url.includes('/valuation/defaults'))).toBe(false)
+    })
   }
-
-  it('escribe los valores de partida con coma decimal, puntos de miles y la moneda en el rótulo', async () => {
-    servir({ ...DEFAULTS, moneda: 'USD', base_fcf: 108_807_000_000, net_debt: -12_345_000_000, shares_outstanding: 14_935_826_000 })
-    render(<ValuationSection symbol="ACME" />)
-    const fcf = (await screen.findByLabelText('FCF base (USD, año 2025)')) as HTMLInputElement
-    expect(fcf.value).toBe('108.807.000.000')
-    expect((screen.getByLabelText('Deuda neta (USD)') as HTMLInputElement).value).toBe('-12.345.000.000')
-    expect((screen.getByLabelText('Acciones en circulación') as HTMLInputElement).value).toBe('14.935.826.000')
-    expect(screen.getAllByLabelText('WACC / tasa de descuento (%)').map((i) => (i as HTMLInputElement).value)).toEqual(['11,0', '10,0', '9,0'])
-    expect(screen.getAllByLabelText('Crecimiento terminal (%)').map((i) => (i as HTMLInputElement).value)).toEqual(['2,0', '2,5', '3,0'])
-  })
-
-  it('lee «8,5» como 8,5 y «1.250» como mil doscientos cincuenta', async () => {
-    const enviados = servirYCapturar({ ...DEFAULTS, moneda: 'USD' })
-    render(<ValuationSection symbol="ACME" />)
-    const calcular = await screen.findByRole('button', { name: 'Calcular rango de valor' })
-    fireEvent.change(screen.getAllByLabelText('WACC / tasa de descuento (%)')[1], { target: { value: '8,5' } })
-    fireEvent.change(screen.getByLabelText('FCF base (USD, año 2025)'), { target: { value: '1.250' } })
-    fireEvent.click(calcular)
-    await vi.waitFor(() => expect(enviados).toHaveLength(1))
-    const cuerpo = enviados[0] as { base_fcf: number; scenarios: Record<string, { discount_rate: number }> }
-    expect(cuerpo.base_fcf).toBe(1250)
-    expect(cuerpo.scenarios.base.discount_rate).toBeCloseTo(0.085, 10)
-  })
-
-  it('lo que no se puede leer se dice y no se calcula con un número a medias', async () => {
-    const enviados = servirYCapturar({ ...DEFAULTS, moneda: 'USD' })
-    render(<ValuationSection symbol="ACME" />)
-    const calcular = await screen.findByRole('button', { name: 'Calcular rango de valor' })
-    fireEvent.change(screen.getAllByLabelText('Crecimiento terminal (%)')[0], { target: { value: '2,5x' } })
-    fireEvent.change(screen.getByLabelText('Años de proyección'), { target: { value: '5,5' } })
-    expect(calcular).toBeDisabled()
-    expect(screen.getByText(/^No se puede leer años de proyección \(«5,5»\), crecimiento terminal bajista \(«2,5x»\)\. Escribe/)).toBeInTheDocument()
-    fireEvent.click(calcular)
-    expect(enviados).toHaveLength(0)
-    // Un supuesto borrado tampoco se calcula, y se dice cuál falta.
-    fireEvent.change(screen.getAllByLabelText('Crecimiento terminal (%)')[0], { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Años de proyección'), { target: { value: '' } })
-    expect(calcular).toBeDisabled()
-    expect(screen.getByText('Para calcular falta: años de proyección.')).toBeInTheDocument()
-  })
-
-  it('los campos que admiten negativos no piden el teclado decimal, que en iOS no trae «-»', async () => {
-    // Revisión 13: todos pasaron a `inputMode="decimal"` y en un iPhone no había
-    // forma de escribir la deuda neta de una empresa con caja neta, el FCF de
-    // una que quema caja, ni un crecimiento o una perpetuidad negativos.
-    servir({ ...DEFAULTS, moneda: 'USD' })
-    render(<ValuationSection symbol="ACME" />)
-    const fcf = await screen.findByLabelText('FCF base (USD, año 2025)')
-    const modo = (campo: HTMLElement) => campo.getAttribute('inputmode')
-    for (const campo of [
-      fcf,
-      screen.getByLabelText('Deuda neta (USD)'),
-      ...screen.getAllByLabelText('Crecimiento FCF (%/año)'),
-      ...screen.getAllByLabelText('Crecimiento terminal (%)'),
-    ]) {
-      expect(modo(campo)).toBeNull()
-    }
-    // Los que nunca son negativos conservan su teclado numérico.
-    expect(modo(screen.getByLabelText('Acciones en circulación'))).toBe('decimal')
-    expect(modo(screen.getByLabelText('Años de proyección'))).toBe('numeric')
-    expect(screen.getAllByLabelText('WACC / tasa de descuento (%)').map(modo)).toEqual(['decimal', 'decimal', 'decimal'])
-  })
-
-  it('cada caja de la fila de arriba deja su campo abajo, y el «(%)» no se queda solo', async () => {
-    // A 820 px, «FCF base (año 2025)» ocupa dos líneas y «Deuda neta» una: los
-    // campos de la misma fila quedaban a alturas distintas.
-    servir({ ...DEFAULTS, moneda: 'USD' })
-    render(<ValuationSection symbol="ACME" />)
-    const fcf = await screen.findByLabelText('FCF base (USD, año 2025)')
-    for (const campo of [fcf, screen.getByLabelText('Deuda neta (USD)'), screen.getByLabelText('Años de proyección')]) {
-      expect(campo.closest('label')!.className.split(' ')).toEqual(expect.arrayContaining(['flex', 'flex-col', 'justify-between']))
-    }
-    for (const rotulo of ['Crecimiento FCF', 'tasa de descuento', 'Crecimiento terminal']) {
-      const label = screen.getAllByText(new RegExp(rotulo))[0].closest('label')!
-      expect(label.textContent).toMatch(/\u00a0\(%/)
-    }
-  })
 })

@@ -6,9 +6,12 @@
  * respuesta REAL del backend (`empresa_completa.json`), cambiando solo las cifras.
  */
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import empresaCompleta from '../../test/fixtures/empresa_completa.json'
 import { DeepDiveSection } from './DeepDiveSection'
+import { textoRango } from '../valoracion/ResumenDcf'
+import { rutaValoracion } from '../valoracion/ruta'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Informe = {
@@ -30,7 +33,7 @@ describe('casillas del informe a fondo', () => {
       const r = rutas[url]
       return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
     }))
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText('2,004', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByText('4,996×')).toBeInTheDocument()
     expect(screen.getByText(/^59,96\s%$/)).toBeInTheDocument()
@@ -63,8 +66,25 @@ describe('informe a fondo, revisión 12 (visual)', () => {
     // «terminal 63,8 %» se leía como el crecimiento terminal (2,0, 2,5 y 3,0
     // en la pestaña Valoración).
     servirInforme(() => {})
-    render(<DeepDiveSection symbol="ACME" />)
-    expect(await screen.findByText(/el valor terminal es el 63,8\s% del valor de empresa/, {}, { timeout: 3000 })).toBeInTheDocument()
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
+    expect(await screen.findByText(/el valor terminal es el 65,3\s% del valor de empresa/, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
+  it('el DCF del informe es el del módulo: sus rangos, no un valor por escenario, y el enlace al análisis completo', async () => {
+    // Ítem 3.3: era un tercer DCF (WACC 12/10/9 %, crecimiento ±4 puntos) con un
+    // precio por escenario. Con el fixture REAL del backend, los rangos del
+    // informe son los de `POST /api/valuation/ACME`.
+    servirInforme(() => {})
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
+    const modulo = (empresaCompleta as unknown as { rutas: Rutas }).rutas['/api/valuation/ACME'].json as {
+      escenarios: Record<string, { rango: { bajo: number; alto: number } }>
+    }
+    for (const n of ['bajista', 'base', 'alcista']) {
+      const { bajo, alto } = modulo.escenarios[n].rango
+      expect(await screen.findByText(textoRango(bajo, alto), {}, { timeout: 3000 })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('link', { name: 'Abrir el análisis completo' })).toHaveAttribute('href', rutaValoracion('ACME'))
+    expect(screen.queryByText('Valor intrínseco (DCF precargado)')).toBeNull()
   })
 
   it('los márgenes dicen de qué ejercicio son, y la lectura conjunta su alcance', async () => {
@@ -72,7 +92,7 @@ describe('informe a fondo, revisión 12 (visual)', () => {
       informe.margins.ejercicio = '2025'
       informe.verdict.alcance = 'Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia.'
     })
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText('Márgenes del ejercicio 2025', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByText(/^Lectura del ejercicio anual 2025/)).toBeInTheDocument()
   })
@@ -82,7 +102,7 @@ describe('informe a fondo, revisión 12 (visual)', () => {
       informe.risks = []
       informe.riesgos_sin_comprobar = ['deuda/capital', 'cobertura de intereses', 'valoración frente a su historia']
     })
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText(/Ninguno de los umbrales comprobados se dispara/, {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByText('Sin comprobar por falta de datos: deuda/capital, cobertura de intereses y valoración frente a su historia.')).toBeInTheDocument()
     expect(screen.queryByText(/umbrales del modelo se dispara/)).not.toBeInTheDocument()
@@ -96,7 +116,7 @@ describe('informe a fondo, revisión 12 (visual)', () => {
       ]
       informe.catalysts_note = 'Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.'
     })
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText('Catalizadores y fechas a vigilar', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.queryByText(/6-18 meses/)).not.toBeInTheDocument()
     expect(screen.getByText(/Resultados previstos en los próximos 120 días/)).toBeInTheDocument()
@@ -111,7 +131,7 @@ describe('informe a fondo, revisión 12 (visual)', () => {
       informe.catalysts = []
       informe.catalysts_sin_comprobar = ['calendario de resultados', 'documentos presentados ante la SEC']
     })
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText(
       'Sin comprobar. Fuentes que no respondieron: calendario de resultados y documentos presentados ante la SEC.',
       {}, { timeout: 3000 },
@@ -124,7 +144,7 @@ describe('informe a fondo, revisión 12 (visual)', () => {
       informe.catalysts = [{ type: '10-Q', when: '2026-08-01', detail: 'Documento presentado ante la SEC', source: 'edgar' }]
       informe.catalysts_sin_comprobar = ['calendario de resultados']
     })
-    render(<DeepDiveSection symbol="ACME" />)
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
     expect(await screen.findByText(
       'La lista puede estar incompleta. Fuentes que no respondieron: calendario de resultados.',
       {}, { timeout: 3000 },

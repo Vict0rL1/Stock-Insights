@@ -182,7 +182,7 @@ def test_los_supuestos_de_partida_salen_del_historico_real_y_viajan_visibles(cli
 
 
 def test_el_crecimiento_de_partida_se_acota_para_no_extrapolar_el_mejor_quinquenio(client):
-    from app.routers.valuation import CRECIMIENTO_MAXIMO
+    from app.analysis.valuation import CRECIMIENTO_MAXIMO
 
     c, _ = client()
     d = _valorar(c)

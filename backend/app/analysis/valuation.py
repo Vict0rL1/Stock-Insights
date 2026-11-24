@@ -1,15 +1,25 @@
 """Valoración por DCF con supuestos explícitos y análisis de sensibilidad.
 
 Principio rector de la app aplicado al código: el DCF nunca devuelve "el
-precio objetivo"; devuelve un valor por escenario con TODOS los supuestos de
-entrada visibles, más una matriz de sensibilidad que enseña cuánto se mueve
-el resultado al tocar cada supuesto. La falsa precisión es el enemigo.
+precio objetivo"; devuelve un RANGO por escenario con TODOS los supuestos de
+entrada visibles, y dice qué supuesto mueve más el resultado. La falsa
+precisión es el enemigo.
+
+Es el ÚNICO DCF de la app (ítem 3.3). Había tres, cada uno con sus supuestos:
+el módulo Valoración, la pestaña Valoración de la ficha (supuestos escritos en
+el frontend) y el «precargado» del informe completo. Ahora los tres leen de aquí
+(`cimientos`, `escenarios_por_defecto`, `escenarios_con_rango`, `rango_global`)
+y por eso dan los mismos rangos. La comparación de supuestos está en el README,
+«Un solo DCF». `scenario_set` y `sensitivity_grid` solo los usa ya el alias
+obsoleto `POST /api/stocks/{s}/valuation/dcf`, que se retira en la versión
+siguiente.
 """
 
 from __future__ import annotations
 
 from app import datos
-from app.formato import fmt_pct
+from app.analysis.fundamentals import deuda_total, free_cash_flow, growth_summary
+from app.formato import fmt_num, fmt_pct, fmt_valor_redondo
 
 
 def dcf(
@@ -145,7 +155,11 @@ def sensitivity_grid(
             result = dcf(
                 base_fcf, g, r, terminal_growth, years, net_debt, shares_outstanding
             )
-            cells.append(result["value_per_share"] or result["equity_value"])
+            # Solo valor por acción. Con `value_per_share or equity_value`, sin
+            # acciones la matriz «valor/acción» se llenaba con el valor total de
+            # la empresa, en miles de millones (M4, hermano de P0-9); y un 0,0
+            # por acción, *falsy*, también saltaba al total.
+            cells.append(result["value_per_share"])
         rows.append({"discount_rate": r, "values": cells})
     return {"growth_rates": growths, "rows": rows}
 
@@ -386,7 +400,9 @@ def sensibilidad_ordenada(
             s["base_fcf"], s["growth_rate"], s["discount_rate"], s["terminal_growth"],
             years, net_debt, shares_outstanding,
         )
-        return r["value_per_share"] or r["equity_value"]
+        # Por acción o nada, como la matriz de arriba (M4): el `or equity_value`
+        # mezclaba unidades sin acciones y con un 0,0 por acción.
+        return r["value_per_share"]
 
     centro = valorar()
     if centro is None or centro == 0:
@@ -440,3 +456,185 @@ def sensibilidad_ordenada(
             else "No se pudo medir la sensibilidad de ningún supuesto."
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# El DCF de la app: cimientos, supuestos de partida, escenarios y rango global
+# ---------------------------------------------------------------------------
+#
+# Antes vivía en `routers/valuation.py`, y el informe completo importaba de un
+# router el supuesto del 3 % para hacerse su propio DCF con otros WACC. Aquí lo
+# leen el módulo Valoración, el resumen de la ficha y el informe (ítem 3.3).
+
+# Supuestos de partida de cada escenario. Son un PUNTO DE ARRANQUE editable, no
+# una opinión de la app: el crecimiento sale del histórico de la propia empresa y
+# los WACC son el rango habitual para una cotizada grande. Todo esto viaja en la
+# respuesta para que se pueda discutir y cambiar.
+FACTOR_CRECIMIENTO = {"bajista": 0.4, "base": 1.0, "alcista": 1.5}
+DESCUENTO = {"bajista": 0.11, "base": 0.09, "alcista": 0.08}
+TERMINAL = {"bajista": 0.015, "base": 0.025, "alcista": 0.030}
+# Lo que se supone cuando no hay crecimiento histórico utilizable. Viaja
+# SIEMPRE declarado como supuesto: es el parámetro que más mueve un DCF.
+CRECIMIENTO_SUPUESTO = 0.03
+CRECIMIENTO_MAXIMO = 0.15  # el pasado no se extrapola alegremente
+ANOS = 5
+ESCENARIOS = ("bajista", "base", "alcista")
+
+
+def cimientos(periodos: list[dict]) -> dict:
+    """Las entradas del DCF que salen del último ejercicio, con lo que falta dicho.
+
+    Una sola versión para el módulo y el informe: el informe sumaba la deuda con
+    `total_debt` y no decía que fuera parcial (M5).
+    """
+    ultimo = periodos[-1]
+    deuda_d = deuda_total(ultimo)
+    deuda = deuda_d["valor"]
+    return {
+        "base_fcf": free_cash_flow(ultimo),
+        # Deuda desconocida viaja como None, NUNCA como 0.0: con cero, una
+        # empresa sobre la que no sabemos la deuda se valoraba como si no debiera
+        # nada (+95 % en el caso de la auditoría). La caja ausente sí se toma
+        # como cero, porque ese error va en dirección prudente: sube la deuda
+        # neta y BAJA el valor.
+        "net_debt": (deuda - (datos.numero(ultimo.get("cash")) or 0.0)) if deuda is not None else None,
+        # Con una sola pata de deuda, la otra cuenta como cero: se dice.
+        "deuda_parcial": deuda_d["falta"] if deuda_d["parcial"] else None,
+        "shares_outstanding": ultimo.get("shares_outstanding"),
+        "revenue": ultimo.get("revenue"),
+        "eps": ultimo.get("eps_diluted"),
+        "crecimiento": growth_summary(periodos),
+        "fiscal_year": ultimo.get("fiscal_year"),
+    }
+
+
+def escenarios_por_defecto(crecimiento: dict) -> dict[str, dict]:
+    """Propone bajista/base/alcista desde el crecimiento histórico real.
+
+    Se acota al 15 %: extrapolar a perpetuidad el mejor quinquenio de una empresa
+    es el error más común del DCF casero, y el que más caro sale.
+    """
+    # Dos fallos vivían en el `or` encadenado que había aquí.
+    #
+    # Uno: un crecimiento ausente se convertía en un 3 % que nunca se declaraba
+    # como supuesto, así que en pantalla no había forma de distinguir «crece al
+    # 3 % según sus cuentas» de «no sabemos cuánto crece y hemos puesto un 3 %».
+    #
+    # Dos, y más sutil: `0.0` es *falsy*, así que una empresa con crecimiento
+    # real de cero caía también en el 3 %. Justo la empresa estancada —el caso
+    # en que el DCF más se equivoca— se valoraba como si creciera.
+    medido = datos.numero(crecimiento.get("fcf_cagr"))
+    if medido is None:
+        medido = datos.numero(crecimiento.get("revenue_cagr"))
+    supuesto = medido is None
+    historico = CRECIMIENTO_SUPUESTO if supuesto else medido
+
+    # El suelo en 0 se mantiene solo para el escenario base hacia arriba: un
+    # crecimiento negativo medido SÍ se respeta, porque una empresa en
+    # contracción es un dato, no un error que haya que corregir.
+    base = min(historico, CRECIMIENTO_MAXIMO)
+    # Con un crecimiento negativo los factores van al revés: el bajista es el
+    # que MÁS encoge. Aplicados tal cual, un −5 % medido daba un bajista del
+    # −2 % y un alcista del −7,5 %: los nombres invertidos (M5).
+    factores = (
+        FACTOR_CRECIMIENTO if base >= 0
+        else {**FACTOR_CRECIMIENTO, "bajista": FACTOR_CRECIMIENTO["alcista"],
+              "alcista": FACTOR_CRECIMIENTO["bajista"]}
+    )
+    motivo = (
+        f"No hay crecimiento histórico utilizable (ni FCF ni ingresos): se SUPONE "
+        f"un {fmt_pct(CRECIMIENTO_SUPUESTO, 0)} anual. Es un supuesto, no un dato "
+        "de la empresa, y mueve el valor más que casi ningún otro."
+        if supuesto
+        else None
+    )
+    return {
+        nombre: {
+            "growth_rate": round(min(base * factores[nombre], CRECIMIENTO_MAXIMO), 4),
+            "discount_rate": DESCUENTO[nombre],
+            "terminal_growth": TERMINAL[nombre],
+            "supuesto": supuesto,
+            "motivo": motivo,
+        }
+        for nombre in ESCENARIOS
+    }
+
+
+def escenarios_con_rango(
+    supuestos: dict[str, dict],
+    base_fcf: float,
+    net_debt: float | None,
+    acciones: float | None,
+    years: int = ANOS,
+) -> dict[str, dict]:
+    """Cada escenario con su RANGO (`rango_de_valor`), no un valor puntual.
+
+    El caso «descuento por debajo del terminal» lo resuelve `rango_de_valor`, y
+    aquí no se repite: había un guardián duplicado con su propio texto, más
+    pobre, que además ganaba por llegar antes. Dos sitios explicando lo mismo
+    con palabras distintas es como acaban diciendo cosas distintas.
+    """
+    # `supuesto`/`motivo` describen DE DÓNDE sale el crecimiento, no son
+    # parámetros del DCF. Viajan al lado, en `procedencia`, para que la pantalla
+    # pueda distinguir «crece al 3 % según sus cuentas» de «no sabemos cuánto
+    # crece y hemos puesto un 3 %» — que es la diferencia que importa.
+    meta = ("supuesto", "motivo")
+    return {
+        nombre: {
+            "supuestos": {k: v for k, v in s.items() if k not in meta},
+            "procedencia": {
+                "crecimiento_supuesto": bool(s.get("supuesto")),
+                "motivo": s.get("motivo"),
+            },
+            "rango": rango_de_valor(
+                base_fcf, s["growth_rate"], s["discount_rate"], s["terminal_growth"],
+                years, net_debt, acciones,
+            ),
+        }
+        for nombre, s in supuestos.items()
+    }
+
+
+def rango_global(escenarios: dict[str, dict], precio: float | None) -> dict | None:
+    """De lo más bajo de lo más pesimista a lo más alto de lo más optimista.
+
+    Es el número que se enseña primero, y es un intervalo.
+    """
+    todos = [
+        e["rango"] for e in escenarios.values()
+        if e["rango"].get("disponible") and e["rango"].get("bajo") is not None
+    ]
+    if not todos:
+        return None
+    global_ = {
+        "bajo": redondear(min(r["bajo"] for r in todos)),
+        "alto": redondear(max(r["alto"] for r in todos)),
+        "precio_actual": precio,
+    }
+    # La anchura del rango global es tan informativa como el rango. Tres
+    # escenarios que van de 133 a 577 no dicen «vale entre 133 y 577»: dicen
+    # que con estos supuestos el método no distingue, y eso hay que leerlo
+    # antes que los números, no después.
+    factor = global_["alto"] / global_["bajo"] if global_["bajo"] else None
+    global_["factor"] = round(factor, 2) if factor else None
+    global_["nota"] = (
+        f"Del escenario más pesimista al más optimista hay un factor de "
+        f"{fmt_num(factor, 1)}×. Un rango así no sirve para decidir un precio de "
+        "entrada; sirve para ver qué supuestos lo abren tanto — mira abajo "
+        "cuál manda. Estrecharlo exige defender supuestos más ceñidos, no "
+        "quedarse con el del medio."
+        if factor and factor >= 2
+        else (
+            f"El rango va de {fmt_valor_redondo(global_['bajo'])} a {fmt_valor_redondo(global_['alto'])} (factor "
+            f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
+            if factor
+            else ""
+        )
+    )
+    if precio:
+        global_["posicion"] = (
+            "dentro" if global_["bajo"] <= precio <= global_["alto"]
+            else "por encima" if precio > global_["alto"]
+            else "por debajo"
+        )
+    return global_
