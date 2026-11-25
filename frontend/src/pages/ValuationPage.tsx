@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api, ApiError } from '../api/client'
+import { api, ApiError, faltaUnDato, type ErrorDeValidacion } from '../api/client'
 import { AtajosWatchlist } from '../components/AtajosWatchlist'
 import type {
   Comparables,
@@ -11,6 +11,7 @@ import type {
   Valoracion,
 } from '../api/types'
 import { leerNumero, textoDeCampo } from '../lib/entrada'
+import { etiqueta } from '../lib/etiquetas'
 import { fmtCompacto, fmtNum, fmtPct, fmtPrecio, fmtValorRedondo } from '../lib/formato'
 import { Ventana } from '../components/Ventana'
 import { MarcoTabla } from '../components/MarcoTabla'
@@ -191,6 +192,11 @@ export function Escenarios({
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
                 {e.rango.nota}
               </p>
+              {/* Un crecimiento medido que no es el que se ve (el suelo del
+                  −50 %): se dice en su escenario. El 3 % supuesto va arriba. */}
+              {!e.procedencia?.crecimiento_supuesto && e.procedencia?.motivo && (
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{e.procedencia.motivo}</p>
+              )}
             </div>
           )
         })}
@@ -478,24 +484,63 @@ export function leerEntradas(textos: TextosEntrada): { valores: EntradasPropias;
   return { valores, ilegibles }
 }
 
+/** Las entradas del filing (y los años por defecto) de una empresa: las que el
+ *  backend usó en una valoración en que no mandaste las tuyas. */
+type EntradasDelFiling = { symbol: string; valores: Partial<Record<CampoEntrada, number | null>> }
+
+/** Cómo se nombra cada campo que el backend valida, y los que van en porcentaje. */
+const NOMBRE_DE_CAMPO: Record<string, string> = {
+  growth_rate: 'el crecimiento del FCF',
+  discount_rate: 'el WACC',
+  terminal_growth: 'la perpetuidad',
+  years: 'los años de proyección',
+  base_fcf: 'el FCF de partida',
+  net_debt: 'la deuda neta',
+  shares_outstanding: 'las acciones en circulación',
+}
+const EN_PORCENTAJE = new Set(['growth_rate', 'discount_rate', 'terminal_growth'])
+const LIMITE: Record<string, string> = { ge: 'como mínimo', le: 'como máximo', gt: 'más de', lt: 'menos de' }
+
+/** Un 422 de validación del módulo, en español y con las unidades de pantalla:
+ *  «el cálculo admite como mínimo -50 % en el crecimiento del FCF del escenario
+ *  bajista (hay -75 %)». El mensaje de Pydantic decía «Input should be greater
+ *  than or equal to -0.5», en inglés y en tanto por uno (revisión 15, H3). */
+export function textoDeValidacion(errores: ErrorDeValidacion[]): string {
+  const partes = errores.flatMap((e) => {
+    const campo = String(e.loc[e.loc.length - 1])
+    const nombre = NOMBRE_DE_CAMPO[campo]
+    if (!nombre) return []
+    const cifra = (v: unknown) =>
+      typeof v !== 'number' ? null : EN_PORCENTAJE.has(campo) ? fmtPct(v, 1, { ceros: false }) : fmtNum(v, 2, { ceros: false })
+    const escenario = e.loc[1] === 'escenarios' && typeof e.loc[2] === 'string' ? ` del escenario ${etiqueta(e.loc[2])}` : ''
+    const hay = cifra(e.input)
+    const limite = Object.entries(e.ctx ?? {}).flatMap(([k, v]) => {
+      const c = cifra(v)
+      return Object.hasOwn(LIMITE, k) && c !== null ? [`${LIMITE[k]} ${c}`] : []
+    })
+    return [`${limite.length ? limite.join(' y ') : 'otro valor'} en ${nombre}${escenario}${hay ? ` (hay ${hay})` : ''}`]
+  })
+  const que = partes.length ? `el cálculo admite ${partes.join('; ')}` : 'lo enviado no es válido'
+  return `No se puede calcular: ${que}. Corrige lo escrito y vuelve a calcular.`
+}
+
 function EntradasPanel({
   textos,
   onCambiar,
-  data,
+  delFiling,
   abierto,
 }: {
   textos: TextosEntrada
   onCambiar: (campo: CampoEntrada, texto: string) => void
-  data: Valoracion | null
+  delFiling: EntradasDelFiling['valores']
   abierto: boolean
 }) {
-  // De partida, el dato del filing que se está usando: escribir encima es una
-  // decisión, no un campo que ya venga relleno.
-  const delFiling = (campo: CampoEntrada): string => {
-    if (!data) return 'la del filing'
-    const v = data.entradas[campo]
-    return campo === 'years' ? String(v) : textoDeCampo(v, 0) || 'desconocido'
-  }
+  // De partida, el dato del filing: escribir encima es una decisión, no un
+  // campo que ya venga relleno. El del filing, no el que se usó: tras valorar
+  // con tu deuda, vaciar el campo enseñaba tu cifra de antes como si fuera la
+  // del filing (revisión 15, H8). Sin una valoración sin la tuya, no se sabe.
+  const ayuda = (campo: CampoEntrada): string =>
+    Object.hasOwn(delFiling, campo) ? textoDeCampo(delFiling[campo], 0) || 'desconocido' : 'la del filing'
   return (
     <details open={abierto} className="mt-3">
       <summary className="cursor-pointer text-xs font-medium text-slate-600">
@@ -512,7 +557,7 @@ function EntradasPanel({
             <input
               inputMode={modo}
               value={textos[campo] ?? ''}
-              placeholder={delFiling(campo)}
+              placeholder={ayuda(campo)}
               onChange={(e) => onCambiar(campo, e.target.value)}
               className="w-full rounded border border-slate-300 px-2 py-1 text-sm tabular-nums focus:border-sky-500 focus:outline-none"
             />
@@ -536,6 +581,7 @@ export function ValuationPage() {
   const [textosEntrada, setTextosEntrada] = useState<TextosEntrada>({})
   // Las entradas tuyas con que se calculó lo que se ve, para decir cuáles son tuyas.
   const [usadas, setUsadas] = useState<EntradasPropias>({})
+  const [delFiling, setDelFiling] = useState<EntradasDelFiling | null>(null)
   // El backend no pudo valorar por un dato que falta en el filing (422).
   const [faltaDato, setFaltaDato] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -555,6 +601,17 @@ export function ValuationPage() {
         setData(d)
         setSymbol(s)
         setUsadas(entradas)
+        // Lo que no mandaste salió del filing: se guarda para la ayuda de cada
+        // campo. Lo que mandaste no lo cambia (es tuyo, no del filing).
+        setDelFiling((antes) => ({
+          symbol: s,
+          valores: {
+            ...(antes?.symbol === s ? antes.valores : {}),
+            ...Object.fromEntries(
+              CAMPOS_ENTRADA.filter(({ campo }) => entradas[campo] === undefined).map(({ campo }) => [campo, d.entradas[campo]]),
+            ),
+          },
+        }))
         setSupuestos(
           Object.fromEntries(
             Object.entries(d.escenarios).map(([k, v]) => [k, { ...v.supuestos }]),
@@ -562,11 +619,21 @@ export function ValuationPage() {
         )
         setVersion((v) => v + 1)
       } catch (e) {
+        // Un 422 de validación es lo escrito, que no cabe en lo que admite el
+        // cálculo (un crecimiento por debajo del −50 %): se dice en español y la
+        // valoración de antes se queda, con lo escrito en sus campos. Antes
+        // borraba la valoración, salía el mensaje de Pydantic en inglés y en
+        // tanto por uno, y se abrían «Tus entradas» como si faltara la deuda
+        // (revisión 15, H3).
+        if (e instanceof ApiError && e.status === 422 && e.validacion) {
+          setError(textoDeValidacion(e.validacion))
+          return
+        }
         setError(e instanceof Error ? e.message : 'Error')
         setData(null)
-        // Un 422 es un dato que falta en el filing: se abren los campos para
-        // escribirlo. «Reintentar» tal cual daría lo mismo.
-        setFaltaDato(e instanceof ApiError && e.status === 422)
+        // Un 422 con texto del backend es un dato que falta en el filing: se
+        // abren los campos para escribirlo. «Reintentar» tal cual daría lo mismo.
+        setFaltaDato(faltaUnDato(e))
       } finally {
         setBusy(false)
       }
@@ -635,7 +702,7 @@ export function ValuationPage() {
           <EntradasPanel
             textos={textosEntrada}
             onCambiar={(campo, texto) => setTextosEntrada((prev) => ({ ...prev, [campo]: texto }))}
-            data={data}
+            delFiling={delFiling?.symbol === pedido ? delFiling.valores : {}}
             abierto={faltaDato || Object.values(textosEntrada).some((t) => t.trim() !== '')}
           />
         )}

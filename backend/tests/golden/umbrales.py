@@ -258,6 +258,8 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
     "app.analysis.valuation.TERMINAL": [({"bajista": 0.03, "base": 0.05, "alcista": 0.06}, "dcf_modulo")],
     "app.analysis.valuation.CRECIMIENTO_SUPUESTO": [(0.06, "dcf_modulo")],
     "app.analysis.valuation.CRECIMIENTO_MAXIMO": [(0.075, "dcf_modulo")],
+    # Ningún caso baja del −50 %: un suelo por encima del bajista de `base` (2,4 %) lo ve.
+    "app.analysis.valuation.CRECIMIENTO_MINIMO": [(0.05, "dcf_modulo")],
 }
 
 # Lo que no es una decisión, o no la ve el golden por una razón dicha aquí.

@@ -72,13 +72,35 @@ import type {
   RespuestaPreguntaIA,
 } from './types'
 
+/** Un error de validación de FastAPI (un 422 cuyo `detail` es una lista): qué
+ *  campo (`loc`), qué límite (`ctx`) y lo que llegó (`input`). */
+export interface ErrorDeValidacion {
+  loc: (string | number)[]
+  type: string
+  msg: string
+  input?: unknown
+  ctx?: Record<string, unknown>
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Los errores de validación, si el `detail` venía en lista: lo enviado no
+     *  cabe en el contrato. `null` si el backend explicó el error con su propio
+     *  texto (un dato que falta, un recurso que no existe). */
+    public validacion: ErrorDeValidacion[] | null = null,
   ) {
     super(message)
   }
+}
+
+/** Un 422 con texto propio del backend: el filing no trae un dato sin el que no
+ *  se puede calcular («escribe la deuda neta»). Un 422 de validación es otra
+ *  cosa, un error de lo enviado, y contarlo como dato que falta abría «Tus
+ *  entradas» del DCF como si faltara la deuda (revisión 15, H3). */
+export function faltaUnDato(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.status === 422 && e.validacion === null
 }
 
 // Sin límite, una petición que se queda colgada deja la vista cargando para
@@ -123,7 +145,7 @@ async function fetchJson<T>(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
   } finally {
     clearTimeout(timer)
   }
-  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 
@@ -146,17 +168,18 @@ async function conectar(path: string, init: RequestInit): Promise<Response> {
   }
 }
 
-/** El motivo de una respuesta de error: el `detail` del backend o, si el
+/** El error de una respuesta: el `detail` del backend como motivo o, si el
  *  cuerpo no es JSON, el código HTTP. Antes, tres copias de lo mismo. */
-async function motivoDe(resp: Response): Promise<string> {
+async function errorDe(resp: Response): Promise<ApiError> {
   const generico = `Error HTTP ${resp.status}`
+  let detail: unknown
   try {
-    const body = await resp.json()
-    return textoDeError(body.detail) ?? generico
+    detail = ((await resp.json()) as { detail?: unknown }).detail
     // eslint-disable-next-line no-restricted-syntax -- un cuerpo que no es JSON no es otro fallo: el fallo es el código HTTP, y se lanza igual.
   } catch {
-    return generico
+    return new ApiError(resp.status, generico)
   }
+  return new ApiError(resp.status, textoDeError(detail) ?? generico, Array.isArray(detail) ? (detail as ErrorDeValidacion[]) : null)
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -165,13 +188,13 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
   const resp = await conectar(path, { method: 'DELETE' })
-  if (!resp.ok) throw new ApiError(resp.status, await motivoDe(resp))
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 

@@ -112,10 +112,17 @@ function Buscar() {
   )
 }
 
+/** El botón «atrás» del navegador. */
+function Atras() {
+  const navigate = useNavigate()
+  return <button type="button" onClick={() => void navigate(-1)}>Atrás</button>
+}
+
 function abrir(symbol: string, consulta = '') {
   return render(
     <MemoryRouter initialEntries={[`/ticker/${symbol}${consulta}`]}>
       <Buscar />
+      <Atras />
       <Routes>
         <Route path="/ticker/:symbol" element={<><TickerPage /><Ubicacion /></>} />
       </Routes>
@@ -423,6 +430,48 @@ describe('ficha de una empresa', () => {
     expect(analisis()).toBe(1)
   })
 
+  it('«atrás» a una ficha con Novedades abierta no reabre «Qué cambió» ni vuelve a pedir el análisis que congela', async () => {
+    // Revisión 15 (H9): con la pestaña en la URL, A (Novedades) → B → «atrás»
+    // volvía a `?pestana=novedades`, montaba «Qué cambió» y congelaba otra vez
+    // sin que nadie lo abriera. Lo mismo al recargar o con un enlace guardado.
+    const rutas: Record<string, Respuesta> = { '/api/empresa/ACME/analisis': 'pendiente' }
+    for (const s of ['ACME', 'OTRA']) {
+      rutas[`/api/stocks/${s}/quote`] = ok(cotizacion(s, 0.5))
+      rutas[`/api/stocks/${s}/profile`] = ok(perfil(s, `${s} Corp`))
+      rutas[`/api/stocks/${s}/fundamentals`] = falla(404, 'sin fundamentales')
+      rutas[`/api/stocks/${s}/history?range=1Y`] = ok(historico(s))
+    }
+    servir(rutas)
+    abrir('ACME')
+    await abrirPestana('Novedades')
+    expect(queCongelan('ACME')).toHaveLength(1)
+    fireEvent.change(screen.getByPlaceholderText(/Símbolo/), { target: { value: 'otra' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
+    expect(await screen.findByRole('heading', { level: 1, name: /OTRA Corp/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Atrás' }))
+    expect(await screen.findByRole('heading', { level: 1, name: /ACME Corp/ })).toBeInTheDocument()
+    // Vuelve a Novedades (la URL lo dice), pero «Qué cambió» espera a que lo pulses.
+    expect(ubicacion).toBe('/ticker/ACME?pestana=novedades')
+    expect(await pestana('Novedades')).toHaveAttribute('aria-selected', 'true')
+    const queCambio = screen.getByRole('button', { name: 'Qué cambió' })
+    expect(queCambio).toHaveAttribute('aria-pressed', 'false')
+    expect(queCongelan('ACME')).toHaveLength(1)
+    // Pulsarlo sí lo abre, y congela: es lo documentado.
+    fireEvent.click(queCambio)
+    expect(queCambio).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(queCongelan('ACME')).toHaveLength(2))
+  })
+
+  it('un enlace con ?pestana=novedades abre Novedades sin abrir «Qué cambió»', async () => {
+    servir(ACME_SIMPLE)
+    abrir('ACME', '?pestana=novedades')
+    expect(await pestana('Novedades')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Qué cambió' })).toHaveAttribute('aria-pressed', 'false')
+    // Las tres partes, con lo que hace cada una, para elegir.
+    expect(screen.getByText(/qué ha cambiado desde el último análisis guardado/)).toBeInTheDocument()
+    expect(queCongelan('ACME')).toEqual([])
+  })
+
   it('un símbolo que ya no está en ninguna fuente enseña sus decisiones guardadas', async () => {
     // Un valor deslistado con decisiones congeladas: el historial es la única
     // entrada a sus replays (segunda revisión del 2.1).
@@ -562,18 +611,26 @@ describe('la ficha en cuatro pestañas', () => {
       const nombre = { resumen: 'Resumen', numeros: 'Números', valoracion: 'Valoración', novedades: 'Novedades' }[vista.pestana]
       expect(await pestana(nombre)).toHaveAttribute('aria-selected', 'true')
     }
-    if (vista.seccion) {
-      const boton = screen.getAllByRole('button').find((b) => b.getAttribute('aria-pressed') === 'true' && b.textContent !== 'Más detalle (avanzado)')
-      expect(boton?.textContent).toBe(
+    // «Qué cambió» congela al abrirse: un enlace lleva a su pestaña, pero no lo
+    // abre sin una pulsación (revisión 15, H9).
+    const congela = vista.seccion === 'cambios'
+    const abierto = () => screen.getAllByRole('button').find((b) => b.getAttribute('aria-pressed') === 'true' && b.textContent !== 'Más detalle (avanzado)')
+    if (vista.seccion && !congela) {
+      expect(abierto()?.textContent).toBe(
         { fundamentales: 'Fundamentales', salud: 'Salud y riesgo', calidad: 'Calidad de beneficios', cambios: 'Qué cambió',
           expectativas: 'Resultados vs expectativas', filings: 'Filings', informe: 'Informe completo', opciones: 'Opciones',
           historial: 'Decisiones y replay' }[vista.seccion],
       )
     }
+    if (congela) expect(abierto()).toBeUndefined()
     // La sección de verdad está abierta: ha pedido lo suyo (y ninguna otra).
-    const suya = PIDE[vieja]
+    const suya = congela ? undefined : PIDE[vieja]
     if (suya) await waitFor(() => expect(pedidas()).toContain(suya))
-    for (const [otra, url] of Object.entries(PIDE)) if (otra !== vieja) expect(pedidas(), otra).not.toContain(url)
+    for (const [otra, url] of Object.entries(PIDE)) if (otra !== vieja || congela) expect(pedidas(), otra).not.toContain(url)
+    if (congela) {
+      fireEvent.click(screen.getByRole('button', { name: 'Qué cambió' }))
+      await waitFor(() => expect(pedidas()).toContain(PIDE.cambios))
+    }
   })
 
   it('la pestaña y la sección van a la URL, con los identificadores nuevos', async () => {

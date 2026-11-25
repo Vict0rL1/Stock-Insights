@@ -207,8 +207,20 @@ export function TickerPage() {
   // el análisis de un símbolo que luego resultaba no existir (revisión del
   // 2.1). Y A → B → A no reabre la pestaña que A tenía: la reabría y volvía a
   // pedir «Qué cambió» sin que nadie lo abriera (segunda revisión del 2.1).
-  const vista = leerPestana(params.get('pestana'))
-  const irA = (v: VistaFicha) =>
+  const pedida = leerPestana(params.get('pestana'))
+  // «Qué cambió» congela una instantánea al abrirse, así que solo se abre con
+  // una pulsación en esta ficha. Desde que la pestaña va en la URL, volver con
+  // «atrás», recargar o abrir un enlace guardado con `?pestana=novedades` lo
+  // montaba solo y volvía a pedir el análisis que congela (revisión 15, H9; la
+  // segunda revisión del 2.1 ya lo había corregido con la pestaña en el estado).
+  // Así se abre Novedades sin abrir ninguna parte. Vale para este símbolo: otro
+  // símbolo lo olvida en ese mismo render (ni uno con el de antes, que ya pedía).
+  const [cambiosPulsado, setCambiosPulsado] = useState<{ symbol: string } | null>(null)
+  if (cambiosPulsado !== null && cambiosPulsado.symbol !== symbol) setCambiosPulsado(null)
+  const vista: VistaFicha =
+    pedida.seccion === 'cambios' && cambiosPulsado?.symbol !== symbol ? { ...pedida, seccion: null } : pedida
+  const irA = (v: VistaFicha) => {
+    if (v.seccion === 'cambios') setCambiosPulsado({ symbol })
     setParams(
       (antes) => {
         const nuevos = new URLSearchParams(antes)
@@ -219,6 +231,7 @@ export function TickerPage() {
       },
       { replace: true },
     )
+  }
   const [range, setRange] = useState<HistoryRange>('1Y')
   // «Explícamelo con IA» abre el informe y pide su narrativa una vez, para este
   // símbolo: volver luego a la sección no la vuelve a pedir.

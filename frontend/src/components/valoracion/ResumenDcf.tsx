@@ -142,6 +142,11 @@ export function ResumenDcf({ datos, symbol }: { datos: ResumenValoracion; symbol
                 </div>
               )}
               {!e.rango.disponible && <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{e.rango.nota}</p>}
+              {/* El crecimiento acotado al −50 % se dice en su escenario (el
+                  3 % supuesto, arriba, una vez para los tres). */}
+              {!e.procedencia?.crecimiento_supuesto && e.procedencia?.motivo && (
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-800">{e.procedencia.motivo}</p>
+              )}
             </div>
           )
         })}

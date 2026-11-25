@@ -8,6 +8,11 @@
  * Escape la cierra y un toque la fija hasta el siguiente o hasta salir. Un
  * toque enfoca y pulsa a la vez: si el foco la abriera, el clic la cerraría en
  * el mismo gesto; por eso el foco solo la abre cuando no viene de un puntero.
+ * Y pasar por encima es cosa de un ratón de verdad: un toque emula también la
+ * entrada del ratón (`mouseenter`) y nunca su salida, así que con
+ * `onMouseEnter` la definición quedaba «encima» para siempre y el segundo
+ * toque no la cerraba (revisión 15, H10; visto con Playwright: un toque
+ * dispara pointerenter → pointerdown → mouseover → mouseenter → focus → click).
  */
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { DecisionAction } from '../api/types'
@@ -90,8 +95,12 @@ export function Termino({ children, className = '', ...fuente }: Fuente & { chil
             cerrar()
           }
         }}
-        onMouseEnter={() => setEncima(true)}
-        onMouseLeave={() => setEncima(false)}
+        onPointerEnter={(e) => {
+          if (e.pointerType === 'mouse') setEncima(true)
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === 'mouse') setEncima(false)
+        }}
       >
         {children ?? entrada?.termino}
       </button>

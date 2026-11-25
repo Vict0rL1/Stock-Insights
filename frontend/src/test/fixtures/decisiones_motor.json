@@ -873,6 +873,96 @@
     "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
    ]
   },
+  "reducir_sin_stop": {
+   "action": "reducir",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 90.0,
+       "condicion": "precio > 93,83 (media 200 − 1 %)",
+       "distancia": 4.26,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Reducir",
+   "levels": null,
+   "owned": true,
+   "pnl_pct": null,
+   "reasons": [
+    "Cotiza por debajo de su media de 200 sesiones (94,78): la tendencia se giró en contra aunque los fundamentales aguanten."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 90.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 90.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "decide",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si el precio perfora tu stop",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
   "sin_datos": {
    "action": "sin_datos",
    "cambiaria": [

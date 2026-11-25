@@ -1656,7 +1656,7 @@ Lo que tenía cada uno:
 | | Módulo (el que se queda) | Ficha (`/api/stocks/{s}/valuation/{defaults,dcf}`) | Informe (`dcf` precargado) |
 |---|---|---|---|
 | Crecimiento de partida | CAGR del FCF; si no, de ingresos; si no, un 3 % **declarado** como supuesto. Tope del 15 %; un negativo medido se respeta | El mismo CAGR, acotado a [0 %, 15 %]: un negativo medido subía a 0 %; sin histórico, campo vacío | El mismo, tope del 15 %; sin histórico, el 3 % sin declararlo |
-| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más) | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
+| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más), con un suelo del −50 % que el escenario acotado declara | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
 | WACC bajista / base / alcista | 11 / 9 / 8 % | 11 / 10 / 9 % | 12 / 10 / 9 % |
 | Perpetuidad | 1,5 / 2,5 / 3,0 % | 2,0 / 2,5 / 3,0 % | 1,5 / 2,5 / 3,0 % |
 | Años | 5 (editable de 3 a 10) | 5 (editable) | 5 |
@@ -1676,6 +1676,28 @@ el alcista (M5), y la matriz de sensibilidad y la sensibilidad ordenada caían a
 valor total de la empresa con `value_per_share or equity_value` (M4): ahora es por
 acción o nada. No se portó el valor total sin acciones ni la matriz WACC ×
 crecimiento: la sensibilidad ordenada la sustituye y mezclar unidades era el fallo.
+
+Lo que fijó la revisión 15 (contrato de `POST /api/valuation/{s}`):
+
+- **404 o 502.** 404 solo si EDGAR no tiene la empresa; si no responde, 502 «No se
+  pudieron descargar los estados financieros de EDGAR», como el informe completo.
+  Antes los dos eran 404 «no presentan 10-K», y la ficha pintaba un EDGAR caído
+  como una ausencia, sin «Reintentar».
+- **Lo que se propone se acepta.** Los crecimientos propuestos tienen el mismo suelo
+  que admite el validador, `CRECIMIENTO_MINIMO` = −50 % (`app/analysis/valuation.py`),
+  y el escenario acotado lo dice en `procedencia.motivo` (con `crecimiento_supuesto`
+  falso: es el medido, acotado). Un FCF que cae a la mitad proponía un bajista del
+  −75 % que «Recalcular» rechazaba con un 422.
+- **La procedencia sobrevive al recalcular** (`supuestos_con_procedencia`): un
+  escenario que vuelve con el crecimiento propuesto conserva su `procedencia`, así
+  que el 3 % supuesto se sigue diciendo después de escribir la deuda neta.
+- **`shares_outstanding` enviado tiene que ser positivo** (422 si no): un 0 se
+  cambiaba en silencio por las acciones del filing.
+- En el módulo, solo un 422 con texto del backend («el filing no trae la deuda»)
+  abre «Tus entradas»; uno de validación (lista de Pydantic) es un error de lo
+  escrito: se dice en español, con las unidades de pantalla, y la valoración que se
+  veía se queda. La ayuda de cada campo vacío es el dato del filing, no el último
+  que escribiste.
 
 **`GET /api/stocks/{s}/valuation/defaults` y `POST /api/stocks/{s}/valuation/dcf`
 son alias obsoletos durante una versión**: responden lo de siempre (el golden

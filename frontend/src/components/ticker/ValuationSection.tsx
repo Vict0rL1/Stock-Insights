@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { api, ApiError } from '../../api/client'
+import { api, faltaUnDato } from '../../api/client'
 import type { Valoracion } from '../../api/types'
 import { ausenteSi404, useDato } from '../../lib/useDato'
 import { BloqueDatos } from '../EstadoDato'
@@ -16,7 +16,7 @@ class FaltaUnDato {
 
 function faltaSi422(peticion: Promise<Valoracion>): Promise<Valoracion | FaltaUnDato> {
   return peticion.catch((e: unknown) => {
-    if (e instanceof ApiError && e.status === 422) return new FaltaUnDato(e.message)
+    if (faltaUnDato(e)) return new FaltaUnDato(e.message)
     throw e
   })
 }

@@ -53,12 +53,13 @@ from app.analysis.reverse_dcf import (
 from app.analysis.valuation import (
     ANOS,
     CRECIMIENTO_MAXIMO,
+    CRECIMIENTO_MINIMO,
     CRECIMIENTO_SUPUESTO,
     cimientos,
     escenarios_con_rango,
-    escenarios_por_defecto,
     rango_global,
     sensibilidad_ordenada,
+    supuestos_con_procedencia,
 )
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
@@ -74,7 +75,8 @@ MAX_PARES = 6
 
 
 class Escenario(BaseModel):
-    growth_rate: float = Field(ge=-0.5, le=1.0)
+    # El mismo suelo con que se proponen: lo que la app propone, la app lo acepta.
+    growth_rate: float = Field(ge=CRECIMIENTO_MINIMO, le=1.0)
     discount_rate: float = Field(gt=0.0, le=0.40)
     terminal_growth: float = Field(ge=-0.02, le=0.06)
 
@@ -86,7 +88,10 @@ class ValoracionRequest(BaseModel):
     years: int = Field(ANOS, ge=3, le=10)
     base_fcf: float | None = None
     net_debt: float | None = None
-    shares_outstanding: float | None = None
+    # Unas acciones escritas tienen que ser positivas: un 0 enviado se cambiaba en
+    # silencio por las del filing (`x or valor`) y se valoraba con ellas como si
+    # fueran las tuyas (revisión 15, H11).
+    shares_outstanding: float | None = Field(None, gt=0)
 
 
 
@@ -99,7 +104,19 @@ def _traer(service: MarketDataService, tipo: str, **kw):
 
 def _cimientos(service: MarketDataService, symbol: str) -> dict:
     """Los datos reales sobre los que se monta todo, con su procedencia."""
-    financials = _traer(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502, como el informe
+    # completo. `_traer` se tragaba los dos, y con EDGAR caído la pestaña
+    # Valoración de la ficha decía que la empresa «no presenta 10-K»: una
+    # ausencia, sin «Reintentar». El alias viejo de la ficha ya daba 502
+    # (revisión 15, H2; la misma clase que la segunda revisión del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError:
+        financials = None
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
     if not financials or not financials.get("periods"):
         raise HTTPException(
             status_code=404,
@@ -203,7 +220,10 @@ def valorar(
 
     base_fcf = request.base_fcf if request.base_fcf is not None else datos["base_fcf"]
     net_debt = request.net_debt if request.net_debt is not None else datos["net_debt"]
-    acciones = request.shares_outstanding or datos["shares_outstanding"]
+    acciones = (
+        request.shares_outstanding if request.shares_outstanding is not None
+        else datos_numero(datos["shares_outstanding"])
+    )
     if base_fcf is None:
         raise HTTPException(
             status_code=422,
@@ -226,7 +246,8 @@ def valorar(
                 "escribirla tú en el campo de deuda neta si la conoces."
             ),
         )
-    if not acciones:
+    # Las del filing pueden faltar o venir a cero: sin acciones no hay valor por acción.
+    if acciones is None or acciones <= 0:
         raise HTTPException(
             status_code=422,
             detail=(
@@ -236,10 +257,9 @@ def valorar(
             ),
         )
 
-    supuestos = (
-        {k: v.model_dump() for k, v in request.escenarios.items()}
-        if request.escenarios
-        else escenarios_por_defecto(datos["crecimiento"])
+    supuestos = supuestos_con_procedencia(
+        datos["crecimiento"],
+        {k: v.model_dump() for k, v in request.escenarios.items()} if request.escenarios else None,
     )
 
     # 1) Escenarios, cada uno con su RANGO, y el rango global de todos.

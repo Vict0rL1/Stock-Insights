@@ -64,7 +64,10 @@ Cómo quedó (fase B):
   de una sección (`salud`, `filings`…). Acepta también los once identificadores de antes; la
   tabla de traducción es `PESTANAS_VIEJAS` en `frontend/src/lib/pestanasFicha.ts` (con
   `pestanaNueva()` para las redirecciones). Números abre Fundamentales; Novedades, «Qué cambió»
-  (que congela al abrirse, como antes); «Más detalle» no abre nada hasta elegir.
+  (que congela al abrirse, como antes); «Más detalle» no abre nada hasta elegir. «Qué cambió»
+  solo se abre con una pulsación en la ficha: volver con «atrás», recargar o abrir un enlace
+  con `?pestana=novedades` (o `cambios`) abre Novedades sin abrir ninguna parte, porque lo
+  montaba solo y volvía a congelar sin que nadie lo pidiera (revisión 15).
 - «Qué dice la app» lee el análisis con `GET /api/empresa/{s}/analisis?congelar=false` (el
   parámetro ya existía): abrir la ficha no congela instantáneas. La frase sale de la traza del
   motor (`frontend/src/lib/queDiceLaApp.ts`), probada contra decisiones reales de `decide()`

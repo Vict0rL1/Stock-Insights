@@ -203,6 +203,8 @@ def _decisiones() -> dict:
                                   {"cost_basis": 0.005, "quantity": 1000, "stop": 0.004}),
         "vender_por_puntuacion_y_stop": decide({"score": -0.5}, precio(60.0), posicion),
         "reducir": decide({"score": 0.4}, precio(90.0), posicion),
+        # Las del spin-off bajo su media: reduce, y el stop sigue sin poder comprobarse.
+        "reducir_sin_stop": decide({"score": 0.4}, precio(90.0), {"cost_basis": 0.0, "quantity": 10}),
         "sin_datos": decide({"score": None}, precio(92.0)),
         "sin_datos_ni_precio": decide({"score": None}, None),
     }

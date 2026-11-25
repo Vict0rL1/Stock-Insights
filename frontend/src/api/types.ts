@@ -1553,7 +1553,9 @@ export interface RangoValor {
 
 export interface EscenarioValoracion {
   supuestos: SupuestosEscenario
-  /** De dónde sale el crecimiento: del histórico real o de un supuesto. */
+  /** De dónde sale el crecimiento: del histórico real o de un supuesto. `motivo`
+   *  dice por qué no es el medido por su factor: el 3 % supuesto, o el suelo del
+   *  −50 % (que no es un supuesto: `crecimiento_supuesto` falso). */
   procedencia?: { crecimiento_supuesto: boolean; motivo: string | null }
   rango: RangoValor
 }
@@ -2281,6 +2283,8 @@ export interface AnalisisEmpresa {
   }
   valoracion: {
     estado: string
+    /** Sin estados financieros, por qué no hay valoración. */
+    motivo?: string
     pe?: MetricaDerivada
     fcf_yield?: MetricaDerivada
     dcf_inverso?: {
@@ -2289,8 +2293,11 @@ export interface AnalisisEmpresa {
       rango?: { bajo: number; alto: number } | null
       /** Descuento y crecimiento terminal en fracción; `anos`, los de la proyección. */
       supuestos?: { descuento: number; terminal: number; anos: number }
+      /** Por qué no hay crecimiento implícito (también si solo falta el punto del 9 %). */
       motivo?: string | null
       nota?: string
+      /** Las partidas de deuda que el filing no trae y cuentan como cero. */
+      deuda_parcial?: string[] | null
     }
   }
   tesis: {

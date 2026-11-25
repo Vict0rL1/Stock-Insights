@@ -8,6 +8,7 @@
  * y por qué falta (ausente ≠ cero).
  */
 import type { AnalisisEmpresa } from '../api/types'
+import { etiqueta } from './etiquetas'
 import type { ClaveGlosario } from './glosario'
 import { fmtCompacto, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from './formato'
 
@@ -120,6 +121,10 @@ function per(a: AnalisisEmpresa): CifraClave {
   return { ...base, valor: '—', frase: `Sin PER: ${motivo}.`, fuente }
 }
 
+/** Una frase del backend dentro de otra: sin el punto final doble de un motivo
+ *  que ya trae el suyo. */
+const sinPuntoFinal = (t: string) => t.replace(/[.\s]+$/, '')
+
 function crecimiento(a: AnalisisEmpresa): CifraClave {
   const inv = a.valoracion.dcf_inverso
   const g = inv?.crecimiento_implicito ?? null
@@ -129,18 +134,31 @@ function crecimiento(a: AnalisisEmpresa): CifraClave {
     termino: 'crecimiento_implicito' as const,
     fuente: 'cálculo de la app con las cuentas de EDGAR y el precio de hoy',
   }
-  if (g === null)
-    return { ...base, valor: '—', frase: `No se puede calcular: ${inv?.motivo ?? 'faltan las cuentas o el precio'}.` }
+  if (g === null) {
+    // El motivo, del backend: el del DCF inverso o, sin él, el de la sección.
+    // Sin motivo no se inventa uno: «faltan las cuentas o el precio» salía con
+    // las dos delante en una acción tan cara que al 9 % no había crecimiento
+    // que la justificara (revisión 15, H6).
+    const motivo = inv ? inv.motivo : a.valoracion.motivo
+    return { ...base, valor: '—', frase: motivo ? `No se puede calcular: ${sinPuntoFinal(motivo)}.` : 'No se pudo calcular.' }
+  }
   const s = inv?.supuestos
   const supuestos = s
     ? ` durante ${s.anos} ${plural(s.anos, 'año', 'años')}, con un descuento del ${fmtPct(s.descuento, 1, { ceros: false })} anual`
     : ''
   const valor = fmtPct(g, 1)
   const verbo = signoLeido(valor) < 0 ? 'podría caer' : 'tendría que crecer'
+  // Una deuda parcial cuenta como cero la partida que falta: si existe, el
+  // precio exige más crecimiento que este. El backend lo dice en su nota y la
+  // tarjeta lo callaba (revisión 15, H5).
+  const falta = inv?.deuda_parcial ?? []
+  const parcial = falta.length
+    ? ` Con la deuda parcial (falta ${falta.map((c) => etiqueta(c)).join(' y ')}, que cuenta como cero): si existe, el precio exige más crecimiento que este.`
+    : ''
   return {
     ...base,
     valor,
-    frase: `Para valer lo que cuesta hoy, su flujo de caja libre ${verbo} un ${fmtPct(Math.abs(g), 1)} al año${supuestos}. No es una previsión: es lo que el precio ya da por hecho.`,
+    frase: `Para valer lo que cuesta hoy, su flujo de caja libre ${verbo} un ${fmtPct(Math.abs(g), 1)} al año${supuestos}. No es una previsión: es lo que el precio ya da por hecho.${parcial}`,
   }
 }
 

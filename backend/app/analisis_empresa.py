@@ -355,12 +355,25 @@ def seccion_valoracion(fund: dict, precio: float | None) -> dict:
         years=ANOS_DCF, net_debt=neta,
     )
     base = next((p for p in curva.get("puntos", []) if p["discount_rate"] == DESCUENTO_BASE), None)
+    implicito = (base or {}).get("crecimiento_implicito")
+    # Con la curva disponible, el punto del 9 % puede no tener valor: una acción
+    # tan cara que ni creciendo al 60 % anual se justifica su precio. Iba sin
+    # motivo, y la tarjeta de la ficha decía «faltan las cuentas o el precio» con
+    # las dos delante, justo en las acciones más caras (revisión 15, H6).
+    if not curva.get("disponible"):
+        motivo = curva.get("nota")
+    elif implicito is not None:
+        motivo = None
+    elif base is None:
+        motivo = f"la curva no tiene el punto del {fmt_pct(DESCUENTO_BASE, 0)}"
+    else:
+        motivo = base.get("motivo")
     seccion["dcf_inverso"] = {
         "estado": VALIDO if curva.get("disponible") else DESCONOCIDO,
-        "crecimiento_implicito": (base or {}).get("crecimiento_implicito"),
+        "crecimiento_implicito": implicito,
         "rango": curva.get("rango"),
         "supuestos": supuestos,
-        "motivo": None if curva.get("disponible") else curva.get("nota"),
+        "motivo": motivo,
         "nota": "Crecimiento anual del FCF que justifica el precio de hoy CON estos supuestos. No es un dato de la empresa.",
     }
     if m["deuda_neta"].get("parcial"):

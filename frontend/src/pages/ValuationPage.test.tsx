@@ -11,7 +11,7 @@ import type { Valoracion } from '../api/types'
 import { rutaValoracion } from '../components/valoracion/ruta'
 import empresaCompleta from '../test/fixtures/empresa_completa.json'
 import empresaDeudaParcial from '../test/fixtures/empresa_deuda_parcial.json'
-import { ComparablesPanel, Escenarios, leerEntradas, ValuationPage } from './ValuationPage'
+import { ComparablesPanel, Escenarios, leerEntradas, textoDeValidacion, ValuationPage } from './ValuationPage'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -81,6 +81,87 @@ describe('el módulo abierto desde la ficha (ítem 3.3)', () => {
     montarEn(rutaValoracion('PARC'))
     expect(await screen.findByText('parcial: falta deuda a corto plazo')).toBeInTheDocument()
     expect(screen.getByText(/^Deuda parcial\. El filing no trae deuda a corto plazo/)).toBeInTheDocument()
+  })
+})
+
+describe('revisión 15', () => {
+  const RANGO = 'Rango de valor, del escenario más pesimista al más optimista'
+  // Lo que responde el backend de verdad a un bajista de −75 % (el que proponía
+  // antes del suelo, `test_revision15_dcf.py`): un 422 de Pydantic, en lista.
+  const PYDANTIC = {
+    detail: [{ type: 'greater_than_equal', loc: ['body', 'escenarios', 'bajista', 'growth_rate'],
+               msg: 'Input should be greater than or equal to -0.5', input: -0.75, ctx: { ge: -0.5 } }],
+  }
+
+  it('H3: un 422 de validación no es un dato que falta: se dice en español y la valoración se queda', async () => {
+    servir((c) => (c.escenarios ? { status: 422, json: PYDANTIC } : ACME))
+    montarEn(rutaValoracion('ACME'))
+    await screen.findByText(RANGO)
+    fireEvent.click(screen.getByRole('button', { name: 'Recalcular con mis supuestos' }))
+    expect(
+      await screen.findByText(
+        'No se puede calcular: el cálculo admite como mínimo -50 % en el crecimiento del FCF del escenario bajista ' +
+          '(hay -75 %). Corrige lo escrito y vuelve a calcular.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Input should be/)).toBeNull()
+    // Ni borra la valoración ni abre «Tus entradas» como si faltara la deuda.
+    expect(screen.getByText(RANGO)).toBeInTheDocument()
+    expect(screen.getByText(/^Tus entradas/).closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('H3 (guarda): un 422 con texto del backend sigue siendo un dato que falta', async () => {
+    const DETALLE = 'No se conoce la deuda neta de la empresa (…). Puedes escribirla tú en el campo de deuda neta si la conoces.'
+    servir((c) => (c.escenarios ? { status: 422, json: { detail: DETALLE } } : ACME))
+    montarEn(rutaValoracion('ACME'))
+    await screen.findByText(RANGO)
+    fireEvent.click(screen.getByRole('button', { name: 'Recalcular con mis supuestos' }))
+    expect(await screen.findByText(DETALLE)).toBeInTheDocument()
+    expect(screen.getByText(/^Tus entradas/).closest('details')).toHaveAttribute('open')
+  })
+
+  it('H8: al vaciar un campo, la ayuda dice el dato del filing, no tu cifra de antes', async () => {
+    const A = ACME as { status: number; json: { entradas: Record<string, unknown> } }
+    // El backend usa la deuda que mandas (entradas.net_debt = la tuya).
+    servir((c) => ({
+      status: 200,
+      json: { ...A.json, entradas: { ...A.json.entradas, ...(c.net_debt !== undefined ? { net_debt: c.net_debt } : {}) } },
+    }))
+    montarEn(rutaValoracion('ACME'))
+    await screen.findByText(RANGO)
+    const deuda = screen.getByLabelText('Deuda neta') as HTMLInputElement
+    expect(deuda.placeholder).toBe('180') // la del filing
+    fireEvent.change(deuda, { target: { value: '5.000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Valorar' }))
+    await screen.findByText(/\(la tuya\)$/)
+    fireEvent.change(deuda, { target: { value: '' } }) // «vacío es el dato del filing»
+    expect(deuda.placeholder).toBe('180')
+  })
+
+  it('H3: el escenario acotado al −50 % lo dice en su tarjeta', async () => {
+    const A = ACME as { status: number; json: Valoracion }
+    const MOTIVO = 'Con el crecimiento medido (-50,0 % anual) este escenario propondría un -75,0 %: se acota al -50 %, lo mínimo que admite el cálculo.'
+    const escenarios = structuredClone(A.json.escenarios)
+    escenarios.bajista.procedencia = { crecimiento_supuesto: false, motivo: MOTIVO }
+    servir(() => ({ status: 200, json: { ...A.json, escenarios } }))
+    montarEn(rutaValoracion('ACME'))
+    expect(await screen.findByText(MOTIVO)).toBeInTheDocument()
+  })
+
+  it('el texto de validación nombra cada campo con sus unidades y no deja códigos ni inglés', () => {
+    expect(
+      textoDeValidacion([
+        { type: 'greater_than', loc: ['body', 'shares_outstanding'], msg: 'Input should be greater than 0', input: 0, ctx: { gt: 0 } },
+        { type: 'less_than_equal', loc: ['body', 'escenarios', 'alcista', 'discount_rate'], msg: 'x', input: 0.45, ctx: { le: 0.4 } },
+        { type: 'raro', loc: ['body', 'otro_campo'], msg: 'Field required' },
+      ]),
+    ).toBe(
+      'No se puede calcular: el cálculo admite más de 0 en las acciones en circulación (hay 0); ' +
+        'como máximo 40\u00a0% en el WACC del escenario alcista (hay 45\u00a0%). Corrige lo escrito y vuelve a calcular.',
+    )
+    expect(textoDeValidacion([{ type: 'missing', loc: ['body', 'otro_campo'], msg: 'Field required' }])).toBe(
+      'No se puede calcular: lo enviado no es válido. Corrige lo escrito y vuelve a calcular.',
+    )
   })
 })
 

@@ -17,6 +17,8 @@ siguiente.
 
 from __future__ import annotations
 
+import math
+
 from app import datos
 from app.analysis.fundamentals import deuda_total, free_cash_flow, growth_summary
 from app.formato import fmt_num, fmt_pct, fmt_valor_redondo
@@ -477,6 +479,13 @@ TERMINAL = {"bajista": 0.015, "base": 0.025, "alcista": 0.030}
 # SIEMPRE declarado como supuesto: es el parámetro que más mueve un DCF.
 CRECIMIENTO_SUPUESTO = 0.03
 CRECIMIENTO_MAXIMO = 0.15  # el pasado no se extrapola alegremente
+# Lo mínimo que se propone, y lo mínimo que admite «Recalcular» (el validador
+# del módulo lee esta misma constante). Sin suelo, un FCF que cae a la mitad en
+# un año (−50 % medido) proponía un bajista del −75 % que el propio módulo
+# rechazaba con un 422 al recalcular sin tocar nada; y por debajo de −100 % el
+# FCF cambia de signo cada año, y una empresa con caja y sin deuda salía con un
+# rango negativo (revisión 15, H3).
+CRECIMIENTO_MINIMO = -0.5
 ANOS = 5
 ESCENARIOS = ("bajista", "base", "alcista")
 
@@ -548,16 +557,55 @@ def escenarios_por_defecto(crecimiento: dict) -> dict[str, dict]:
         if supuesto
         else None
     )
-    return {
-        nombre: {
-            "growth_rate": round(min(base * factores[nombre], CRECIMIENTO_MAXIMO), 4),
+    salida = {}
+    for nombre in ESCENARIOS:
+        propuesto = base * factores[nombre]
+        # El suelo se declara en `procedencia` del escenario que lo toca: el
+        # crecimiento que se ve ya no es el medido por su factor, y eso se dice.
+        acotado = propuesto < CRECIMIENTO_MINIMO
+        salida[nombre] = {
+            "growth_rate": round(min(max(propuesto, CRECIMIENTO_MINIMO), CRECIMIENTO_MAXIMO), 4),
             "discount_rate": DESCUENTO[nombre],
             "terminal_growth": TERMINAL[nombre],
             "supuesto": supuesto,
-            "motivo": motivo,
+            "motivo": (
+                f"Con el crecimiento medido ({fmt_pct(historico)} anual) este escenario "
+                f"propondría un {fmt_pct(propuesto)}: se acota al {fmt_pct(CRECIMIENTO_MINIMO, 0)}, "
+                "lo mínimo que admite el cálculo. Una caída así, sostenida, suele decir más "
+                "del FCF de partida (un año malo) que del negocio."
+                if acotado
+                else motivo
+            ),
         }
-        for nombre in ESCENARIOS
-    }
+    return salida
+
+
+def supuestos_con_procedencia(
+    crecimiento: dict, recibidos: dict[str, dict] | None = None
+) -> dict[str, dict]:
+    """Los supuestos con que se valora, cada uno con la procedencia de su crecimiento.
+
+    Sin `recibidos`, los que propone la app. Con ellos mandan los recibidos (es
+    tu tesis, no la suya), pero un crecimiento que la app SUPUSO a falta de
+    histórico sigue siendo un supuesto aunque vuelva en el cuerpo: «Recalcular
+    con mis supuestos» reenvía los propuestos, y en cuanto se escribía la deuda
+    neta en «Tus entradas» el 3 % dejaba de decirse y volvía a tener cara de
+    dato (revisión 15, H7). Lo mismo con el suelo del −50 %: si el escenario
+    vuelve con el crecimiento acotado, se sigue diciendo por qué.
+    """
+    propuestos = escenarios_por_defecto(crecimiento)
+    if not recibidos:
+        return propuestos
+    salida = {}
+    for nombre, s in recibidos.items():
+        p = propuestos.get(nombre)
+        mismo = p is not None and math.isclose(s["growth_rate"], p["growth_rate"], rel_tol=0.0, abs_tol=1e-9)
+        salida[nombre] = {
+            **s,
+            "supuesto": bool(mismo and p["supuesto"]),
+            "motivo": p["motivo"] if mismo else None,
+        }
+    return salida
 
 
 def escenarios_con_rango(

@@ -45,12 +45,31 @@ describe('Termino', () => {
     expect(definicion()).toBeNull()
   })
 
+  it('en el móvil, con los eventos de un toque de verdad, el segundo toque la cierra (revisión 15)', () => {
+    // Un toque emula la entrada del ratón y nunca su salida (Playwright, Pixel 5):
+    // pointerenter → pointerdown → mouseover → mouseenter → focus → click; el
+    // segundo, pointerenter → pointerdown → click. Con `onMouseEnter` la
+    // definición se quedaba «encima» y no se cerraba.
+    render(<Termino clave="per" />)
+    const boton = screen.getByRole('button', { name: 'PER' })
+    fireEvent.pointerEnter(boton, { pointerType: 'touch' })
+    fireEvent.pointerDown(boton, { pointerType: 'touch' })
+    fireEvent.mouseEnter(boton)
+    fireEvent.focus(boton)
+    fireEvent.click(boton)
+    expect(definicion()).toHaveTextContent(GLOSARIO.per.definicion)
+    fireEvent.pointerEnter(boton, { pointerType: 'touch' })
+    fireEvent.pointerDown(boton, { pointerType: 'touch' })
+    fireEvent.click(boton)
+    expect(definicion()).toBeNull()
+  })
+
   it('con el ratón, se abre al pasar por encima y se cierra al irse', () => {
     render(<Termino clave="media_200" />)
     const boton = screen.getByRole('button', { name: 'media de 200 sesiones' })
-    fireEvent.mouseEnter(boton)
+    fireEvent.pointerEnter(boton, { pointerType: 'mouse' })
     expect(definicion()).toBeInTheDocument()
-    fireEvent.mouseLeave(boton)
+    fireEvent.pointerLeave(boton, { pointerType: 'mouse' })
     expect(definicion()).toBeNull()
   })
 

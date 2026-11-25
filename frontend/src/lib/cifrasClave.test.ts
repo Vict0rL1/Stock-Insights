@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalisisEmpresaResponse } from '../api/types'
 import completa from '../test/fixtures/empresa_completa.json'
+import deudaParcial from '../test/fixtures/empresa_deuda_parcial.json'
 import vacia from '../test/fixtures/empresa_vacia.json'
 import { cifrasClave } from './cifrasClave'
 
@@ -53,6 +54,35 @@ describe('cifras clave', () => {
     }
     expect(cifras[2].frase).toBe('Sin PER: falta el precio.')
     expect(cifras[3].frase).toBe('No se puede calcular: sin precio o sin acciones.')
+  })
+
+  it('con deuda parcial, el crecimiento implícito dice que el precio exige más (revisión 15, H5)', () => {
+    const a = analisis(deudaParcial)
+    expect(a.valoracion.dcf_inverso?.deuda_parcial).toEqual(['short_term_debt'])
+    const crecimiento = cifrasClave(a)[3]
+    expect(crecimiento.frase).toMatch(
+      /No es una previsión: es lo que el precio ya da por hecho\. Con la deuda parcial \(falta deuda a corto plazo, que cuenta como cero\): si existe, el precio exige más crecimiento que este\.$/,
+    )
+    // Sin deuda parcial, nada que decir.
+    expect(cifrasClave(analisis(completa))[3].frase).not.toMatch(/parcial/)
+  })
+
+  it('sin crecimiento implícito al 9 % dice el motivo del backend, no «faltan las cuentas o el precio» (revisión 15, H6)', () => {
+    // Una acción tan cara que al 9 % ni creciendo al 60 % anual se justifica su
+    // precio: la curva está disponible (hay rango al 7 y al 8 %) y el punto del
+    // 9 % no tiene valor. El motivo, el que sirve el backend para ese punto.
+    const MOTIVO =
+      'Ni creciendo al 60 % anual durante 5 años se justifica el precio con estos supuestos. Que el número exacto sea ' +
+      '70 % u 80 % da igual: lo que dice el resultado es que el precio no se explica por el flujo de caja actual.'
+    const a = structuredClone(analisis(completa))
+    a.valoracion.dcf_inverso = { ...a.valoracion.dcf_inverso!, crecimiento_implicito: null, rango: { bajo: 0.4703, alto: 0.5391 }, motivo: MOTIVO }
+    const c = cifrasClave(a)[3]
+    expect(c.valor).toBe('—')
+    // Con su punto final, uno solo.
+    expect(c.frase).toBe(`No se puede calcular: ${MOTIVO}`)
+    // Sin motivo, no se inventa uno.
+    a.valoracion.dcf_inverso.motivo = null
+    expect(cifrasClave(a)[3].frase).toBe('No se pudo calcular.')
   })
 
   it('un BPA negativo no da un PER: lo dice', () => {

@@ -83,6 +83,27 @@ describe('la pestaña Valoración de la ficha', () => {
   })
 })
 
+describe('revisión 15', () => {
+  it('con EDGAR caído (502) es un fallo, con «Reintentar»; no «no presenta 10-K» (guarda de H2: el arreglo es del backend)', async () => {
+    const DETALLE = "No se pudieron descargar los estados financieros de EDGAR: todas las fuentes fallaron para 'financials'"
+    servir({ '/api/valuation/ACME': { status: 502, json: { detail: DETALLE } } })
+    render(<MemoryRouter><ValuationSection symbol="ACME" /></MemoryRouter>)
+    expect(await screen.findByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Sin valoración/)).toBeNull()
+  })
+
+  it('el escenario acotado al −50 % lo dice en su tarjeta (H3)', async () => {
+    const acme = empresaCompleta as Escenario
+    const v = structuredClone(valoracionDe(acme))
+    const MOTIVO = 'Con el crecimiento medido (-50,0 % anual) este escenario propondría un -75,0 %: se acota al -50 %.'
+    v.escenarios.bajista.procedencia = { crecimiento_supuesto: false, motivo: MOTIVO }
+    servir({ '/api/valuation/ACME': { status: 200, json: v } })
+    render(<MemoryRouter><ValuationSection symbol="ACME" /></MemoryRouter>)
+    const tarjeta = (await screen.findByText('Si va mal')).closest('div')!.parentElement!
+    expect(within(tarjeta).getByText(MOTIVO)).toBeInTheDocument()
+  })
+})
+
 describe('las mismas fixtures dan los mismos rangos en las dos vistas', () => {
   // La condición de hecho del ítem 3.3: la ficha y el módulo, cada uno con sus
   // peticiones de verdad contra las mismas respuestas del backend, enseñan los

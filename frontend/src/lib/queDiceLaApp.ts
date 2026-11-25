@@ -107,6 +107,18 @@ const SOBRE_LA_POSICION: [string, string][] = [
   ['tendencia_perdida', 'ha perdido su tendencia'],
 ]
 
+/** « Pero la app no pudo comprobar si ha llegado a tu stop: revísalo tú.», o
+ *  nada. Para mantener y para reducir: solo `mantener` lo decía, y al reducir
+ *  unas acciones de un spin-off (coste 0, sin stop guardado) la frase daba la
+ *  puntuación como única salida cuando el stop podía estar ya perforado y pedir
+ *  venderlo todo (revisión 15, H4). Al vender todo, lo que falte por comprobar
+ *  ya no cambia la acción (y «Lo que comprueba la app» enseña su «?»). */
+function sinComprobar(d: Decision): string {
+  const r = (id: string) => regla(d, id)
+  const faltan = SOBRE_LA_POSICION.filter(([id]) => !r(id) || r(id)?.resultado === 'desconocido').map(([, t]) => t)
+  return faltan.length ? ` Pero la app no pudo comprobar si ${faltan.join(' ni si ')}: revísalo tú.` : ''
+}
+
 /** Lo que la traza dice aparte de la decisión y no puede callarse: un precio
  *  rescatado de caché (sobre lo que ya tienes se decide igual, y no avisarlo
  *  sería el error caro) y unos resultados a la vista. */
@@ -181,17 +193,15 @@ function situacion(d: DecisionDelMotor, moneda: string | null): string | null {
     }
     case 'reducir':
       return regla(d, 'tendencia_perdida')?.papel === 'decide'
-        ? 'Su precio ha perdido la tendencia (está por debajo de su media de 200 sesiones): la app sugiere vender una parte.'
+        ? 'Su precio ha perdido la tendencia (está por debajo de su media de 200 sesiones): la app sugiere vender una parte.' +
+            sinComprobar(d)
         : null
     case 'mantener': {
       const no = SOBRE_LA_POSICION.filter(([id]) => r(id)?.resultado === 'no_cumple').map(([, t]) => t)
-      const sinComprobar = SOBRE_LA_POSICION.filter(([id]) => !r(id) || r(id)?.resultado === 'desconocido').map(([, t]) => t)
       const base = no.length
         ? `La tienes en cartera y nada pide tocarla: ni ${no.join(' ni ')}.`
         : 'La tienes en cartera y la app sugiere mantenerla.'
-      return sinComprobar.length
-        ? `${base} Pero la app no pudo comprobar si ${sinComprobar.join(' ni si ')}: revísalo tú.`
-        : base
+      return base + sinComprobar(d)
     }
     default:
       return null
