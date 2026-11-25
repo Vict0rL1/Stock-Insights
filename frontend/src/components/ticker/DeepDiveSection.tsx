@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import type {
   DeepDiveNarrative,
@@ -15,6 +16,7 @@ import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
 import { ResumenDcf } from '../valoracion/ResumenDcf'
+import { rutaValoracion } from '../valoracion/ruta'
 import { Ventana } from '../Ventana'
 
 const STANCE_STYLES: Record<string, string> = {
@@ -371,11 +373,26 @@ function Informe({
       <ValuationBlock report={report} />
 
       {/* El mismo DCF que la pestaña Valoración y el módulo (ítem 3.3): antes
-          era un tercero, con WACC 12/10/9 % y un valor puntual por escenario. */}
+          era un tercero, con WACC 12/10/9 % y un valor puntual por escenario.
+          Lo que no precarga (FCF de partida no positivo o sin acciones) lo dice,
+          con el enlace al módulo, que sí lo valora: la sección desaparecía sin
+          decir que faltaba (revisión 15, H7). */}
       {report.dcf && (
         <Section title="¿Cuánto podría valer? (DCF)">
           <div className="mt-2">
-            <ResumenDcf datos={report.dcf} symbol={symbol} />
+            {report.dcf.disponible ? (
+              <ResumenDcf datos={report.dcf} symbol={symbol} />
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">{report.dcf.motivo}</p>
+                <Link
+                  to={rutaValoracion(symbol)}
+                  className="inline-block rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                >
+                  Abrir el análisis completo
+                </Link>
+              </div>
+            )}
           </div>
         </Section>
       )}

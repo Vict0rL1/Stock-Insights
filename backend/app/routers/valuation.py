@@ -55,6 +55,7 @@ from app.analysis.valuation import (
     CRECIMIENTO_MAXIMO,
     CRECIMIENTO_MINIMO,
     CRECIMIENTO_SUPUESTO,
+    aviso_de_orden,
     cimientos,
     escenarios_con_rango,
     rango_global,
@@ -72,6 +73,14 @@ from app.simbolos import SimboloRuta, validar_simbolo
 router = APIRouter(prefix="/api/valuation", tags=["valuation"])
 
 MAX_PARES = 6
+
+# Qué entrada del filing falta en un 422 de «dato que falta»: el nombre del campo
+# del cuerpo (`base_fcf`, `net_debt`, `shares_outstanding`). Va en una cabecera y
+# no en el cuerpo para no cambiar el `detail`, que es el texto que se enseña. Sin
+# ella el módulo no sabía qué campo no trae el filing, y la ayuda del campo vacío
+# de la deuda decía «la del filing» al lado del 422 que dice que no la trae
+# (revisión 15, H8).
+CABECERA_DATO_QUE_FALTA = "X-Dato-Que-Falta"
 
 
 class Escenario(BaseModel):
@@ -213,7 +222,8 @@ def valorar(
     """Las cuatro valoraciones a la vez, con supuestos visibles y editables.
 
     Sin cuerpo, la app propone los escenarios desde el histórico de la empresa.
-    Con cuerpo, manda lo que envíes: es tu tesis, no la suya.
+    Con cuerpo, manda lo que envíes: es tu tesis, no la suya. Los escenarios que
+    no envíes los propone la app con las entradas de esta llamada.
     """
     symbol = validar_simbolo(symbol)
     datos = _cimientos(service, symbol)
@@ -232,6 +242,7 @@ def valorar(
                 "(faltan flujo operativo o capex en el filing). Puedes escribirlo tú "
                 "en el campo de FCF de partida si lo tienes."
             ),
+            headers={CABECERA_DATO_QUE_FALTA: "base_fcf"},
         )
     # Mismo patrón para la deuda y las acciones: sin ellas no hay valor por
     # acción, y lo honesto es decirlo y ofrecer el arreglo, no rellenar el
@@ -245,6 +256,7 @@ def valorar(
                 "suponerla cero la valoraría como si no debiera nada. Puedes "
                 "escribirla tú en el campo de deuda neta si la conoces."
             ),
+            headers={CABECERA_DATO_QUE_FALTA: "net_debt"},
         )
     # Las del filing pueden faltar o venir a cero: sin acciones no hay valor por acción.
     if acciones is None or acciones <= 0:
@@ -255,6 +267,7 @@ def valorar(
                 "valor por acción. Puedes escribirlo tú en el campo de acciones en "
                 "circulación si lo conoces."
             ),
+            headers={CABECERA_DATO_QUE_FALTA: "shares_outstanding"},
         )
 
     supuestos = supuestos_con_procedencia(
@@ -265,7 +278,17 @@ def valorar(
 
     # 1) Escenarios, cada uno con su RANGO, y el rango global de todos.
     escenarios = escenarios_con_rango(supuestos, base_fcf, net_debt, acciones, request.years)
-    global_ = rango_global(escenarios, datos["precio"])
+    global_ = rango_global(escenarios, datos["precio"], base_fcf)
+    # Si tus escenarios no van de menos a más, se dice (revisión 15, H1). Solo
+    # cuando pasa: lo propuesto siempre va en orden.
+    aviso_orden = aviso_de_orden(escenarios, base_fcf)
+    # La frase del intercambio, siempre que el bajista o el alcista que se usan
+    # sean los propuestos e intercambiados, no solo sin cuerpo: «Recalcular con
+    # mis supuestos» tras escribir la deuda neta la borraba con el bajista aún en
+    # 15 % / 8 % y el alcista en 4 % / 11 % (revisión 15, H2).
+    intercambiados = base_fcf < 0 and any(
+        supuestos[n]["propuesto"] for n in ("bajista", "alcista") if n in supuestos
+    )
 
     # 2) Sensibilidad ordenada sobre el escenario base.
     base = supuestos.get("base") or next(iter(supuestos.values()))
@@ -357,13 +380,14 @@ def valorar(
             "perpetuidad el mejor quinquenio es el error más común del DCF casero. "
             "Cámbialos: son un punto de arranque, no una opinión de la app."
             + (
-                " Con el FCF de partida negativo, crecer es quemar más caja: el bajista "
-                "lleva los supuestos que más agrandan la quema (más crecimiento, menos "
-                "descuento) y el alcista, los que menos."
-                if base_fcf < 0 and not request.escenarios
+                " Con el FCF de partida negativo, crecer es quemar más caja: la app propone "
+                "el bajista con los supuestos que más agrandan la quema (más crecimiento, "
+                "menos descuento) y el alcista con los que menos."
+                if intercambiados
                 else ""
             )
         ),
+        **({"aviso_orden": aviso_orden} if aviso_orden else {}),
         "disclaimer": (
             "Aquí no hay ningún precio objetivo, y no por estilo: no existe en el "
             "código un campo donde quepa uno. Los escenarios dan rangos, los "

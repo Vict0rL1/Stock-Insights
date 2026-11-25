@@ -21,6 +21,7 @@ from app.analysis.factors import build_raw_factors, composite_score, family_scor
 from app.analysis.fundamentals import derive_ratio_series, nota_deuda_parcial
 from app.analysis.signal import build_signal
 from app.analysis.valuation_history import valuation_vs_history
+from app.datos import numero as datos_numero
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import LlmOutput
@@ -222,7 +223,7 @@ def deep_dive(
     return report
 
 
-def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict | None:
+def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict:
     """El DCF del módulo Valoración con los datos del informe, para no obligar a
     ir a otra pestaña a verlo.
 
@@ -232,15 +233,21 @@ def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict 
     rangos que la pestaña Valoración y que el módulo, y la misma forma de datos
     (`escenarios`, `rango_global`, `entradas`) para pintarlos con el mismo
     componente (`ResumenDcf`), que explica de dónde salen y enlaza al módulo.
+
+    Lo que no precarga lo dice: `{"disponible": False, "motivo": …}`.
     """
     from app.analysis.valuation import ANOS, cimientos, escenarios_con_rango, escenarios_por_defecto, rango_global
 
     c = cimientos(periods)
-    fcf, acciones = c["base_fcf"], c["shares_outstanding"]
-    # Sin FCF positivo o sin acciones, el informe no lo precarga (como antes); el
-    # módulo sí lo intenta y dice qué falta.
-    if fcf is None or fcf <= 0 or not acciones:
-        return None
+    fcf, acciones = c["base_fcf"], datos_numero(c["shares_outstanding"])
+    # Sin FCF positivo o sin acciones, el informe no lo precarga (Victor decidió
+    # que se quede así); el módulo sí lo intenta y dice qué falta. Pero se dice:
+    # devolvía None y el informe omitía la sección entera, sin decir que faltaba
+    # ni por qué, mientras la pestaña Valoración de la misma ficha enseñaba tres
+    # rangos con el mismo filing (revisión 15, H7).
+    motivo = _sin_dcf_precargado(fcf, acciones, c["net_debt"], c["fiscal_year"])
+    if motivo:
+        return {"disponible": False, "motivo": motivo}
     # Sin deuda neta, cada escenario sale «no disponible» con el motivo: nunca
     # como si la empresa no debiera nada.
     escenarios = escenarios_con_rango(
@@ -248,8 +255,9 @@ def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict 
     )
     precio = (quote or {}).get("price")
     return {
+        "disponible": True,
         "escenarios": escenarios,
-        "rango_global": rango_global(escenarios, precio),
+        "rango_global": rango_global(escenarios, precio, fcf),
         "entradas": {
             "base_fcf": fcf,
             "net_debt": c["net_debt"],
@@ -262,6 +270,34 @@ def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict 
             "source": source,
         },
     }
+
+
+def _sin_dcf_precargado(fcf: float | None, acciones: float | None, deuda: float | None, ejercicio) -> str | None:
+    """Por qué el informe no precarga el DCF, o None si lo precarga. Lo que dice
+    del módulo tiene que ser verdad con este filing: sin acciones o sin deuda, el
+    módulo tampoco valora hasta que las escribas."""
+    if fcf is None:
+        return (
+            "El informe no precarga el DCF: no se pudo calcular el flujo de caja libre del último "
+            "ejercicio (faltan flujo operativo o capex en el filing). El análisis completo deja escribirlo."
+        )
+    if acciones is None or acciones <= 0:
+        return (
+            "El informe no precarga el DCF: el filing no trae las acciones en circulación, y sin ellas no "
+            "hay valor por acción. El análisis completo deja escribirlas."
+        )
+    if fcf <= 0:
+        cuando = f" en el ejercicio {ejercicio}" if ejercicio is not None else ""
+        modulo = (
+            "El análisis completo sí lo valora, con sus rangos, y deja escribir otro FCF de partida."
+            if deuda is not None
+            else "El análisis completo deja escribir otro FCF de partida y la deuda neta, que el filing no trae."
+        )
+        return (
+            f"El informe no precarga el DCF cuando el FCF de partida no es positivo (es {fmt_compacto(fcf)}"
+            f"{cuando}). {modulo}"
+        )
+    return None
 
 
 @router.post("/{symbol}/narrative")

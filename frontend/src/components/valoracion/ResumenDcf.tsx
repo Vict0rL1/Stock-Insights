@@ -95,7 +95,8 @@ export function ResumenDcf({ datos, symbol }: { datos: ResumenValoracion; symbol
           caja. Sin esta línea, «Si va mal» enseñaba el crecimiento alto y el WACC
           bajo sin decir por qué; el módulo lo dice en `nota_supuestos`, que este
           resumen no recibe. Aquí solo llegan escenarios propuestos: la ficha no
-          manda los suyos y el informe no precarga el DCF con FCF ≤ 0. */}
+          manda los suyos y el informe no precarga el DCF con FCF ≤ 0 (dice por
+          qué y enlaza al módulo, revisión 15, H7). */}
       {datos.entradas.base_fcf < 0 && (
         <p className="text-xs leading-relaxed text-slate-500">
           El FCF de partida es negativo: la empresa quema caja, y crecer es quemar más. Por eso «Si va mal» lleva el

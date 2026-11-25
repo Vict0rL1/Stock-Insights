@@ -100,6 +100,11 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    # El 422 de «dato que falta» del DCF dice cuál en esta cabecera (revisión 15,
+    # H8). Por el proxy de Vite es el mismo origen y se lee igual; si el frontend
+    # llama al backend directamente, sin esto el navegador la esconde y el campo
+    # vacío volvería a decir «la del filing».
+    expose_headers=["X-Dato-Que-Falta"],
 )
 
 

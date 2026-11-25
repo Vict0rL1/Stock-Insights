@@ -150,7 +150,7 @@ def test_veredicto_lleva_invalidadores_y_disclaimer(client):
 
 def test_dcf_precargado_con_escenarios(client):
     dcf = client.get("/api/deep-dive/AAPL").json()["dcf"]
-    assert dcf is not None
+    assert dcf is not None and dcf["disponible"] is True
     assert set(dcf["escenarios"]) == {"bajista", "base", "alcista"}
     rangos = [dcf["escenarios"][k]["rango"] for k in ("bajista", "base", "alcista")]
     assert all(r["disponible"] for r in rangos)
@@ -208,6 +208,59 @@ def test_el_dcf_del_informe_lee_la_deuda_parcial_y_la_desconocida(session_factor
         assert not any(e["rango"]["disponible"] for e in dcf["escenarios"].values())
         assert all(e["rango"]["faltan"] == ["deuda neta"] for e in dcf["escenarios"].values())
         assert dcf["rango_global"] is None
+
+
+def _informe_con(session_factory, cambiar) -> dict:
+    """El informe de AAPL con los ejercicios cambiados por `cambiar(periodo)`."""
+
+    class Cambiado(DeepDiveService):
+        def get(self, data_type, **kwargs):
+            r = super().get(data_type, **kwargs)
+            if data_type == "financials":
+                r["periods"] = [{**p, **cambiar(p)} for p in r["periods"]]
+            return r
+
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_service] = Cambiado
+    app.dependency_overrides[get_session] = sesion
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        c = TestClient(app)
+        return {"informe": c.get("/api/deep-dive/AAPL").json(), "modulo": c.post("/api/valuation/AAPL").json()}
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("cambiar, dice", [
+    # Capex mayor que el flujo operativo: FCF negativo.
+    (lambda p: {"capex": p["cfo"] * 2}, "no es positivo"),
+    (lambda p: {"capex": None}, "flujo de caja libre"),
+    (lambda p: {"shares_outstanding": None}, "acciones en circulación"),
+])
+def test_lo_que_el_informe_no_precarga_lo_dice_con_su_motivo(session_factory, cambiar, dice):
+    """Revisión 15, H7: con el FCF de partida negativo la pestaña Valoración de la
+    ficha enseña tres rangos y el informe omitía la sección entera, sin decir que
+    faltaba ni por qué (`_dcf_defaults` devolvía None). Victor decidió que el
+    informe no lo precargue; ahora lo dice."""
+    r = _informe_con(session_factory, cambiar)
+    dcf = r["informe"]["dcf"]
+    assert dcf is not None and dcf["disponible"] is False, dcf
+    assert dice in dcf["motivo"] and "análisis completo" in dcf["motivo"], dcf["motivo"]
+    assert "escenarios" not in dcf
+
+
+def test_con_fcf_negativo_el_modulo_si_valora_lo_que_el_informe_no_precarga(session_factory):
+    """Guarda de H7: el motivo dice que el análisis completo «sí lo valora», y es
+    verdad con el mismo filing."""
+    r = _informe_con(session_factory, lambda p: {"capex": p["cfo"] * 2})
+    assert all(e["rango"]["disponible"] for e in r["modulo"]["escenarios"].values())
+    assert "sí lo valora" in r["informe"]["dcf"]["motivo"]
 
 
 def test_crecimiento_y_margenes_coherentes_con_los_datos(client):

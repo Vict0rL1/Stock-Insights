@@ -1,5 +1,5 @@
 import { useCallback, useId, useState, type KeyboardEvent } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { HistoryRange, Quote } from '../api/types'
 import { FundamentalsGrid } from '../components/FundamentalsGrid'
@@ -194,7 +194,8 @@ function rutaDe(pathname: string, conSimbolo: boolean, simbolo: string): string 
 export function TickerPage() {
   const { symbol: routeSymbol } = useParams()
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, key: claveDeVisita } = useLocation()
+  const tipoDeNavegacion = useNavigationType()
   const [params, setParams] = useSearchParams()
   const symbol = (routeSymbol ?? '').toUpperCase()
 
@@ -217,6 +218,16 @@ export function TickerPage() {
   // símbolo lo olvida en ese mismo render (ni uno con el de antes, que ya pedía).
   const [cambiosPulsado, setCambiosPulsado] = useState<{ symbol: string } | null>(null)
   if (cambiosPulsado !== null && cambiosPulsado.symbol !== symbol) setCambiosPulsado(null)
+  // Y vale para esta visita: toda navegación que no sea el `replace` con que
+  // `irA` cambia de pestaña la olvida, en ese mismo render. Con el mismo
+  // símbolo la ficha sigue montada: buscar ACME desde su ficha y volver «atrás»
+  // a `?pestana=novedades` montaba «Qué cambió» y congelaba otra vez sin que
+  // nadie lo pulsara (revisión 15, H4).
+  const [visita, setVisita] = useState(claveDeVisita)
+  if (visita !== claveDeVisita) {
+    setVisita(claveDeVisita)
+    if (tipoDeNavegacion !== 'REPLACE' && cambiosPulsado !== null) setCambiosPulsado(null)
+  }
   const vista: VistaFicha =
     pedida.seccion === 'cambios' && cambiosPulsado?.symbol !== symbol ? { ...pedida, seccion: null } : pedida
   const irA = (v: VistaFicha) => {

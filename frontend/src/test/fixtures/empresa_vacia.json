@@ -65,7 +65,10 @@
      "financials": "edgar",
      "quote": null
     },
-    "dcf": null,
+    "dcf": {
+     "disponible": false,
+     "motivo": "El informe no precarga el DCF: no se pudo calcular el flujo de caja libre del último ejercicio (faltan flujo operativo o capex en el filing). El análisis completo deja escribirlo."
+    },
     "debt": {
      "altman_z": {
       "components": {

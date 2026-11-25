@@ -66,6 +66,7 @@
      "quote": "finnhub"
     },
     "dcf": {
+     "disponible": true,
      "entradas": {
       "base_fcf": 200.0,
       "deuda_parcial": [

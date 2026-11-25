@@ -90,10 +90,19 @@ export class ApiError extends Error {
      *  cabe en el contrato. `null` si el backend explicó el error con su propio
      *  texto (un dato que falta, un recurso que no existe). */
     public validacion: ErrorDeValidacion[] | null = null,
+    /** En un 422 de un dato que falta, qué campo del cuerpo no trae el filing
+     *  (`net_debt`, `base_fcf`, `shares_outstanding`; cabecera `X-Dato-Que-Falta`
+     *  del módulo de valoración). Sin él, la ayuda del campo vacío de la deuda
+     *  decía «la del filing» junto al 422 que decía que no la trae (revisión 15,
+     *  H8). */
+    public datoQueFalta: string | null = null,
   ) {
     super(message)
   }
 }
+
+/** La cabecera con que el módulo de valoración dice qué dato no trae el filing. */
+export const CABECERA_DATO_QUE_FALTA = 'X-Dato-Que-Falta'
 
 /** Un 422 con texto propio del backend: el filing no trae un dato sin el que no
  *  se puede calcular («escribe la deuda neta»). Un 422 de validación es otra
@@ -179,7 +188,12 @@ async function errorDe(resp: Response): Promise<ApiError> {
   } catch {
     return new ApiError(resp.status, generico)
   }
-  return new ApiError(resp.status, textoDeError(detail) ?? generico, Array.isArray(detail) ? (detail as ErrorDeValidacion[]) : null)
+  return new ApiError(
+    resp.status,
+    textoDeError(detail) ?? generico,
+    Array.isArray(detail) ? (detail as ErrorDeValidacion[]) : null,
+    resp.headers.get(CABECERA_DATO_QUE_FALTA),
+  )
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -304,6 +318,7 @@ export const api = {
   // El único DCF (ítem 3.3): el módulo, la pestaña Valoración de la ficha y el
   // informe. Las entradas que mandes sustituyen a las del filing; sin ellas, las
   // del filing (`/api/stocks/{s}/valuation/{defaults,dcf}` son alias obsoletos).
+  // Los escenarios que no mandes los propone el backend con esas entradas.
   valorar: (
     symbol: string,
     body: {

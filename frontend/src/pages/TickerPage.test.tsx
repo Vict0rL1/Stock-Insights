@@ -462,6 +462,45 @@ describe('ficha de una empresa', () => {
     await waitFor(() => expect(queCongelan('ACME')).toHaveLength(2))
   })
 
+  it('buscar la misma empresa desde su ficha y volver «atrás» no reabre «Qué cambió» ni congela otra vez', async () => {
+    // Revisión 15 (H4): la pulsación se recordaba por símbolo, y con el mismo
+    // símbolo la ficha sigue montada. ACME (Novedades) → buscar ACME arriba (una
+    // entrada nueva) → «atrás» volvía a `?pestana=novedades` con la pulsación
+    // aún apuntada: «Qué cambió» se montaba solo y pedía el análisis que congela.
+    servir({
+      '/api/empresa/ACME/analisis': 'pendiente',
+      '/api/stocks/ACME/quote': ok(cotizacion('ACME', 0.5)),
+      '/api/stocks/ACME/profile': ok(perfil('ACME', 'ACME Corp')),
+      '/api/stocks/ACME/fundamentals': falla(404, 'sin fundamentales'),
+      '/api/stocks/ACME/history?range=1Y': ok(historico('ACME')),
+    })
+    abrir('ACME')
+    await abrirPestana('Novedades')
+    expect(queCongelan('ACME')).toHaveLength(1) // la pulsación: lo documentado
+    fireEvent.change(screen.getByPlaceholderText(/Símbolo/), { target: { value: 'acme' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Analizar' }))
+    await waitFor(() => expect(ubicacion).toBe('/ticker/ACME'))
+    fireEvent.click(screen.getByRole('button', { name: 'Atrás' }))
+    await waitFor(() => expect(ubicacion).toBe('/ticker/ACME?pestana=novedades'))
+    // Se espera un poco: si «Qué cambió» se monta, pide el análisis que congela.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(await pestana('Novedades')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Qué cambió' })).toHaveAttribute('aria-pressed', 'false')
+    expect(queCongelan('ACME')).toHaveLength(1)
+  })
+
+  it('cambiar de parte dentro de la ficha no olvida la pulsación de «Qué cambió»', async () => {
+    // Guarda de H4: `irA` cambia la pestaña con `replace`, que es la misma visita.
+    servir({ ...ACME_SIMPLE, '/api/empresa/ACME/analisis': 'pendiente' })
+    abrir('ACME')
+    await abrirPestana('Novedades')
+    const queCambio = screen.getByRole('button', { name: 'Qué cambió' })
+    expect(queCambio).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(ubicacion).toBe('/ticker/ACME?pestana=novedades'))
+    expect(queCambio).toHaveAttribute('aria-pressed', 'true')
+    expect(queCongelan('ACME')).toHaveLength(1)
+  })
+
   it('un enlace con ?pestana=novedades abre Novedades sin abrir «Qué cambió»', async () => {
     servir(ACME_SIMPLE)
     abrir('ACME', '?pestana=novedades')

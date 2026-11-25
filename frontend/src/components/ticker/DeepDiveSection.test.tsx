@@ -87,6 +87,21 @@ describe('informe a fondo, revisión 12 (visual)', () => {
     expect(screen.queryByText('Valor intrínseco (DCF precargado)')).toBeNull()
   })
 
+  it('lo que el informe no precarga lo dice, con su motivo y el enlace al módulo (revisión 15, H7)', async () => {
+    // Con el FCF de partida negativo la pestaña Valoración enseña tres rangos, y
+    // el informe omitía la sección entera sin decir que faltaba ni por qué.
+    const MOTIVO =
+      'El informe no precarga el DCF cuando el FCF de partida no es positivo (es -200 en el ejercicio 2025). ' +
+      'El análisis completo sí lo valora, con sus rangos, y deja escribir otro FCF de partida.'
+    servirInforme((informe) => {
+      informe.dcf = { disponible: false, motivo: MOTIVO }
+    })
+    render(<MemoryRouter><DeepDiveSection symbol="ACME" /></MemoryRouter>)
+    expect(await screen.findByText(MOTIVO, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '¿Cuánto podría valer? (DCF)' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrir el análisis completo' })).toHaveAttribute('href', rutaValoracion('ACME'))
+  })
+
   it('los márgenes dicen de qué ejercicio son, y la lectura conjunta su alcance', async () => {
     servirInforme((informe) => {
       informe.margins.ejercicio = '2025'

@@ -1144,8 +1144,9 @@ export interface DeepDiveReport {
   }
   valuation: ValuationHistory
   /** El DCF del módulo Valoración con los datos del informe (ítem 3.3): mismas
-   *  funciones, mismos rangos. Null sin FCF positivo o sin acciones. */
-  dcf: ResumenValoracion | null
+   *  funciones, mismos rangos. Sin FCF positivo o sin acciones no se precarga, y
+   *  se dice por qué (revisión 15, H7). */
+  dcf: DcfDelInforme | null
   quant_signal: QuantSignal | null
   risk_metrics: {
     annualized_volatility: number | null
@@ -1694,9 +1695,17 @@ export interface Valoracion {
   dcf_inverso: DcfInverso
   comparables: Comparables
   nota_supuestos: string
+  /** Solo si los centros no van de menos a más (bajista ≤ base ≤ alcista): pasa
+   *  con escenarios tuyos pensados para un FCF del otro signo. Lo propuesto
+   *  siempre va en orden (revisión 15, H1). */
+  aviso_orden?: string
   disclaimer: string
   computed_by: string
 }
+
+/** El `dcf` del informe completo: el resumen, o por qué no se precarga (con el
+ *  FCF de partida no positivo o sin acciones; el módulo sí lo valora). */
+export type DcfDelInforme = (ResumenValoracion & { disponible: true }) | { disponible: false; motivo: string }
 
 /** Lo que pinta el resumen del DCF (`ResumenDcf`, ítem 3.3): la parte de
  *  `Valoracion` que trae también el `dcf` del informe completo. Una sola forma

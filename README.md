@@ -1743,6 +1743,46 @@ Lo que fijó la revisión 14 (contrato de `POST /api/valuation/{s}`):
   no es positivo, con una nota que dice si el rango está entero bajo cero o lo cruza.
   Cambió el golden `dcf_modulo`, solo en sus 4 casos `fcf_negativo`.
 
+Lo que fijó la revisión 15 (sin cambiar el golden: ningún caso manda escenarios y la
+prosa no entra en el canon):
+
+- **Los escenarios que no mandas los propone la app con las entradas de esa
+  llamada.** Un cuerpo con solo `escenarios.base` devuelve los tres: el base tuyo y
+  el bajista y el alcista propuestos para el FCF de partida de ESA llamada (antes
+  devolvía solo el base). «Recalcular con mis supuestos» manda solo los escenarios
+  que tocaste (y los que ya eran tuyos): reenviaba los tres de la respuesta
+  anterior, y con un FCF escrito de otro signo que el del filing el bajista
+  intercambiado salía el más alto (centros 63,5 / 38,3 / 18,7). El 3 % supuesto y el
+  suelo del −50 % se siguen diciendo en `procedencia`, también en los que propone.
+- **`aviso_orden`** (solo cuando pasa): tus escenarios mandan aunque sus centros no
+  vayan de menos a más (bajista ≤ base ≤ alcista), y entonces la respuesta lo dice,
+  con los centros y la causa según el signo del FCF. Lo propuesto siempre va en
+  orden, así que sin escenarios tuyos no aparece.
+- La frase del intercambio de `nota_supuestos` se dice siempre que el bajista o el
+  alcista que se usan sean los propuestos e intercambiados (FCF negativo), no solo
+  sin cuerpo: «Recalcular» tras escribir la deuda neta la borraba.
+- **Un 422 de un dato que falta lleva la cabecera `X-Dato-Que-Falta`** con el campo
+  del cuerpo (`base_fcf`, `net_debt` o `shares_outstanding`); el `detail` no cambia.
+  Con ella, el campo vacío de «Tus entradas» dice «sin dato en el filing» en vez de
+  prometer «la del filing» junto al 422 que dice que no la trae.
+- Un fallo que no es un dato que falta (un 502 de EDGAR) al recalcular la misma
+  empresa deja la valoración que se veía y lo escrito, dice el fallo y deja volver a
+  pulsar; antes la borraba y con ella «Recalcular con mis supuestos».
+- `rango_global` recibe el FCF de partida: la nota de un rango entero bajo cero da
+  la causa según su signo (con FCF positivo, la deuda neta que los flujos no cubren;
+  culpaba siempre al FCF), y un rango de 0 a 0 es «cero», no «por debajo de cero».
+  Con un FCF de partida de cero, la sensibilidad no nombra un `dominante` (todos los
+  recorridos son 0 %) y lo dice, un centro de cero es un valor (no «no producen un
+  valor»), y la nota del rango de cada escenario dice que es un solo punto.
+- **El `dcf` del informe completo lleva `disponible`.** Con el FCF de partida no
+  positivo, sin FCF o sin acciones el informe no lo precarga (Victor decidió que se
+  quede así), pero ya no calla: `{"disponible": false, "motivo": …}`, y el informe lo
+  pinta con el enlace al módulo (`rutaValoracion`), que sí lo valora. Antes era
+  `null` y la sección desaparecía.
+- En la ficha, la pulsación de «Qué cambió» vale para la visita, no solo para el
+  símbolo: buscar la misma empresa desde su ficha y volver «atrás» a
+  `?pestana=novedades` ya no lo monta ni congela otra vez.
+
 **`GET /api/stocks/{s}/valuation/defaults` y `POST /api/stocks/{s}/valuation/dcf`
 son alias obsoletos durante una versión**: responden lo de siempre (el golden
 `dcf_ficha` lo congela), van marcados `deprecated` en OpenAPI y con las cabeceras

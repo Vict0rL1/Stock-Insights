@@ -64,6 +64,11 @@ const CAMPOS: [keyof SupuestosEscenario, string][] = [
   ['terminal_growth', 'Perpetuidad'],
 ]
 
+/** Si un escenario sigue siendo el que llegó (sin tocar). */
+function mismosSupuestos(a: SupuestosEscenario, b: SupuestosEscenario | undefined): boolean {
+  return b !== undefined && CAMPOS.every(([c]) => Math.abs(a[c] - b[c]) < 1e-9)
+}
+
 /** Los tres escenarios, cada uno con su rango y sus supuestos editables.
  *
  *  Los campos eran `type="number"` leídos con `Number(...)`: un campo borrado, o
@@ -71,7 +76,9 @@ const CAMPOS: [keyof SupuestosEscenario, string][] = [
  *  sin avisar. Ahora son texto con la coma de la app, leído con `leerNumero`
  *  como el DCF de la ficha; lo que no se lee no llega a los supuestos y no deja
  *  recalcular (revisión 12, visual). Se monta de nuevo con cada valoración
- *  (`key`), así que lo escrito no sobrevive a otra respuesta. */
+ *  (`key`), así que lo escrito no sobrevive a otra respuesta. Al recalcular solo
+ *  se mandan los escenarios tuyos (`escenariosTuyos`): los demás los propone el
+ *  backend con las entradas de esa llamada (revisión 15, H1). */
 export function Escenarios({
   data,
   supuestos,
@@ -106,6 +113,14 @@ export function Escenarios({
       <p className="mt-1 text-xs leading-relaxed text-slate-500">
         {data.nota_supuestos}
       </p>
+      {/* Tus escenarios mandan aunque no vayan de menos a más (pensados para un
+          FCF del otro signo, p. ej.): se avisa en vez de callarlo con el bajista
+          en rojo por encima del alcista en verde (revisión 15, H1). */}
+      {data.aviso_orden && (
+        <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {data.aviso_orden}
+        </p>
+      )}
       {/* Si el crecimiento no sale de las cuentas de la empresa, se dice arriba
           del todo: es el parámetro que más mueve el valor, y «3 %» con cara de
           dato histórico era indistinguible de «3 %» puesto a falta de uno. */}
@@ -538,9 +553,12 @@ function EntradasPanel({
   // De partida, el dato del filing: escribir encima es una decisión, no un
   // campo que ya venga relleno. El del filing, no el que se usó: tras valorar
   // con tu deuda, vaciar el campo enseñaba tu cifra de antes como si fuera la
-  // del filing (revisión 14, H8). Sin una valoración sin la tuya, no se sabe.
+  // del filing (revisión 14, H8). Sin una valoración sin la tuya, no se sabe. Y
+  // si el backend dijo que el filing no lo trae (`null`), no se promete: la
+  // deuda vacía decía «la del filing» al lado del 422 que decía que no la trae
+  // (revisión 15, H8).
   const ayuda = (campo: CampoEntrada): string =>
-    Object.hasOwn(delFiling, campo) ? textoDeCampo(delFiling[campo], 0) || 'desconocido' : 'la del filing'
+    Object.hasOwn(delFiling, campo) ? textoDeCampo(delFiling[campo], 0) || 'sin dato en el filing' : 'la del filing'
   return (
     <details open={abierto} className="mt-3">
       <summary className="cursor-pointer text-xs font-medium text-slate-600">
@@ -586,6 +604,13 @@ export function ValuationPage() {
   const [faltaDato, setFaltaDato] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Los escenarios tuyos en lo que se ve: los que mandaste en esa valoración.
+  // Siguen siendo tuyos al recalcular aunque no los vuelvas a tocar.
+  const [propios, setPropios] = useState<string[]>([])
+  // Un fallo al recalcular la misma empresa deja lo que se veía (revisión 15, H3).
+  const [seQueda, setSeQueda] = useState(false)
+  // La empresa de lo que se ve; `correr` no depende del estado (`useCallback`).
+  const vista = useRef<string | null>(null)
   // Cada valoración monta los escenarios de nuevo: lo escrito a medias en un
   // campo no se queda encima de los supuestos que acaban de llegar.
   const [version, setVersion] = useState(0)
@@ -596,11 +621,14 @@ export function ValuationPage() {
       setBusy(true)
       setError(null)
       setFaltaDato(false)
+      setSeQueda(false)
       try {
         const d = await api.valorar(s, { ...(escenarios ? { escenarios } : {}), ...entradas })
         setData(d)
         setSymbol(s)
+        vista.current = s
         setUsadas(entradas)
+        setPropios(Object.keys(escenarios ?? {}))
         // Lo que no mandaste salió del filing: se guarda para la ayuda de cada
         // campo. Lo que mandaste no lo cambia (es tuyo, no del filing).
         setDelFiling((antes) => ({
@@ -630,10 +658,30 @@ export function ValuationPage() {
           return
         }
         setError(e instanceof Error ? e.message : 'Error')
+        // Cualquier otro fallo de la misma empresa (un 502 de EDGAR) también deja
+        // lo que se veía, con tus supuestos escritos, para volver a pulsar.
+        // Borraba la valoración y con ella «Recalcular con mis supuestos»: solo
+        // quedaba «Valorar», que vuelve a lo propuesto, y lo escrito se perdía
+        // (revisión 15, H3). Un dato que falta sí la quita: no hay valoración con
+        // estas entradas hasta que lo escribas.
+        if (vista.current === s && !faltaUnDato(e)) {
+          setSeQueda(true)
+          return
+        }
         setData(null)
+        vista.current = null
         // Un 422 con texto del backend es un dato que falta en el filing: se
         // abren los campos para escribirlo. «Reintentar» tal cual daría lo mismo.
         setFaltaDato(faltaUnDato(e))
+        // Y el campo que el filing no trae, si el backend lo dice, se apunta como
+        // sin dato: su ayuda ya no promete «la del filing» (revisión 15, H8).
+        const falta = faltaUnDato(e) ? CAMPOS_ENTRADA.find(({ campo }) => campo === e.datoQueFalta)?.campo : undefined
+        if (falta) {
+          setDelFiling((antes) => ({
+            symbol: s,
+            valores: { ...(antes?.symbol === s ? antes.valores : {}), [falta]: null },
+          }))
+        }
       } finally {
         setBusy(false)
       }
@@ -660,6 +708,17 @@ export function ValuationPage() {
     else setParams({ [PARAM_SIMBOLO]: s })
   }
   const tuya = (campo: CampoEntrada) => (usadas[campo] !== undefined ? ' (la tuya)' : '')
+  // «Recalcular con mis supuestos» manda solo los escenarios tuyos: los que
+  // tocaste ahora y los que ya eran tuyos. Mandaba los tres de la respuesta
+  // anterior, y con un FCF escrito de otro signo que el del filing se valoraban
+  // los propuestos para el otro signo: el bajista salía por encima del alcista
+  // (revisión 15, H1). Los no tocados los propone el backend con tus entradas.
+  const escenariosTuyos = (): Record<string, SupuestosEscenario> | undefined => {
+    const tuyos = Object.keys(supuestos).filter(
+      (n) => propios.includes(n) || !mismosSupuestos(supuestos[n], data?.escenarios[n]?.supuestos),
+    )
+    return tuyos.length ? Object.fromEntries(tuyos.map((n) => [n, supuestos[n]])) : undefined
+  }
 
   return (
     <div className="space-y-4">
@@ -695,6 +754,11 @@ export function ValuationPage() {
             {busy ? 'Calculando…' : 'Valorar'}
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
+          {error && seQueda && (
+            <span className="text-xs text-slate-500">
+              Lo que ves es la valoración de antes, con lo que has escrito: vuelve a calcular para reintentarlo.
+            </span>
+          )}
         </form>
         {/* Solo con una empresa elegida: son entradas de ESA empresa, y al
             cambiar de empresa se vacían. */}
@@ -735,7 +799,7 @@ export function ValuationPage() {
             onCambiar={(n, campo, v) =>
               setSupuestos((prev) => ({ ...prev, [n]: { ...prev[n], [campo]: v } }))
             }
-            onAplicar={() => correr(symbol, supuestos, leidas.valores)}
+            onAplicar={() => correr(symbol, escenariosTuyos(), leidas.valores)}
           />
           <InversoPanel inv={data.dcf_inverso} />
           <ComparablesPanel c={data.comparables} />
