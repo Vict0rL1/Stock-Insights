@@ -7,8 +7,8 @@ import { MarcoTabla } from '../MarcoTabla'
 import { api } from '../../api/client'
 import type { DivisasDeCartera, HistorialDeCartera, Portfolio, PortfolioPosition } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../../lib/formato'
-import { leerNumero } from '../../lib/entrada'
+import { decimalesPrecio, fmtAntiguedad, fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../../lib/formato'
+import { leerNumero, textoDeCampo } from '../../lib/entrada'
 import { useDato, type CargaConReintento } from '../../lib/useDato'
 import { AlertasDePrecio } from './AlertasDePrecio'
 import { estadoDelStop } from './atencion'
@@ -290,12 +290,22 @@ function EstadoDelStop({ p, moneda }: { p: PortfolioPosition; moneda: string | n
     )
   }
   const e = estadoDelStop(p)
+  // Lo perfora otro precio que el de la fila (el último cierre de la lista, con
+  // la cotización por encima): se dice cuál, como el aviso de Explorar. Sin
+  // decirlo, «Perforado» junto a un precio por encima del stop parecía un error.
+  const por = p.stop_perforado_por
   return (
     <span className={e.estado === 'perforado' ? 'font-medium text-red-600' : 'text-slate-700'}>
       {fmtPrecio(p.stop, moneda)}
       {e.estado === 'perforado' && (
         <span className="ml-1 rounded bg-red-100 px-1 text-[10px] font-medium text-red-800">
           {etiqueta('perforado')}
+        </span>
+      )}
+      {e.estado === 'perforado' && por && (
+        <span className="block text-[10px] font-normal text-red-800">
+          {etiqueta(por.fuente)}: {fmtPrecio(por.precio, moneda)}
+          {por.estado === 'viejo' ? ' (viejo)' : ''} · compruébalo en tu broker
         </span>
       )}
       {e.estado === 'sin_comprobar' && (
@@ -340,6 +350,11 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
   }
   const [form, setForm] = useState({ symbol: '', quantity: '', cost: '' })
   const [error, setError] = useState<string | null>(null)
+  // El rechazo de «Fijar stop» o «Anotar venta», con su símbolo y junto a la
+  // tabla: con un solo `error`, «No se puede bajar un stop ya fijado» salía bajo
+  // «Anotar una compra», debajo de toda la tabla, y se leía como un fallo de la
+  // compra (revisión 15).
+  const [errorDeFila, setErrorDeFila] = useState<string | null>(null)
   // Abierta sin histórico que medir: su stop es el punto medio de la clase y
   // queda fijado; la respuesta lo decía y nadie lo leía (revisión 9).
   const [avisoStop, setAvisoStop] = useState<string | null>(null)
@@ -382,31 +397,35 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
   // se recalcula con la volatilidad de hoy y en una caída se aleja solo. Fijarlo
   // lo congela. El servidor rechaza BAJAR un stop ya fijado, y el motivo sale
   // en el mensaje de error.
-  const fijarStop = async (id: number, sugerido: number | null | undefined) => {
+  const fijarStop = async (id: number, symbol: string, sugerido: number | null | undefined) => {
+    setErrorDeFila(null)
+    // Propuesto como lo escribe la app («50,25», no «50.25»), con los decimales
+    // de su precio: `leerNumero` lee las dos, pero la columna de al lado dice 50,25.
     const raw = window.prompt(
       'Límite de pérdida (stop) para esta posición, como precio por acción. Se podrá subir, nunca bajar:',
-      sugerido ? String(sugerido) : '',
+      sugerido ? textoDeCampo(sugerido, decimalesPrecio(sugerido)) : '',
     )
     if (!raw) return
     const stop = leerNumero(raw)
     if (stop === null) {
-      setError(`«${raw}» no es un precio de stop: ${EJEMPLO}.`)
+      setErrorDeFila(`${symbol}: «${raw}» no es un precio de stop: ${EJEMPLO}.`)
       return
     }
     try {
       await api.fijarStop(id, stop)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error')
+      setErrorDeFila(`${symbol}: ${err instanceof Error ? err.message : 'Error'}`)
     }
   }
 
-  const close = async (id: number) => {
+  const close = async (id: number, symbol: string) => {
+    setErrorDeFila(null)
     const raw = window.prompt('Precio de venta por acción:')
     if (!raw) return
     const price = leerNumero(raw)
     if (price === null) {
-      setError(`«${raw}» no es un precio de venta: ${EJEMPLO}.`)
+      setErrorDeFila(`${symbol}: «${raw}» no es un precio de venta: ${EJEMPLO}.`)
       return
     }
     // Sin capturar, un cierre rechazado no decía nada (ítem 2.1).
@@ -414,7 +433,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
       await api.closePosition(id, price)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error')
+      setErrorDeFila(`${symbol}: ${err instanceof Error ? err.message : 'Error'}`)
     }
   }
 
@@ -423,7 +442,9 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
   const datos = cartera.estado === 'listo' ? cartera.datos : null
   // Con varias divisas, cada importe dice la suya: «2.903,00» a secas no dice
   // si son dólares o dólares canadienses (ítem 1.7). Con una sola, sería ruido.
-  const conCodigo = datos !== null && variasMonedas(datos)
+  // Sin la cartera no se sabe cuántas hay: el recorrido, que ya no espera a su
+  // carga, iba sin código (revisión 15); ante la duda, con él.
+  const conCodigo = datos === null || variasMonedas(datos)
   const monedaDe = (m: string | null | undefined) => (conCodigo ? (m ?? null) : null)
 
   return (
@@ -517,6 +538,11 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                     <p className="text-sm text-slate-400">Sin posiciones abiertas.</p>
                   ) : (
                     <>
+                      {errorDeFila && (
+                        <p role="alert" className="mb-2 text-sm text-red-600">
+                          {errorDeFila}
+                        </p>
+                      )}
                       <MarcoTabla etiqueta="Posiciones abiertas">
                         <table className="w-full min-w-[760px] text-sm">
                           <thead>
@@ -535,7 +561,13 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                           </thead>
                           <tbody>
                             {data.positions.map((p) => {
-                              const weight = data.allocation_by_position.find((a) => a.label === p.symbol)
+                              // El peso de ESTE lote: `allocation_by_position` es por
+                              // símbolo y con dos lotes de KO cada fila decía «100,0 %»
+                              // (la columna sumaba 200 %; revisión 15). Sin importe en
+                              // la base (sin precio o sin convertir), no tiene peso.
+                              const total = data.summary.total_market_value
+                              const peso =
+                                p.market_value_base != null && total != null && total > 0 ? p.market_value_base / total : null
                               return (
                                 <tr
                                   key={p.id}
@@ -584,14 +616,14 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                                     <Pnl value={p.unrealized_pnl} pct={p.unrealized_pct} moneda={monedaDe(p.currency)} />
                                   </td>
                                   <td className="px-2 py-1.5 tabular-nums text-slate-600">
-                                    {weight ? fmtPct(weight.weight) : '—'}
+                                    {fmtPct(peso)}
                                   </td>
                                   <td className="whitespace-nowrap px-2 py-1.5 text-right">
                                     {p.stop_fijado_al_abrir === false && (
                                       <button
                                         // Sin proponer un stop que no se midió: con un Enter se
                                         // congelaba el supuesto (revisión 9).
-                                        onClick={() => fijarStop(p.id, p.stop_por_clase ? null : p.stop)}
+                                        onClick={() => fijarStop(p.id, p.symbol, p.stop_por_clase ? null : p.stop)}
                                         title={
                                           p.stop_por_clase
                                             ? 'Su stop se recalcula y ahora mismo no hay histórico para medir la volatilidad: es el punto medio de su clase, no uno medido. Mejor fijarlo con el histórico a mano.'
@@ -605,7 +637,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                                     {/* «Cerrar» se leía como cerrar una ventana: lo que hace
                                         es anotar que vendiste. */}
                                     <button
-                                      onClick={() => close(p.id)}
+                                      onClick={() => close(p.id, p.symbol)}
                                       className="text-xs text-slate-500 hover:text-slate-800"
                                     >
                                       Anotar venta

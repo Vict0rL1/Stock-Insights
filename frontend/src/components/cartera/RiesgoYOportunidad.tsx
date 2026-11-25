@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api } from '../../api/client'
 import type { AnalisisEmpresaResponse } from '../../api/types'
+import { etiqueta } from '../../lib/etiquetas'
 import { fmtFecha, fmtNum, fmtPct } from '../../lib/formato'
 import { leerNumero } from '../../lib/entrada'
 import { useDato } from '../../lib/useDato'
@@ -114,7 +115,7 @@ export function ContribucionAlRiesgoPanel() {
             {contribucion.datos.clusters!.map((g) => (
               <li key={g.dimension + g.etiqueta} className="flex flex-wrap justify-between gap-2 border-b border-slate-100 py-1 last:border-0">
                 <span className="text-slate-700">
-                  <span className="rounded bg-slate-100 px-1 text-[10px] text-slate-800">{g.dimension}</span> {g.etiqueta}: {g.miembros.join(', ')}
+                  <span className="rounded bg-slate-100 px-1 text-[10px] text-slate-800">{etiqueta(g.dimension)}</span> {g.etiqueta}: {g.miembros.join(', ')}
                   {g.desconocidos.length > 0 && <span className="text-amber-800"> (riesgo desconocido: {g.desconocidos.join(', ')})</span>}
                 </span>
                 <span className="tabular-nums text-slate-600">

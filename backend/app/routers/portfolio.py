@@ -901,16 +901,80 @@ def delete_position(position_id: int, session: Session = Depends(get_session)):
     return {"deleted": position_id}
 
 
-def _con_estado_del_stop(posiciones: list[dict]) -> None:
+def _con_estado_del_stop(posiciones: list[dict], repaso: dict) -> None:
     """Cada fila dice si su stop está perforado, con la regla del motor
     (`decision.stop_perforado`, en o por debajo; en su moneda, sin convertir).
 
     La tabla no enseñaba el stop: STOP, a 104 con el stop en 110, salía en verde
     por su +15,6 % sobre el coste y nada decía que había que venderla (revisión
     12, visual). None si falta el precio o el stop: no se sabe, que no es «intacto».
+
+    Con los MISMOS precios que el repaso del símbolo (`repaso.posiciones[].precios`:
+    la cotización y, de reserva, el último cierre de la lista), fail-safe como él:
+    perforado si lo perfora cualquiera. Solo con la cotización, KO con el stop en
+    118, la lista cerrada a 117 y la cotización a 120 era «Vender» en Explorar y
+    una fila «en orden» aquí (revisión 15). `stop_perforado_por`: el precio que lo
+    perfora cuando no es el de la fila, para escribirlo junto a ella.
     """
+    precios = {p["symbol"]: p.get("precios") or [] for p in repaso.get("posiciones") or []}
     for p in posiciones:
-        p["stop_perforado"] = stop_perforado(p.get("price"), p.get("stop"))
+        propio = stop_perforado(p.get("price"), p.get("stop"))
+        por = next((x for x in precios.get(p["symbol"], []) if stop_perforado(x["precio"], p.get("stop"))), None)
+        p["stop_perforado"] = True if por is not None else propio
+        p["stop_perforado_por"] = por if por is not None and not propio else None
+
+
+def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) -> dict:
+    """El estado de CADA posición por símbolo, de la misma fuente que Explorar.
+
+    Mi cartera e Inicio contaban con `stop_perforado` por lote y solo la
+    cotización, y Explorar con el repaso (`contexto_cartera.stops_de_la_cartera`,
+    que también mira el último cierre de la lista) y las decisiones de la lista
+    (`avisos.ts`, `avisosDeCartera`): KO era «Vender» en Explorar y «en orden» en
+    las otras dos; una venta por puntuación no salía en ninguna de ellas; y dos
+    lotes eran dos posiciones en Inicio (revisión 15). Aquí se sirve el MISMO
+    repaso, con la lista del día que Explorar enseña al abrir —la guardada de
+    `vencida=aceptar`, la vigente o la última caducada con su precio VIEJO
+    (`senales_para_el_stop`)—, sin calcular nada, y las filas de esa lista de las
+    posiciones abiertas. Las tres pantallas pasan esto por `avisosDeCartera`.
+
+    El mercado, el de Inicio y el que abre Explorar (`DEFAULT_MARKET`): el cierre
+    de reserva y la decisión de la lista son de ese mercado, como en Explorar con
+    él elegido. Sin lista guardada, `lista: None`: solo la cotización, y la
+    pantalla dice que no se ha mirado la decisión de la lista. Un fallo no se
+    calla ni cuesta la cartera: `error`, como en Hoy (`_repaso_de_stops`).
+    """
+    from app.analysis.markets import DEFAULT_MARKET
+    from app.contexto_cartera import senales_para_el_stop, stops_de_la_cartera
+    from app.registro import log
+    from app.routers.signals import _lista_guardada
+
+    try:
+        try:
+            lista = _lista_guardada(DEFAULT_MARKET, service)
+        except HTTPException:
+            lista = None  # ninguna guardada esta semana: un 404, no un fallo
+        estado = (lista or {}).get("estado") or datos.Estado.VALIDO.value
+        senales = senales_para_el_stop(lista, estado)
+        repaso = stops_de_la_cartera(session, service, senales)
+    except Exception:  # noqa: BLE001 — la cartera sigue y lo dice
+        log("riesgo").exception("Cartera: no se pudo repasar el stop de las posiciones")
+        return {
+            "abiertas": None, "en_lista": None, "posiciones": [], "senales": [], "lista": None,
+            "error": "No se pudo repasar el stop de tus posiciones: ninguna se ha comprobado "
+                     "(el motivo está en el log del backend).",
+        }
+    abiertas = {p["symbol"] for p in repaso["posiciones"]}
+    return {
+        **repaso,
+        "senales": [s for s in senales if s.get("symbol") in abiertas],
+        "lista": None if lista is None else {
+            "mercado": DEFAULT_MARKET,
+            "as_of": lista.get("as_of"),
+            "estado": estado,
+            "antiguedad_segundos": lista.get("antiguedad_segundos") if estado == datos.Estado.VIEJO.value else None,
+        },
+    }
 
 
 @router.get("")
@@ -966,7 +1030,10 @@ def get_portfolio(
             }
         )
 
-    _con_estado_del_stop(open_positions)
+    # El repaso por símbolo, el de Explorar, antes de marcar las filas: cada lote
+    # se mira con los mismos precios que su símbolo.
+    repaso = _repaso_con_la_lista_guardada(session, service)
+    _con_estado_del_stop(open_positions, repaso)
 
     # CONVERTIR ANTES DE SUMAR. Hasta aquí `market_value` está cada uno en su
     # moneda; sumarlos directamente daba un total creíble y equivocado, y de ese
@@ -1063,6 +1130,10 @@ def get_portfolio(
             if s_.get("id") in abiertas_por_id
         ],
         "closed_positions": closed,
+        # El estado de cada posición POR SÍMBOLO (perforado, sin comprobar o por
+        # encima, y la decisión de la lista), el mismo que Explorar: lo leen la
+        # línea de Mi cartera e Inicio (`_repaso_con_la_lista_guardada`).
+        "repaso": repaso,
         "divisas": {k: v for k, v in divisas.items() if k != "posiciones"},
         # El retorno nunca viaja solo: `con_caida_esperada` le engancha la caída
         # que esta misma cartera habría sufrido. Un «+12 %» y un «+12 % con un

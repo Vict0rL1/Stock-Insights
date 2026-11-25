@@ -7,20 +7,24 @@
  * - La exposición por sector y la concentración salían dos veces (Portafolio y
  *   Cartera): una sola vez cada una, en Riesgo, y el aviso por peso no se pierde
  *   aunque el análisis no cargue.
- * - La línea de arriba cuenta lo que necesita atención (límite de pérdida
- *   perforado o sin comprobar) y, sin datos, dice que no se sabe: nunca «0».
+ * - La línea de arriba cuenta lo que necesita atención, por símbolo y con el
+ *   aviso de Explorar (el repaso del stop y la decisión de la lista), y, sin
+ *   datos, dice que no se sabe: nunca «0».
  *
  * Parte de la respuesta REAL de la cartera de ACME (`empresa_completa.json`).
  */
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Decision, TodayResponse } from '../api/types'
 import empresaCompleta from '../test/fixtures/empresa_completa.json'
+import { posicionDelRepaso, repasoDe, senalDePosicion } from '../test/repaso'
 import { MiCarteraPage, pestanaDe } from './MiCarteraPage'
+import { recuentos } from './TodayPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Fila = Record<string, unknown>
-type Cartera = { positions: Fila[]; concentration_warnings: string[]; allocation_by_sector: Fila[] }
+type Cartera = { positions: Fila[]; concentration_warnings: string[]; allocation_by_sector: Fila[]; repaso?: unknown }
 
 vi.mock('../components/PriceChart', () => ({ PriceChart: () => null }))
 
@@ -74,6 +78,8 @@ const pintar = (ruta = '/cartera') =>
 
 const pestana = (nombre: string) => screen.getByRole('link', { name: nombre })
 const resumen = () => screen.getByText(/posici(ón|ones) abiertas? ·/)
+/** El texto, con el espacio duro entre cifra y moneda como uno normal. */
+const texto = (el: Element) => (el.textContent ?? '').replace(/\u00a0/g, ' ')
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -164,7 +170,8 @@ describe('un solo bloque de exposición y uno de concentración', () => {
 })
 
 /** KO en orden, STOP con el stop perforado, SHOP.TO sin precio y un segundo
- *  lote de KO: tres posiciones, dos necesitan atención. */
+ *  lote de KO: tres posiciones, dos necesitan atención. La línea lee el repaso
+ *  (por símbolo), así que se cambia también: es lo que sirve el backend. */
 function conAvisos(cartera: Cartera) {
   const ko = cartera.positions[0]
   cartera.positions.push(
@@ -173,6 +180,12 @@ function conAvisos(cartera: Cartera) {
       market_value: null, unrealized_pnl: null, unrealized_pct: null },
     { ...ko, id: 4, quantity: 10 },
   )
+  cartera.repaso = repasoDe([
+    posicionDelRepaso({ symbol: 'KO', lotes: 2 }),
+    posicionDelRepaso({ symbol: 'STOP', precio: 104, stop: 110, estado: 'perforado' }),
+    posicionDelRepaso({ symbol: 'SHOP.TO', precio: null, stop: 100, estado: 'sin_comprobar',
+      motivo: 'sin precio (ninguna fuente dio su cotización)', moneda: 'CAD' }),
+  ])
 }
 
 describe('la línea de arriba', () => {
@@ -181,11 +194,13 @@ describe('la línea de arriba', () => {
     const { unmount } = pintar()
     expect(await screen.findByText('3 posiciones abiertas · 2 necesitan atención')).toBeInTheDocument()
     const lista = resumen().parentElement!
-    expect(lista.textContent).toContain('STOP: el precio ha llegado a su límite de pérdida (stop).')
-    expect(lista.textContent).toContain('SHOP.TO: no hay precio con que comparar su límite de pérdida.')
+    // El aviso de Explorar, con su verbo y su frase.
+    expect(texto(lista)).toContain('VenderSTOPCotiza a 104,00 USD, por debajo de tu límite de pérdida (stop) de 110,00 USD. Tu regla dice vender.')
+    expect(texto(lista)).toContain('RevisarSHOP.TONo hay precio de hoy: el límite de pérdida (stop) no se ha podido comprobar.')
     // Lo perforado, primero; y en rojo.
-    expect(within(lista).getAllByRole('listitem')[0].textContent).toMatch(/^STOP/)
-    expect(within(lista).getAllByRole('listitem')[0].className).toContain('text-red-800')
+    const avisos = within(lista).getAllByRole('listitem')
+    expect(avisos[0].textContent).toMatch(/^VenderSTOP/)
+    expect(lista.className).toContain('bg-red-50')
     unmount()
     pintar('/cartera?pestana=tesis')
     expect(await screen.findByText('3 posiciones abiertas · 2 necesitan atención')).toBeInTheDocument()
@@ -195,17 +210,34 @@ describe('la línea de arriba', () => {
     servir(rutasBase())
     pintar()
     expect(await screen.findByText('1 posición abierta · ninguna necesita atención')).toBeInTheDocument()
+    // La respuesta real no trae lista guardada: se dice qué no se ha mirado.
+    expect(resumen().parentElement!.textContent).toContain('Sin la lista del día guardada solo se ha mirado el límite de pérdida')
   })
 
   it('un precio viejo por encima del stop es «sin comprobar», en la línea y en la fila', async () => {
     // Fail-safe, como el repaso de Hoy (revisión 13): un precio rescatado de la
     // caché no dice que el precio de ahora siga por encima del stop.
-    servir(rutasBase((c) => Object.assign(c.positions[0], { precio_estado: 'viejo', precio_antiguedad_segundos: 3600 })))
+    servir(rutasBase((c) => {
+      Object.assign(c.positions[0], { precio_estado: 'viejo', precio_antiguedad_segundos: 3600 })
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', precio_estado: 'viejo', estado: 'sin_comprobar',
+        motivo: 'solo hay un precio viejo (la cotización, hace 1 h): estaba por encima del stop, pero no se puede afirmar que lo siga' })])
+    }))
     pintar()
     expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
-    expect(resumen().parentElement!.textContent).toContain('KO: solo hay un precio viejo')
+    expect(resumen().parentElement!.textContent).toContain('KOEl límite de pérdida (stop) no se ha podido comprobar: solo hay un precio viejo')
     const fila = screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes('KO'))!
     expect(fila.textContent).toContain('50,00sin comprobar')
+  })
+
+  it('sin repaso no cuenta «ninguna»: dice que ningún stop se ha comprobado', async () => {
+    servir(rutasBase((c) => {
+      c.repaso = { abiertas: null, en_lista: null, posiciones: [], senales: [], lista: null,
+        error: 'No se pudo repasar el stop de tus posiciones: ninguna se ha comprobado (el motivo está en el log del backend).' }
+    }))
+    pintar()
+    expect(await screen.findByText('1 posición abierta · no se sabe si alguna necesita atención')).toBeInTheDocument()
+    expect(document.body.textContent).toContain('Ningún límite de pérdida se ha podido comprobar: No se pudo repasar')
+    expect(document.body.textContent).not.toMatch(/ninguna necesita atención/)
   })
 
   it('sin datos de la cartera no cuenta cero: dice que no se sabe, con el motivo', async () => {
@@ -235,8 +267,72 @@ describe('la línea de arriba', () => {
     unmount()
     servir(rutasBase((c) => {
       c.positions = []
+      c.repaso = repasoDe([])
     }))
     pintar()
     expect(await screen.findByText('No tienes posiciones abiertas.')).toBeInTheDocument()
+  })
+})
+
+describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 15)', () => {
+  it('KO perforada por el último cierre de la lista con la cotización por encima: «Vender», en la línea y en la fila', async () => {
+    // Stop 118, la lista cerró a 117 y la cotización es 120 (`test_estado_por_simbolo.py`):
+    // Explorar decía «Para vender 1» y Mi cartera «ninguna necesita atención».
+    servir(rutasBase((c) => {
+      const cierre = { precio: 117, fuente: 'cierre_de_la_lista', estado: 'valido', proveedor: 'yfinance', fecha: '2026-09-11T20:00:00+00:00' }
+      Object.assign(c.positions[0], { price: 120, stop: 118, stop_perforado: true, stop_perforado_por: cierre })
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true, precio: 117, precio_fuente: 'cierre_de_la_lista',
+        stop: 118, estado: 'perforado',
+        precios: [{ precio: 120, fuente: 'cotizacion', estado: 'valido', proveedor: 'finnhub', fecha: '2026-09-12T14:35:00+00:00' },
+          cierre as never] })], { senales: [senalDePosicion('KO', { action: 'mantener', label: 'Mantener' }, 117)] })
+    }))
+    pintar()
+    expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
+    const linea = texto(resumen().parentElement!)
+    expect(linea).toContain('VenderKO')
+    expect(linea).toContain('La cotización de ahora (120,00 USD) está por encima: compruébalo en tu broker.')
+    const fila = screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes('KO'))!
+    expect(texto(fila)).toContain('118,00perforadoúltimo cierre de la lista: 117,00 · compruébalo en tu broker')
+  })
+
+  it('una venta por puntuación con el stop intacto: «Vender», como el «Para vender» de Explorar', async () => {
+    const vender: Partial<Decision> = { action: 'vender', label: 'Vender', reglas: [
+      { id: 'puntuacion_desfavorable', regla: 'Puntuación ≤ -0,35', resultado: 'cumple', efecto: 'vender', papel: 'decide', datos: { valor: -0.6, umbral: -0.35 } },
+    ] }
+    const hoy = { signals: [senalDePosicion('KO', vender)], cartera: repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })]) }
+    servir(rutasBase((c) => {
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })], { senales: hoy.signals })
+    }))
+    pintar()
+    expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
+    expect(resumen().parentElement!.textContent).toContain('Su puntuación frente a sus comparables cayó a -0,60')
+    // El mismo recuento que Explorar con la misma lista y el mismo repaso.
+    expect(recuentos(hoy as unknown as TodayResponse).vender).toBe(1)
+  })
+
+  it('con dos lotes y uno sin stop, el motivo es del lote, no de la posición', async () => {
+    servir(rutasBase((c) => {
+      const ko = c.positions[0]
+      c.positions.push({ ...ko, id: 2, quantity: 10, cost_basis: 0, stop: null, stop_perforado: null, stop_fijado_al_abrir: false })
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', lotes: 2, lotes_sin_stop: 1, estado: 'sin_comprobar',
+        motivo: '1 de sus 2 lotes sin stop (ni fijado al abrir ni coste con que calcularlo)' })])
+    }))
+    pintar()
+    const linea = (await screen.findByText('1 posición abierta · 1 necesita atención')).parentElement!
+    // Decía «KO: no tiene límite de pérdida…» con el stop de 50,00 de su otro lote justo debajo.
+    expect(linea.textContent).toMatch(/1 de sus 2 lotes sin stop/)
+  })
+
+  it('de una lista caducada, la venta dice de cuándo es la lista', async () => {
+    const vender: Partial<Decision> = { action: 'vender', label: 'Vender', reasons: ['La puntuación cayó.'] }
+    servir(rutasBase((c) => {
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })], {
+        senales: [senalDePosicion('KO', vender)],
+        lista: { mercado: 'us_sp500', as_of: new Date(Date.now() - 30 * 3600 * 1000).toISOString(), estado: 'viejo', antiguedad_segundos: 30 * 3600 },
+      })
+    }))
+    pintar()
+    expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
+    expect(resumen().parentElement!.textContent).toContain('salen de la lista del día guardada hace 30 h, que ya caducó')
   })
 })

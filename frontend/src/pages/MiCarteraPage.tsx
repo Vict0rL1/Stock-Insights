@@ -1,12 +1,14 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Portfolio } from '../api/types'
+import type { Portfolio, RepasoDeCartera } from '../api/types'
+import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { ErrorDeCarga } from '../components/EstadoDato'
-import { atencionDeCartera } from '../components/cartera/atencion'
+import { atencionDeCartera, deLaLista } from '../components/cartera/atencion'
 import { Posiciones } from '../components/cartera/Posiciones'
 import { Riesgo } from '../components/cartera/Riesgo'
 import { TesisYVigilancia } from '../components/cartera/TesisYVigilancia'
-import { plural } from '../lib/formato'
+import { fmtAntiguedad, plural } from '../lib/formato'
+import { rutaEmpresa } from '../lib/rutas'
 import { useDato, type CargaConReintento } from '../lib/useDato'
 
 /** Mi cartera: una sección con tres sub-pestañas en lugar de cuatro entradas
@@ -29,10 +31,12 @@ export function pestanaDe(valor: string | null): Pestana {
 }
 
 /** La línea de arriba, en lenguaje claro: cuántas posiciones hay y cuántas
- *  necesitan atención (límite de pérdida perforado o sin comprobar,
- *  `atencionDeCartera`). Es la misma en las tres pestañas, y por eso dice
+ *  necesitan atención, POR SÍMBOLO y con el aviso de Explorar
+ *  (`atencionDeCartera`: el repaso del stop y la decisión de la lista; vender,
+ *  reducir o sin comprobar). Es la misma en las tres pestañas, y por eso dice
  *  también, una sola vez, si la cartera está cargando o no cargó: sin datos no
- *  se cuenta «0 necesitan atención», se dice que no se sabe. */
+ *  se cuenta «0 necesitan atención», se dice que no se sabe. Sin repaso, igual:
+ *  ningún stop se ha comprobado. */
 function ResumenDeCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }) {
   if (cartera.estado === 'cargando') {
     return (
@@ -51,37 +55,80 @@ function ResumenDeCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }
       </div>
     )
   }
-  const { abiertas, avisos } = atencionDeCartera(cartera.datos.positions)
-  if (abiertas === 0) {
+  const a = atencionDeCartera(cartera.datos)
+  if (a.abiertas === 0) {
     return <p className="text-sm text-slate-600">No tienes posiciones abiertas.</p>
   }
-  const hayPerforado = avisos.some((a) => a.estado === 'perforado')
+  const cuantas = `${a.abiertas} ${plural(a.abiertas, 'posición abierta', 'posiciones abiertas')}`
+  if (!a.repasada) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+        <p className="text-sm font-medium text-slate-800">
+          {cuantas} · no se sabe si alguna necesita atención
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-900">
+          Ningún límite de pérdida se ha podido comprobar: {a.error}
+        </p>
+      </div>
+    )
+  }
+  const { avisos, lista } = a
+  const tono = avisos.some((x) => x.aviso.tono === 'rojo')
+    ? 'border-red-200 bg-red-50'
+    : avisos.some((x) => x.aviso.tono === 'naranja')
+      ? 'border-orange-200 bg-orange-100'
+      : avisos.length > 0
+        ? 'border-amber-200 bg-amber-50'
+        : 'border-slate-200 bg-white'
   return (
-    <div
-      className={`rounded-xl border px-3 py-2 ${
-        hayPerforado
-          ? 'border-red-200 bg-red-50'
-          : avisos.length > 0
-            ? 'border-amber-200 bg-amber-50'
-            : 'border-slate-200 bg-white'
-      }`}
-    >
+    <div className={`rounded-xl border px-3 py-2 ${tono}`}>
       <p className="text-sm font-medium text-slate-800">
-        {abiertas} {plural(abiertas, 'posición abierta', 'posiciones abiertas')} ·{' '}
+        {cuantas} ·{' '}
         {avisos.length === 0
           ? 'ninguna necesita atención'
           : `${avisos.length} ${plural(avisos.length, 'necesita', 'necesitan')} atención`}
       </p>
       {avisos.length > 0 && (
-        <ul className="mt-1 space-y-0.5 text-xs leading-relaxed">
-          {avisos.map((a) => (
-            <li key={a.symbol} className={a.estado === 'perforado' ? 'text-red-800' : 'text-amber-900'}>
-              <strong className="font-semibold">{a.symbol}</strong>: {a.motivo}.
+        <ul className="mt-1.5 space-y-1">
+          {avisos.map((x) => (
+            <li key={x.symbol}>
+              <AvisoDeAccion
+                aviso={x.aviso}
+                tamano="compacto"
+                titulo={
+                  <Link to={rutaEmpresa(x.symbol)} className="text-sm font-semibold text-slate-900 hover:underline">
+                    {x.symbol}
+                  </Link>
+                }
+              />
             </li>
           ))}
         </ul>
       )}
+      <NotaDeLaLista lista={lista} deLaLista={avisos.some(deLaLista)} />
     </div>
+  )
+}
+
+/** De qué lista salen las decisiones que se cuentan (las ventas por
+ *  puntuación): sin lista guardada no se han mirado, y se dice; de una lista
+ *  vieja, de cuándo es. El repaso del stop sí es de ahora. */
+export function NotaDeLaLista({ lista, deLaLista }: { lista: RepasoDeCartera['lista']; deLaLista: boolean }) {
+  if (lista === null) {
+    return (
+      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+        Sin la lista del día guardada solo se ha mirado el límite de pérdida, no si la regla manda vender o reducir
+        alguna: Explorar la calcula.
+      </p>
+    )
+  }
+  if (!deLaLista || lista.estado !== 'viejo') return null
+  return (
+    <p className="mt-1 text-xs leading-relaxed text-slate-600">
+      Las ventas y reducciones por la regla salen de la lista del día guardada{' '}
+      {lista.as_of ? fmtAntiguedad(lista.as_of) : '(sin fecha)'}, que ya caducó; el límite de pérdida sí es de ahora.
+      Explorar la recalcula.
+    </p>
   )
 }
 

@@ -151,6 +151,27 @@ def _precios_para_el_stop(service, symbol: str, senal: dict | None) -> tuple[lis
     return precios, moneda
 
 
+def senales_para_el_stop(lista: dict | None, estado: str | None) -> list[dict]:
+    """Las señales de la lista, con su precio VIEJO si la lista es vieja.
+
+    El repaso usa el último cierre de la lista como reserva y lo trata según su
+    `estado`; en una lista caducada ese bloque seguía diciendo «valido» (lo era
+    cuando se calculó) y un cierre de hace días por encima del stop habría dado
+    «por encima». Viejo, el repaso lo deja `sin_comprobar`.
+
+    Vivía en `pregunta_ia` y solo lo usaba la IA: Hoy, con la copia caducada que
+    sirve `vencida=aceptar` (hasta 7 días), repasaba con el cierre «valido» y
+    daba «por encima» con yfinance caído, STALE → PASS (revisión 15). Aquí, una
+    vez, para todos los que repasan con una lista guardada."""
+    senales = list((lista or {}).get("signals") or [])
+    if estado != datos.Estado.VIEJO.value:
+        return senales
+    return [
+        {**s, "price": {**(s.get("price") or {}), "estado": datos.Estado.VIEJO.value}} if s.get("price") else s
+        for s in senales
+    ]
+
+
 def stops_de_la_cartera(session: Session, service, senales: list[dict]) -> dict:
     """El stop de CADA posición abierta, esté o no en la lista del día.
 

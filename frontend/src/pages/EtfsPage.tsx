@@ -80,7 +80,7 @@ function OverlapBar({ value }: { value: number }) {
 }
 
 /** Los que compara el lado a lado del backend (`compare_etfs`). */
-const MAX_ETFS = 4
+export const MAX_ETFS = 4
 
 /** `incrustada`: dentro de Explorar, con su título como subtítulo (h2) bajo el de la pantalla. */
 export function EtfsPage({ incrustada = false }: { incrustada?: boolean } = {}) {

@@ -387,6 +387,10 @@ export interface PortfolioPosition {
   /** Con la regla del motor (precio en o por debajo del stop). null = sin
    *  precio o sin stop: no se sabe. */
   stop_perforado?: boolean | null
+  /** El precio que perfora el stop de este lote cuando no es el de la fila: el
+   *  último cierre de la lista con la cotización por encima (fail-safe, los
+   *  mismos precios que el repaso de su símbolo). */
+  stop_perforado_por?: PrecioDelStop | null
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -456,8 +460,26 @@ export interface Estres {
   aviso_sin_historico?: string | null
 }
 
+/** El estado de cada posición POR SÍMBOLO, el mismo que Explorar: el repaso del
+ *  stop (`contexto_cartera.stops_de_la_cartera`) con la lista guardada del
+ *  mercado de Inicio, y las filas de esa lista de lo que sigue abierto. Se lee
+ *  con `avisosDeCartera(repaso.senales, repaso)` (`cartera/atencion.ts`). */
+export interface RepasoDeCartera extends StopsDeCartera {
+  senales: DailySignal[]
+  /** De qué lista salen el cierre de reserva y las decisiones; `null` = no había
+   *  ninguna guardada: solo la cotización, sin la decisión de la lista. */
+  lista: {
+    mercado: string
+    as_of: string | null
+    estado: 'valido' | 'viejo'
+    antiguedad_segundos: number | null
+  } | null
+}
+
 export interface Portfolio {
   divisas?: DivisasDeCartera
+  /** Ausente (respuesta antigua) es como un `error`: no se sabe nada de ningún stop. */
+  repaso?: RepasoDeCartera
   risk_budget: RiskBudget
   estres: Estres
   positions: PortfolioPosition[]

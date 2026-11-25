@@ -387,7 +387,7 @@ describe('acciones rechazadas (ítem 2.1: fallaban en silencio)', () => {
     pintar()
     await screen.findByText('Invertido')
     fireEvent.click(within(fila('KO')!).getByRole('button', { name: 'Anotar venta' }))
-    expect(await screen.findByText('la posición ya está cerrada')).toBeInTheDocument()
+    expect(await screen.findByText('KO: la posición ya está cerrada')).toBeInTheDocument()
   })
 
   it('quitar de la lista de seguimiento rechazado dice su motivo', async () => {
@@ -483,3 +483,53 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
   })
 })
 
+describe('la tabla de posiciones (revisión 15)', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('el peso es el de cada lote: con dos lotes de KO la columna no suma 200 %', async () => {
+    servir(con((_, c) => {
+      const ko = c.positions[0]
+      // 18.000 y 6.000: `allocation_by_position` agrega los lotes (KO = 100 %).
+      c.positions.push({ ...ko, id: 2, quantity: 100, invested: 5800, market_value: 6000, market_value_base: 6000 })
+      Object.assign(c.summary, { total_market_value: 24000 })
+    }))
+    pintar()
+    const tabla = await screen.findByRole('table')
+    const pesos = within(tabla).getAllByRole('row').slice(1).map((f) => f.querySelectorAll('td')[9].textContent)
+    // Decía «100,0 %» en las dos filas.
+    expect(pesos).toEqual(['75,0 %', '25,0 %'])
+  })
+
+  it('el rechazo de «Fijar stop» sale junto a la tabla, con su símbolo, y no bajo «Anotar una compra»', async () => {
+    servirConMetodo(con((rutas, c) => {
+      Object.assign(c.positions[0], { stop_fijado_al_abrir: false })
+      rutas['POST /api/portfolio/positions/1/stop'] = { status: 400, json: { detail: 'No se puede bajar un stop ya fijado (50,00).' } }
+    }))
+    vi.spyOn(window, 'prompt').mockReturnValue('40')
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Fijar stop' }))
+    const error = await screen.findByText('KO: No se puede bajar un stop ya fijado (50,00).')
+    expect(within(error.closest('section')!).queryByRole('heading', { name: 'Anotar una compra' })).toBeNull()
+    expect(within(error.closest('section')!).getByRole('heading', { name: 'Posiciones abiertas' })).toBeInTheDocument()
+  })
+
+  it('«Fijar stop» propone el stop como lo escribe la app, con coma decimal', async () => {
+    servir(con((_, c) => Object.assign(c.positions[0], { stop: 50.25, stop_fijado_al_abrir: false })))
+    const prompt = vi.spyOn(window, 'prompt').mockReturnValue(null)
+    pintar()
+    fireEvent.click(await screen.findByRole('button', { name: 'Fijar stop' }))
+    await waitFor(() => expect(prompt).toHaveBeenCalled())
+    // Proponía «50.25» (`String(sugerido)`).
+    expect(prompt.mock.calls[0][1]).toBe('50,25')
+  })
+
+  it('sin la cartera, el recorrido no pierde el código de moneda', async () => {
+    servir(con((rutas) => {
+      rutas['/api/portfolio'] = falla('tiempo de espera agotado')
+    }))
+    pintar()
+    const rotulo = await screen.findByText('Último cierre')
+    // Sin la cartera no se sabe si hay varias monedas: ante la duda, con código.
+    expect(rotulo.parentElement!.textContent).toContain('USD')
+  })
+})

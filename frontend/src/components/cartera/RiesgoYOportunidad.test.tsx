@@ -136,6 +136,21 @@ describe('contribución al riesgo (ítem 2.1)', () => {
     expect(await screen.findByRole('button', { name: 'Descargar histórico y recalcular' })).toBeInTheDocument()
   })
 
+  it('la dimensión de cada clúster se escribe con su etiqueta, no con el código', async () => {
+    // Salía «correlacion» sin tilde (el código del backend), e «industria» no tenía etiqueta (revisión 15).
+    servir({ '/api/portfolio/contribucion?descargar=false': { status: 200, json: {
+      disponible: true, posiciones: [], desconocidas: [], metodo: 'm', nota: 'n',
+      clusters: [
+        { dimension: 'correlacion', etiqueta: 'Se mueven juntas #1', miembros: ['AAA', 'BBB'], peso: 0.5, contribucion: 0.6, desconocidos: [] },
+        { dimension: 'industria', etiqueta: 'Bebidas', miembros: ['KO', 'PEP'], peso: 0.3, contribucion: 0.2, desconocidos: [] },
+      ] } } })
+    render(<ContribucionAlRiesgoPanel />)
+    await screen.findByText(/Se mueven juntas #1/)
+    expect(screen.queryByText('correlacion')).toBeNull()
+    expect(screen.getByText('correlación')).toBeInTheDocument()
+    expect(screen.getByText('industria')).toBeInTheDocument()
+  })
+
   it('con la cartera vacía no ofrece descargar el histórico de nada', async () => {
     // Revisión 12, visual: sin ninguna posición se ofrecía «Descargar histórico y
     // recalcular». Con posiciones sin precio sí sale: reintentar puede traerlo.

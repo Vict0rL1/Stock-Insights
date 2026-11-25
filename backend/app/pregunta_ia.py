@@ -215,22 +215,6 @@ def _bloque_lista(lista: dict, estado: str, mercado: str) -> dict:
 # --- Tu cartera ---------------------------------------------------------------
 
 
-def _senales_para_el_stop(lista: dict | None, estado: str | None) -> list[dict]:
-    """Las señales de la lista, con su precio VIEJO si la lista es vieja.
-
-    El repaso usa el último cierre de la lista como reserva y lo trata según su
-    `estado`; en una lista caducada ese bloque seguía diciendo «valido» (lo era
-    cuando se calculó) y un cierre de hace días por encima del stop habría dado
-    «por encima». Viejo, el repaso lo deja `sin_comprobar`."""
-    senales = list((lista or {}).get("signals") or [])
-    if estado != datos.Estado.VIEJO.value:
-        return senales
-    return [
-        {**s, "price": {**(s.get("price") or {}), "estado": datos.Estado.VIEJO.value}} if s.get("price") else s
-        for s in senales
-    ]
-
-
 def _linea_posicion(fila: dict, posicion: dict | None, decision: dict | None) -> str:
     moneda = fila.get("moneda")
     partes = [fila["symbol"]]
@@ -268,12 +252,13 @@ def _bloque_cartera(session: Session, solo: SoloLoGuardado, lista: dict | None, 
                     ahora: datetime) -> tuple[dict | None, dict | None]:
     """(bloque, ausente). Un fallo del repaso no se calla: sin él no se puede
     decir «nada urgente», y la IA tiene que saber que no se comprobó."""
-    from app.contexto_cartera import posiciones_para_decidir, stops_de_la_cartera
+    from app.contexto_cartera import posiciones_para_decidir, senales_para_el_stop, stops_de_la_cartera
 
     titulo = "Tu cartera y el repaso de sus stops"
     try:
         posiciones = posiciones_para_decidir(session)
-        senales = _senales_para_el_stop(lista, estado_lista)
+        # Con el cierre VIEJO si la lista lo es (la misma regla que Hoy).
+        senales = senales_para_el_stop(lista, estado_lista)
         repaso = stops_de_la_cartera(session, solo, senales) if posiciones else {"posiciones": []}
     except Exception:  # noqa: BLE001 — la pregunta sigue y lo dice
         log("llm").exception("Pregúntale a la IA: no se pudo repasar la cartera")

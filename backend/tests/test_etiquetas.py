@@ -54,6 +54,9 @@ INTERNAS = {
     "palabras": "palabras clave que escribió el usuario",
     "contexto": "texto del usuario en el paquete de casos",
     "nombre": "texto del usuario en el paquete de casos",
+    # El repaso de stops de `/api/portfolio` (revisión 15) los trae, como el de Hoy.
+    "proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
+    "precio_proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
 }
 
 # Claves cuyos códigos sí se enseñan: cada uno necesita etiqueta.
@@ -66,7 +69,7 @@ MOSTRADAS = {
     "familia", "faltan", "fuente_tipo", "incompletas", "kind", "label", "lectura", "limite",
     "mejor_prevista", "metrica", "registrados", "sin_resultado", "nivel", "papel", "resultado",
     "requiere", "seccion", "tendencia", "tesis", "tipo", "tipo_sorpresa", "valoracion", "posicion",
-    "precio_estado", "campo", "unidad", "origen",
+    "precio_estado", "precio_fuente", "campo", "unidad", "origen",
     # Diccionarios cuyas CLAVES son el nombre de cada fila (ver `CLAVES_COMO_NOMBRE`).
     "evidencias/entradas{}",
 }

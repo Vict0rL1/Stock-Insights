@@ -35,6 +35,40 @@ motor, del riesgo abierto (`risk_budget`) y de cada fila de `/api/portfolio`
 (`stop_perforado`), donde la tabla enseña el stop y el perforado en rojo. El
 panel de riesgo abierto nombra la posición que cuenta entera por su stop perforado.
 
+**Una fuente para Inicio, Mi cartera y Explorar (revisión 15).** La misma posición
+se juzgaba distinto según la pantalla: Explorar con este repaso y las decisiones
+de la lista (`frontend/src/lib/avisos.ts`, `avisosDeCartera`), Mi cartera e Inicio
+con `stop_perforado` por lote y solo la cotización. KO con el stop en 118, la
+lista cerrada a 117 y la cotización a 120 era «Vender» en Explorar y «en orden» en
+las otras dos; una venta por puntuación no salía en ninguna de ellas; Inicio
+contaba lotes como posiciones y repetía el aviso de cada uno. Ahora:
+
+- `GET /api/portfolio` sirve **`repaso`**: `stops_de_la_cartera` con la lista
+  guardada del mercado de Inicio (`DEFAULT_MARKET`), la misma que Explorar enseña al
+  abrir (`vencida=aceptar`: la vigente o, caducada, la última de la semana), sin
+  calcular nada. Trae lo mismo que `cartera` en `/api/signals/today` (`abiertas`,
+  `en_lista`, `posiciones` o `error`), más `senales` —las filas de esa lista de lo
+  que sigue abierto, con su decisión— y `lista` (`mercado`, `as_of`, `estado`,
+  `antiguedad_segundos`; `null` si no había ninguna guardada: solo la cotización, y
+  la pantalla dice que no se ha mirado la decisión de la lista). Un fallo del repaso
+  no cuesta la cartera: `error`, y ninguna pantalla dice «en orden».
+- cada fila (`stop_perforado`) se mira con los MISMOS precios que el repaso de su
+  símbolo, fail-safe: perforada si la perfora cualquiera; `stop_perforado_por` dice
+  qué precio la perfora cuando no es el de la fila (el último cierre de la lista con
+  la cotización por encima), y la tabla lo escribe.
+- la línea de Mi cartera y las tarjetas de Inicio leen el repaso con
+  `avisosDeCartera` (`components/cartera/atencion.ts`, `atencionDeCartera`): por
+  símbolo, «necesita atención» = vender, reducir o sin comprobar, como «Para
+  vender» y «sin comprobar» en Explorar. Inicio vuelve a pedir la cartera cuando la
+  lista que enseña es otra que la que leyó el repaso (`lista.as_of`). Las alertas
+  de precio y las tesis con un punto de vigilancia cruzado salen en Inicio aparte,
+  como lo que son, y «Nada urgente» solo se dice con la cartera, las alertas y las
+  tesis mirados.
+- con la copia caducada, el cierre de cada señal viaja **viejo**
+  (`contexto_cartera.senales_para_el_stop`, antes solo de «Pregúntale a la IA»),
+  también en Hoy: un cierre de hace días por encima del stop daba «por encima» con
+  la cotización caída; ahora solo puede dar perforado o sin comprobar.
+
 Desde la revisión 13 el repaso mira lo mismo que el Portafolio, cosa que antes no
 era cierta:
 

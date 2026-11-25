@@ -494,7 +494,10 @@ pide primero **la lista guardada**, que no calcula nada:
 
 En los tres casos de `200` el repaso de stops (`cartera`) y `lista_desfasada` se
 calculan en esa petición, como siempre: la lista puede ser de hace 9 h, el repaso
-de tus stops es de ahora.
+de tus stops es de ahora. Con la copia caducada, el último cierre de cada señal
+entra en el repaso como precio **viejo** (`contexto_cartera.senales_para_el_stop`):
+sin cotización, un cierre de hace días por encima del stop daba «por encima»;
+ahora da `sin_comprobar` (revisión 15).
 
 Con la copia caducada a la vista («Lista de hace 9 h; actualizando…»), la pantalla
 pide la normal detrás y la sustituye al llegar. Sin ninguna (primera vez, o más de
@@ -677,6 +680,12 @@ El repaso mira lo mismo que el Portafolio (revisión 13):
   remite a «Actualizar»; «Mi cartera» se construye con el repaso: las filas de
   la lista, solo de lo abierto ahora; lo abierto después de puntuar, aparte y con
   su stop.
+- **Las tres pantallas, una fuente (revisión 15):** `GET /api/portfolio` sirve el
+  mismo repaso (`repaso`, con la lista guardada de Inicio y las `senales` de lo
+  abierto) y cada fila mira su stop con esos precios (`stop_perforado`,
+  `stop_perforado_por`). La línea de Mi cartera e Inicio lo leen con
+  `avisosDeCartera`, por símbolo, como «Para vender» en Explorar. Detalle en
+  `docs/PORTFOLIO_RISK.md`.
 
 ### ¿Y funcionan? El backtest de reglas
 

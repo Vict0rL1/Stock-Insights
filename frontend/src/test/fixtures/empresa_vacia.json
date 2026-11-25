@@ -2894,6 +2894,13 @@
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",
     "positions": [],
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
     "risk_budget": {
      "avisos": [],
      "margen_pct": 6.0,

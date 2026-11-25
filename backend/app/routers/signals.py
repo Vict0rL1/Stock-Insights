@@ -1155,8 +1155,16 @@ def today(
     # Una copia, no un `pop`: con una caché que guarda la referencia, quitarla
     # aquí dejaba la lista guardada sin huella y la siguiente petición la
     # recalculaba entera.
+    # Con la copia caducada, el cierre de cada señal viaja VIEJO
+    # (`senales_para_el_stop`): decía «valido», el de cuando se calculó, y con
+    # yfinance caído un cierre de hace 6 días por encima del stop daba «por
+    # encima» y «nada urgente», STALE → PASS (revisión 15).
+    from app.contexto_cartera import senales_para_el_stop
+
     respuesta = {k: v for k, v in payload.items() if k != "huella_cartera"}
-    respuesta["cartera"] = _repaso_de_stops(session, service, payload.get("signals") or [])
+    respuesta["cartera"] = _repaso_de_stops(
+        session, service, senales_para_el_stop(payload, payload.get("estado"))
+    )
     respuesta["lista_desfasada"] = _lista_desfasada(session, payload.get("huella_cartera"))
     return respuesta
 

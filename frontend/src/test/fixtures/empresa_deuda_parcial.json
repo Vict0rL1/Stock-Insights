@@ -4058,6 +4058,7 @@
       "stop": 50.0,
       "stop_fijado_al_abrir": true,
       "stop_perforado": false,
+      "stop_perforado_por": null,
       "stop_por_clase": false,
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
@@ -4117,12 +4118,77 @@
       "stop": 110.0,
       "stop_fijado_al_abrir": true,
       "stop_perforado": false,
+      "stop_perforado_por": null,
       "stop_por_clase": false,
       "symbol": "SHOP.TO",
       "unrealized_pct": 0.16666666666666666,
       "unrealized_pnl": 2000.0
      }
     ],
+    "repaso": {
+     "abiertas": 2,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [
+      {
+       "en_lista": false,
+       "estado": "por_encima",
+       "lotes": 1,
+       "lotes_por_clase": 0,
+       "lotes_recalculados": 0,
+       "lotes_sin_stop": 0,
+       "moneda": "USD",
+       "motivo": null,
+       "precio": 60.0,
+       "precio_estado": "valido",
+       "precio_fecha": "2026-09-12T14:35:00+00:00",
+       "precio_fuente": "cotizacion",
+       "precio_proveedor": "finnhub",
+       "precios": [
+        {
+         "estado": "valido",
+         "fecha": "2026-09-12T14:35:00+00:00",
+         "fuente": "cotizacion",
+         "precio": 60.0,
+         "proveedor": "finnhub"
+        }
+       ],
+       "stop": 50.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "KO"
+      },
+      {
+       "en_lista": false,
+       "estado": "por_encima",
+       "lotes": 1,
+       "lotes_por_clase": 0,
+       "lotes_recalculados": 0,
+       "lotes_sin_stop": 0,
+       "moneda": "CAD",
+       "motivo": null,
+       "precio": 140.0,
+       "precio_estado": "valido",
+       "precio_fecha": "2026-09-12T14:35:00+00:00",
+       "precio_fuente": "cotizacion",
+       "precio_proveedor": "finnhub",
+       "precios": [
+        {
+         "estado": "valido",
+         "fecha": "2026-09-12T14:35:00+00:00",
+         "fuente": "cotizacion",
+         "precio": 140.0,
+         "proveedor": "finnhub"
+        }
+       ],
+       "stop": 110.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "SHOP.TO"
+      }
+     ],
+     "senales": []
+    },
     "risk_budget": {
      "avisos": [
       "Tienes un 16,7 % de la cartera en riesgo a la vez, por encima del 6 % que se suele considerar el tope. Si todo se gira en tu contra, eso es lo que pierdes.",

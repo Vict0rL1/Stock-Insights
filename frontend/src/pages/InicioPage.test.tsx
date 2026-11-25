@@ -7,8 +7,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IndexEntry, PortfolioPosition, PriceAlert, SectorEntry } from '../api/types'
-import { atencionDeCartera, extremosDeSectores, indicesDeInicio, InicioPage } from './InicioPage'
+import type { IndexEntry, Portfolio, PortfolioPosition, PriceAlert, RepasoDeCartera, SectorEntry, VigilanciaResponse } from '../api/types'
+import { atencionDeCartera } from '../components/cartera/atencion'
+import { posicionDelRepaso, repasoDe, senalDePosicion } from '../test/repaso'
+import { atencionesDeInicio, extremosDeSectores, indicesDeInicio, InicioPage } from './InicioPage'
 
 function posicion(p: Partial<PortfolioPosition> & { symbol: string }): PortfolioPosition {
   return {
@@ -49,45 +51,80 @@ function alerta(a: Partial<PriceAlert> & { symbol: string }): PriceAlert {
   }
 }
 
-describe('atencionDeCartera', () => {
+/** Lo que Inicio cuenta de una cartera con este repaso (el de `/api/portfolio`). */
+const deInicio = (repaso: RepasoDeCartera, alertas: PriceAlert[] | null = [], tesis: VigilanciaResponse | null = null) =>
+  atencionesDeInicio(atencionDeCartera({ positions: [], repaso } as Pick<Portfolio, 'positions' | 'repaso'>), alertas, tesis)
+
+describe('atencionesDeInicio', () => {
   it('un stop perforado va primero, en rojo, con los dos precios y qué dice la regla', () => {
-    const lista = atencionDeCartera(
-      [posicion({ symbol: 'KO', price: null, stop_perforado: null }), posicion({ symbol: 'STOP', price: 104, stop: 110, stop_perforado: true })],
-      [],
+    const lista = deInicio(
+      repasoDe([
+        posicionDelRepaso({ symbol: 'KO', precio: null, estado: 'sin_comprobar', motivo: 'sin precio (ninguna fuente dio su cotización)' }),
+        posicionDelRepaso({ symbol: 'STOP', precio: 104, stop: 110, estado: 'perforado' }),
+      ]),
     )
-    expect(lista[0]).toMatchObject({ tono: 'rojo', titulo: 'STOP bajó de tu límite de pérdida' })
+    expect(lista[0]).toMatchObject({ tono: 'rojo', de: 'posicion', titulo: 'STOP bajó de tu límite de pérdida' })
     expect(lista[0].texto).toContain('104,00')
     expect(lista[0].texto).toContain('110,00')
     expect(lista[0].texto).toContain('Tu regla dice vender')
   })
 
   it('sin precio, con un precio viejo o sin stop: «sin comprobar», nunca en orden ni callado', () => {
-    const lista = atencionDeCartera(
-      [
-        posicion({ symbol: 'SINPRECIO', price: null, stop_perforado: null }),
-        posicion({ symbol: 'VIEJO', precio_estado: 'viejo' }),
-        posicion({ symbol: 'SINSTOP', stop: null, stop_perforado: null }),
-        posicion({ symbol: 'BIEN' }),
-      ],
+    const lista = deInicio(
+      repasoDe([
+        posicionDelRepaso({ symbol: 'SINPRECIO', precio: null, estado: 'sin_comprobar', motivo: 'sin precio' }),
+        posicionDelRepaso({ symbol: 'VIEJO', precio_estado: 'viejo', estado: 'sin_comprobar', motivo: 'solo hay un precio viejo' }),
+        posicionDelRepaso({ symbol: 'SINSTOP', stop: null, estado: 'sin_comprobar', motivo: 'sin stop' }),
+        posicionDelRepaso({ symbol: 'BIEN' }),
+      ]),
       null,
     )
     expect(lista.map((a) => [a.tono, a.titulo])).toEqual([
       ['ambar', 'SINPRECIO: sin comprobar'],
-      ['ambar', 'VIEJO: sin comprobar'],
       ['ambar', 'SINSTOP no tiene límite de pérdida'],
+      ['ambar', 'VIEJO: sin comprobar'],
     ])
   })
 
-  it('una alerta de precio que saltó es roja; una que no se pudo comprobar, ámbar; una desactivada no cuenta', () => {
-    const lista = atencionDeCartera([], [
-      alerta({ symbol: 'AAA', triggered: true }),
-      alerta({ symbol: 'BBB', triggered: null, estado: 'sin_precio' }),
-      alerta({ symbol: 'CCC', triggered: true, active: false }),
+  it('una venta por puntuación con el stop intacto sale, como en Explorar; «Mantener» no', () => {
+    const vender = senalDePosicion('TPL', { action: 'vender', label: 'Vender', reglas: [
+      { id: 'puntuacion_desfavorable', regla: 'Puntuación ≤ -0,35', resultado: 'cumple', efecto: 'vender', papel: 'decide', datos: { valor: -0.52, umbral: -0.35 } },
+    ] })
+    const mantener = senalDePosicion('KO', { action: 'mantener', label: 'Mantener' })
+    const lista = deInicio(repasoDe([posicionDelRepaso({ symbol: 'TPL', en_lista: true }), posicionDelRepaso({ symbol: 'KO', en_lista: true })], {
+      senales: [vender, mantener],
+    }))
+    expect(lista.map((a) => [a.tono, a.titulo])).toEqual([['rojo', 'Tu regla dice vender TPL']])
+    expect(lista[0].texto).toContain('cayó a -0,52')
+  })
+
+  it('una alerta de precio que saltó es roja y va como alerta; una que no se pudo comprobar, ámbar; una desactivada no cuenta', () => {
+    const lista = deInicio(repasoDe([]), [
+      alerta({ id: 1, symbol: 'AAA', triggered: true }),
+      alerta({ id: 2, symbol: 'BBB', triggered: null, estado: 'sin_precio' }),
+      alerta({ id: 3, symbol: 'CCC', triggered: true, active: false }),
     ])
-    expect(lista.map((a) => [a.tono, a.titulo])).toEqual([
-      ['rojo', 'Saltó tu alerta de AAA'],
-      ['ambar', 'Tu alerta de BBB: sin comprobar'],
+    expect(lista.map((a) => [a.tono, a.de, a.titulo])).toEqual([
+      ['rojo', 'alerta', 'Saltó tu alerta de AAA'],
+      ['ambar', 'alerta', 'Tu alerta de BBB: sin comprobar'],
     ])
+  })
+
+  it('una tesis con un punto de vigilancia cruzado, en ámbar y no como orden de venta; uno sin medir, sin comprobar', () => {
+    const tesis = (id: number, symbol: string, saltan: number, sinMedir: number) => ({
+      thesis_id: id, symbol, title: 't', invalidation_criteria: null,
+      vigilancia: { disparadores: saltan ? [{ id: 1, kind: 'metrica', descripcion: 'Margen operativo por debajo del 10 %', config: {}, activo: true,
+        created_at: '2026-09-01T00:00:00Z', last_fired_at: null, salta: true, medible: true }] : [], saltan, sin_medir: sinMedir, total: 2, nota: '' },
+    })
+    const lista = deInicio(repasoDe([]), [], {
+      tesis: [tesis(1, 'KO', 1, 0), tesis(2, 'PEP', 0, 1), tesis(3, 'MSFT', 0, 0)], total_saltan: 1, sin_disparadores: [], nota: '', aviso_sin_disparadores: null,
+    } as unknown as VigilanciaResponse)
+    expect(lista.map((a) => [a.tono, a.de, a.titulo])).toEqual([
+      ['ambar', 'tesis', 'Tu tesis de KO: saltó un punto de vigilancia'],
+      ['ambar', 'tesis', 'Tu tesis de PEP: sin comprobar'],
+    ])
+    expect(lista[0].texto).toContain('Margen operativo por debajo del 10 %. No es una orden de venta')
+    expect(lista[0].to).toBe('/cartera?pestana=tesis')
   })
 })
 
@@ -136,11 +173,15 @@ describe('InicioPage', () => {
 
   it('la cartera y el mercado se pintan sin esperar a la lista del día', async () => {
     respuestas['/api/portfolio'] = async () =>
-      new Response(JSON.stringify({ positions: [posicion({ symbol: 'KO' })], summary: { total_market_value: null } }), { status: 200 })
+      new Response(
+        JSON.stringify({ positions: [posicion({ symbol: 'KO' })], summary: { total_market_value: null }, repaso: repasoDe([posicionDelRepaso({ symbol: 'KO' })]) }),
+        { status: 200 },
+      )
     respuestas['/api/market/overview'] = async () =>
       new Response(JSON.stringify({ indices: [{ symbol: 'SPY', label: 'S&P 500 (SPY)', quote: null }] }), { status: 200 })
     pintar()
-    expect(await screen.findByText('En orden')).toBeInTheDocument()
+    // El verbo de Explorar para una posición con el stop intacto.
+    expect(await screen.findByText('Mantener')).toBeInTheDocument()
     expect(await screen.findByText('S&P 500 (SPY)')).toBeInTheDocument()
     // La lista (`/api/signals/today`) sigue pendiente y lo dice sin bloquear nada.
     expect(screen.getByText('Cargando la lista de hoy…')).toBeInTheDocument()

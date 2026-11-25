@@ -1194,7 +1194,16 @@ function SoloSuStop({
  *  dejaban sus decisiones y su tamaño en otra cartera sin decirlo; la nota del
  *  tamaño decía «no tienes posiciones abiertas» junto a un repaso con dos
  *  (revisión 13). Remite a «Actualizar», que la recalcula. */
-function AvisoListaDesfasada({ cambios, calculada }: { cambios: ListaDesfasada; calculada: string | undefined }) {
+export function AvisoListaDesfasada({
+  cambios,
+  calculada,
+  recalcular = 'Pulsa «Actualizar» para recalcularla.',
+}: {
+  cambios: ListaDesfasada
+  calculada: string | undefined
+  /** Cómo se recalcula desde donde se pinta (Inicio no tiene «Actualizar»). */
+  recalcular?: string
+}) {
   const lista = (simbolos: string[]) => simbolos.join(', ')
   const partes = [
     cambios.abiertas.length > 0 && `abriste ${lista(cambios.abiertas)}`,
@@ -1210,8 +1219,7 @@ function AvisoListaDesfasada({ cambios, calculada }: { cambios: ListaDesfasada; 
           : `Esta lista se calculó${calculada ? ` ${fmtAntiguedad(calculada)}` : ''} con otra cartera. `}
       </span>
       {cambios.error ?? `Después ${partes.join('; ')}.`} Sus decisiones sobre tus posiciones y el
-      tamaño de las ideas son de entonces; el repaso del stop sí es de ahora. Pulsa «Actualizar» para
-      recalcularla.
+      tamaño de las ideas son de entonces; el repaso del stop sí es de ahora. {recalcular}
     </div>
   )
 }

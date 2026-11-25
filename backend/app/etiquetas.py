@@ -213,6 +213,8 @@ _BASE: dict[str, str] = {
     "correlacion": "correlación",
     "rebalanceo": "rebalanceo",
     "sector": "sector",
+    # Dimensión de un clúster de riesgo (`portfolio_risk.clusters_de_riesgo`): salía en crudo (revisión 15).
+    "industria": "industria",
     "moneda": "moneda",
     "evidencia": "evidencia",
     "volatilidad": "volatilidad",
