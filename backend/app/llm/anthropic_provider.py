@@ -19,6 +19,38 @@ import anthropic
 from app.llm.base import LLMProvider, LLMUnavailableError
 
 
+def _uso(response, **extra) -> dict:
+    """Lo que gastó una respuesta, con la forma que lee `coste.coste_real`.
+
+    Con el respaldo del servidor (`fallbacks`), el `usage` de arriba es SOLO el
+    del intento que produjo la respuesta: si el modelo pedido declina a mitad y
+    contesta el de respaldo, lo del primero no aparecía y el coste enseñado era
+    el del último intento (con Opus 5.5 → Opus 5, 0,025 USD enseñados frente a
+    0,042 cobrados; revisión 15). Lo de cada intento va en `usage.iterations`:
+    los que declinaron como `message` y el que contestó como `fallback_message`,
+    cada uno con su modelo. Cuando hay uno de respaldo, se devuelven los intentos
+    (`intentos`) para que el coste sume cada uno a la tarifa de su modelo."""
+    usage = getattr(response, "usage", None)
+    uso = {
+        "entrada": getattr(usage, "input_tokens", None),
+        "salida": getattr(usage, "output_tokens", None),
+        **extra,
+    }
+    iteraciones = getattr(usage, "iterations", None) or []
+    if any(getattr(it, "type", None) == "fallback_message" for it in iteraciones):
+        uso["intentos"] = [
+            {
+                "tipo": it.type,
+                "modelo": getattr(it, "model", None),
+                "entrada": getattr(it, "input_tokens", None),
+                "salida": getattr(it, "output_tokens", None),
+            }
+            for it in iteraciones
+            if getattr(it, "type", None) in ("message", "fallback_message")
+        ]
+    return uso
+
+
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
 
@@ -65,15 +97,7 @@ class AnthropicProvider(LLMProvider):
             raise LLMUnavailableError("Respuesta vacía del modelo")
         # Lo que gastó, con la misma forma que `extract`: «Pregúntale a la IA»
         # enseña el coste de cada respuesta, no solo el estimado antes de enviar.
-        usage = getattr(response, "usage", None)
-        return {
-            "content": text,
-            "model": response.model,
-            "usage": {
-                "entrada": getattr(usage, "input_tokens", None),
-                "salida": getattr(usage, "output_tokens", None),
-            },
-        }
+        return {"content": text, "model": response.model, "usage": _uso(response)}
 
     def extract(self, system: str, prompt: str, schema: type) -> dict:
         """Extracción validada contra un esquema Pydantic.
@@ -136,15 +160,10 @@ class AnthropicProvider(LLMProvider):
         if parsed is None:
             raise LLMUnavailableError("El modelo no devolvió una estructura válida")
 
-        usage = response.usage
         return {
             "data": parsed.model_dump(),
             "model": response.model,
-            "usage": {
-                "entrada": getattr(usage, "input_tokens", None),
-                "salida": getattr(usage, "output_tokens", None),
-                "cache_lectura": getattr(usage, "cache_read_input_tokens", None),
-            },
+            "usage": _uso(response, cache_lectura=getattr(response.usage, "cache_read_input_tokens", None)),
         }
 
     def contar_tokens(self, system: str, prompt: str) -> int | None:

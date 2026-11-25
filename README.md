@@ -467,7 +467,15 @@ empresa que descarga algo, una vez**: su companyfacts de EDGAR o, si EDGAR no la
 tiene, sus fundamentales de Finnhub. Hasta noviembre de 2026 solo contaba el
 respaldo de Finnhub, y la primera pasada bajaba los ~500 companyfacts de EDGAR de
 una vez (varios MB cada uno: un par de minutos) por pequeño que fuera el
-presupuesto. La UI muestra la barra de cobertura y un botón para continuar. Los
+presupuesto. Lo guardado de cada fuente se mira por separado: con los
+fundamentales de Finnhub guardados y sin los de EDGAR (EDGAR falló un rato), la
+empresa se puntúa con los de Finnhub y no se vuelve a pedir su companyfacts hasta
+que caducan; antes salía gratis pero bajaba EDGAR sin contarlo (con 40 de
+presupuesto, 80 descargas). Y una empresa que **ninguna fuente tiene** (EDGAR y
+Finnhub contestaron que no) se recuerda 24 h (`signals.SIN_FUNDAMENTALES`, como
+`RECORDAR_FALLO` con las cotizaciones): antes gastaba una unidad en cada pasada.
+Un fallo de las fuentes (caídas, sin cuota, sin clave) no se recuerda: se
+reintenta en la pasada siguiente. La UI muestra la barra de cobertura y un botón para continuar. Los
 nombres de las empresas salen del propio archivo del universo: pedirlos al API
 costaría otras 500 llamadas por información puramente cosmética.
 
@@ -493,17 +501,33 @@ pide la normal detrás y la sustituye al llegar. Sin ninguna (primera vez, o má
 una semana sin abrir la app), la primera pasada va **corta** (`budget=40`,
 `PRIMERA_PASADA`): unos segundos en vez de minutos y, aunque EDGAR fallara entero,
 40 llamadas a Finnhub dejan margen en su minuto para lo demás de la pantalla. Las
-cuatro pasadas automáticas de 120 completan el resto (40 + 4 × 120 = 520 ≥ 502)
-con la barra «Analizando el mercado en segundo plano: 312 de 502 empresas. Ya
-puedes usar la app; las ideas se completan solas.» Esa primera lista es
-**parcial y lo dice**: el presupuesto se gasta sector a sector, así que cubre los
-primeros sectores del universo.
+cuatro pasadas automáticas de 120 completan el resto (40 + 4 × 120 = 520 ≥ 502:
+cada empresa gasta como mucho una unidad en 24 h, también la que ninguna fuente
+tiene; si las fuentes fallan, lo fallido se reintenta y vuelve a gastar, y puede
+quedar algo pendiente que la pantalla dice con «Seguir completando») con la barra
+«Analizando el mercado en segundo plano: 312 de 502 empresas. Ya puedes usar la
+app; las ideas se completan solas.» Esa primera lista es **parcial y lo dice**:
+el presupuesto se gasta sector a sector, así que cubre los primeros sectores del
+universo.
+
+**Una lista parcial no congela instantáneas.** La decisión del día
+(`decision_snapshots`, la primera gana y es inmutable) se congela con la primera
+lista que cubre el mercado entero (`complete`; las empresas que ninguna fuente
+tiene no lo impiden), y la respuesta parcial lo dice en
+`instantaneas.sin_congelar` (`null` cuando se congeló). Antes congelaba la primera
+pasada, de 40 o 120 de 502: con el segundo sector puntuado contra una parte de sí
+mismo y «evitar» lo peor de 40, no de 502, y ninguna pasada posterior podía
+corregirlo. Un día sin lista completa se queda sin instantánea (`docs/DECISION_REPLAY.md`).
 
 Las peticiones en vuelo y la última lista se comparten por mercado entre las
 pantallas que la usan: montar otra pantalla con la lista ya recibida no pide nada
 (si tiene más de un minuto, la pide una vez para tener el repaso de stops de
 ahora, y solo encadena pasadas si el backend la recalculó), y StrictMode no
-duplica ninguna petición.
+duplica ninguna petición. **La lista en memoria envejece**: el hook guarda
+cuándo se calculó (no su edad), y pasadas 6 h (`VIGENCIA_LISTA_HORAS`, la vigencia
+de la caché del backend) la enseña como vieja, con su edad al día, aunque no
+venga de la copia caducada; también mientras pide la de ahora o si esa falla. El
+aviso dice entonces que el repaso de stops es de cuando llegó, no de ahora.
 
 ### De dónde salen las listas
 
@@ -2105,21 +2129,27 @@ una cotización por posición.
 | Lista del día del mercado | la caché de `/api/signals/today`: vigente (6 h) o la última copia caducada (`get_vencido`, hasta 7 días), marcada VIEJA con su antigüedad | la de su cálculo |
 | Tu cartera y sus stops | las posiciones abiertas y `stops_de_la_cartera` con los precios guardados: sin precio guardado, o con solo el cierre de una lista vieja, el stop queda «sin comprobar», nunca «por encima» | la de cada precio |
 | El mercado | las cotizaciones guardadas de los índices del panel de Mercado | la de cada cotización |
-| La ficha (`simbolo`) | su fila de la lista y su último análisis congelado, sin el «objetivo» de los niveles | la del análisis |
+| La ficha (`simbolo`) | su fila de la lista y su último análisis congelado, sin el «objetivo» de los niveles; si la fila sale de la lista caducada, el bloque hereda su estado y va VIEJO | la del análisis (la de la lista, si va VIEJO) |
 | Cómo compara la app los ETFs | los umbrales de `analysis/etf_picks.py` | — (son reglas) |
 
 Lo que no está guardado no se calcula: va en `datos_ausentes` y el prompt le
 dice a la IA que falta. Las instrucciones: español claro para quien empieza,
 solo cifras del contexto y con su fecha, decir cuándo falta un dato, sin precios
 objetivo ni predicciones, y recordar que la decisión es tuya. La pregunta (500
-caracteres como mucho) va delimitada como dato y no puede cerrar su delimitador.
+caracteres como mucho) va delimitada como dato y no puede cerrar su delimitador:
+se le quitan los caracteres de control, luego los delimitadores hasta que no
+quede ninguno (una etiqueta escrita dentro de otra ya no deja montada la de
+fuera) y los `<` y `>` sueltos se cambian por «‹ ›», así que ninguna combinación
+forma una etiqueta.
 
 - **Cuerpo:** `{ pregunta, mercado?, simbolo? }` (`mercado` por defecto
   `us_sp500`; uno desconocido, un símbolo inválido o una pregunta vacía o de más
   de 500 caracteres son un 422 en español, sin llamar al modelo).
 - **Respuesta:** `generado_por: "ia"`, `content_md` (Markdown), `model`,
   `cached`, `creado_en`, `coste` (tokens de entrada y salida que dio el API y su
-  precio a la tarifa del modelo; desde caché, sin coste nuevo), `datos_usados`
+  precio a la tarifa del modelo; si contestó el modelo de respaldo del servidor,
+  la suma de cada intento de `usage.iterations` a la tarifa de su modelo, y lo
+  dice; desde caché, sin coste nuevo), `datos_usados`
   (cada bloque con `titulo`, `fuente`, `fecha`, `estado` `valido`/`viejo`,
   `antiguedad_segundos` y `nota`), `datos_ausentes` y `aviso`.
 - **Antes de enviar:** `POST /api/ia/preguntar/coste`, mismo cuerpo con la
@@ -2131,8 +2161,12 @@ caracteres como mucho) va delimitada como dato y no puede cerrar su delimitador.
   añadirla; el bloque lo explica (`.env`, `./start.sh`) en vez de desaparecer.
   Un fallo del modelo es un 502 con su motivo.
 - **Caché:** la respuesta se guarda en `llm_outputs` (`kind = pregunta_ia`) por
-  la huella del modelo, las instrucciones y el prompt: la misma pregunta con los
-  mismos datos no vuelve a cobrar.
+  la huella de lo que la define (`pregunta_ia._huella`): el modelo, las
+  instrucciones, la pregunta, el día de la consulta y, de cada bloque, su fuente,
+  la fecha del dato, su estado, su nota y su texto; no la hora de la consulta ni
+  los «hace X» del prompt, que la hacían acertar solo dentro del mismo minuto. La
+  misma pregunta con los mismos datos, el mismo día, no vuelve a cobrar; la
+  respuesta guardada dice cuándo se generó.
 
 ## Alertas que avisan con la app cerrada
 

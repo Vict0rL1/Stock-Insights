@@ -102,7 +102,12 @@ Cómo quedó (fase B):
    como ya hace la caché). Sin copia, 404 y la pantalla espera a la normal.
 3. **Primera vez de todas** (sin ninguna lista): la primera pasada usa un presupuesto
    menor, para enseñar resultados en segundos, y las pasadas automáticas que ya existen
-   (`MAX_PASADAS_AUTO`) completan el resto con la barra «312 de 502 empresas».
+   (`MAX_PASADAS_AUTO`) completan el resto con la barra «312 de 502 empresas». Una lista
+   parcial no congela instantáneas: la decisión del día sale de la primera que cubre el
+   mercado (revisión 15, `docs/DECISION_REPLAY.md`).
+4. **La lista en memoria envejece.** El hook guarda cuándo se calculó cada lista, no su
+   edad: pasadas 6 h (la vigencia de la caché del backend) se enseña como vieja, con su
+   edad al día, aunque no venga de la copia caducada (revisión 15).
 
 ## La IA
 

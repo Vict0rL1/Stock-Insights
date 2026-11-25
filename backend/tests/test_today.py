@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -923,3 +924,204 @@ def test_el_presupuesto_cuenta_tambien_las_descargas_de_edgar(session_factory):
     assert service.financial_calls == 80 and segunda["scored"] > primera["scored"]
     assert service.fundamental_calls == 0
 
+
+# ---------------------------------------------------------------------------
+# Revisión 15: la primera pasada corta, el presupuesto y lo que no existe
+# ---------------------------------------------------------------------------
+
+
+class _EdgarQueGuarda(MarketService):
+    """EDGAR que guarda lo descargado (como el servicio real) y cuenta cada
+    companyfacts que de verdad baja. Los estados varían por empresa para que el
+    z-score dependa de con quién se compara."""
+
+    def __init__(self):
+        super().__init__()
+        self.financial_calls = 0
+
+    def get(self, data_type, **kwargs):
+        if data_type == "financials":
+            simbolo = kwargs["symbol"]
+            guardado = self.cache.get("financials", {"symbol": simbolo})
+            if guardado is not None:
+                return guardado
+            self.financial_calls += 1
+            seed = sum(ord(ch) * (i + 1) for i, ch in enumerate(simbolo))
+            payload = {"source": "edgar", "as_of": iso_utc(), "periods": [{
+                "end_date": "2024-12-31", "eps_diluted": 1.0 + seed % 9, "equity": 500.0 + seed % 700,
+                "revenue": 8000.0, "net_income": 100.0 + seed % 600, "operating_income": 200.0 + seed % 900,
+                "interest_expense": 40.0, "shares_outstanding": 100.0, "cfo": 300.0 + seed % 800,
+                "capex": -150.0}]}
+            self.cache.set("financials", {"symbol": simbolo}, payload)
+            return payload
+        return super().get(data_type, **kwargs)
+
+
+def _cliente_con(service, session_factory) -> TestClient:
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    return TestClient(app)
+
+
+@pytest.mark.parametrize("consulta", ["&budget=40", ""], ids=["primera_pasada_40", "normal_120"])
+def test_solo_se_congela_la_lista_que_cubre_el_mercado(session_factory, consulta):
+    """La primera pasada del día es corta (`PRIMERA_PASADA = 40`, o la normal de
+    120 detrás de la copia caducada) y el presupuesto cuenta EDGAR: congelaba
+    como «la decisión del día», inmutable y la primera gana, lo que decía una
+    lista de 40 de 502, con el segundo sector puntuado contra una parte de sí
+    mismo. F y GM quedaban como «evitar» con una puntuación que la lista
+    completa no da. Ahora solo congela la lista completa, y lo congelado es lo
+    que dice ella."""
+    from app.db.models import DecisionSnapshot
+
+    try:
+        with _cliente_con(_EdgarQueGuarda(), session_factory) as c:
+            primera = c.get(f"/api/signals/today?market=us_sp500{consulta}").json()
+            assert primera["complete"] is False
+            with session_factory() as s:
+                assert s.query(DecisionSnapshot).count() == 0
+            inst = primera["instantaneas"]
+            assert inst["guardadas"] == 0 and inst["error"] is None
+            assert "Lista parcial" in inst["sin_congelar"] and "cubra el mercado entero" in inst["sin_congelar"]
+
+            completa = primera
+            for _ in range(6):
+                if completa["complete"]:
+                    break
+                completa = c.get("/api/signals/today?market=us_sp500&budget=600&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert completa["complete"] is True
+    assert completa["instantaneas"]["sin_congelar"] is None and completa["instantaneas"]["guardadas"] > 0
+
+    accion = {x["symbol"]: x["decision"]["action"] for x in completa["signals"]}
+    puntuacion = {x["symbol"]: x["score"] for x in completa["signals"]}
+    corta = completa["shortlist"]
+    esperadas = {(x["symbol"], "comprar") for x in corta["ideas"]} | {(x["symbol"], "evitar") for x in corta["evitar"]}
+    with session_factory() as s:
+        congeladas = s.query(DecisionSnapshot).all()
+        assert {(x.symbol, x.accion) for x in congeladas} == esperadas
+        for x in congeladas:
+            assert accion[x.symbol] == x.accion and x.score == pytest.approx(puntuacion[x.symbol])
+            assert x.contexto["mercado"]["completo"] is True
+
+
+def test_con_finnhub_guardado_no_vuelve_a_bajar_edgar_sin_contarlo(session_factory):
+    """La empresa con los fundamentales de Finnhub guardados salía gratis
+    («EDGAR no la tiene»), pero se volvía a pedir su companyfacts: si EDGAR solo
+    había fallado un rato, esa descarga no la contaba nadie. Con 40 de
+    presupuesto se bajaban 80."""
+    from app.providers.router import AllProvidersFailedError
+
+    service = _EdgarQueGuarda()
+    original = service.get
+    edgar = {"caido": True}
+
+    def get(data_type, **kw):
+        if data_type == "financials" and edgar["caido"]:
+            raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            # EDGAR cae en la primera pasada: las 40 van a Finnhub y se guardan.
+            primera = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            edgar["caido"] = False
+            antes = service.financial_calls
+            segunda = c.get("/api/signals/today?market=us_sp500&budget=40&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert primera["fetched_now"] == 40 and service.fundamental_calls == 40
+    # Las 40 de Finnhub salen gratis y con su fuente; las 40 nuevas, de EDGAR.
+    assert service.financial_calls - antes == segunda["fetched_now"] == 40
+    fuentes = Counter(x["context"]["source"] for x in segunda["signals"])
+    assert fuentes["fake"] == 40 and fuentes["edgar"] > 0
+    assert service.fundamental_calls == 40
+
+
+def test_lo_que_ninguna_fuente_tiene_no_gasta_presupuesto_en_cada_pasada(session_factory):
+    """«40 + 4 × 120 = 520 ≥ 502»: el margen son 18 unidades, y una empresa que
+    ni EDGAR ni Finnhub tienen no guarda nada, así que gastaba una unidad (y una
+    llamada a Finnhub) en CADA pasada. Con cinco así, las pasadas automáticas no
+    cubrían el S&P 500. Ahora el «no existe» se recuerda 24 h."""
+    from app.routers.signals import SIN_FUNDAMENTALES
+
+    primeras = [x["symbol"] for x in next(iter(load_market("us_sp500")["sectors"].values()))][:5]
+    service = _EdgarQueGuarda()
+    original = service.get
+    pedidas: Counter = Counter()
+
+    def get(data_type, **kw):
+        if data_type in ("financials", "fundamentals") and kw.get("symbol") in primeras:
+            pedidas[data_type] += 1
+            raise DataNotFoundError(f"{kw['symbol']}: ni EDGAR ni Finnhub")
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            # Lo que pide `useListaDiaria` sin lista guardada: la primera corta y 4 pasadas.
+            d = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            for _ in range(4):
+                d = c.get("/api/signals/today?market=us_sp500&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert d["complete"] is True, f"tras las 5 pasadas: {d['scored']} puntuadas, {d['pending']} pendientes"
+    # Se preguntó una vez a cada fuente, no una por pasada, y se dice por qué faltan.
+    assert pedidas == {"financials": 5, "fundamentals": 5}
+    assert all(service.cache.get(SIN_FUNDAMENTALES, {"symbol": s}) is not None for s in primeras)
+    motivos = {x["symbol"]: x["reason"] for x in d["unavailable"]}
+    assert all(motivos[s] == "sin fundamentales en ninguna fuente" for s in primeras)
+
+
+def test_un_fallo_de_las_fuentes_no_se_recuerda_como_que_no_existe(session_factory):
+    """Lo que se recuerda es la RESPUESTA «no la tengo» de las dos fuentes: con
+    EDGAR caído (sin cuota, un 503), la empresa se vuelve a intentar en la
+    pasada siguiente. Recordarlo 24 h la dejaría fuera el día entero."""
+    from app.providers.router import AllProvidersFailedError
+    from app.routers.signals import SIN_FUNDAMENTALES
+
+    service = _EdgarQueGuarda()
+    original = service.get
+
+    def get(data_type, **kw):
+        if kw.get("symbol") == "AAPL":
+            if data_type == "financials":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+            if data_type == "fundamentals":
+                raise DataNotFoundError("finnhub: sin datos de AAPL")
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            d = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert any(x["symbol"] == "AAPL" for x in d["unavailable"])
+    assert service.cache.get(SIN_FUNDAMENTALES, {"symbol": "AAPL"}) is None
+
+
+def test_la_vigencia_de_la_lista_es_la_misma_en_el_frontend():
+    """`useListaDiaria` marca vieja la lista que tiene en memoria al pasar su
+    vigencia (`VIGENCIA_LISTA_HORAS`). Si no fuera la de la caché del backend, la
+    pantalla presentaría como de ahora una lista que el backend ya no sirve como
+    vigente, o al revés."""
+    import re
+    from pathlib import Path
+
+    from app.config import CACHE_TTL_SECONDS
+
+    hook = Path(__file__).resolve().parents[2] / "frontend/src/hooks/useListaDiaria.ts"
+    horas = re.search(r"export const VIGENCIA_LISTA_HORAS = (\d+)\b", hook.read_text(encoding="utf-8"))
+    assert horas is not None, "VIGENCIA_LISTA_HORAS ya no está en useListaDiaria.ts"
+    assert int(horas.group(1)) * 3600 == CACHE_TTL_SECONDS["daily_picks"]

@@ -24,13 +24,21 @@
  *   lista.data                La lista que hay que enseñar (la más reciente que
  *                             llegó), o null si aún no hay ninguna.
  *   lista.estado              'cargando'      no hay nada que enseñar y se está pidiendo;
- *                             'vieja'         `data` es la copia caducada y se pide la de ahora;
+ *                             'vieja'         `data` no es de ahora (`vieja`); si `ocupado`,
+ *                                             se está pidiendo la de ahora;
  *                             'actualizando'  `data` es de ahora y hay una pasada en marcha;
  *                             'lista'         `data` es de ahora y no se está pidiendo nada;
  *                             'error'         falló la última petición (`error`); `data`
  *                                             sigue siendo lo último bueno, si lo hay.
- *   lista.antiguedadSegundos  Solo si `data` es la copia caducada: su edad según el
- *                             backend (null si no la dijo: no saberla no es «de ahora»).
+ *   lista.vieja               `data` no es de ahora: es la copia caducada, o una lista que
+ *                             pasó su vigencia (`VIGENCIA_LISTA_HORAS`) desde que se
+ *                             calculó. Se mantiene con `estado: 'error'`.
+ *   lista.calculadaEn         Cuándo se calculó `data` (ms desde 1970), o null si no se sabe
+ *                             (no saberlo no es «de ahora»). En la copia caducada, la edad
+ *                             que da el backend contada desde que llegó. Es una FECHA, no
+ *                             una edad: la edad se calcula al pintar y avanza sola.
+ *   lista.recibidaEn          Cuándo llegó `data` (ms): el repaso de stops que trae es de
+ *                             ese momento, no del de pintar.
  *   lista.progreso            { puntuadas, total, pendientes, completa } de `data`, o null.
  *   lista.pasada              Pasada automática en curso (1…maxPasadas), 0 si ninguna.
  *   lista.maxPasadas          `MAX_PASADAS_AUTO`.
@@ -50,6 +58,14 @@
  * componente que monta con la lista ya recibida la enseña sin pedir nada; si
  * tiene más de `REVALIDAR_TRAS_MS`, la vuelve a pedir una vez (el repaso de stops
  * viaja en cada respuesta y es de cuando llegó).
+ *
+ * Lo que se guarda de cada lista es la FECHA en que se calculó, no su edad: la
+ * lista en memoria envejece. Antes, una lista recibida a las 10:00 se enseñaba a
+ * las 17:00, al volver a Inicio, como «de ahora» («Actualizando la lista en
+ * segundo plano»), sin edad y pasada ya su vigencia en el backend; y la edad de
+ * la copia caducada se quedaba en la de cuando llegó («hace 9 h» tres horas
+ * después; revisión 15). Ahora `vieja` se calcula contra el reloj, y la entrada
+ * se vuelve a evaluar sola en el momento en que su lista caduca.
  *
  * Una cadena de pasadas sin nadie mirando (se cambió de mercado o de pantalla)
  * no pide la siguiente: cada pasada gasta cuota para un mercado que nadie ve. La
@@ -74,7 +90,14 @@ import { mensajeDeError } from '../lib/useDato'
  *    (300/min que se permite la app) las pasadas van una detrás de otra, nunca a
  *    la vez, y no llegan a ese ritmo.
  *  - Cobertura: 40 + 4 pasadas de 120 son 520 ≥ 502, el S&P 500 (el universo más
- *    grande), así que las pasadas automáticas lo completan sin pulsar nada.
+ *    grande), porque cada empresa gasta como mucho UNA unidad en 24 h: lo
+ *    descargado se guarda, y lo que ninguna fuente tiene también se recuerda
+ *    (`signals.SIN_FUNDAMENTALES`; antes gastaba en cada pasada, y con cinco así
+ *    quedaban 2 pendientes, revisión 15). Lo que sí vuelve a gastar es un fallo
+ *    de las fuentes (caídas, sin cuota, sin clave), que se reintenta: entonces
+ *    puede quedar algo pendiente, y la pantalla lo dice («Seguir completando»).
+ *  - Esta primera lista no congela «la decisión del día»: solo la congela la
+ *    primera que cubre el mercado (`signals._today`, `docs/DECISION_REPLAY.md`).
  *  - El presupuesto se gasta sector a sector, en el orden del universo: en el
  *    S&P 500, 40 cubren el primer sector entero (22) y parte del segundo; con
  *    menos de 25 la primera lista sería de un solo sector, porque uno con menos
@@ -95,6 +118,13 @@ export const MAX_PASADAS_AUTO = 4
  *  repaso de stops. */
 export const REVALIDAR_TRAS_MS = 60_000
 
+/** Lo que vive una lista en la caché del backend (`CACHE_TTL_SECONDS["daily_picks"]`;
+ *  `test_la_vigencia_de_la_lista_es_la_misma_en_el_frontend` comprueba que coinciden).
+ *  Pasado esto, el backend ya no la sirve como vigente, y la de memoria tampoco
+ *  puede presentarse como de ahora. */
+export const VIGENCIA_LISTA_HORAS = 6
+const VIGENCIA_LISTA_MS = VIGENCIA_LISTA_HORAS * 3_600_000
+
 export type EstadoLista = 'cargando' | 'vieja' | 'actualizando' | 'lista' | 'error'
 
 export interface ProgresoLista {
@@ -113,7 +143,9 @@ export interface ErrorDeLista {
 export interface ListaDiaria {
   data: TodayResponse | null
   estado: EstadoLista
-  antiguedadSegundos: number | null
+  vieja: boolean
+  calculadaEn: number | null
+  recibidaEn: number | null
   progreso: ProgresoLista | null
   pasada: number
   maxPasadas: number
@@ -139,7 +171,12 @@ type Encadenar = 'siempre' | 'si_recalculada'
 
 interface Interno {
   data: TodayResponse | null
-  vieja: boolean
+  /** `data` es la copia caducada que sirve `vencida=aceptar`. */
+  copia: boolean
+  /** Cuándo se calculó `data` (ms), o null si no se sabe (`calculadaEn`). */
+  calculadaEn: number | null
+  /** Cuándo llegó `data` (ms). */
+  recibidaEn: number | null
   ocupado: boolean
   paso: Paso | null
   pasada: number
@@ -158,22 +195,43 @@ interface Entrada {
   cadena: number
   /** La pasada con la que seguir cuando vuelva alguien a mirar. */
   reanudar: number | null
+  /** El aviso de cuando caduque la lista a la vista (`programarCaducidad`). */
+  caduca: ReturnType<typeof setTimeout> | null
 }
 
 const INICIAL: Interno = {
-  data: null, vieja: false, ocupado: false, paso: null, pasada: 0, error: null, respuestaEn: null,
+  data: null, copia: false, calculadaEn: null, recibidaEn: null, ocupado: false, paso: null, pasada: 0,
+  error: null, respuestaEn: null,
 }
 
 const entradas = new Map<string, Entrada>()
 const enVuelo = new Map<string, Promise<TodayResponse>>()
 
+/** Cuándo se calculó una lista que acaba de llegar (`llegada`, ms).
+ *  - La copia caducada: la edad que da el backend, contada desde que llegó (no
+ *    se mezcla el reloj del servidor con el del navegador). Sin edad, null.
+ *  - Una recién calculada (`cached: false`): ahora.
+ *  - Una servida de la caché del backend: su `fetched_at` (o su `as_of`). */
+function fechaDeCalculo(d: TodayResponse, copia: boolean, llegada: number): number | null {
+  if (copia) return typeof d.antiguedad_segundos === 'number' ? llegada - d.antiguedad_segundos * 1000 : null
+  if (d.cached === false) return llegada
+  const t = Date.parse(d.fetched_at ?? d.as_of)
+  return Number.isFinite(t) ? t : null
+}
+
+function esVieja(i: Interno, ahora: number): boolean {
+  if (!i.data) return false
+  return i.copia || (i.calculadaEn !== null && ahora - i.calculadaEn >= VIGENCIA_LISTA_MS)
+}
+
 function vistaDe(i: Interno): Vista {
   const d = i.data
+  const vieja = esVieja(i, Date.now())
   const estado: EstadoLista = i.error
     ? 'error'
     : !d
       ? 'cargando'
-      : i.vieja
+      : vieja
         ? 'vieja'
         : i.ocupado
           ? 'actualizando'
@@ -192,7 +250,9 @@ function vistaDe(i: Interno): Vista {
   return {
     data: d,
     estado,
-    antiguedadSegundos: i.vieja ? (d?.antiguedad_segundos ?? null) : null,
+    vieja,
+    calculadaEn: d ? i.calculadaEn : null,
+    recibidaEn: d ? i.recibidaEn : null,
     progreso,
     pasada: i.pasada,
     maxPasadas: MAX_PASADAS_AUTO,
@@ -205,7 +265,7 @@ function vistaDe(i: Interno): Vista {
 function entrada(market: string): Entrada {
   let e = entradas.get(market)
   if (!e) {
-    e = { interno: INICIAL, vista: vistaDe(INICIAL), oyentes: new Set(), cadena: 0, reanudar: null }
+    e = { interno: INICIAL, vista: vistaDe(INICIAL), oyentes: new Set(), cadena: 0, reanudar: null, caduca: null }
     entradas.set(market, e)
   }
   return e
@@ -213,8 +273,27 @@ function entrada(market: string): Entrada {
 
 function cambiar(e: Entrada, parcial: Partial<Interno>): void {
   e.interno = { ...e.interno, ...parcial }
+  reevaluar(e)
+}
+
+function reevaluar(e: Entrada): void {
   e.vista = vistaDe(e.interno)
+  programarCaducidad(e)
   for (const avisar of e.oyentes) avisar()
+}
+
+/** La vista se calcula al cambiar algo, no en cada lectura (`useSyncExternalStore`
+ *  necesita la misma vista mientras nada cambie): sin este aviso, una lista a la
+ *  vista seguiría «de ahora» después de caducar, hasta la siguiente petición. */
+function programarCaducidad(e: Entrada): void {
+  if (e.caduca !== null) clearTimeout(e.caduca)
+  e.caduca = null
+  const { calculadaEn } = e.interno
+  if (calculadaEn === null || e.vista.vieja || !e.vista.data) return
+  e.caduca = setTimeout(() => {
+    e.caduca = null
+    reevaluar(e)
+  }, Math.max(0, calculadaEn + VIGENCIA_LISTA_MS - Date.now()))
 }
 
 /** La petición de `paso` para `market`; si ya hay una igual en vuelo, esa. */
@@ -254,10 +333,13 @@ function dar(market: string, e: Entrada, mia: number, paso: Paso, pasada: number
   pedir(market, paso).then(
     (d) => {
       if (!esVigente(market, e, mia)) return
-      const vieja = paso === 'guardada' && d.estado === 'viejo'
-      cambiar(e, { data: d, vieja, respuestaEn: Date.now() })
+      const copia = paso === 'guardada' && d.estado === 'viejo'
+      const llegada = Date.now()
+      cambiar(e, {
+        data: d, copia, calculadaEn: fechaDeCalculo(d, copia, llegada), recibidaEn: llegada, respuestaEn: llegada,
+      })
       // La copia caducada se enseña y se pide la de ahora detrás.
-      if (vieja) dar(market, e, mia, 'normal', 0, encadenar)
+      if (copia) dar(market, e, mia, 'normal', 0, encadenar)
       else seguir(market, e, mia, d, pasada, encadenar)
     },
     (err: unknown) => {
@@ -331,6 +413,7 @@ export function useListaDiaria(market: string): ListaDiaria {
  *  en vuelo, para que un test no herede la lista del anterior. Lo que llegue
  *  después de una cadena olvidada se descarta. */
 export function olvidarListasDiarias(): void {
+  for (const e of entradas.values()) if (e.caduca !== null) clearTimeout(e.caduca)
   entradas.clear()
   enVuelo.clear()
 }

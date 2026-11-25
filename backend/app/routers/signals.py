@@ -147,6 +147,19 @@ def _validate(symbols: list[str]) -> list[str]:
     return out
 
 
+# Una empresa que NINGUNA fuente tiene (EDGAR contestó que no la tiene, o que sus
+# estados no dan ningún múltiplo, y Finnhub que no la tiene) se recuerda en la
+# caché lo mismo que vive lo que sí se descarga (`CACHE_TTL_SECONDS`, 24 h), como
+# `cache.RECORDAR_FALLO` con las cotizaciones. Sin recordarlo, como no se guarda
+# nada suyo, gastaba una unidad del presupuesto —y una llamada a Finnhub, y a
+# veces un companyfacts entero— en CADA pasada: con cinco así en el S&P 500, las
+# pasadas automáticas (40 + 4 × 120) se quedaban a 2 de cubrirlo (revisión 15).
+# Un fallo de las fuentes (caídas, sin cuota, sin clave) no es una respuesta y
+# no se recuerda: se reintenta en la pasada siguiente.
+SIN_FUNDAMENTALES = "sin_fundamentales"
+SIN_EN_NINGUNA_FUENTE = "sin fundamentales en ninguna fuente"
+
+
 def _safe_get(service: MarketDataService, data_type: str, **kwargs):
     try:
         return service.get(data_type, **kwargs)
@@ -159,7 +172,7 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
     cuota agotada», y el 502 lo presentaba como el motivo real (revisión F1).
     Se lee detrás de un recuento: «12 sin cuota en las fuentes de fundamentales»."""
     if isinstance(exc, DataNotFoundError):
-        return "sin fundamentales en ninguna fuente"
+        return SIN_EN_NINGUNA_FUENTE
     motivos = [m for m in getattr(exc, "reasons", {}).values() if not m.startswith(("no configurado", "no soporta"))]
     if not motivos:
         return "sin ninguna fuente de fundamentales configurada"
@@ -583,7 +596,7 @@ class FetchBudget:
 
 def _metrics_desde_edgar(
     service: MarketDataService, symbol: str, precio: float | None
-) -> tuple[dict | None, str | None]:
+) -> tuple[dict | None, str | None, bool]:
     """Métricas de valoración desde EDGAR en vez de Finnhub.
 
     Es la palanca de coste más grande de toda la app. `fundamentals` iba a
@@ -600,26 +613,28 @@ def _metrics_desde_edgar(
     rugoso que un dato de proveedor, y a cambio gratis, auditable y trazable
     hasta el filing. Para un z-score transversal —donde todas las empresas se
     miden con la misma vara— esa rugosidad no cambia el orden.
+
+    El tercer valor dice si EDGAR CONTESTÓ que no hay nada utilizable (no la
+    tiene, o sus estados no dan ningún múltiplo): solo entonces, si Finnhub
+    tampoco la tiene, se recuerda que ninguna fuente la tiene
+    (`SIN_FUNDAMENTALES`). EDGAR caído, o sin precio con que calcular, no es una
+    respuesta.
     """
     if not precio:
-        return None, None
-    financials = _safe_get(service, "financials", symbol=symbol)
+        return None, None, False
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError:
+        return None, None, True
+    except AllProvidersFailedError:
+        return None, None, False
     if not financials or not financials.get("periods"):
-        return None, None
+        return None, None, True
     periodo = financials["periods"][-1]
     metrics = metrics_from_period(periodo, precio, periodo.get("shares_outstanding"))
     if not any(v is not None for v in metrics.values()):
-        return None, None
-    return metrics, financials.get("source", "edgar")
-
-
-def _fundamentales_en_cache(service: MarketDataService, symbol: str) -> bool:
-    """Si hay estados de EDGAR o fundamentales de Finnhub de esta empresa en la
-    caché: con alguno, puntuarla no descarga nada que el presupuesto deba contar."""
-    return any(
-        service.cache.get(tipo, {"symbol": symbol}) is not None
-        for tipo in ("financials", "fundamentals")
-    )
+        return None, None, True
+    return metrics, financials.get("source", "edgar"), False
 
 
 def _motivos_sin_puntuar(no_disponibles: list[dict], pendientes: list[str]) -> str:
@@ -705,38 +720,52 @@ def _score_symbols(
         # si la empresa no está en la SEC se recurre al proveedor de pago, y
         # entonces sí consume presupuesto.
         precio = (price_map.get(symbol) or {}).get("last")
+        if service.cache.get(SIN_FUNDAMENTALES, {"symbol": symbol}) is not None:
+            unavailable.append({"symbol": symbol, "reason": SIN_EN_NINGUNA_FUENTE})
+            continue
         # El presupuesto cuenta también el companyfacts de EDGAR: antes solo
         # acotaba el respaldo de Finnhub, y la primera pasada descargaba los ~500
         # de EDGAR de una vez, sin tope; un presupuesto menor no la acortaba en
         # nada. Una empresa cuesta UNA unidad aunque EDGAR no la tenga y se pida
-        # a Finnhub, y nada si ya hay algo suyo en la caché (los fundamentales de
-        # Finnhub solo se guardan si EDGAR no la tenía, y entonces EDGAR falla sin
-        # descargar nada: no hay ningún companyfacts para ese símbolo).
+        # a Finnhub, y nada si ya hay algo suyo en la caché.
+        #
+        # Cada caché por su lado: con solo los fundamentales de Finnhub guardados,
+        # la empresa salía gratis pero se volvía a pedir su companyfacts («EDGAR
+        # no la tiene» era la suposición, y basta un 503 de EDGAR para que Finnhub
+        # la tenga guardada): una descarga que nadie contaba, y con 40 de
+        # presupuesto se bajaban 80 (revisión 15). Ahora, con lo de Finnhub
+        # guardado y sin lo de EDGAR, se puntúa con lo de Finnhub sin volver a
+        # EDGAR hasta que caduque (24 h, lo mismo que vive lo de EDGAR).
+        edgar_guardado = service.cache.get("financials", {"symbol": symbol}) is not None
+        fundamentals = service.cache.get("fundamentals", {"symbol": symbol})
         pagada = False
-        if budget is not None and precio and not _fundamentales_en_cache(service, symbol):
+        if budget is not None and precio and not edgar_guardado and fundamentals is None:
             if not budget.spend():
                 pending.append(symbol)
                 continue
             pagada = True
-        metrics_edgar, fuente_edgar = _metrics_desde_edgar(service, symbol, precio)
-        if metrics_edgar is not None:
-            raw_by_symbol[symbol] = build_raw_factors(
-                metrics_edgar, momentum_map.get(symbol), None
-            )
-            context[symbol] = {"source": fuente_edgar or "edgar"}
-            continue
+        edgar_sin_nada = False
+        if edgar_guardado or fundamentals is None:
+            metrics_edgar, fuente_edgar, edgar_sin_nada = _metrics_desde_edgar(service, symbol, precio)
+            if metrics_edgar is not None:
+                raw_by_symbol[symbol] = build_raw_factors(
+                    metrics_edgar, momentum_map.get(symbol), None
+                )
+                context[symbol] = {"source": fuente_edgar or "edgar"}
+                continue
 
-        fundamentals = None
-        if budget is not None:
+        if fundamentals is None:
             # Lo cacheado es gratis; solo lo nuevo consume presupuesto.
-            fundamentals = service.cache.get("fundamentals", {"symbol": symbol})
-            if fundamentals is None and not pagada and not budget.spend():
+            if budget is not None and not pagada and not budget.spend():
                 pending.append(symbol)
                 continue
-        if fundamentals is None:
             try:
                 fundamentals = service.get("fundamentals", symbol=symbol)
             except (DataNotFoundError, AllProvidersFailedError) as exc:
+                if isinstance(exc, DataNotFoundError) and edgar_sin_nada:
+                    service.cache.set(SIN_FUNDAMENTALES, {"symbol": symbol}, {
+                        "symbol": symbol, "motivo": SIN_EN_NINGUNA_FUENTE, "finnhub": str(exc)[:200],
+                    })
                 unavailable.append({"symbol": symbol, "reason": _por_que_sin_fundamentales(exc)})
                 continue
         raw_by_symbol[symbol] = build_raw_factors(
@@ -1421,9 +1450,30 @@ def _today(
     # respuesta servida desde caché es una decisión tomada cuando se calculó, y
     # congelarla al servirla la fecharía como de hoy. `congelar_lista_diaria` no
     # lanza; si falla, la lista se sirve igual y el fallo viaja en la respuesta.
-    payload["instantaneas"] = snapshots.congelar_lista_diaria(
-        session, payload, f"hoy:{market}", datetime.now(timezone.utc)
-    )
+    #
+    # Y solo una lista que CUBRE el mercado (`complete`: nada pendiente; las que
+    # ninguna fuente tiene no bloquean). La primera pasada del día es parcial
+    # (40 o 120 de 502, `useListaDiaria`): el segundo sector se puntuaba contra
+    # una parte de sí mismo, las «ideas» y lo que dice «evitar» eran lo mejor y
+    # lo peor de 40, no de 502, y como la primera instantánea del día gana y es
+    # inmutable, ninguna pasada posterior podía corregirlo: el forward testing
+    # medía cada día lo que dijo una lista a medias (revisión 15). Un día sin
+    # lista completa se queda sin instantánea, y la respuesta dice por qué: un
+    # hueco en el registro es mejor que una decisión tomada sobre una parte.
+    if complete:
+        payload["instantaneas"] = {
+            **snapshots.congelar_lista_diaria(session, payload, f"hoy:{market}", datetime.now(timezone.utc)),
+            "sin_congelar": None,
+        }
+    else:
+        payload["instantaneas"] = {
+            "guardadas": 0, "ya_existian": 0, "error": None,
+            "sin_congelar": (
+                f"Lista parcial ({fmt_num(len(ranked), 0)} de {fmt_num(requested, 0)} empresas, "
+                f"{fmt_num(len(pending), 0)} {plural(len(pending), 'pendiente', 'pendientes')}): "
+                "la decisión del día se congela con la primera lista que cubra el mercado entero."
+            ),
+        }
     # Después de congelar —las instantáneas guardan la traza entera—, la
     # respuesta se aligera: la traza viaja donde se actúa, no en la cola.
     _aligerar_trazas(payload)

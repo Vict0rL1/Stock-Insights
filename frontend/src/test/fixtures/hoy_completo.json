@@ -90,7 +90,8 @@
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
-     "guardadas": 10,
+     "guardadas": 0,
+     "sin_congelar": "Lista parcial (120 de 502 empresas, 382 pendientes): la decisión del día se congela con la primera lista que cubra el mercado entero.",
      "ya_existian": 0
     },
     "lista_desfasada": null,
@@ -4823,8 +4824,9 @@
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
-     "guardadas": 3,
-     "ya_existian": 7
+     "guardadas": 0,
+     "sin_congelar": "Lista parcial (240 de 502 empresas, 262 pendientes): la decisión del día se congela con la primera lista que cubra el mercado entero.",
+     "ya_existian": 0
     },
     "lista_desfasada": null,
     "market_description": "Los componentes del índice, por sector GICS. Todas reportan a la SEC, así que EDGAR cubre sus fundamentales gratis.",
@@ -9560,7 +9562,8 @@
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
-     "guardadas": 10,
+     "guardadas": 0,
+     "sin_congelar": "Lista parcial (120 de 502 empresas, 382 pendientes): la decisión del día se congela con la primera lista que cubra el mercado entero.",
      "ya_existian": 0
     },
     "lista_desfasada": null,

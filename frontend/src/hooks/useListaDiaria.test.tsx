@@ -4,13 +4,16 @@
  * hay ninguna, las pasadas automáticas, los fallos con «Reintentar» y, sobre
  * todo, que dos pantallas (Inicio y Explorar) o StrictMode no pidan dos veces lo
  * mismo. Se simula `fetch`, y cada respuesta se suelta a mano para fijar el orden.
+ * Y que la lista en memoria envejece: se guarda cuándo se calculó, no su edad.
  */
-import { act, renderHook } from '@testing-library/react'
+import { act, render, renderHook, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MAX_PASADAS_AUTO, PRIMERA_PASADA, REVALIDAR_TRAS_MS, useListaDiaria } from './useListaDiaria'
+import { ProgresoAnalisis, textoDeAntiguedad } from '../components/ProgresoAnalisis'
+import { MAX_PASADAS_AUTO, PRIMERA_PASADA, REVALIDAR_TRAS_MS, VIGENCIA_LISTA_HORAS, useListaDiaria } from './useListaDiaria'
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -22,12 +25,14 @@ const R = '/api/signals/today?market=us_sp500&refresh=true'
 
 type Respuesta = { status: number; json: unknown }
 
-/** Una lista con lo que el hook lee; `complete` sale de las cuentas. */
+/** Una lista con lo que el hook lee; `complete` sale de las cuentas. Calculada
+ *  AHORA (el reloj del test): una con fecha fija envejecería con el calendario. */
 function lista(scored: number, extra: Record<string, unknown> = {}): Respuesta {
+  const ahora = new Date(Date.now()).toISOString()
   return {
     status: 200,
     json: { scored, requested: 502, pending: 502 - scored, complete: scored === 502, cached: true,
-      as_of: '2026-11-24T10:00:00+00:00', signals: [], ...extra },
+      as_of: ahora, fetched_at: ahora, signals: [], ...extra },
   }
 }
 const vieja = (scored: number) => lista(scored, { estado: 'viejo', antiguedad_segundos: 9 * 3600 })
@@ -66,14 +71,15 @@ describe('useListaDiaria: lo guardado primero', () => {
 
     await s.soltar(G, vieja(502))
     expect(result.current.estado).toBe('vieja')
-    expect(result.current.antiguedadSegundos).toBe(9 * 3600)
+    expect(result.current.vieja).toBe(true)
+    expect(textoDeAntiguedad(result.current.calculadaEn)).toBe('Lista de hace 9 h')
     expect(result.current.data?.scored).toBe(502)
     expect(result.current.ocupado).toBe(true)
     expect(s.pedidas).toEqual([G, N])
 
     await s.soltar(N, lista(502, { cached: false }))
     expect(result.current.estado).toBe('lista')
-    expect(result.current.antiguedadSegundos).toBeNull()
+    expect(result.current.vieja).toBe(false)
     expect(result.current.data?.estado).toBeUndefined()
     expect(result.current.ocupado).toBe(false)
     expect(s.pedidas).toEqual([G, N])
@@ -84,7 +90,7 @@ describe('useListaDiaria: lo guardado primero', () => {
     const { result } = montar()
     await s.soltar(G, lista(502))
     expect(result.current.estado).toBe('lista')
-    expect(result.current.antiguedadSegundos).toBeNull()
+    expect(result.current.vieja).toBe(false)
     expect(s.pedidas).toEqual([G])
   })
 
@@ -166,7 +172,8 @@ describe('useListaDiaria: pasadas y fallos', () => {
     await s.soltar(G, vieja(502))
     await s.soltar(N, falla(502, 'EDGAR no respondió'))
     expect(result.current.estado).toBe('error')
-    expect(result.current.antiguedadSegundos).toBe(9 * 3600)
+    expect(result.current.vieja).toBe(true)
+    expect(textoDeAntiguedad(result.current.calculadaEn)).toBe('Lista de hace 9 h')
     act(() => result.current.error!.reintentar())
     expect(s.veces(N)).toBe(2)
   })
@@ -253,5 +260,82 @@ describe('useListaDiaria: compartida entre pantallas', () => {
     await s.soltar(N, lista(320))
     expect(s.veces(R)).toBe(MAX_PASADAS_AUTO)
     expect(despues.result.current.estado).toBe('lista')
+  })
+})
+
+describe('useListaDiaria: la lista en memoria envejece (revisión 15)', () => {
+  const DIEZ = '2026-11-24T10:00:00+00:00'
+  const calculadaALasDiez = (extra: Record<string, unknown> = {}) => lista(502, { as_of: DIEZ, fetched_at: DIEZ, ...extra })
+
+  function Progreso() {
+    const l = useListaDiaria('us_sp500')
+    return <ProgresoAnalisis lista={l} />
+  }
+
+  it('una lista de hace 7 h, al volver a la pantalla, no se presenta como de ahora', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T10:00:30Z'))
+    const s = servidor()
+    const primera = montar()
+    await s.soltar(G, calculadaALasDiez())
+    expect(primera.result.current.estado).toBe('lista')
+    primera.unmount()
+
+    // Siete horas después (otra pantalla de la app, o la pestaña en segundo plano).
+    vi.setSystemTime(new Date('2026-11-24T17:00:30Z'))
+    const despues = montar()
+    expect(s.pedidas.at(-1)).toBe(N)
+    // Pasada su vigencia de 6 h: vieja, con su edad, mientras llega la de ahora.
+    expect(despues.result.current).toMatchObject({ estado: 'vieja', vieja: true, ocupado: true })
+    expect(textoDeAntiguedad(despues.result.current.calculadaEn)).toBe('Lista de hace 7 h')
+  })
+
+  it('y si la de ahora falla, sigue diciendo de cuándo es y que el repaso tampoco es de ahora', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T10:00:30Z'))
+    const s = servidor()
+    const primera = render(<StrictMode><Progreso /></StrictMode>)
+    await s.soltar(G, calculadaALasDiez())
+    primera.unmount()
+
+    vi.setSystemTime(new Date('2026-11-24T17:00:30Z'))
+    render(<StrictMode><Progreso /></StrictMode>)
+    await s.soltar(N, falla(502, 'No se pudo puntuar ningún sector'))
+    const estado = screen.getByRole('status')
+    expect(estado).toHaveTextContent('Lista de hace 7 h, sin actualizar.')
+    expect(estado).toHaveTextContent('El repaso del stop de tus posiciones es de cuando llegó, hace 7 h.')
+    expect(estado).not.toHaveTextContent('sí es de ahora')
+  })
+
+  it('la edad de la copia caducada avanza mientras se enseña', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T19:00:00Z'))
+    const s = servidor()
+    const { result } = montar()
+    await s.soltar(G, calculadaALasDiez({ estado: 'viejo', antiguedad_segundos: 9 * 3600 }))
+    await s.soltar(N, falla(502, 'fuentes caídas'))
+    expect(textoDeAntiguedad(result.current.calculadaEn)).toBe('Lista de hace 9 h')
+    // Tres horas con la pantalla abierta: la copia tiene 12 h.
+    vi.setSystemTime(new Date('2026-11-24T22:00:00Z'))
+    expect(textoDeAntiguedad(result.current.calculadaEn)).toBe('Lista de hace 12 h')
+  })
+
+  it('la que está a la vista se vuelve vieja sola al pasar su vigencia, sin pedir nada', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(new Date('2026-11-24T10:00:00Z'))
+    const s = servidor()
+    const { result } = montar()
+    await s.soltar(G, lista(502, { cached: false }))
+    expect(result.current.estado).toBe('lista')
+    act(() => {
+      vi.advanceTimersByTime(VIGENCIA_LISTA_HORAS * 3_600_000 - 60_000)
+    })
+    expect(result.current.estado).toBe('lista')
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(result.current).toMatchObject({ estado: 'vieja', vieja: true, ocupado: false })
+    expect(textoDeAntiguedad(result.current.calculadaEn)).toBe(`Lista de hace ${VIGENCIA_LISTA_HORAS} h`)
+    expect(s.pedidas).toEqual([G])
   })
 })

@@ -26,7 +26,14 @@ ORM, triggers de SQLite (migración 0004) y huella SHA-256— con:
 - `contexto = {esquema: 2, analisis, reglas, huella_material}`.
 
 **Cuándo se crea una instantánea nueva.** La lista diaria congela la *primera*
-decisión del día (es un experimento de forward testing). El análisis de empresa
+decisión del día (es un experimento de forward testing), y solo de una lista que
+cubre el mercado entero (`complete`: nada pendiente; las empresas que ninguna
+fuente tiene no lo impiden). Las pasadas parciales del arranque (40 o 120 de 502,
+`useListaDiaria`) no congelan nada y lo dicen en `instantaneas.sin_congelar`:
+puntuaban el segundo sector contra una parte de sí mismo y lo que decían «evitar»
+era lo peor de 40, no de 502, y como la primera instantánea del día gana, ninguna
+pasada posterior lo corregía (revisión 15). Un día sin lista completa no tiene
+instantánea de la lista. El análisis de empresa
 se congela cuando cambia algo **material**: otra acción, otro resultado en alguna
 regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de
 expectativas. Si solo se movió el precio, no: diez aperturas de la misma empresa

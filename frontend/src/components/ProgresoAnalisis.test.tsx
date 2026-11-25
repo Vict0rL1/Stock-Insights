@@ -3,8 +3,8 @@
  * (la lista guardada y su edad, o la de ahora a medias) y que se puede seguir
  * usando la app mientras se completa.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ListaDiaria } from '../hooks/useListaDiaria'
 import { ProgresoAnalisis, textoDeAntiguedad } from './ProgresoAnalisis'
 
@@ -13,13 +13,18 @@ type Lista = Parameters<typeof ProgresoAnalisis>[0]['lista']
 const base: Lista = {
   estado: 'actualizando',
   progreso: { puntuadas: 312, total: 502, pendientes: 190, completa: false },
-  antiguedadSegundos: null,
+  vieja: false,
+  calculadaEn: null,
+  recibidaEn: null,
   pasada: 2,
   maxPasadas: 4,
   primeraVez: false,
   ocupado: true,
 }
 const con = (cambios: Partial<ListaDiaria>): Lista => ({ ...base, ...cambios })
+const HORA = 3_600_000
+
+afterEach(() => vi.useRealTimers())
 
 describe('ProgresoAnalisis', () => {
   it('con pasadas en marcha, la barra dice cuántas lleva y que se puede seguir', () => {
@@ -33,25 +38,46 @@ describe('ProgresoAnalisis', () => {
   })
 
   it('con la lista guardada a la vista, su antigüedad y que se está actualizando', () => {
-    render(<ProgresoAnalisis lista={con({ estado: 'vieja', antiguedadSegundos: 9 * 3600, progreso: { ...base.progreso!, completa: true } })} />)
+    const ahora = Date.now()
+    render(<ProgresoAnalisis lista={con({ estado: 'vieja', vieja: true, calculadaEn: ahora - 9 * HORA, recibidaEn: ahora, progreso: { ...base.progreso!, completa: true } })} />)
     expect(screen.getByRole('status')).toHaveTextContent('Lista de hace 9 h; actualizando…')
     expect(screen.getByRole('status')).toHaveTextContent('El repaso del stop de tus posiciones sí es de ahora.')
   })
 
   it('sin antigüedad conocida no la inventa, y si ya no se actualiza lo dice', () => {
-    render(<ProgresoAnalisis lista={con({ estado: 'error', antiguedadSegundos: null, ocupado: false })} />)
+    render(<ProgresoAnalisis lista={con({ estado: 'error', vieja: false, ocupado: false })} />)
     // Sin edad no hay aviso de lista vieja: es la de ahora a medias.
     expect(screen.getByRole('status')).toHaveTextContent('Cobertura parcial: 312 de 502 empresas')
     expect(textoDeAntiguedad(null)).toBe('Lista guardada, de antigüedad desconocida')
     const ahora = new Date('2026-11-24T15:00:00Z')
-    expect(textoDeAntiguedad(9 * 3600, ahora)).toBe('Lista de hace 9 h')
+    expect(textoDeAntiguedad(ahora.getTime() - 9 * HORA, ahora)).toBe('Lista de hace 9 h')
   })
 
   it('la guardada que no se pudo actualizar no dice «actualizando»', () => {
-    render(<ProgresoAnalisis lista={con({ estado: 'error', antiguedadSegundos: 3 * 3600, ocupado: false })} />)
+    const ahora = Date.now()
+    render(<ProgresoAnalisis lista={con({ estado: 'error', vieja: true, calculadaEn: ahora - 3 * HORA, recibidaEn: ahora, ocupado: false })} />)
     expect(screen.getByRole('status')).toHaveTextContent('Lista de hace 3 h, sin actualizar.')
     expect(screen.getByRole('status')).toHaveTextContent('con 312 de 502 empresas')
     expect(screen.getByRole('status')).not.toHaveTextContent('actualizando')
+  })
+
+  it('la edad y el repaso avanzan con la pantalla abierta, sin esperar a otra petición', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-11-24T19:00:00Z'))
+    const ahora = Date.now()
+    render(<ProgresoAnalisis lista={con({ estado: 'error', vieja: true, calculadaEn: ahora - 9 * HORA, recibidaEn: ahora, ocupado: false })} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Lista de hace 9 h, sin actualizar.')
+    expect(screen.getByRole('status')).toHaveTextContent('El repaso del stop de tus posiciones sí es de ahora.')
+    act(() => {
+      vi.advanceTimersByTime(HORA)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Lista de hace 10 h, sin actualizar.')
+    expect(screen.getByRole('status')).toHaveTextContent('El repaso del stop de tus posiciones es de cuando llegó, hace 1 h.')
+  })
+
+  it('vieja sin fecha conocida no la inventa', () => {
+    render(<ProgresoAnalisis lista={con({ estado: 'vieja', vieja: true, calculadaEn: null, recibidaEn: Date.now() })} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Lista guardada, de antigüedad desconocida; actualizando…')
   })
 
   it('sin nada que enseñar, un estado de carga breve; la primera vez dice que va corta', () => {

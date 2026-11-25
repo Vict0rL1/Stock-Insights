@@ -17,13 +17,15 @@ Lo que no está guardado no se calcula: se dice que falta, y la IA lo dice.
 
 Cada bloque viaja con su fuente, su fecha y su estado (`valido` o `viejo`), y la
 respuesta los devuelve: lo que la IA vio se enseña aparte, como lo calculado que
-es. La respuesta se guarda en `llm_outputs` por la huella del prompt, como las
-noticias: la misma pregunta con los mismos datos no vuelve a gastar.
+es. La respuesta se guarda en `llm_outputs` por la huella de lo que la define
+(`_huella`: la pregunta, los datos de cada bloque y el día, no la hora), como las
+noticias: la misma pregunta con los mismos datos, el mismo día, no vuelve a gastar.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -420,7 +422,13 @@ def _texto_analisis(a: dict) -> list[str]:
     return lineas
 
 
-def _bloque_ficha(session: Session, simbolo: str, lista: dict | None) -> tuple[dict | None, dict | None]:
+def _bloque_ficha(session: Session, simbolo: str, lista: dict | None,
+                  estado_lista: str | None = None) -> tuple[dict | None, dict | None]:
+    """Su fila de la lista y su último análisis congelado.
+
+    La fila de una lista caducada hereda su estado: el bloque de la lista iba
+    VIEJO y la misma fila (precio, stop, zona de entrada), repetida aquí, iba
+    `valido`, sin el aviso del prompt ni la marca en pantalla (revisión 15)."""
     titulo = f"Ficha de {simbolo}"
     en_lista = next((s for s in (lista or {}).get("signals") or [] if s.get("symbol") == simbolo), None)
     snap = sn.anterior_comparable(session, simbolo)
@@ -428,9 +436,10 @@ def _bloque_ficha(session: Session, simbolo: str, lista: dict | None) -> tuple[d
         return None, {"clave": "ficha", "titulo": titulo,
                       "motivo": f"No hay ninguna ficha calculada de {simbolo} ni está en la lista del día: se "
                                 "calcula al abrir su ficha en la app, y aquí no se calcula nada."}
+    vieja = en_lista is not None and estado_lista == datos.Estado.VIEJO.value
     lineas = []
     if en_lista is not None:
-        lineas.append("En la lista del día:")
+        lineas.append("En la última lista guardada, caducada (VIEJA):" if vieja else "En la lista del día:")
         lineas.append(_linea_senal(en_lista))
     if snap is not None:
         lineas.append(f"Último análisis de su ficha (congelado el {_fecha_dato(sn.iso_utc(snap.creado_en))}):")
@@ -441,11 +450,18 @@ def _bloque_ficha(session: Session, simbolo: str, lista: dict | None) -> tuple[d
         "clave": "ficha",
         "titulo": titulo + (f" ({nombre})" if nombre else ""),
         "fuente": "análisis de la app" + (" y lista del día" if en_lista is not None else ""),
-        "fecha": sn.iso_utc(snap.creado_en) if snap is not None else (lista or {}).get("as_of"),
-        "estado": datos.Estado.VALIDO.value,
-        "antiguedad_segundos": None,
-        "nota": "Es el análisis de cuando se abrió la ficha: no se ha recalculado para esta pregunta."
-        if snap is not None else None,
+        # Vieja, la fecha es la de la lista: la marca «VIEJO, hace X» se calcula
+        # con ella, y la del análisis (quizá de hoy) la dejaría en «hace 5 min».
+        # La del análisis va en su línea («congelado el …»).
+        "fecha": sn.iso_utc(snap.creado_en) if snap is not None and not vieja else (lista or {}).get("as_of"),
+        "estado": datos.Estado.VIEJO.value if vieja else datos.Estado.VALIDO.value,
+        "antiguedad_segundos": (lista or {}).get("antiguedad_segundos") if vieja else None,
+        "nota": " ".join(n for n in (
+            "Su fila sale de la lista caducada (se recalcula cada 6 h): es la última copia guardada, "
+            "no la de ahora." if vieja else None,
+            "Es el análisis de cuando se abrió la ficha: no se ha recalculado para esta pregunta."
+            if snap is not None else None,
+        ) if n) or None,
         "texto": "\n".join(lineas),
     }, None
 
@@ -500,7 +516,7 @@ def reunir(session: Session, service, *, mercado: str, simbolo: str | None = Non
         if ausente is not None:
             ausentes.append(ausente)
     if simbolo:
-        bloque, ausente = _bloque_ficha(session, simbolo, lista)
+        bloque, ausente = _bloque_ficha(session, simbolo, lista, estado)
         bloques.extend([bloque] if bloque else [])
         ausentes.extend([ausente] if ausente else [])
     bloques.append(_bloque_etfs())
@@ -529,16 +545,47 @@ def estimar(llm: LLMProvider, pregunta: str, contexto: dict, ahora: datetime | N
     return {"coste": coste, **_publico(contexto), "max_caracteres": MAX_PREGUNTA}
 
 
+# Los bloques cuya `fecha` es la de la consulta y no la de un dato: el repaso de
+# la cartera es «de ahora», y lo que lo define es su texto (cada precio con la
+# suya). En la huella, esa fecha haría distinta cada consulta.
+_FECHA_DE_LA_CONSULTA = frozenset({"cartera"})
+
+
+def _huella(modelo: str | None, pregunta: str, contexto: dict, ahora: datetime) -> str:
+    """Lo que define la respuesta, para reconocer la misma pregunta con los mismos datos.
+
+    Era la huella del prompt entero, y el prompt lleva el reloj: la hora de la
+    consulta en el bloque de la cartera y el «hace X» de cada bloque. La caché
+    solo acertaba dentro del mismo minuto, y «Resúmeme el día» dos veces con la
+    misma lista volvía a cobrar (revisión 15). Ahora cuenta el modelo, las
+    instrucciones, la pregunta limpia, el día de la consulta (el que dice el
+    prompt: una respuesta no se reutiliza de un día para otro) y, de cada bloque,
+    su fuente, la fecha del dato, su estado, su nota y su texto; y lo que falta.
+    Una lista nueva, un precio nuevo o un dato que se vuelve viejo cambian la
+    huella; que pasen dos minutos, no."""
+    bloques = [
+        {**{k: b.get(k) for k in ("clave", "titulo", "fuente", "estado", "nota", "texto")},
+         "fecha": None if b.get("clave") in _FECHA_DE_LA_CONSULTA else b.get("fecha")}
+        for b in contexto["bloques"]
+    ]
+    contenido = {
+        "modelo": modelo, "system": SYSTEM, "pregunta": limpiar_pregunta(pregunta),
+        "dia": fmt_fecha(ahora), "bloques": bloques, "ausentes": contexto["ausentes"],
+    }
+    canonico = json.dumps(contenido, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(canonico.encode()).hexdigest()[:48]
+
+
 def responder(llm: LLMProvider, session: Session, pregunta: str, contexto: dict,
               ahora: datetime | None = None) -> dict:
-    """La respuesta de la IA, guardada por la huella del prompt.
+    """La respuesta de la IA, guardada por la huella de lo que la define (`_huella`).
 
     La misma pregunta con los mismos datos sale de `llm_outputs` sin volver a
     llamar al modelo, como la interpretación de noticias. `LLMUnavailableError`
     sube tal cual: quien llama la convierte en un error que se pueda leer."""
     ahora = ahora or datetime.now(timezone.utc)
     prompt = construir_prompt(pregunta, contexto["bloques"], contexto["ausentes"], ahora)
-    huella = hashlib.sha256(f"{llm.model}|{SYSTEM}|{prompt}".encode()).hexdigest()[:48]
+    huella = _huella(llm.model, pregunta, contexto, ahora)
     guardada = session.execute(
         select(LlmOutput).where(LlmOutput.kind == KIND, LlmOutput.prompt_hash == huella)
         .order_by(LlmOutput.id.desc())
@@ -546,8 +593,10 @@ def responder(llm: LLMProvider, session: Session, pregunta: str, contexto: dict,
     if guardada is not None:
         content, model, creado, cached = guardada.content_md, guardada.model, guardada.created_at, True
         coste = {"tokens_entrada": None, "tokens_salida": None, "usd": 0.0,
-                 "nota": "Respuesta guardada de la misma pregunta con los mismos datos: no se ha vuelto a "
-                         "llamar al modelo, sin coste nuevo."}
+                 "nota": "Respuesta guardada de la misma pregunta con los mismos datos, generada el "
+                         f"{fmt_fecha(sn.iso_utc(creado), hora=True, zona=ZONA_MERCADO)}: no se ha vuelto a "
+                         "llamar al modelo, sin coste nuevo. Si cita la antigüedad de un dato («hace 2 h»), "
+                         "es la de entonces."}
     else:
         r = llm.interpret(SYSTEM, prompt)
         fila = LlmOutput(kind=KIND, prompt_hash=huella, content_md=r["content"], model=r["model"])

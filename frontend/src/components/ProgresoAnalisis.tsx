@@ -5,7 +5,9 @@
  * bloquea»).
  *
  * - Sin nada que enseñar aún: un estado de carga breve que dice qué espera.
- * - Con la copia caducada a la vista: «Lista de hace 9 h; actualizando…».
+ * - Con una lista que no es de ahora a la vista (la copia caducada, o la de
+ *   memoria pasadas sus 6 h): «Lista de hace 9 h; actualizando…», también si
+ *   la de ahora falla («…, sin actualizar.»), con la edad al día.
  * - Con pasadas en marcha: la barra «Analizando el mercado en segundo plano: 312
  *   de 502 empresas. Ya puedes usar la app; las ideas se completan solas.»
  * - Con las pasadas paradas sin cubrir todo: la cobertura parcial y, si se pasa
@@ -14,14 +16,16 @@
  *
  * Un fallo no se dice aquí: lo dice `ErrorDeCarga` con su «Reintentar».
  */
+import { useEffect, useReducer } from 'react'
 import type { ListaDiaria } from '../hooks/useListaDiaria'
-import { PRIMERA_PASADA } from '../hooks/useListaDiaria'
+import { PRIMERA_PASADA, REVALIDAR_TRAS_MS } from '../hooks/useListaDiaria'
 import { fmtAntiguedad, plural } from '../lib/formato'
 
 type Props = {
   lista: Pick<
     ListaDiaria,
-    'estado' | 'progreso' | 'antiguedadSegundos' | 'pasada' | 'maxPasadas' | 'primeraVez' | 'ocupado'
+    | 'estado' | 'progreso' | 'vieja' | 'calculadaEn' | 'recibidaEn' | 'pasada' | 'maxPasadas' | 'primeraVez'
+    | 'ocupado'
   >
   /** «Seguir completando»: sin él no se pinta el botón. */
   onSeguir?: () => void
@@ -37,14 +41,28 @@ function Barra({ puntuadas, total }: { puntuadas: number; total: number }) {
   )
 }
 
-/** «Lista de hace 9 h». La antigüedad la da el backend, no el reloj del navegador. */
-export function textoDeAntiguedad(segundos: number | null, ahora: Date = new Date()): string {
-  if (segundos === null) return 'Lista guardada, de antigüedad desconocida'
-  return `Lista de ${fmtAntiguedad(new Date(ahora.getTime() - segundos * 1000), ahora)}`
+/** «Lista de hace 9 h», desde cuándo se calculó (`calculadaEn`): la edad se
+ *  calcula al pintar, así que avanza con la pantalla abierta. En la copia
+ *  caducada, `calculadaEn` sale de la edad que dio el backend. */
+export function textoDeAntiguedad(calculadaEn: number | null, ahora: Date = new Date()): string {
+  if (calculadaEn === null) return 'Lista guardada, de antigüedad desconocida'
+  return `Lista de ${fmtAntiguedad(new Date(calculadaEn), ahora)}`
+}
+
+/** Vuelve a pintar cada minuto mientras `activo`: la edad que se enseña no se
+ *  queda en la de cuando llegó la lista. */
+function usePintarCadaMinuto(activo: boolean): void {
+  const [, pintar] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    if (!activo) return
+    const id = setInterval(pintar, 60_000)
+    return () => clearInterval(id)
+  }, [activo])
 }
 
 export function ProgresoAnalisis({ lista, onSeguir }: Props) {
-  const { estado, progreso, antiguedadSegundos, ocupado } = lista
+  const { estado, progreso, vieja, calculadaEn, recibidaEn, ocupado } = lista
+  usePintarCadaMinuto(vieja)
 
   if (!progreso) {
     if (estado !== 'cargando') return null
@@ -67,17 +85,26 @@ export function ProgresoAnalisis({ lista, onSeguir }: Props) {
 
   const empresas = `${progreso.puntuadas} de ${progreso.total} ${plural(progreso.total, 'empresa', 'empresas')}`
 
-  if (estado === 'vieja' || antiguedadSegundos !== null) {
+  if (vieja) {
+    // El repaso de stops viaja con la lista y es de cuando llegó: recién llegada
+    // es de ahora; con la pantalla abierta horas (o al volver a ella), no.
+    const ahora = new Date()
+    const repasoDeAhora = recibidaEn !== null && ahora.getTime() - recibidaEn < REVALIDAR_TRAS_MS
     return (
       <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
         <div className="text-xs font-medium text-amber-900">
-          {textoDeAntiguedad(antiguedadSegundos)}
+          {textoDeAntiguedad(calculadaEn, ahora)}
           {ocupado ? '; actualizando…' : ', sin actualizar.'}
         </div>
         <p className="mt-1 text-[11px] leading-snug text-amber-800">
           Es la que se calculó entonces{progreso.completa ? '' : `, con ${empresas}`}: sus ideas,
-          precios y tamaños son de aquel momento. El repaso del stop de tus posiciones sí es de
-          ahora.{ocupado ? ' La de hoy la sustituye en cuanto llegue.' : ''}
+          precios y tamaños son de aquel momento.{' '}
+          {repasoDeAhora
+            ? 'El repaso del stop de tus posiciones sí es de ahora.'
+            : recibidaEn !== null
+              ? `El repaso del stop de tus posiciones es de cuando llegó, ${fmtAntiguedad(new Date(recibidaEn), ahora)}.`
+              : 'El repaso del stop de tus posiciones es de cuando llegó la lista.'}
+          {ocupado ? ' La de hoy la sustituye en cuanto llegue.' : ''}
         </p>
       </div>
     )

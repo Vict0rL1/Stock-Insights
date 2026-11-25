@@ -72,6 +72,11 @@ CACHE_TTL_SECONDS: dict[str, int] = {
     "profile": 24 * 3600,        # perfil de la empresa: 24 h
     "fundamentals": 24 * 3600,   # fundamentales TTM: 24 h
     "financials": 24 * 3600,     # estados financieros EDGAR: 24 h
+    # «Ninguna fuente tiene fundamentales de esta empresa» (EDGAR y Finnhub lo
+    # dijeron): lo mismo que vive lo que sí se descarga. Sin esta entrada, la
+    # caché le daría el TTL por defecto (5 min) y la lista diaria la volvería a
+    # pagar en cada pasada (`signals.SIN_FUNDAMENTALES`).
+    "sin_fundamentales": 24 * 3600,
     "filings": 24 * 3600,        # lista de filings EDGAR: 24 h
     # Un filing presentado NO cambia nunca: la SEC no reescribe documentos,
     # publica enmiendas con su propio número de acceso. Cachearlo 30 días es

@@ -58,14 +58,28 @@ _DELIMITADORES = re.compile(
 )
 
 
+# Los ángulos que queden, por sus parecidos tipográficos: sin `<` ni `>` no se
+# puede escribir ninguna etiqueta, la del prompt ni ninguna otra.
+_SIN_ANGULOS = str.maketrans({"<": "‹", ">": "›"})
+
+
 def limpiar_pregunta(texto: str) -> str:
-    """La pregunta como dato: sin los delimitadores del prompt ni caracteres de control.
+    """La pregunta como dato: sin los delimitadores del prompt, sin caracteres de
+    control y sin ningún `<` ni `>`.
 
     Quitar el delimitador es lo que impide que la pregunta «cierre» su bloque y
-    escriba después algo que el modelo leería como contexto de la app."""
-    sin_delimitar = _DELIMITADORES.sub("", texto)
-    limpio = "".join(c if c == "\n" or c.isprintable() else " " for c in sin_delimitar)
-    return limpio.strip()
+    escriba después algo que el modelo leería como contexto de la app. Una sola
+    pasada no bastaba: quitar una etiqueta escrita DENTRO de otra dejaba montada
+    la de fuera («</pregunta_de_<pregunta_de_la_persona>la_persona>»), y un
+    carácter de control en medio («</pregunta_de_la_\\x00persona>») pasaba el
+    filtro y luego se volvía un espacio (revisión 15). Ahora: primero los
+    caracteres de control, luego los delimitadores hasta que no quede ninguno, y
+    al final los ángulos sueltos se cambian por «‹ ›», así que ninguna
+    combinación forma una etiqueta, ni siquiera una mal cerrada."""
+    limpio = "".join(c if c == "\n" or c.isprintable() else " " for c in texto)
+    while (sin_delimitar := _DELIMITADORES.sub("", limpio)) != limpio:
+        limpio = sin_delimitar
+    return limpio.translate(_SIN_ANGULOS).strip()
 
 
 def _cuando(bloque: dict, ahora: datetime) -> str:
