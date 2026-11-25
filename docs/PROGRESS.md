@@ -990,6 +990,43 @@ Fuera a propósito: sin clave de Finnhub no se recuerda el «no hay datos» (al 
 un análisis congelado antiguo no se marca viejo por umbral (sería una regla nueva); y si en Explorar se
 elige otro mercado, puede decir otra cosa de una posición que Inicio (el repaso usa el mercado por defecto).
 
+### Decimoquinta revisión (de la decimocuarta, sobre `d2f2741`, 25 nov)
+
+Cuatro revisores sobre `4ca3352..d2f2741` (cartera, carga e IA, DCF y ficha, y las costuras entre los
+cuatro arreglos de la 14, que se habían hecho por separado); 25 hallazgos reproducidos, todos
+arreglados en tres worktrees con un test que falla sin el arreglo (`05bb5c2`, `cec4f4f`, `7431d5e`).
+Golden idéntico (11 «igual»). Antes, `554dc7c`: `npm audit fix` sin `--force` (vite, zod, undici,
+minimatch; solo el lockfile) y el job `auditoria` del CI en verde.
+
+- **Una fuente caída no completa la lista.** Los fallos de las fuentes iban a «sin datos» y la lista
+  salía completa y congelaba decisiones inmutables tomadas sin ellos: ahora «la fuente falló» impide
+  completar y congelar (y se reintenta, con el tope de pasadas), «la fuente no la tiene» no.
+- **El stop, con una sola regla** (`contexto_cartera.estado_del_stop`) para el repaso y para cada
+  fila: con una cotización, aunque sea vieja, el cierre de la lista no da «por encima»; un precio de
+  antes de abrir un lote no cuenta para su stop; el agregado de varios lotes usa el stop más protector,
+  también el recalculado de un lote sin stop guardado (en vivo), y la ficha avisa con el repaso de su
+  símbolo. Inicio, Mi cartera, la fila y la ficha dicen lo mismo.
+- **Lo que dice la regla, de lo que mira la regla:** Inicio y Mi cartera ya no dicen «la regla no manda
+  vender» de posiciones fuera de la lista, compradas después o aún sin puntuar; sin efectivo anotado no
+  es «Sin sitio», es «tamaño sin calcular» (`sin_hueco_de_riesgo` puede ser `null`).
+- **DCF:** solo viajan los escenarios que tocaste (con un FCF de signo contrario, el bajista volvía a
+  salir por encima); un 502 al recalcular no borra lo que se veía; el informe dice por qué no trae DCF
+  con FCF ≤ 0; el 422 de dato que falta lo nombra en la cabecera `X-Dato-Que-Falta` (en el cuerpo
+  cambiaba el golden). «Qué cambió» ya no se reabre al volver con «atrás».
+- **Carga e IA:** la edad de la lista avanza y sale de una sola fuente; la pantalla dice si el día se
+  queda sin instantánea; la caché de la IA ya no depende del «hace N min»; tarifas del modelo de
+  respaldo (confirmadas en la tabla oficial) y el 502 de un rechazo dice lo que pudo cobrarse.
+
+**Pendiente de Victor (revisión 15):**
+- Sin ninguna cotización, el repaso da «por encima» con el último cierre de la lista
+  (`tests/test_today.py:724`, regla de la revisión 13). Lo fail-safe sería «sin comprobar»; cambiaría lo
+  que la app dice cada vez que fallan las fuentes de cotización.
+- El agregado de varios lotes con alguno sin stop guardado decide ahora con el stop recalculado de ese
+  lote (fail-safe, y quita la contradicción entre Inicio y la ficha). El golden no tiene ese caso; si se
+  prefiere esperar, es el bloque de `posiciones_para_decidir(service=…)` en `7431d5e`.
+- Fuera a propósito: `contexto_cartera` sigue importando de `routers/portfolio` (`stop_del_lote`,
+  `_cotizacion`): ya era así; moverlo al dominio es de la Fase 4.
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -1012,7 +1049,8 @@ adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la qu
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
 14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16; la decimocuarta, del
-rediseño, 48 de 48; el H1 del DCF, con visto bueno de Victor porque cambió el golden). Fase 3 hecha con el rediseño de la navegación del 24 nov. Lo siguiente es 2.2
+rediseño, 48 de 48; el H1 del DCF, con visto bueno de Victor porque cambió el golden; la
+decimoquinta, 25 de 25). Fase 3 hecha con el rediseño de la navegación del 24 nov. Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
@@ -1032,4 +1070,5 @@ y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la med
 la séptima: los stops guardados fuera de la rejilla. De la octava: el control de correlación con
 0 parejas posibles sigue `aplicado: false` en `sizing` (cambiarlo cambia el golden de `sizing`), y
 los backtests de reglas guardados se midieron además con la volatilidad vieja. De la novena: el
-stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo).
+stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo). De la
+decimoquinta: el «por encima» con solo el cierre de la lista y el stop recalculado en el agregado de lotes.
