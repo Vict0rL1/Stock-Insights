@@ -102,6 +102,24 @@ describe('revisión 15', () => {
     const tarjeta = (await screen.findByText('Si va mal')).closest('div')!.parentElement!
     expect(within(tarjeta).getByText(MOTIVO)).toBeInTheDocument()
   })
+
+  it('con el FCF de partida negativo dice por qué «Si va mal» lleva el crecimiento alto (H1)', async () => {
+    // El backend intercambia los supuestos del bajista y el alcista; la tarjeta
+    // «Si va mal» enseñaba «crecimiento del FCF 7,3 % · WACC 8 %» sin explicarlo.
+    const FRASE = /El FCF de partida es negativo: la empresa quema caja/
+    const acme = empresaCompleta as Escenario
+    const v = structuredClone(valoracionDe(acme))
+    v.entradas.base_fcf = -1_012_000_000
+    servir({ '/api/valuation/ACME': { status: 200, json: v } })
+    const { unmount } = render(<MemoryRouter><ValuationSection symbol="ACME" /></MemoryRouter>)
+    expect(await screen.findByText(FRASE)).toBeInTheDocument()
+    unmount()
+    // Con el FCF positivo, nada que explicar.
+    servir(acme.rutas)
+    render(<MemoryRouter><ValuationSection symbol="ACME" /></MemoryRouter>)
+    await screen.findByText('Si va mal')
+    expect(screen.queryByText(FRASE)).toBeNull()
+  })
 })
 
 describe('las mismas fixtures dan los mismos rangos en las dos vistas', () => {

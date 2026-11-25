@@ -260,6 +260,7 @@ def valorar(
     supuestos = supuestos_con_procedencia(
         datos["crecimiento"],
         {k: v.model_dump() for k, v in request.escenarios.items()} if request.escenarios else None,
+        base_fcf,
     )
 
     # 1) Escenarios, cada uno con su RANGO, y el rango global de todos.
@@ -355,6 +356,13 @@ def valorar(
             f"empresa, acotado al {fmt_pct(CRECIMIENTO_MAXIMO, 0)} — extrapolar a "
             "perpetuidad el mejor quinquenio es el error más común del DCF casero. "
             "Cámbialos: son un punto de arranque, no una opinión de la app."
+            + (
+                " Con el FCF de partida negativo, crecer es quemar más caja: el bajista "
+                "lleva los supuestos que más agrandan la quema (más crecimiento, menos "
+                "descuento) y el alcista, los que menos."
+                if base_fcf < 0 and not request.escenarios
+                else ""
+            )
         ),
         "disclaimer": (
             "Aquí no hay ningún precio objetivo, y no por estilo: no existe en el "

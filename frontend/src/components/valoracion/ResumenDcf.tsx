@@ -90,6 +90,18 @@ export function ResumenDcf({ datos, symbol }: { datos: ResumenValoracion; symbol
       {supuesto && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">{supuesto}</p>
       )}
+      {/* Con el FCF de partida negativo, el backend intercambia los supuestos del
+          bajista y del alcista (`escenarios_por_defecto`): crecer es quemar más
+          caja. Sin esta línea, «Si va mal» enseñaba el crecimiento alto y el WACC
+          bajo sin decir por qué; el módulo lo dice en `nota_supuestos`, que este
+          resumen no recibe. Aquí solo llegan escenarios propuestos: la ficha no
+          manda los suyos y el informe no precarga el DCF con FCF ≤ 0. */}
+      {datos.entradas.base_fcf < 0 && (
+        <p className="text-xs leading-relaxed text-slate-500">
+          El FCF de partida es negativo: la empresa quema caja, y crecer es quemar más. Por eso «Si va mal» lleva el
+          crecimiento y la perpetuidad más altos y el WACC más bajo, y «Si va bien», al revés.
+        </p>
+      )}
 
       {g ? (
         <div>

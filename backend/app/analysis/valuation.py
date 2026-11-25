@@ -300,7 +300,10 @@ def rango_de_valor(
     )
     valor_centro = centro["value_per_share"]
     bajo, alto = min(combinaciones), max(combinaciones)
-    amplitud = (alto - bajo) / valor_centro if valor_centro else None
+    # Sobre el tamaño del centro, no sobre su signo: con un FCF negativo el centro
+    # es negativo, y un rango del 43 % salía «Rango estrecho (-43 % del centro)»
+    # (revisión 15, H1).
+    amplitud = (alto - bajo) / abs(valor_centro) if valor_centro else None
 
     return {
         "disponible": True,
@@ -412,7 +415,9 @@ def sensibilidad_ordenada(
 
     filas = []
     for clave, (delta, etiqueta) in PERTURBACIONES.items():
-        paso = delta if delta is not None else supuestos[clave] * 0.10
+        # Sobre el tamaño, no el signo (revisión 15, H1): con un FCF de partida
+        # negativo el paso salía negativo y «abajo» era un FCF mayor.
+        paso = delta if delta is not None else abs(supuestos[clave]) * 0.10
         if paso == 0:
             continue
         abajo = valorar(**{clave: supuestos[clave] - paso})
@@ -430,7 +435,10 @@ def sensibilidad_ordenada(
                 "valor_abajo": redondear(abajo),
                 "valor_arriba": redondear(arriba),
                 "recorrido": redondear(recorrido),
-                "recorrido_pct": round(recorrido / centro * 100, 1),
+                # Sobre el tamaño del centro: con un centro negativo (FCF
+                # negativo) salían porcentajes negativos y el orden de abajo se
+                # invertía, así que «el que más mueve» era el que menos.
+                "recorrido_pct": round(recorrido / abs(centro) * 100, 1),
                 # La asimetría importa: si bajar el crecimiento un punto quita
                 # 30 $ y subirlo solo añade 18 $, el riesgo no es simétrico y el
                 # escenario central está más cerca del techo que del suelo.
@@ -517,11 +525,14 @@ def cimientos(periodos: list[dict]) -> dict:
     }
 
 
-def escenarios_por_defecto(crecimiento: dict) -> dict[str, dict]:
+def escenarios_por_defecto(crecimiento: dict, base_fcf: float | None = None) -> dict[str, dict]:
     """Propone bajista/base/alcista desde el crecimiento histórico real.
 
     Se acota al 15 %: extrapolar a perpetuidad el mejor quinquenio de una empresa
     es el error más común del DCF casero, y el que más caro sale.
+
+    Con un FCF de partida negativo (`base_fcf < 0`), el bajista y el alcista se
+    intercambian enteros: el bajista es siempre el más bajo.
     """
     # Dos fallos vivían en el `or` encadenado que había aquí.
     #
@@ -577,11 +588,19 @@ def escenarios_por_defecto(crecimiento: dict) -> dict[str, dict]:
                 else motivo
             ),
         }
+    # Con un FCF negativo, crecer es quemar más caja, y un descuento menor y una
+    # perpetuidad mayor agrandan esa quema: los supuestos del alcista daban el
+    # valor MÁS BAJO, y la ficha rotulaba «Si va bien» el rango de abajo
+    # (centros −28,7 / −48,3 / −73,5). Victor decidió (24 nov) que el bajista sea
+    # siempre el más bajo, como con el crecimiento negativo (M5): se intercambian
+    # los supuestos completos (revisión 15, H1).
+    if base_fcf is not None and base_fcf < 0:
+        salida["bajista"], salida["alcista"] = salida["alcista"], salida["bajista"]
     return salida
 
 
 def supuestos_con_procedencia(
-    crecimiento: dict, recibidos: dict[str, dict] | None = None
+    crecimiento: dict, recibidos: dict[str, dict] | None = None, base_fcf: float | None = None
 ) -> dict[str, dict]:
     """Los supuestos con que se valora, cada uno con la procedencia de su crecimiento.
 
@@ -593,7 +612,7 @@ def supuestos_con_procedencia(
     dato (revisión 15, H7). Lo mismo con el suelo del −50 %: si el escenario
     vuelve con el crecimiento acotado, se sigue diciendo por qué.
     """
-    propuestos = escenarios_por_defecto(crecimiento)
+    propuestos = escenarios_por_defecto(crecimiento, base_fcf)
     if not recibidos:
         return propuestos
     salida = {}
@@ -663,22 +682,40 @@ def rango_global(escenarios: dict[str, dict], precio: float | None) -> dict | No
     # escenarios que van de 133 a 577 no dicen «vale entre 133 y 577»: dicen
     # que con estos supuestos el método no distingue, y eso hay que leerlo
     # antes que los números, no después.
-    factor = global_["alto"] / global_["bajo"] if global_["bajo"] else None
-    global_["factor"] = round(factor, 2) if factor else None
-    global_["nota"] = (
-        f"Del escenario más pesimista al más optimista hay un factor de "
-        f"{fmt_num(factor, 1)}×. Un rango así no sirve para decidir un precio de "
-        "entrada; sirve para ver qué supuestos lo abren tanto — mira abajo "
-        "cuál manda. Estrecharlo exige defender supuestos más ceñidos, no "
-        "quedarse con el del medio."
-        if factor and factor >= 2
-        else (
-            f"El rango va de {fmt_valor_redondo(global_['bajo'])} a {fmt_valor_redondo(global_['alto'])} (factor "
-            f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
-            if factor
-            else ""
+    #
+    # Solo con el rango por encima de cero: con un extremo negativo (un FCF de
+    # partida negativo, que el módulo valora con rangos negativos) el cociente
+    # no mide nada, y salía «factor 0,3×» con todo el rango negativo y «-4,9×»
+    # cruzando el cero (revisión 15, H1).
+    bajo, alto = global_["bajo"], global_["alto"]
+    factor = alto / bajo if bajo > 0 else None
+    global_["factor"] = round(factor, 2) if factor is not None else None
+    if factor is None:
+        global_["nota"] = (
+            f"Todo el rango está por debajo de cero (de {fmt_valor_redondo(bajo)} a "
+            f"{fmt_valor_redondo(alto)}): con estos supuestos la empresa quema más de lo "
+            "que vale lo que tiene, casi siempre por un FCF de partida negativo. Un valor "
+            "por acción negativo no es un precio: dice que, tal como está, el negocio "
+            "destruye valor."
+            if alto <= 0
+            else f"El rango cruza el cero (de {fmt_valor_redondo(bajo)} a "
+            f"{fmt_valor_redondo(alto)}): según los supuestos, la empresa vale algo o "
+            "destruye valor. Con un extremo negativo no hay un factor entre los dos que "
+            "leer; mira abajo qué supuesto lo mueve."
         )
-    )
+    elif factor >= 2:
+        global_["nota"] = (
+            f"Del escenario más pesimista al más optimista hay un factor de "
+            f"{fmt_num(factor, 1)}×. Un rango así no sirve para decidir un precio de "
+            "entrada; sirve para ver qué supuestos lo abren tanto — mira abajo "
+            "cuál manda. Estrecharlo exige defender supuestos más ceñidos, no "
+            "quedarse con el del medio."
+        )
+    else:
+        global_["nota"] = (
+            f"El rango va de {fmt_valor_redondo(bajo)} a {fmt_valor_redondo(alto)} (factor "
+            f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
+        )
     if precio:
         global_["posicion"] = (
             "dentro" if global_["bajo"] <= precio <= global_["alto"]

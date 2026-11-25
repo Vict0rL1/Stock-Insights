@@ -6,7 +6,13 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.analysis.valuation import CRECIMIENTO_MINIMO, escenarios_por_defecto, supuestos_con_procedencia
+from app.analysis.valuation import (
+    CRECIMIENTO_MINIMO,
+    escenarios_con_rango,
+    escenarios_por_defecto,
+    rango_global,
+    supuestos_con_procedencia,
+)
 from app.db.engine import get_session
 from app.deps import get_service
 from app.main import app
@@ -208,3 +214,71 @@ def test_dcf_inverso_sin_valor_al_9_dice_por_que(session_factory):
     assert inv["estado"] == "valido" and inv["rango"] is not None
     assert inv["crecimiento_implicito"] is None, inv
     assert inv["motivo"] is not None and "60" in inv["motivo"], inv
+
+
+# --- H1: con FCF negativo, «Si va bien» valía menos que «Si va mal» -------------------
+#
+# Cambia el golden `dcf_modulo` (`fcf_negativo|*`): va aparte, con el visto bueno de Victor.
+
+
+def _quema_caja() -> list[dict]:
+    """Ventas que crecen un 10 % y un FCF negativo (cfo 100, capex 300)."""
+    return [
+        periodo(2024, "2025-02-12", revenue=1000.0, cfo=100.0, capex=300.0, eps_diluted=-1.0,
+                shares_outstanding=100.0, cash=100.0, long_term_debt=600.0, short_term_debt=0.0),
+        periodo(2025, "2026-02-10", revenue=1100.0, cfo=100.0, capex=300.0, eps_diluted=-1.0,
+                shares_outstanding=100.0, cash=100.0, long_term_debt=600.0, short_term_debt=0.0),
+    ]
+
+
+def test_fcf_negativo_el_bajista_es_el_mas_bajo(session_factory):
+    """Victor aprobó (24 nov) que «el bajista es siempre el más bajo». Con FCF
+    negativo, crecer es quemar más caja: el alcista salía por DEBAJO del bajista
+    (centros −28,7 / −48,3 / −73,5) y la ficha lo rotulaba «Si va bien»."""
+    r = _cliente(session_factory, _quema_caja()).post("/api/valuation/ACME").json()
+    e = r["escenarios"]
+    assert all(e[k]["rango"]["disponible"] for k in e)
+    # Lo mismo que exige `test_dcf_precargado_con_escenarios` con FCF positivo.
+    centros = [e[k]["rango"]["centro"] for k in ("bajista", "base", "alcista")]
+    assert centros == sorted(centros), centros
+    assert "quemar más caja" in r["nota_supuestos"]
+
+
+@pytest.mark.parametrize("medido", [-0.3, -0.05, 0.0, 0.05, 0.12])
+def test_con_fcf_negativo_el_orden_vale_con_cualquier_crecimiento(medido):
+    esc = escenarios_con_rango(escenarios_por_defecto({"fcf_cagr": medido}, -200e6), -200e6, 500e6, 100e6)
+    centros = [esc[k]["rango"]["centro"] for k in ("bajista", "base", "alcista")]
+    assert centros == sorted(centros), (medido, centros)
+
+
+def test_fcf_negativo_las_notas_no_dicen_disparates():
+    """La amplitud se dividía por un centro negativo: «Rango estrecho (-43 % del
+    centro)», y el rango global hablaba de un «factor 0,3×» o «-4,9×»."""
+    sup = escenarios_por_defecto({"fcf_cagr": None, "revenue_cagr": 0.05}, -200e6)
+    esc = escenarios_con_rango(sup, -200e6, 500e6, 100e6)
+    base = esc["base"]["rango"]
+    assert base["amplitud_pct"] is not None and base["amplitud_pct"] >= 0, base
+    assert "(-" not in base["nota"], base["nota"]
+    g = rango_global(esc, 20.0)
+    assert g["factor"] is None and "por debajo de cero" in g["nota"], g
+    # Con caja neta, un rango que cruza el cero.
+    esc2 = escenarios_con_rango(sup, -50e6, -1500e6, 100e6)
+    g2 = rango_global(esc2, 12.0)
+    assert g2["factor"] is None and "cruza el cero" in g2["nota"], g2
+
+
+def test_fcf_negativo_la_sensibilidad_ordena_por_lo_que_mueve(session_factory):
+    """Con el centro negativo, `recorrido / centro` daba porcentajes negativos y el
+    orden se invertía: «el que más mueve» era el que menos (hermano de H1)."""
+    s = _cliente(session_factory, _quema_caja()).post("/api/valuation/ACME").json()["sensibilidad"]
+    recorridos = [f["recorrido"] for f in s["supuestos"]]
+    assert recorridos == sorted(recorridos, reverse=True), s["supuestos"]
+    assert all(f["recorrido_pct"] >= 0 for f in s["supuestos"])
+    assert s["dominante"] == s["supuestos"][0]["supuesto"]
+    fcf = next(f for f in s["supuestos"] if f["supuesto"] == "base_fcf")
+    assert fcf["perturbacion"] > 0  # «abajo» es un FCF menor, también si es negativo
+
+
+def test_con_fcf_positivo_no_cambia_nada():
+    """Guarda: el intercambio es solo con FCF negativo."""
+    assert escenarios_por_defecto({"fcf_cagr": 0.05}, 100e6) == escenarios_por_defecto({"fcf_cagr": 0.05})

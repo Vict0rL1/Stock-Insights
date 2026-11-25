@@ -1689,7 +1689,7 @@ Lo que tenía cada uno:
 | | Módulo (el que se queda) | Ficha (`/api/stocks/{s}/valuation/{defaults,dcf}`) | Informe (`dcf` precargado) |
 |---|---|---|---|
 | Crecimiento de partida | CAGR del FCF; si no, de ingresos; si no, un 3 % **declarado** como supuesto. Tope del 15 %; un negativo medido se respeta | El mismo CAGR, acotado a [0 %, 15 %]: un negativo medido subía a 0 %; sin histórico, campo vacío | El mismo, tope del 15 %; sin histórico, el 3 % sin declararlo |
-| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más), con un suelo del −50 % que el escenario acotado declara | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
+| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más; con FCF negativo, bajista y alcista intercambian sus supuestos), con un suelo del −50 % que el escenario acotado declara | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
 | WACC bajista / base / alcista | 11 / 9 / 8 % | 11 / 10 / 9 % | 12 / 10 / 9 % |
 | Perpetuidad | 1,5 / 2,5 / 3,0 % | 2,0 / 2,5 / 3,0 % | 1,5 / 2,5 / 3,0 % |
 | Años | 5 (editable de 3 a 10) | 5 (editable) | 5 |
@@ -1731,6 +1731,17 @@ Lo que fijó la revisión 15 (contrato de `POST /api/valuation/{s}`):
   escrito: se dice en español, con las unidades de pantalla, y la valoración que se
   veía se queda. La ayuda de cada campo vacío es el dato del filing, no el último
   que escribiste.
+- **Con el FCF de partida negativo, el bajista es el más bajo** (visto bueno de
+  Victor, 25 nov). Crecer es quemar más caja, y un descuento menor y una perpetuidad
+  mayor agrandan la quema: los supuestos del alcista daban el valor más bajo y la
+  ficha rotulaba «Si va bien» el rango de abajo. `escenarios_por_defecto` intercambia
+  los supuestos completos del bajista y el alcista cuando `base_fcf < 0` (lo dicen
+  `nota_supuestos` en el módulo y una línea en `ResumenDcf`). Del mismo caso: la
+  amplitud y el `recorrido_pct` de la sensibilidad se miden sobre el tamaño del
+  centro, no su signo (con el centro negativo el orden se invertía y «el supuesto que
+  más mueve» era el que menos), y `rango_global.factor` es `null` si el extremo bajo
+  no es positivo, con una nota que dice si el rango está entero bajo cero o lo cruza.
+  Cambió el golden `dcf_modulo`, solo en sus 4 casos `fcf_negativo`.
 
 **`GET /api/stocks/{s}/valuation/defaults` y `POST /api/stocks/{s}/valuation/dcf`
 son alias obsoletos durante una versión**: responden lo de siempre (el golden
