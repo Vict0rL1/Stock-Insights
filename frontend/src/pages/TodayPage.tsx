@@ -40,7 +40,8 @@ import {
 } from '../lib/formato'
 import { coord } from '../lib/svg'
 import { useDato } from '../lib/useDato'
-import { useListaDiaria } from '../hooks/useListaDiaria'
+import { usePintarCadaMinuto } from '../lib/usePintarCadaMinuto'
+import { REVALIDAR_TRAS_MS, useListaDiaria } from '../hooks/useListaDiaria'
 import { RUTAS, rutaEmpresa } from '../lib/rutas'
 
 // Los filtros por señal del plan (`docs/PLAN_NAVEGACION.md`): ideas, las que
@@ -418,12 +419,21 @@ export function procedenciaDelPrecio(
 function SummaryStrip({
   data,
   acciones,
+  repasoEn,
   onPick,
 }: {
   data: TodayResponse
   acciones: Recuentos
+  /** Cuándo llegó la respuesta, y con ella el repaso de stops (`lista.recibidaEn`). */
+  repasoEn: number | null
   onPick: (v: View) => void
 }) {
+  // El repaso de stops es de cuando llegó la lista: con la pantalla abierta
+  // horas, «nada urgente» seguía diciendo lo de entonces sin decir de cuándo
+  // (revisión 15, H2). Pasado lo que vive una cotización (`REVALIDAR_TRAS_MS`),
+  // lleva su edad, que avanza.
+  usePintarCadaMinuto(repasoEn !== null)
+  const repasoViejo = repasoEn !== null && Date.now() - repasoEn >= REVALIDAR_TRAS_MS
   // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
   // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
   const ideas = data.shortlist ? data.shortlist.ideas.length : null
@@ -466,7 +476,9 @@ function SummaryStrip({
             ? 'cartera sin repasar'
             : acciones.sinComprobar > 0
               ? `${acciones.sinComprobar} sin comprobar`
-              : 'nada urgente',
+              : repasoViejo && repasoEn !== null
+                ? `nada urgente · repaso de ${fmtAntiguedad(new Date(repasoEn))}`
+                : 'nada urgente',
       vista: 'cartera',
     },
     {
@@ -1135,6 +1147,8 @@ function RepasoDeStops({
 /** «Precio: cotización de finnhub, hace 3 min.», con la fecha entera en ET al
  *  pasar el ratón. Nada si la respuesta no lo dice (una anterior a la revisión 13). */
 function Procedencia({ p }: { p: StopDePosicion }) {
+  // «hace 3 min» avanza con la pantalla abierta (revisión 15, H2).
+  usePintarCadaMinuto(Boolean(p.precio_fecha))
   if (!p.precio_fuente) return null
   const { texto, titulo } = procedenciaDelPrecio({
     fuente: p.precio_fuente,
@@ -1221,6 +1235,24 @@ export function AvisoListaDesfasada({
       {cambios.error ?? `Después ${partes.join('; ')}.`} Sus decisiones sobre tus posiciones y el
       tamaño de las ideas son de entonces; el repaso del stop sí es de ahora. {recalcular}
     </div>
+  )
+}
+
+/** «Calculado hace 3 h» en la cabecera, con la misma fecha que la línea de
+ *  progreso (`lista.calculadaEn`) y repintado cada minuto.
+ *
+ *  Se calculaba al pintar la página con `fetched_at ?? as_of`, y la página solo
+ *  se repinta cuando cambia la lista: con una vigente, «Calculado hace 5 min»
+ *  tres horas después; con la copia caducada, «hace 9 h» mientras la línea de
+ *  progreso de la misma pantalla ya decía «hace 10 h», y no contaba su edad
+ *  desde que llegó, como el hook (revisión 15, H2). */
+function EdadDeLaLista({ recalculada, calculadaEn }: { recalculada: boolean; calculadaEn: number | null }) {
+  usePintarCadaMinuto(calculadaEn !== null)
+  return (
+    <span>
+      {recalculada ? 'Recalculado ' : 'Calculado '}
+      {calculadaEn !== null ? fmtAntiguedad(new Date(calculadaEn)) : '(hora desconocida)'}
+    </span>
   )
 }
 
@@ -1314,12 +1346,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-400">
-          {data && (
-            <span>
-              {data.cached ? 'Calculado ' : 'Recalculado '}
-              {data.fetched_at ?? data.as_of ? fmtAntiguedad(data.fetched_at ?? data.as_of) : '(hora desconocida)'}
-            </span>
-          )}
+          {data && <EdadDeLaLista recalculada={data.cached === false} calculadaEn={lista.calculadaEn} />}
           <button
             onClick={lista.actualizar}
             disabled={busy}
@@ -1352,7 +1379,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
       )}
 
       {data?.signals && (
-        <SummaryStrip data={data} acciones={acciones} onPick={setView} />
+        <SummaryStrip data={data} acciones={acciones} repasoEn={lista.recibidaEn} onPick={setView} />
       )}
 
       {data?.signals && <RepasoDeStops repaso={data.cartera} signals={data.signals} mercado={data.market_name} />}
@@ -1392,7 +1419,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
       {/* Antes, sin lista vigente, la pantalla se quedaba aquí en «Puntuando el
           universo…» los minutos de una pasada. Ahora enseña la guardada con su
           antigüedad, o la primera pasada corta, y dice cómo va el resto. */}
-      <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
+      <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} instantaneas={data?.instantaneas} />
 
       {error && <ErrorDeCarga que="la lista de hoy" error={error.mensaje} reintentar={error.reintentar} />}
 

@@ -136,6 +136,7 @@
      "retrieved_at": "2026-08-06"
     },
     "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
+    "fallidas": 0,
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
@@ -154,6 +155,7 @@
     "scored": 120,
     "sectors": [
      {
+      "fallidas": 0,
       "key": "Communication Services",
       "name": "Communication Services",
       "pending": 0,
@@ -162,6 +164,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Discretionary",
       "name": "Consumer Discretionary",
       "pending": 0,
@@ -170,6 +173,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Staples",
       "name": "Consumer Staples",
       "pending": 0,
@@ -178,6 +182,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Energy",
       "name": "Energy",
       "pending": 4,
@@ -186,6 +191,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Financials",
       "name": "Financials",
       "pending": 76,
@@ -194,6 +200,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Health Care",
       "name": "Health Care",
       "pending": 59,
@@ -202,6 +209,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Industrials",
       "name": "Industrials",
       "pending": 81,
@@ -210,6 +218,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Information Technology",
       "name": "Information Technology",
       "pending": 74,
@@ -218,6 +227,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Materials",
       "name": "Materials",
       "pending": 26,
@@ -226,6 +236,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Real Estate",
       "name": "Real Estate",
       "pending": 31,
@@ -234,6 +245,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Utilities",
       "name": "Utilities",
       "pending": 31,
@@ -2653,6 +2665,7 @@
      "retrieved_at": "2026-08-06"
     },
     "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
+    "fallidas": 0,
     "fetched_now": 120,
     "instantaneas": {
      "error": null,
@@ -2671,6 +2684,7 @@
     "scored": 240,
     "sectors": [
      {
+      "fallidas": 0,
       "key": "Communication Services",
       "name": "Communication Services",
       "pending": 0,
@@ -2679,6 +2693,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Discretionary",
       "name": "Consumer Discretionary",
       "pending": 0,
@@ -2687,6 +2702,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Staples",
       "name": "Consumer Staples",
       "pending": 0,
@@ -2695,6 +2711,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Energy",
       "name": "Energy",
       "pending": 0,
@@ -2703,6 +2720,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Financials",
       "name": "Financials",
       "pending": 0,
@@ -2711,6 +2729,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Health Care",
       "name": "Health Care",
       "pending": 19,
@@ -2719,6 +2738,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Industrials",
       "name": "Industrials",
       "pending": 81,
@@ -2727,6 +2747,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Information Technology",
       "name": "Information Technology",
       "pending": 74,
@@ -2735,6 +2756,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Materials",
       "name": "Materials",
       "pending": 26,
@@ -2743,6 +2765,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Real Estate",
       "name": "Real Estate",
       "pending": 31,
@@ -2751,6 +2774,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Utilities",
       "name": "Utilities",
       "pending": 31,
@@ -5172,6 +5196,7 @@
     },
     "disclaimer": "Cada acción sale de reglas mecánicas escritas, no de una predicción: 'Comprar' significa que la empresa puntúa mejor que sus comparables de sector y que el precio acompaña, no que vaya a subir. Las reglas son razonables pero aún no están validadas contra histórico — ejecuta el backtest en Señales para saber si han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu cartera por operación; ajústalo a tu situación.",
     "estado": "viejo",
+    "fallidas": 0,
     "fetched_at": "2026-09-12T05:35:00+00:00",
     "fetched_now": 120,
     "instantaneas": {
@@ -5191,6 +5216,7 @@
     "scored": 120,
     "sectors": [
      {
+      "fallidas": 0,
       "key": "Communication Services",
       "name": "Communication Services",
       "pending": 0,
@@ -5199,6 +5225,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Discretionary",
       "name": "Consumer Discretionary",
       "pending": 0,
@@ -5207,6 +5234,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Consumer Staples",
       "name": "Consumer Staples",
       "pending": 0,
@@ -5215,6 +5243,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Energy",
       "name": "Energy",
       "pending": 4,
@@ -5223,6 +5252,7 @@
       "usable": true
      },
      {
+      "fallidas": 0,
       "key": "Financials",
       "name": "Financials",
       "pending": 76,
@@ -5231,6 +5261,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Health Care",
       "name": "Health Care",
       "pending": 59,
@@ -5239,6 +5270,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Industrials",
       "name": "Industrials",
       "pending": 81,
@@ -5247,6 +5279,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Information Technology",
       "name": "Information Technology",
       "pending": 74,
@@ -5255,6 +5288,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Materials",
       "name": "Materials",
       "pending": 26,
@@ -5263,6 +5297,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Real Estate",
       "name": "Real Estate",
       "pending": 31,
@@ -5271,6 +5306,7 @@
       "usable": false
      },
      {
+      "fallidas": 0,
       "key": "Utilities",
       "name": "Utilities",
       "pending": 31,

@@ -511,13 +511,142 @@ def test_con_respaldo_un_intento_sin_tarifa_o_declinado_antes_de_escribir_se_dic
     coste = coste_real(r["usage"], r["model"])
     assert coste["usd"] == pytest.approx(0.0205) and "lo cobrado puede ser menos" in coste["nota"]
 
-    # El respaldo de Sonnet 5.5 es Sonnet 5, sin tarifa en la tabla: no se inventa.
+    # Un respaldo sin tarifa en la tabla: no se inventa.
     sin_tarifa = _respuesta_con_respaldo([
         SimpleNamespace(type="message", model="claude-sonnet-5-5", input_tokens=2000, output_tokens=50),
-        SimpleNamespace(type="fallback_message", model="claude-sonnet-5", input_tokens=2000, output_tokens=100),
+        SimpleNamespace(type="fallback_message", model="claude-modelo-sin-tarifa", input_tokens=2000,
+                        output_tokens=100),
     ])
     monkeypatch.setattr(llm.client.beta.messages, "create", lambda **_: sin_tarifa)
     r = llm.interpret("sistema", "texto")
     coste = coste_real(r["usage"], r["model"])
-    assert coste["usd"] is None and "No hay tarifa conocida para claude-sonnet-5:" in coste["nota"]
+    assert coste["usd"] is None and "No hay tarifa conocida para claude-modelo-sin-tarifa:" in coste["nota"]
     assert coste["tokens_entrada"] == 4000 and coste["tokens_salida"] == 150
+
+
+# --- Revisión 15 ------------------------------------------------------------------
+
+
+def test_el_respaldo_del_modelo_por_defecto_tiene_tarifa():
+    """`CLAUDE_MODEL` por defecto es Sonnet 5.5, y su respaldo del servidor
+    (`fallbacks: "default"`) es Sonnet 5, que no estaba en la tabla: toda
+    respuesta servida por el respaldo salía con `usd: None`, justo el caso que se
+    quería contar «cada intento a la suya» (revisión 15, H5). Sonnet 5 cuesta lo
+    mismo que Sonnet 5.5 en la tabla oficial (2/10 USD por MTok)."""
+    from types import SimpleNamespace
+
+    from app.config import Settings
+    from app.llm.anthropic_provider import _uso
+    from app.llm.coste import TARIFAS_USD_POR_MTOK, coste_real
+
+    defecto = Settings.model_fields["claude_model"].default
+    respuesta = SimpleNamespace(usage=SimpleNamespace(
+        input_tokens=3000, output_tokens=400,
+        iterations=[
+            SimpleNamespace(type="message", model=defecto, input_tokens=3000, output_tokens=0),
+            SimpleNamespace(type="fallback_message", model="claude-sonnet-5", input_tokens=3000, output_tokens=400),
+        ],
+    ))
+    coste = coste_real(_uso(respuesta), "claude-sonnet-5")
+    # 6000 × 2 + 400 × 10, por millón.
+    assert coste["usd"] == pytest.approx(0.016), coste["nota"]
+    assert TARIFAS_USD_POR_MTOK["claude-opus-4-8"] == (5.0, 25.0)
+
+
+def test_si_toda_la_cadena_declina_el_error_dice_lo_gastado(session_factory, monkeypatch):
+    """Con `fallbacks: "default"`, un `stop_reason: "refusal"` final es que
+    declinó la cadena entera; cada intento va en `usage.iterations`, y uno que
+    declina a mitad se cobra a tarifa normal. `interpret` tiraba el uso y el 502
+    decía solo «El modelo declinó…»: el coste estimado se enseñó antes de enviar
+    y el real desaparecía, y repetir la pregunta volvía a pagar sin aviso
+    (revisión 15, H6). Ahora el error dice lo gastado, y que puede ser menos."""
+    from types import SimpleNamespace
+
+    from app.llm.anthropic_provider import AnthropicProvider
+
+    llm = AnthropicProvider("clave-de-prueba", "claude-opus-5-5")
+    respuesta = SimpleNamespace(
+        stop_reason="refusal", model="claude-opus-5", content=[],
+        usage=SimpleNamespace(input_tokens=3000, output_tokens=0, iterations=[
+            SimpleNamespace(type="message", model="claude-opus-5-5", input_tokens=3000, output_tokens=300),
+            SimpleNamespace(type="message", model="claude-opus-5", input_tokens=3000, output_tokens=0),
+        ]),
+    )
+    monkeypatch.setattr(llm.client.beta.messages, "create", lambda **_: respuesta)
+    c = _cliente(session_factory, ServicioQueCuenta(), llm)
+    r = c.post("/api/ia/preguntar", json={"pregunta": "Resúmeme el día"})
+    detalle = r.json()["detail"]
+    assert r.status_code == 502 and detalle.startswith("El modelo declinó interpretar este contenido.")
+    # 3000×4 + 300×20 (Opus 5.5, a mitad) + 3000×5 (Opus 5, antes de escribir), por millón.
+    assert "2 intentos (claude-opus-5-5, claude-opus-5), 6.000 tokens de entrada y 300 de salida" in detalle
+    assert "como mucho 0,0330\u00a0USD" in detalle and "lo cobrado puede ser menos" in detalle
+    assert "Repetir la pregunta vuelve a gastar" in detalle
+
+    # Sin recuento del API: que pudo cobrarse, sin cifra (no se sabe ≠ gratis).
+    from app.llm.base import ModeloDeclino
+
+    sin_recuento = ModeloDeclino("El modelo declinó interpretar este contenido", None, "claude-opus-5-5")
+    assert sin_recuento.coste["usd"] is None and "Pudo cobrarse" in str(sin_recuento)
+
+
+def _cotizacion_vieja(service, symbol: str, precio: float, cuando: datetime):
+    """La cotización que guardó la pantalla de cartera a `cuando` (vive 60 s):
+    pasado ese minuto, `SoloLoGuardado` la sirve VIEJA durante su margen."""
+    service.cache.set("quote", {"symbol": symbol}, {"price": precio, "change_pct": 0.1, "currency": "USD",
+                                                    "source": "finnhub", "as_of": cuando.isoformat()})
+
+
+def test_un_precio_viejo_en_la_cartera_no_cambia_la_huella_cada_minuto(session_factory, monkeypatch):
+    """El texto de la cartera lleva el motivo del repaso, y con una posición cuyo
+    único precio es una cotización caducada (fuera de la lista, el caso normal
+    de un ETF) ese motivo dice «hace 5 min», «hace 7 min»: la huella cambiaba
+    cada minuto y la misma pregunta volvía a llamar al modelo (revisión 15, H3).
+    La huella toma de la cartera los datos fechados, no la frase; y otro precio
+    u otro stop siguen dando otra respuesta."""
+    from app import contexto_cartera
+
+    t0 = AHORA - timedelta(minutes=10)
+    reloj = [t0]
+
+    class Reloj(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return reloj[0]
+
+    monkeypatch.setattr(contexto_cartera, "datetime", Reloj)
+    service, llm = _servicio_real(session_factory, reloj), LLMFalso()
+    _cotizacion_vieja(service, "STOP", 104.0, t0)
+    _posicion(session_factory, "STOP", stop=90.0)
+    c = _cliente(session_factory, service, llm)
+
+    def preguntar(minutos: int) -> dict:
+        reloj[0] = t0 + timedelta(minutes=minutos)
+        return c.post("/api/ia/preguntar", json={"pregunta": "¿Cómo va lo mío?"}).json()
+
+    assert preguntar(5)["cached"] is False
+    assert "hace 5 min" in llm.llamadas[0][1]  # el prompt sí dice la edad, para que la IA la cuente
+    assert preguntar(7)["cached"] is True and len(llm.llamadas) == 1
+
+    # Otra cotización (otro precio, otra fecha), aunque siga VIEJA: otra respuesta.
+    _cotizacion_vieja(service, "STOP", 103.0, t0 + timedelta(minutes=7))
+    assert preguntar(9)["cached"] is False and len(llm.llamadas) == 2
+    # Otro stop con el mismo precio: otra respuesta.
+    with session_factory() as s:
+        s.query(Position).one().stop = 95.0
+        s.commit()
+    assert preguntar(10)["cached"] is False and len(llm.llamadas) == 3
+
+
+def test_una_lista_incompleta_por_un_fallo_de_las_fuentes_lo_dice_a_la_ia(session_factory):
+    """Una lista también queda incompleta con empresas que las fuentes no
+    pudieron dar (`fallidas`), y entonces «faltan 0 por puntuar» se leía como
+    que no faltaba nada (revisión 15, H1)."""
+    from app import pregunta_ia
+
+    lista = {**_lista(AHORA, [_senal("ACME", 0.8, 100.0)]), "complete": False, "pending": 0, "fallidas": 22}
+    texto = pregunta_ia._bloque_lista(lista, "valido", "us_sp500")["texto"]
+    assert "Lista INCOMPLETA: 22 sin datos por un fallo de las fuentes, que se reintentan." in texto
+    assert "faltan 0" not in texto
+    antigua = {**lista, "pending": 12}
+    del antigua["fallidas"]
+    assert "Lista INCOMPLETA: faltan 12 por puntuar." in pregunta_ia._bloque_lista(antigua, "valido", "us_sp500")["texto"]

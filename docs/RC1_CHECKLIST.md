@@ -126,7 +126,8 @@ que está en la segunda mitad de este documento.
 
 ### Registro de decisiones y forward testing
 - [x] Cada lista diaria congela lo accionable con la señal entera (solo la que
-      cubre el mercado: una pasada parcial no congela nada)
+      cubre el mercado: una pasada parcial, o una con empresas que las fuentes no
+      pudieron dar, no congela nada, y Explorar lo dice)
 - [x] Instantáneas inmutables: ORM + triggers de SQLite + huella SHA-256
 - [x] Resultados en filas nuevas; una cuenta cerrada no se reabre
 - [x] `GET /api/snapshots/{id}` reconstruye «por qué dijo esto aquel día»

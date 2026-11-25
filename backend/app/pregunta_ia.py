@@ -165,6 +165,22 @@ def _cuantas(n, singular: str, varias: str) -> str:
     return f"{fmt_num(n, 0)} {plural(n, singular, varias) if n is not None else varias}"
 
 
+def _lo_que_falta(lista: dict) -> str:
+    """Por qué una lista no está completa, con cada causa contada.
+
+    Una lista también queda incompleta con empresas que las fuentes no pudieron
+    dar (`fallidas`, revisión 15, H1), y entonces «faltan 0 por puntuar» se
+    leía como que no faltaba nada. Sin el recuento (una lista guardada antes),
+    «—», no 0."""
+    pendientes, fallidas = lista.get("pending"), lista.get("fallidas")
+    partes = []
+    if pendientes is None or pendientes > 0 or not fallidas:
+        partes.append(f"faltan {fmt_num(pendientes, 0)} por puntuar")
+    if fallidas:
+        partes.append(f"{fmt_num(fallidas, 0)} sin datos por un fallo de las fuentes, que se reintentan")
+    return "; ".join(partes)
+
+
 def _bloque_lista(lista: dict, estado: str, mercado: str) -> dict:
     corta = lista.get("shortlist") or {}
     ideas = (corta.get("ideas") or [])[:MAX_IDEAS]
@@ -176,8 +192,7 @@ def _bloque_lista(lista: dict, estado: str, mercado: str) -> dict:
     lineas = [
         f"Puntuadas {fmt_num(lista.get('scored'), 0)} de {fmt_num(lista.get('requested'), 0)} empresas; "
         "cada una se compara con las de su propio sector."
-        + ("" if lista.get("complete", True) else
-           f" Lista INCOMPLETA: faltan {fmt_num(lista.get('pending'), 0)} por puntuar."),
+        + ("" if lista.get("complete", True) else f" Lista INCOMPLETA: {_lo_que_falta(lista)}."),
         f"Recuento: {_cuantas(counts.get('favorables'), 'favorable', 'favorables')}, "
         f"{_cuantas(counts.get('neutrales'), 'neutral', 'neutrales')} y "
         f"{_cuantas(counts.get('desfavorables'), 'desfavorable', 'desfavorables')}.",
@@ -291,6 +306,23 @@ def _bloque_cartera(session: Session, solo: SoloLoGuardado, lista: dict | None, 
         "nota": "Los precios no se han vuelto a descargar: los que no estaban guardados dejan el stop sin comprobar."
         if filas else None,
         "texto": texto,
+        # Lo que define este bloque para `_huella`: los datos fechados de cada
+        # fila, no su frase. El motivo de un stop sin comprobar dice la edad del
+        # precio contra el reloj («solo hay un precio viejo (la cotización, hace 5
+        # min)»), así que con el texto la huella cambiaba cada minuto y cada
+        # pregunta con una posición fuera de la lista volvía a cobrar (revisión
+        # 15, H3). El motivo se deja fuera porque sale de estos mismos campos
+        # (precio y su fecha, fuente y estado, stop, lotes); todo lo demás de la
+        # fila entra, así que otro precio, otra fecha, otro stop u otro estado
+        # siguen dando otra huella.
+        "huella": [
+            {
+                "fila": {k: v for k, v in f.items() if k != "motivo"},
+                "posicion": {k: (posiciones.get(f["symbol"]) or {}).get(k) for k in ("quantity", "cost_basis")},
+                "regla": {k: (decisiones.get(f["symbol"]) or {}).get(k) for k in ("owned", "label", "action")},
+            }
+            for f in filas
+        ],
     }, None
 
 
@@ -511,7 +543,7 @@ def reunir(session: Session, service, *, mercado: str, simbolo: str | None = Non
 def _publico(contexto: dict) -> dict:
     """Lo que se le pasó a la IA, sin el texto del prompt: para enseñarlo aparte."""
     return {
-        "datos_usados": [{k: v for k, v in b.items() if k != "texto"} for b in contexto["bloques"]],
+        "datos_usados": [{k: v for k, v in b.items() if k not in ("texto", "huella")} for b in contexto["bloques"]],
         "datos_ausentes": contexto["ausentes"],
     }
 
@@ -547,9 +579,15 @@ def _huella(modelo: str | None, pregunta: str, contexto: dict, ahora: datetime) 
     prompt: una respuesta no se reutiliza de un día para otro) y, de cada bloque,
     su fuente, la fecha del dato, su estado, su nota y su texto; y lo que falta.
     Una lista nueva, un precio nuevo o un dato que se vuelve viejo cambian la
-    huella; que pasen dos minutos, no."""
+    huella; que pasen dos minutos, no.
+
+    Un bloque cuyo texto lleva una edad contada contra el reloj trae aparte lo
+    que lo define (`huella`, el de la cartera: sus filas con cada precio y su
+    fecha), y entra eso en vez del texto: con el texto, «hace 5 min» y «hace 7
+    min» del mismo precio viejo daban dos huellas (revisión 15, H3)."""
     bloques = [
-        {**{k: b.get(k) for k in ("clave", "titulo", "fuente", "estado", "nota", "texto")},
+        {**{k: b.get(k) for k in ("clave", "titulo", "fuente", "estado", "nota")},
+         "texto": b["huella"] if "huella" in b else b.get("texto"),
          "fecha": None if b.get("clave") in _FECHA_DE_LA_CONSULTA else b.get("fecha")}
         for b in contexto["bloques"]
     ]

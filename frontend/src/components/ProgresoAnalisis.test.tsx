@@ -12,7 +12,7 @@ type Lista = Parameters<typeof ProgresoAnalisis>[0]['lista']
 
 const base: Lista = {
   estado: 'actualizando',
-  progreso: { puntuadas: 312, total: 502, pendientes: 190, completa: false },
+  progreso: { puntuadas: 312, total: 502, pendientes: 190, fallidas: 0, completa: false },
   vieja: false,
   calculadaEn: null,
   recibidaEn: null,
@@ -94,6 +94,41 @@ describe('ProgresoAnalisis', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Cobertura parcial: 312 de 502 empresas')
     fireEvent.click(screen.getByRole('button', { name: 'Seguir completando' }))
     expect(seguir).toHaveBeenCalledOnce()
+  })
+
+  it('parada con empresas que las fuentes no pudieron dar: lo dice, sin culpar al presupuesto', () => {
+    // Revisión 15, H1: con un sector caído (EDGAR con 503, Finnhub sin cuota) la
+    // lista se daba por completa; ahora no lo está, y la línea dice por qué.
+    const progreso = { puntuadas: 480, total: 502, pendientes: 0, fallidas: 22, completa: false }
+    render(<ProgresoAnalisis lista={con({ estado: 'lista', ocupado: false, pasada: 0, progreso })} onSeguir={() => {}} />)
+    const estado = screen.getByRole('status')
+    expect(estado).toHaveTextContent('Cobertura parcial: 480 de 502 empresas')
+    expect(estado).toHaveTextContent(
+      '22 empresas sin analizar por un fallo de las fuentes (caídas o sin cuota): no se dan por cubiertas y se reintentan al seguir completando.',
+    )
+    expect(estado).not.toHaveTextContent('Las APIs gratuitas limitan')
+    expect(screen.getByRole('button', { name: 'Seguir completando' })).toBeInTheDocument()
+  })
+
+  it('la lista parcial dice que la decisión de hoy aún no se registra; la completa, solo si falló', () => {
+    // Revisión 15, H4: `instantaneas.sin_congelar` (y el `error` de una
+    // congelación fallida) solo los decía el API; el día se quedaba sin foto sin
+    // que ninguna pantalla lo contara.
+    const parcial = { guardadas: 0, ya_existian: 0, error: null, sin_congelar: 'Lista parcial (312 de 502 empresas, 190 pendientes): …' }
+    const { container, rerender } = render(
+      <ProgresoAnalisis lista={con({ estado: 'lista', ocupado: false })} instantaneas={parcial} />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'La decisión de hoy aún no se registra en el historial: se registra con la primera lista que cubra el mercado entero.',
+    )
+    const completa = { ...base.progreso!, pendientes: 0, completa: true }
+    const fallo = { guardadas: 0, ya_existian: 0, error: 'database is locked', sin_congelar: null }
+    rerender(<ProgresoAnalisis lista={con({ estado: 'lista', ocupado: false, progreso: completa })} instantaneas={fallo} />)
+    expect(screen.getByRole('status')).toHaveTextContent('La decisión de hoy no se pudo registrar en el historial')
+    expect(screen.getByRole('status')).not.toHaveTextContent('database is locked')
+    const bien = { guardadas: 5, ya_existian: 0, error: null, sin_congelar: null }
+    rerender(<ProgresoAnalisis lista={con({ estado: 'lista', ocupado: false, progreso: completa })} instantaneas={bien} />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('completa y sin nada en marcha, o un fallo sin lista, no pinta nada', () => {

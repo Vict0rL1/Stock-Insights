@@ -1109,6 +1109,117 @@ def test_un_fallo_de_las_fuentes_no_se_recuerda_como_que_no_existe(session_facto
         app.dependency_overrides.clear()
     assert any(x["symbol"] == "AAPL" for x in d["unavailable"])
     assert service.cache.get(SIN_FUNDAMENTALES, {"symbol": "AAPL"}) is None
+    # Y sin AAPL la lista no cubre el mercado: con EDGAR caído, que Finnhub no la
+    # tenga no dice que no exista. Se congelaba igual, y se decía «sin
+    # fundamentales en ninguna fuente» (revisión 15, H1).
+    from app.db.models import DecisionSnapshot
+
+    motivo = next(x["reason"] for x in d["unavailable"] if x["symbol"] == "AAPL")
+    assert motivo == "con las fuentes de fundamentales fallando"
+    assert d["complete"] is False and d["pending"] == 0 and d["fallidas"] == 1
+    assert "1 sin datos por un fallo de las fuentes" in d["instantaneas"]["sin_congelar"]
+    with session_factory() as s:
+        assert s.query(DecisionSnapshot).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Revisión 15: una lista con las fuentes caídas no es la del mercado entero
+# ---------------------------------------------------------------------------
+
+
+def _servicio_con_caidas(caidas: set[str]) -> _EdgarQueGuarda:
+    """EDGAR con un 503 y Finnhub/yfinance sin cuota para `caidas`: un FALLO de
+    las fuentes (AllProvidersFailedError), no la respuesta «no la tengo»."""
+    from app.providers.router import AllProvidersFailedError
+
+    service = _EdgarQueGuarda()
+    original = service.get
+
+    def get(data_type, **kw):
+        if kw.get("symbol") in caidas:
+            if data_type == "financials":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+            if data_type == "fundamentals":
+                raise AllProvidersFailedError(
+                    "fundamentals",
+                    {"finnhub": "límite de llamadas agotado en esta ventana", "yfinance": "HTTP 429"},
+                )
+        return original(data_type, **kw)
+
+    service.get = get
+    return service
+
+
+def test_un_sector_con_las_fuentes_caidas_no_cuenta_como_mercado_cubierto(session_factory):
+    """Un fallo de las fuentes iba a `unavailable`, como «ninguna fuente la
+    tiene», y solo `pending` impedía completar: con un sector entero (22
+    empresas) sin EDGAR ni Finnhub, la lista salía `complete` con 480 de 502 y se
+    congelaba como la decisión del día, inmutable y sin ese sector, con
+    `sin_congelar` en None. Ahora esas empresas son `fallidas`: no se recuerdan,
+    se reintentan, la lista no está completa y la respuesta dice por qué no se
+    congela."""
+    from app.db.models import DecisionSnapshot
+
+    nombre, empresas = next(iter(load_market("us_sp500")["sectors"].items()))
+    caidas = {c["symbol"] for c in empresas}
+    try:
+        with _cliente_con(_servicio_con_caidas(caidas), session_factory) as c:
+            d = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert d["complete"] is False and d["pending"] == 0
+    assert d["fallidas"] == len(caidas) and d["scored"] == d["requested"] - len(caidas)
+    sector = next(x for x in d["sectors"] if x["key"] == nombre)
+    assert sector["fallidas"] == len(caidas) and sector["usable"] is False
+    assert {x["reason"] for x in d["unavailable"] if x["symbol"] in caidas} == {
+        "con las fuentes de fundamentales fallando"}
+    inst = d["instantaneas"]
+    assert inst["guardadas"] == 0 and inst["error"] is None
+    assert f"{len(caidas)} sin datos por un fallo de las fuentes, que se reintentan" in inst["sin_congelar"]
+    assert "Faltan 0" not in d["note"] and "fallo de las fuentes" in d["note"]
+    with session_factory() as s:
+        assert s.query(DecisionSnapshot).count() == 0
+
+
+def test_lo_congelado_es_lo_que_dice_la_lista_cuando_vuelven_las_fuentes(session_factory):
+    """El daño: con Health Care (60 empresas) caído en la pasada que completaba,
+    «evitar» salía de las 442 restantes y se congelaba FE; al volver las fuentes
+    el mismo día, la lista entera dice A y no FE, pero FE ya era inmutable («la
+    primera gana») y el forward testing medía un «evitar» que la lista completa
+    no da. Ahora se congela la primera lista que de verdad cubre el mercado."""
+    from app.db.models import DecisionSnapshot
+
+    empresas = next(v for v in load_market("us_sp500")["sectors"].values() if any(c["symbol"] == "A" for c in v))
+    caidas = {c["symbol"] for c in empresas}
+    try:
+        with _cliente_con(_servicio_con_caidas(caidas), session_factory) as c:
+            caida = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+            caidas.clear()  # vuelven las fuentes, el mismo día
+            vuelta = c.get("/api/signals/today?market=us_sp500&budget=600&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert caida["complete"] is False and vuelta["complete"] is True and vuelta["fallidas"] == 0
+    corta = vuelta["shortlist"]
+    esperadas = sorted([(x["symbol"], "comprar") for x in corta["ideas"]]
+                       + [(x["symbol"], "evitar") for x in corta["evitar"]])
+    with session_factory() as s:
+        assert sorted((x.symbol, x.accion) for x in s.query(DecisionSnapshot).all()) == esperadas
+    assert ("A", "evitar") in esperadas
+
+
+def test_que_es_un_fallo_de_las_fuentes_y_que_no():
+    """«No la tengo» y «no hay ninguna fuente configurada» no se arreglan
+    reintentando: no impiden completar la lista. Caídas y sin cuota, sí."""
+    from app.providers.router import AllProvidersFailedError
+    from app.routers.signals import _fallo_de_las_fuentes
+
+    sin_clave = "no configurado (falta API key o credencial en .env)"
+    assert not _fallo_de_las_fuentes(DataNotFoundError("finnhub: sin fundamentales para X"))
+    assert not _fallo_de_las_fuentes(AllProvidersFailedError("fundamentals", {
+        "finnhub": sin_clave, "yfinance": "no soporta este tipo de dato"}))
+    assert _fallo_de_las_fuentes(AllProvidersFailedError("financials", {"edgar": "HTTP 503"}))
+    assert _fallo_de_las_fuentes(AllProvidersFailedError("fundamentals", {
+        "finnhub": sin_clave, "yfinance": "límite de llamadas agotado en esta ventana"}))
 
 
 def test_la_vigencia_de_la_lista_es_la_misma_en_el_frontend():

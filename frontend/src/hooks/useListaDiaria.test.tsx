@@ -108,7 +108,7 @@ describe('useListaDiaria: lo guardado primero', () => {
     expect(result.current.data?.scored).toBe(PRIMERA_PASADA)
     expect(result.current.primeraVez).toBe(false)
     expect(result.current.estado).toBe('actualizando')
-    expect(result.current.progreso).toEqual({ puntuadas: PRIMERA_PASADA, total: 502, pendientes: 502 - PRIMERA_PASADA, completa: false })
+    expect(result.current.progreso).toEqual({ puntuadas: PRIMERA_PASADA, total: 502, pendientes: 502 - PRIMERA_PASADA, fallidas: null, completa: false })
     // Y las pasadas automáticas siguen completando, con el presupuesto normal.
     expect(result.current.pasada).toBe(1)
     expect(s.pedidas).toEqual([G, P, R])
@@ -146,6 +146,23 @@ describe('useListaDiaria: pasadas y fallos', () => {
     await s.soltar(R, lista(502))
     expect(result.current.estado).toBe('lista')
     expect(s.veces(R)).toBe(MAX_PASADAS_AUTO + 1)
+  })
+
+  it('con una fuente caída que no vuelve, sigue pidiendo hasta el tope y se para', async () => {
+    // Revisión 15, H1: las empresas que las fuentes no pudieron dar ya no se dan
+    // por cubiertas (`complete: false` con `pending: 0`). La cadena las reintenta,
+    // pero no sin fin: con la fuente aún caída, para en `MAX_PASADAS_AUTO`.
+    const s = servidor()
+    const { result } = montar()
+    const caida = () => lista(480, { pending: 0, fallidas: 22, complete: false, cached: false })
+    await s.soltar(G, caida())
+    for (let pasada = 1; pasada <= MAX_PASADAS_AUTO; pasada++) {
+      expect(result.current.pasada).toBe(pasada)
+      await s.soltar(R, caida())
+    }
+    expect(s.veces(R)).toBe(MAX_PASADAS_AUTO)
+    expect(result.current.ocupado).toBe(false)
+    expect(result.current.progreso).toEqual({ puntuadas: 480, total: 502, pendientes: 0, fallidas: 22, completa: false })
   })
 
   it('un fallo se dice sin quitar lo que se ve, y «Reintentar» repite la misma pasada', async () => {

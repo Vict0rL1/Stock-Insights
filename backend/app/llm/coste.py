@@ -8,16 +8,24 @@ modelo; ahora hay una, y el router de resultados la importa.
 
 from __future__ import annotations
 
-from app.formato import fmt_num, plural
+from app.formato import fmt_dinero, fmt_num, plural
 
 # Tarifa del API de Claude en USD por millón de tokens (entrada, salida), para
 # enseñar el coste ANTES de gastarlo. Antes era una sola, la de Opus 5, escrita
 # a mano aunque el modelo fuera otro. Un modelo que no está aquí no tiene
 # estimación: inventarle un precio sería peor que decir que no se sabe.
+#
+# Sonnet 5 y Opus 4.8 son los modelos de respaldo del servidor (`fallbacks:
+# "default"`) de Sonnet 5.5 y de los Opus: sin su tarifa, toda respuesta servida
+# por el respaldo con el modelo por defecto salía con `usd: None` (revisión 15,
+# H5). Las cinco, de la tabla de precios oficial del API de Anthropic (consultada
+# el 2026-11-25), no deducidas de otro modelo.
 TARIFAS_USD_POR_MTOK = {
     "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-sonnet-5": (2.0, 10.0),
     "claude-opus-5-5": (4.0, 20.0),
     "claude-opus-5": (5.0, 25.0),
+    "claude-opus-4-8": (5.0, 25.0),
 }
 
 
@@ -126,4 +134,53 @@ def coste_real(uso: dict | None, modelo: str | None) -> dict:
         "tokens_salida": salida,
         "usd": round(entrada / 1e6 * tarifa[0] + salida / 1e6 * tarifa[1], 4),
         "nota": f"{gasto}, a la tarifa de {modelo} ({_tarifa(*tarifa)}).",
+    }
+
+
+def coste_declinado(uso: dict | None, modelo: str | None) -> dict:
+    """Lo que pudo costar una petición que el modelo declinó entera: el modelo
+    pedido y, con el respaldo del servidor, también el de respaldo.
+
+    Esa petición no trae respuesta, pero se paga: un intento que declina a mitad
+    se cobra a tarifa normal, y uno que declina antes de escribir nada, en
+    algunas categorías de rechazo. Antes el uso se tiraba con la respuesta y el
+    502 decía solo «El modelo declinó…»: el coste estimado se había enseñado
+    antes de enviar y el real desaparecía, y repetir la pregunta volvía a pagar
+    sin aviso (revisión 15, H6). Se suma cada intento de `usage.iterations` a la
+    tarifa de su modelo, como en `_coste_por_intentos`; sin recuento, `None` y
+    que pudo cobrarse: «no se sabe» no es «gratis»."""
+    uso = uso or {}
+    intentos = uso.get("intentos") or [
+        {"tipo": "message", "modelo": modelo, "entrada": uso.get("entrada"), "salida": uso.get("salida")}
+    ]
+    n = len(intentos)
+    cuantos = plural(n, "un intento", f"{fmt_num(n, 0)} intentos")
+    aviso = " Repetir la pregunta vuelve a gastar."
+    if any(i.get("entrada") is None or i.get("salida") is None for i in intentos):
+        return {"tokens_entrada": None, "tokens_salida": None, "usd": None,
+                "nota": f"Pudo cobrarse ({cuantos}), pero el API no dio el recuento de tokens: no se sabe "
+                        f"cuánto.{aviso}"}
+    entrada = sum(i["entrada"] for i in intentos)
+    salida = sum(i["salida"] for i in intentos)
+    gasto = (f"{cuantos} ({', '.join(i.get('modelo') or 'un modelo desconocido' for i in intentos)}), "
+             f"{fmt_num(entrada, 0)} tokens de entrada y {fmt_num(salida, 0)} de salida")
+    sin_tarifa = sorted({i.get("modelo") or "desconocido" for i in intentos
+                         if TARIFAS_USD_POR_MTOK.get(i.get("modelo") or "") is None})
+    if sin_tarifa:
+        return {"tokens_entrada": entrada, "tokens_salida": salida, "usd": None,
+                "nota": f"Lo gastado en la petición declinada: {gasto}. No hay tarifa conocida para "
+                        f"{', '.join(sin_tarifa)}: el coste en dólares no se puede calcular.{aviso}"}
+    usd = sum(i["entrada"] / 1e6 * TARIFAS_USD_POR_MTOK[i["modelo"]][0]
+              + i["salida"] / 1e6 * TARIFAS_USD_POR_MTOK[i["modelo"]][1] for i in intentos)
+    sin_salida = sum(1 for i in intentos if i["salida"] == 0)
+    return {
+        "tokens_entrada": entrada,
+        "tokens_salida": salida,
+        "usd": round(usd, 4),
+        "nota": f"Lo gastado en la petición declinada: {gasto}, {'como mucho ' if sin_salida else ''}"
+                f"{fmt_dinero(usd, 'USD', 4)} a la tarifa de cada modelo."
+        + (f" {plural(sin_salida, 'Un intento declinó', f'{fmt_num(sin_salida, 0)} intentos declinaron')} antes "
+           "de escribir nada, y eso el API solo lo cobra en algunas categorías de rechazo: lo cobrado puede ser "
+           "menos." if sin_salida else "")
+        + aviso,
     }

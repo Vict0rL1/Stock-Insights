@@ -474,8 +474,14 @@ que caducan; antes salía gratis pero bajaba EDGAR sin contarlo (con 40 de
 presupuesto, 80 descargas). Y una empresa que **ninguna fuente tiene** (EDGAR y
 Finnhub contestaron que no) se recuerda 24 h (`signals.SIN_FUNDAMENTALES`, como
 `RECORDAR_FALLO` con las cotizaciones): antes gastaba una unidad en cada pasada.
-Un fallo de las fuentes (caídas, sin cuota, sin clave) no se recuerda: se
-reintenta en la pasada siguiente. La UI muestra la barra de cobertura y un botón para continuar. Los
+Un fallo de las fuentes (caídas, sin cuota) no se recuerda: se reintenta en la
+pasada siguiente, y mientras quede alguna empresa así la lista **no está
+completa** (`fallidas` en la respuesta y en cada sector; `complete = pending == 0
+y fallidas == 0`). Antes contaba como «sin fundamentales en ninguna fuente» y una
+lista con un sector caído salía completa (revisión 15). Una cadena sin ninguna
+fuente configurada no es un fallo: no hay a quién volver a preguntar. La UI
+muestra la barra de cobertura, cuántas quedan sin analizar por un fallo, y un
+botón para continuar. Los
 nombres de las empresas salen del propio archivo del universo: pedirlos al API
 costaría otras 500 llamadas por información puramente cosmética.
 
@@ -506,8 +512,10 @@ una semana sin abrir la app), la primera pasada va **corta** (`budget=40`,
 40 llamadas a Finnhub dejan margen en su minuto para lo demás de la pantalla. Las
 cuatro pasadas automáticas de 120 completan el resto (40 + 4 × 120 = 520 ≥ 502:
 cada empresa gasta como mucho una unidad en 24 h, también la que ninguna fuente
-tiene; si las fuentes fallan, lo fallido se reintenta y vuelve a gastar, y puede
-quedar algo pendiente que la pantalla dice con «Seguir completando») con la barra
+tiene; si las fuentes fallan, lo fallido se reintenta y vuelve a gastar, la lista
+no se da por completa y, si la fuente sigue caída al llegar al tope de pasadas,
+la pantalla dice cuántas quedan sin analizar por un fallo y ofrece «Seguir
+completando») con la barra
 «Analizando el mercado en segundo plano: 312 de 502 empresas. Ya puedes usar la
 app; las ideas se completan solas.» Esa primera lista es **parcial y lo dice**:
 el presupuesto se gasta sector a sector, así que cubre los primeros sectores del
@@ -516,8 +524,11 @@ universo.
 **Una lista parcial no congela instantáneas.** La decisión del día
 (`decision_snapshots`, la primera gana y es inmutable) se congela con la primera
 lista que cubre el mercado entero (`complete`; las empresas que ninguna fuente
-tiene no lo impiden), y la respuesta parcial lo dice en
-`instantaneas.sin_congelar` (`null` cuando se congeló). Antes congelaba la primera
+tiene no lo impiden, las que una fuente caída no pudo dar sí), y la respuesta
+parcial lo dice en `instantaneas.sin_congelar` (`null` cuando se congeló), con lo
+que falta contado por su causa («22 sin datos por un fallo de las fuentes, que se
+reintentan»). Explorar lo dice en una línea junto a la cobertura parcial, y
+también si la congelación falló (`instantaneas.error`, el detalle en el log). Antes congelaba la primera
 pasada, de 40 o 120 de 502: con el segundo sector puntuado contra una parte de sí
 mismo y «evitar» lo peor de 40, no de 502, y ninguna pasada posterior podía
 corregirlo. Un día sin lista completa se queda sin instantánea (`docs/DECISION_REPLAY.md`).
@@ -530,7 +541,13 @@ duplica ninguna petición. **La lista en memoria envejece**: el hook guarda
 cuándo se calculó (no su edad), y pasadas 6 h (`VIGENCIA_LISTA_HORAS`, la vigencia
 de la caché del backend) la enseña como vieja, con su edad al día, aunque no
 venga de la copia caducada; también mientras pide la de ahora o si esa falla. El
-aviso dice entonces que el repaso de stops es de cuando llegó, no de ahora.
+aviso dice entonces que el repaso de stops es de cuando llegó, no de ahora. La
+cabecera de Explorar («Calculado hace 3 h») usa esa misma fecha
+(`lista.calculadaEn`) y se repinta cada minuto (`lib/usePintarCadaMinuto.ts`), como
+el precio de cada stop; y pasado un minuto, el «nada urgente» lleva la edad de su
+repaso («nada urgente · repaso de hace 3 h»). Antes la cabecera se quedaba en
+«hace 5 min» y, con la copia caducada, decía una edad distinta de la línea de
+progreso (revisión 15).
 
 ### De dónde salen las listas
 
@@ -2165,6 +2182,10 @@ dice tal cual («Modelo de Claude no válido: <id>. Revisa CLAUDE_MODEL en
 .env.»). El nombre anterior, `ANTHROPIC_MODEL`, se sigue leyendo. La
 estimación de coste antes de analizar un filing usa la tarifa del modelo
 configurado; para un modelo sin tarifa conocida dice que no se puede estimar.
+La tabla (`app/llm/coste.py`, de la tarifa oficial del API) tiene Sonnet 5.5,
+Opus 5.5 y Opus 5, y también Sonnet 5 y Opus 4.8, los modelos de respaldo del
+servidor: sin ellas, una respuesta servida por el respaldo con el modelo por
+defecto no tenía coste en dólares (revisión 15).
 
 **Sin key la app funciona entera**: precios, fundamentales, valoración, salud,
 señales, backtest e informe cuantitativo no tocan el LLM — solo los botones
@@ -2219,12 +2240,18 @@ forma una etiqueta.
   montarse, porque las sugerencias envían al tocarlas.
 - **Sin `ANTHROPIC_API_KEY`:** las dos rutas responden **503** con cómo
   añadirla; el bloque lo explica (`.env`, `./start.sh`) en vez de desaparecer.
-  Un fallo del modelo es un 502 con su motivo.
+  Un fallo del modelo es un 502 con su motivo. Si el modelo (y su respaldo)
+  declinan, el `detail` dice además lo gastado en los intentos declinados
+  (`llm.base.ModeloDeclino`, `coste.coste_declinado`: tokens de cada intento a la
+  tarifa de su modelo, «como mucho» si alguno declinó antes de escribir; sin
+  recuento, que pudo cobrarse) y que repetir vuelve a gastar (revisión 15).
 - **Caché:** la respuesta se guarda en `llm_outputs` (`kind = pregunta_ia`) por
   la huella de lo que la define (`pregunta_ia._huella`): el modelo, las
   instrucciones, la pregunta, el día de la consulta y, de cada bloque, su fuente,
-  la fecha del dato, su estado, su nota y su texto; no la hora de la consulta ni
-  los «hace X» del prompt, que la hacían acertar solo dentro del mismo minuto. La
+  la fecha del dato, su estado, su nota y su texto (de la cartera, sus filas con
+  cada precio y su fecha en vez del texto, que dice la edad de un precio viejo
+  contra el reloj); no la hora de la consulta ni los «hace X» del prompt, que la
+  hacían acertar solo dentro del mismo minuto. La
   misma pregunta con los mismos datos, el mismo día, no vuelve a cobrar; la
   respuesta guardada dice cuándo se generó.
 

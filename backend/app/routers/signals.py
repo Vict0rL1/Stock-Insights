@@ -181,6 +181,28 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
     return "con las fuentes de fundamentales fallando"
 
 
+def _sin_datos_por_un_fallo(n: int) -> str:
+    """«22 sin datos por un fallo de las fuentes»: lo dicen la nota y `sin_congelar`."""
+    return f"{fmt_num(n, 0)} sin datos por un fallo de las fuentes"
+
+
+def _fallo_de_las_fuentes(exc: Exception) -> bool:
+    """Si `exc` es un FALLO de las fuentes (caídas, sin cuota, una respuesta
+    rota), no la respuesta «no la tengo».
+
+    La diferencia decide si la lista cubre el mercado (revisión 15, H1): lo que
+    ninguna fuente tiene no lo tendrá en la pasada siguiente y no impide
+    completarla; lo que una fuente no pudo dar quizá lo dé, y mientras tanto la
+    lista no es la del mercado entero. Antes las dos iban a `unavailable` y solo
+    `pending` contaba: con EDGAR dando 503 y Finnhub sin cuota para un sector
+    entero, la lista salía `complete` y se congelaba como la decisión del día
+    sin ese sector. Una cadena sin ninguna fuente configurada («no configurado»,
+    «no soporta») tampoco es un fallo: no hay a quién volver a preguntar."""
+    if not isinstance(exc, AllProvidersFailedError):
+        return False
+    return any(not m.startswith(("no configurado", "no soporta")) for m in exc.reasons.values())
+
+
 def _lista_corta_dimensionada(
     ranked: list[dict], posiciones: dict[str, dict] | None = None,
     efectivo_usd: float | None = None,
@@ -596,7 +618,7 @@ class FetchBudget:
 
 def _metrics_desde_edgar(
     service: MarketDataService, symbol: str, precio: float | None
-) -> tuple[dict | None, str | None, bool]:
+) -> tuple[dict | None, str | None, bool, AllProvidersFailedError | None]:
     """Métricas de valoración desde EDGAR en vez de Finnhub.
 
     Es la palanca de coste más grande de toda la app. `fundamentals` iba a
@@ -619,22 +641,27 @@ def _metrics_desde_edgar(
     tampoco la tiene, se recuerda que ninguna fuente la tiene
     (`SIN_FUNDAMENTALES`). EDGAR caído, o sin precio con que calcular, no es una
     respuesta.
+
+    El cuarto, el fallo de EDGAR si lo hubo (`_fallo_de_las_fuentes`): con él,
+    que Finnhub no la tenga no dice que no exista —quizá EDGAR sí—, y la empresa
+    cuenta como fallida, no como «sin fundamentales en ninguna fuente»
+    (revisión 15, H1).
     """
     if not precio:
-        return None, None, False
+        return None, None, False, None
     try:
         financials = service.get("financials", symbol=symbol)
     except DataNotFoundError:
-        return None, None, True
-    except AllProvidersFailedError:
-        return None, None, False
+        return None, None, True, None
+    except AllProvidersFailedError as exc:
+        return None, None, False, exc if _fallo_de_las_fuentes(exc) else None
     if not financials or not financials.get("periods"):
-        return None, None, True
+        return None, None, True, None
     periodo = financials["periods"][-1]
     metrics = metrics_from_period(periodo, precio, periodo.get("shares_outstanding"))
     if not any(v is not None for v in metrics.values()):
-        return None, None, True
-    return metrics, financials.get("source", "edgar"), False
+        return None, None, True, None
+    return metrics, financials.get("source", "edgar"), False, None
 
 
 def _motivos_sin_puntuar(no_disponibles: list[dict], pendientes: list[str]) -> str:
@@ -701,6 +728,10 @@ def _score_symbols(
     context: dict[str, dict] = {}
     unavailable = []
     pending: list[str] = []
+    # Las que quedaron sin puntuar por un FALLO de las fuentes (también están en
+    # `unavailable`, con su motivo): no se recuerdan y se reintentan, y mientras
+    # quede alguna la lista no cubre el mercado (`_today`, revisión 15, H1).
+    fallidas: list[str] = []
     for symbol in symbols:
         # Cripto no tiene estados financieros que descargar: ni valor ni
         # calidad existen ahí. Se puntúa con lo único medible —momentum— y la
@@ -744,9 +775,9 @@ def _score_symbols(
                 pending.append(symbol)
                 continue
             pagada = True
-        edgar_sin_nada = False
+        edgar_sin_nada, edgar_fallo = False, None
         if edgar_guardado or fundamentals is None:
-            metrics_edgar, fuente_edgar, edgar_sin_nada = _metrics_desde_edgar(service, symbol, precio)
+            metrics_edgar, fuente_edgar, edgar_sin_nada, edgar_fallo = _metrics_desde_edgar(service, symbol, precio)
             if metrics_edgar is not None:
                 raw_by_symbol[symbol] = build_raw_factors(
                     metrics_edgar, momentum_map.get(symbol), None
@@ -766,7 +797,14 @@ def _score_symbols(
                     service.cache.set(SIN_FUNDAMENTALES, {"symbol": symbol}, {
                         "symbol": symbol, "motivo": SIN_EN_NINGUNA_FUENTE, "finnhub": str(exc)[:200],
                     })
-                unavailable.append({"symbol": symbol, "reason": _por_que_sin_fundamentales(exc)})
+                # El fallo de esta fuente o, si esta contestó que no la tiene, el
+                # de EDGAR: con EDGAR dando 503, «Finnhub no la tiene» se leía
+                # «sin fundamentales en ninguna fuente» y la lista se daba por
+                # completa sin ella (revisión 15, H1).
+                fallo = exc if _fallo_de_las_fuentes(exc) else edgar_fallo
+                unavailable.append({"symbol": symbol, "reason": _por_que_sin_fundamentales(fallo or exc)})
+                if fallo is not None:
+                    fallidas.append(symbol)
                 continue
         raw_by_symbol[symbol] = build_raw_factors(
             dict(fundamentals["metrics"]), momentum_map.get(symbol), None
@@ -784,6 +822,7 @@ def _score_symbols(
             "calibration": calibration,
             "scored": 0,
             "pending": pending,
+            "fallidas": fallidas,
         }
 
     # 3) z-scores sobre el conjunto puntuado, y ranking.
@@ -821,6 +860,7 @@ def _score_symbols(
         "calibration": calibration,
         "scored": len(raw_by_symbol),
         "pending": pending,
+        "fallidas": fallidas,
     }
 
 
@@ -1284,6 +1324,8 @@ def _today(
     dan 60 llamadas/min, así que cada petición descarga como mucho `budget`
     fundamentales nuevos (los ya cacheados salen gratis) y deja el resto en
     `pending`. Repetir con `refresh=true` sigue por donde iba hasta completar.
+    Lo que las fuentes no pudieron dar (`fallidas`: caídas, sin cuota) tampoco
+    cuenta como cubierto: se reintenta en la pasada siguiente.
     """
     market_data = _mercado(market)
 
@@ -1323,6 +1365,7 @@ def _today(
     ranked: list[dict] = []
     unavailable: list[dict] = []
     pending: list[str] = []
+    fallidas: list[str] = []
     sectors_meta: list[dict] = []
     momentum_source = None
     calibrated = False
@@ -1366,6 +1409,7 @@ def _today(
 
         unavailable.extend(scoring["unavailable"])
         pending.extend(scoring["pending"])
+        fallidas.extend(scoring["fallidas"])
         momentum_source = momentum_source or scoring["momentum_source"]
         calibrated = calibrated or scoring["calibration"] is not None
         sectors_meta.append(
@@ -1375,6 +1419,7 @@ def _today(
                 "requested": len(symbols),
                 "scored": scoring["scored"],
                 "pending": len(scoring["pending"]),
+                "fallidas": len(scoring["fallidas"]),
                 "usable": usable,
             }
         )
@@ -1391,7 +1436,14 @@ def _today(
 
     n_favorables = sum(1 for s in ranked if s["score"] >= FAVORABLE_MIN)
     n_desfavorables = sum(1 for s in ranked if s["score"] <= UNFAVORABLE_MAX)
-    complete = not pending
+    # Cubre el mercado si no queda nada por descargar NI nada que las fuentes no
+    # pudieron dar: lo que ninguna fuente tiene no lo impide, un fallo sí
+    # (`_fallo_de_las_fuentes`). Antes solo contaba `pending`, y una lista con un
+    # sector entero caído (EDGAR con 503, Finnhub sin cuota) salía completa y se
+    # congelaba como la decisión del día: inmutable, y «evitar» salía de 442
+    # empresas en vez de 502 (revisión 15, H1). Con la fuente aún caída, la
+    # pantalla encadena como mucho `MAX_PASADAS_AUTO` pasadas y luego lo dice.
+    complete = not pending and not fallidas
 
     payload = {
         "as_of": datetime.now(timezone.utc).isoformat(),
@@ -1424,6 +1476,9 @@ def _today(
         "scored": len(ranked),
         "requested": requested,
         "pending": len(pending),
+        # Las que las fuentes no pudieron dar en esta pasada (caídas, sin cuota):
+        # se reintentan, y con alguna la lista no está completa.
+        "fallidas": len(fallidas),
         "complete": complete,
         "fetched_now": fetch_budget.spent,
         "unavailable": unavailable,
@@ -1437,13 +1492,15 @@ def _today(
             "se compara con las de su propio sector, no con el mercado entero."
         )
         + (
-            ""
-            if complete
-            else (
-                f" Faltan {len(pending)} por puntuar: los tiers gratuitos limitan "
-                "cuántos fundamentales se pueden descargar de una vez. Pulsa "
-                "«Seguir completando» para continuar."
-            )
+            f" Faltan {len(pending)} por puntuar: los tiers gratuitos limitan "
+            "cuántos fundamentales se pueden descargar de una vez. Pulsa "
+            "«Seguir completando» para continuar."
+            if pending else ""
+        )
+        + (
+            f" {_sin_datos_por_un_fallo(len(fallidas))}: se reintentan en la pasada siguiente "
+            "(«Seguir completando»)."
+            if fallidas else ""
         ),
         "disclaimer": (
             "Cada acción sale de reglas mecánicas escritas, no de una "
@@ -1459,8 +1516,9 @@ def _today(
     # congelarla al servirla la fecharía como de hoy. `congelar_lista_diaria` no
     # lanza; si falla, la lista se sirve igual y el fallo viaja en la respuesta.
     #
-    # Y solo una lista que CUBRE el mercado (`complete`: nada pendiente; las que
-    # ninguna fuente tiene no bloquean). La primera pasada del día es parcial
+    # Y solo una lista que CUBRE el mercado (`complete`: nada pendiente ni nada
+    # que una fuente caída no pudo dar; las que ninguna fuente tiene no
+    # bloquean, revisión 15, H1). La primera pasada del día es parcial
     # (40 o 120 de 502, `useListaDiaria`): el segundo sector se puntuaba contra
     # una parte de sí mismo, las «ideas» y lo que dice «evitar» eran lo mejor y
     # lo peor de 40, no de 502, y como la primera instantánea del día gana y es
@@ -1474,11 +1532,17 @@ def _today(
             "sin_congelar": None,
         }
     else:
+        # Lo que falta, contado por su causa: con solo las fallidas, «0 pendientes»
+        # no decía por qué no se congelaba (revisión 15, H1).
+        faltan = [
+            f"{fmt_num(len(pending), 0)} {plural(len(pending), 'pendiente', 'pendientes')}" if pending else None,
+            f"{_sin_datos_por_un_fallo(len(fallidas))}, que se reintentan" if fallidas else None,
+        ]
         payload["instantaneas"] = {
             "guardadas": 0, "ya_existian": 0, "error": None,
             "sin_congelar": (
                 f"Lista parcial ({fmt_num(len(ranked), 0)} de {fmt_num(requested, 0)} empresas, "
-                f"{fmt_num(len(pending), 0)} {plural(len(pending), 'pendiente', 'pendientes')}): "
+                f"{'; '.join(f for f in faltan if f)}): "
                 "la decisión del día se congela con la primera lista que cubra el mercado entero."
             ),
         }

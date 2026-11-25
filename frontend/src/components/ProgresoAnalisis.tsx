@@ -10,16 +10,21 @@
  *   la de ahora falla («…, sin actualizar.»), con la edad al día.
  * - Con pasadas en marcha: la barra «Analizando el mercado en segundo plano: 312
  *   de 502 empresas. Ya puedes usar la app; las ideas se completan solas.»
- * - Con las pasadas paradas sin cubrir todo: la cobertura parcial y, si se pasa
+ * - Con las pasadas paradas sin cubrir todo: la cobertura parcial, por qué (lo
+ *   que queda por descargar, o lo que las fuentes no pudieron dar) y, si se pasa
  *   `onSeguir`, el botón «Seguir completando».
- * - Lista completa y nada en marcha: nada.
+ * - Con `instantaneas` (Explorar): si la decisión del día no quedó registrada,
+ *   una línea que lo dice. Antes solo lo decía el API (`sin_congelar`) y el día
+ *   se quedaba sin foto sin que ninguna pantalla lo contara (revisión 15, H4).
+ * - Lista completa y nada en marcha: nada, salvo que su registro fallara.
  *
  * Un fallo no se dice aquí: lo dice `ErrorDeCarga` con su «Reintentar».
  */
-import { useEffect, useReducer } from 'react'
+import type { InstantaneasDeLista } from '../api/types'
 import type { ListaDiaria } from '../hooks/useListaDiaria'
 import { PRIMERA_PASADA, REVALIDAR_TRAS_MS } from '../hooks/useListaDiaria'
 import { fmtAntiguedad, plural } from '../lib/formato'
+import { usePintarCadaMinuto } from '../lib/usePintarCadaMinuto'
 
 type Props = {
   lista: Pick<
@@ -29,6 +34,47 @@ type Props = {
   >
   /** «Seguir completando»: sin él no se pinta el botón. */
   onSeguir?: () => void
+  /** Lo que la lista a la vista congeló (`data.instantaneas`): con él se dice si
+   *  la decisión de hoy quedó registrada. Sin él (o en una respuesta antigua), nada. */
+  instantaneas?: InstantaneasDeLista
+}
+
+/** Por qué la lista parada no cubre el mercado, contado. Con solo las que las
+ *  fuentes no pudieron dar, «las APIs gratuitas limitan…» era falso: no faltaba
+ *  presupuesto, falló una fuente, y esas empresas se daban por cubiertas
+ *  (revisión 15, H1). */
+function porQueParcial(pendientes: number | null, fallidas: number | null): string {
+  const partes: string[] = []
+  if (pendientes !== 0 || !fallidas) {
+    partes.push(
+      'Las APIs gratuitas limitan cuántos fundamentales se descargan de una vez. Lo descargado ' +
+        'queda en caché 24 h, así que cada pasada avanza y ninguna repite trabajo.',
+    )
+  }
+  if (fallidas) {
+    partes.push(
+      `${fallidas} ${plural(fallidas, 'empresa', 'empresas')} sin analizar por un fallo de las ` +
+        'fuentes (caídas o sin cuota): no se dan por cubiertas y se reintentan al seguir completando.',
+    )
+  }
+  return partes.join(' ')
+}
+
+/** Si la decisión de hoy no quedó registrada en el historial, por qué, en una
+ *  línea sobria. La lista parcial no congela (`signals._today`): solo la primera
+ *  que cubre el mercado; y una congelación que falla deja el día sin foto. El
+ *  detalle técnico del fallo está en el log del backend, no en pantalla. */
+function textoDelRegistro(i: InstantaneasDeLista | undefined, completa: boolean): string | null {
+  if (!i) return null
+  if (i.error) {
+    return 'La decisión de hoy no se pudo registrar en el historial (el motivo está en el log del ' +
+      'backend); se vuelve a intentar al recalcular la lista.'
+  }
+  if (!completa && i.sin_congelar) {
+    return 'La decisión de hoy aún no se registra en el historial: se registra con la primera lista ' +
+      'que cubra el mercado entero.'
+  }
+  return null
 }
 
 function Barra({ puntuadas, total }: { puntuadas: number; total: number }) {
@@ -49,18 +95,7 @@ export function textoDeAntiguedad(calculadaEn: number | null, ahora: Date = new 
   return `Lista de ${fmtAntiguedad(new Date(calculadaEn), ahora)}`
 }
 
-/** Vuelve a pintar cada minuto mientras `activo`: la edad que se enseña no se
- *  queda en la de cuando llegó la lista. */
-function usePintarCadaMinuto(activo: boolean): void {
-  const [, pintar] = useReducer((n: number) => n + 1, 0)
-  useEffect(() => {
-    if (!activo) return
-    const id = setInterval(pintar, 60_000)
-    return () => clearInterval(id)
-  }, [activo])
-}
-
-export function ProgresoAnalisis({ lista, onSeguir }: Props) {
+export function ProgresoAnalisis({ lista, onSeguir, instantaneas }: Props) {
   const { estado, progreso, vieja, calculadaEn, recibidaEn, ocupado } = lista
   usePintarCadaMinuto(vieja)
 
@@ -110,11 +145,14 @@ export function ProgresoAnalisis({ lista, onSeguir }: Props) {
     )
   }
 
+  const registro = textoDelRegistro(instantaneas, progreso.completa)
+
   if (progreso.completa) {
-    if (!ocupado) return null
+    if (!ocupado && !registro) return null
     return (
       <div role="status" className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
-        Actualizando la lista en segundo plano. Ya puedes usar la app.
+        {ocupado && 'Actualizando la lista en segundo plano. Ya puedes usar la app.'}
+        {registro && <p className={`text-[11px] leading-snug text-amber-800 ${ocupado ? 'mt-1' : ''}`}>{registro}</p>}
       </div>
     )
   }
@@ -143,9 +181,9 @@ export function ProgresoAnalisis({ lista, onSeguir }: Props) {
         <div className="text-xs font-medium text-sky-900">Cobertura parcial: {empresas}</div>
         <Barra puntuadas={progreso.puntuadas} total={progreso.total} />
         <p className="mt-1.5 text-[11px] leading-snug text-sky-800">
-          Las APIs gratuitas limitan cuántos fundamentales se descargan de una vez. Lo descargado
-          queda en caché 24 h, así que cada pasada avanza y ninguna repite trabajo.
+          {porQueParcial(progreso.pendientes, progreso.fallidas)}
         </p>
+        {registro && <p className="mt-1 text-[11px] leading-snug text-sky-800">{registro}</p>}
       </div>
       {onSeguir && (
         <button

@@ -104,10 +104,16 @@ Cómo quedó (fase B):
    menor, para enseñar resultados en segundos, y las pasadas automáticas que ya existen
    (`MAX_PASADAS_AUTO`) completan el resto con la barra «312 de 502 empresas». Una lista
    parcial no congela instantáneas: la decisión del día sale de la primera que cubre el
-   mercado (revisión 14, `docs/DECISION_REPLAY.md`).
+   mercado (revisión 14, `docs/DECISION_REPLAY.md`). Tampoco cubre el mercado una lista
+   con empresas que las fuentes no pudieron dar (`fallidas`): las pasadas las
+   reintentan hasta el tope, y la línea de progreso dice cuántas quedan sin analizar por
+   un fallo y, en Explorar, que la decisión de hoy aún no se registra (revisión 15).
 4. **La lista en memoria envejece.** El hook guarda cuándo se calculó cada lista, no su
    edad: pasadas 6 h (la vigencia de la caché del backend) se enseña como vieja, con su
-   edad al día, aunque no venga de la copia caducada (revisión 14).
+   edad al día, aunque no venga de la copia caducada (revisión 14). La cabecera de
+   Explorar («Calculado hace…») usa esa misma fecha y se repinta cada minuto, como la
+   línea de progreso, el precio de cada stop y el «nada urgente» del repaso, que pasado
+   un minuto lleva su edad (revisión 15).
 
 ## La IA
 

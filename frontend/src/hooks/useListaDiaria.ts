@@ -13,9 +13,12 @@
  *      abrir la app) → la primera pasada se pide CORTA (`PRIMERA_PASADA`) para
  *      enseñar algo en segundos (`estado: 'cargando'`, `primeraVez: true`);
  *    - otro fallo → no se sabe si hay copia: se pide la normal, como antes.
- * 2. Mientras la lista no cubra el mercado entero (`complete: false`), se
- *    encadenan hasta `MAX_PASADAS_AUTO` pasadas `refresh=true`; cada una
- *    sustituye a la anterior sin vaciar lo que ya se ve.
+ * 2. Mientras la lista no cubra el mercado entero (`complete: false`: quedan
+ *    empresas pendientes o que las fuentes no pudieron dar), se encadenan hasta
+ *    `MAX_PASADAS_AUTO` pasadas `refresh=true`; cada una sustituye a la anterior
+ *    sin vaciar lo que ya se ve. Con una fuente caída que no vuelve, el tope
+ *    también para la cadena: la pantalla dice cuántas quedan sin analizar por un
+ *    fallo y ofrece «Seguir completando» (revisión 15, H1).
  *
  * CONTRATO (lo usan Hoy, Inicio y Explorar):
  *
@@ -39,7 +42,8 @@
  *                             una edad: la edad se calcula al pintar y avanza sola.
  *   lista.recibidaEn          Cuándo llegó `data` (ms): el repaso de stops que trae es de
  *                             ese momento, no del de pintar.
- *   lista.progreso            { puntuadas, total, pendientes, completa } de `data`, o null.
+ *   lista.progreso            { puntuadas, total, pendientes, fallidas, completa } de `data`,
+ *                             o null. `fallidas`: sin datos por un fallo de las fuentes.
  *   lista.pasada              Pasada automática en curso (1…maxPasadas), 0 si ninguna.
  *   lista.maxPasadas          `MAX_PASADAS_AUTO`.
  *   lista.primeraVez          No había ninguna lista guardada y va la primera pasada corta.
@@ -94,8 +98,9 @@ import { mensajeDeError } from '../lib/useDato'
  *    descargado se guarda, y lo que ninguna fuente tiene también se recuerda
  *    (`signals.SIN_FUNDAMENTALES`; antes gastaba en cada pasada, y con cinco así
  *    quedaban 2 pendientes, revisión 14). Lo que sí vuelve a gastar es un fallo
- *    de las fuentes (caídas, sin cuota, sin clave), que se reintenta: entonces
- *    puede quedar algo pendiente, y la pantalla lo dice («Seguir completando»).
+ *    de las fuentes (caídas, sin cuota), que se reintenta: entonces la lista no
+ *    está completa (`fallidas`, que antes se daban por cubiertas; revisión 15,
+ *    H1) y la pantalla lo dice («Seguir completando»).
  *  - Esta primera lista no congela «la decisión del día»: solo la congela la
  *    primera que cubre el mercado (`signals._today`, `docs/DECISION_REPLAY.md`).
  *  - El presupuesto se gasta sector a sector, en el orden del universo: en el
@@ -132,6 +137,8 @@ export interface ProgresoLista {
   total: number
   /** null si la respuesta no lo trae (versión antigua): no es «ninguna». */
   pendientes: number | null
+  /** Sin datos por un fallo de las fuentes (se reintentan); null si la respuesta no lo trae. */
+  fallidas: number | null
   completa: boolean
 }
 
@@ -244,6 +251,7 @@ function vistaDe(i: Interno): Vista {
           puntuadas: d.scored,
           total: d.requested,
           pendientes: typeof d.pending === 'number' ? d.pending : null,
+          fallidas: typeof d.fallidas === 'number' ? d.fallidas : null,
           completa: d.complete === true,
         }
       : null

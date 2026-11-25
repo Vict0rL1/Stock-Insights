@@ -779,6 +779,8 @@ export interface DailySectorMeta {
   requested: number
   scored: number
   pending: number
+  /** Las del sector que las fuentes no pudieron dar en esta pasada. Ausente en una respuesta antigua. */
+  fallidas?: number
   usable: boolean
 }
 
@@ -876,6 +878,11 @@ export interface TodayResponse {
   requested: number
   /** Cuántas quedan por descargar: los tiers gratuitos limitan cada pasada. */
   pending: number
+  /** Cuántas quedaron sin datos por un FALLO de las fuentes (caídas, sin cuota),
+   *  no porque ninguna las tenga: se reintentan, y con alguna la lista no está
+   *  completa (revisión 15, H1). Ausente en una respuesta antigua: no es «ninguna». */
+  fallidas?: number
+  /** Nada pendiente ni fallido: la lista cubre el mercado. */
   complete: boolean
   fetched_now: number
   data_meta: UniversesMeta | Record<string, never>
@@ -900,6 +907,20 @@ export interface TodayResponse {
   estado?: 'viejo'
   /** Con `estado: viejo`, cuántos segundos tiene la copia; null = no se sabe. */
   antiguedad_segundos?: number | null
+  /** Si esta lista dejó registrada la decisión del día (`signals._today`). Ausente
+   *  en una respuesta antigua. */
+  instantaneas?: InstantaneasDeLista
+}
+
+/** Lo que se congeló de la lista al calcularla (`snapshots.congelar_lista_diaria`).
+ *  Solo la primera lista que cubre el mercado congela; las demás dicen por qué no. */
+export interface InstantaneasDeLista {
+  guardadas: number
+  ya_existian: number
+  /** La congelación falló (el detalle está en el log del backend): el día queda sin foto. */
+  error: string | null
+  /** Por qué no se congeló (lista parcial: pendientes o fallidas); null si se congeló. */
+  sin_congelar: string | null
 }
 
 /** Qué cambió en la cartera desde que se calculó la lista (`contexto_cartera.cambios_de_cartera`). */

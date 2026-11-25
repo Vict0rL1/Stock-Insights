@@ -15,7 +15,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
 import { TodayPage } from './TodayPage'
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 type Ruta = { status: number; json: unknown }
 const RUTAS = (hoyCompleto as { rutas: Record<string, Ruta> }).rutas
@@ -211,5 +214,72 @@ describe('Hoy: la primera carga no bloquea', () => {
     expect(await screen.findByRole('button', { name: 'Mejores ideas (5)' })).toBeInTheDocument()
     expect(screen.queryByText(/No se pudo cargar la lista de hoy/)).toBeNull()
     expect(await screen.findByText(/Cobertura parcial/, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+})
+
+describe('Hoy: la edad de la lista avanza y el día sin registro se dice (revisión 15)', () => {
+  const G = `${HOY}&vencida=aceptar`
+  const HORA = 3_600_000
+  const cabecera = () => screen.getByText(/^(Calculado|Recalculado) /)
+
+  it('con una lista vigente, la cabecera y el repaso del stop envejecen con la pantalla abierta', async () => {
+    // H2: la cabecera se calculaba al pintar la página, y la página solo se
+    // repinta cuando cambia la lista: «Calculado hace 5 min» tres horas después,
+    // y «nada urgente» con el repaso de entonces sin decir de cuándo.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-09-12T10:05:00Z'))
+    const rutas = JSON.parse(JSON.stringify(RUTAS)) as Record<string, Ruta>
+    const vigente = rutas[G].json as Record<string, unknown>
+    delete vigente.estado
+    delete vigente.antiguedad_segundos
+    Object.assign(vigente, { fetched_at: '2026-09-12T10:00:00+00:00', as_of: '2026-09-12T09:58:00+00:00',
+      complete: true, pending: 0, fallidas: 0, scored: 502 })
+    // Una posición fuera de la lista, por encima de su stop con la cotización de las 10:04.
+    vigente.cartera = { abiertas: 1, en_lista: 0, posiciones: [{
+      symbol: 'STOP', en_lista: false, precio: 104, precio_estado: 'valido', moneda: 'USD', stop: 90,
+      stop_fijado_al_abrir: true, stop_por_clase: false, estado: 'por_encima', motivo: null,
+      precio_fuente: 'cotizacion', precio_proveedor: 'finnhub', precio_fecha: '2026-09-12T10:04:00+00:00' }] }
+    servir(rutas)
+    pintar()
+    expect(await screen.findByText('Calculado hace 5 min')).toBeInTheDocument()
+    expect(screen.getByText('nada urgente')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(3 * HORA)
+    })
+    expect(cabecera()).toHaveTextContent('Calculado hace 3 h')
+    expect(screen.getByText('nada urgente · repaso de hace 3 h')).toBeInTheDocument()
+  })
+
+  it('con la copia caducada, la cabecera y la línea de progreso dicen la misma edad', async () => {
+    // H2: la cabecera contaba desde `fetched_at` y no se repintaba; la línea de
+    // progreso, desde la edad que dio el backend al llegar, cada minuto.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    // La copia del fixture se guardó a las 05:35 y llega con 9 h.
+    vi.setSystemTime(new Date('2026-09-12T14:35:00Z'))
+    const rutas = JSON.parse(JSON.stringify(RUTAS)) as Record<string, Ruta>
+    rutas[HOY] = { status: 502, json: { detail: 'EDGAR no respondió' } }
+    servir(rutas)
+    pintar()
+    expect(await screen.findByText('Lista de hace 9 h, sin actualizar.')).toBeInTheDocument()
+    expect(cabecera()).toHaveTextContent('Calculado hace 9 h')
+
+    act(() => {
+      vi.advanceTimersByTime(HORA)
+    })
+    expect(screen.getByText('Lista de hace 10 h, sin actualizar.')).toBeInTheDocument()
+    expect(cabecera()).toHaveTextContent('Calculado hace 10 h')
+  })
+
+  it('un día que se queda sin registrar la decisión lo dice junto a la cobertura parcial', async () => {
+    // H4: cada pasada parcial trae `instantaneas.sin_congelar`; las cuatro
+    // automáticas terminan en 240 de 502 y la pantalla decía «Cobertura
+    // parcial», pero no que hoy no quedaba registrada ninguna decisión.
+    servir(RUTAS)
+    pintar()
+    expect(await screen.findByText(/Cobertura parcial: 240 de 502/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByText(
+      'La decisión de hoy aún no se registra en el historial: se registra con la primera lista que cubra el mercado entero.',
+    )).toBeInTheDocument()
   })
 })

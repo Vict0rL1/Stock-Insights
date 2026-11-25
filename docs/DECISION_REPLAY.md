@@ -27,13 +27,20 @@ ORM, triggers de SQLite (migración 0004) y huella SHA-256— con:
 
 **Cuándo se crea una instantánea nueva.** La lista diaria congela la *primera*
 decisión del día (es un experimento de forward testing), y solo de una lista que
-cubre el mercado entero (`complete`: nada pendiente; las empresas que ninguna
-fuente tiene no lo impiden). Las pasadas parciales del arranque (40 o 120 de 502,
-`useListaDiaria`) no congelan nada y lo dicen en `instantaneas.sin_congelar`:
-puntuaban el segundo sector contra una parte de sí mismo y lo que decían «evitar»
-era lo peor de 40, no de 502, y como la primera instantánea del día gana, ninguna
-pasada posterior lo corregía (revisión 14). Un día sin lista completa no tiene
-instantánea de la lista. El análisis de empresa
+cubre el mercado entero (`complete`: nada pendiente y nada que las fuentes no
+pudieran dar; las empresas que ninguna fuente tiene no lo impiden). Las pasadas
+parciales del arranque (40 o 120 de 502, `useListaDiaria`) no congelan nada y lo
+dicen en `instantaneas.sin_congelar`: puntuaban el segundo sector contra una
+parte de sí mismo y lo que decían «evitar» era lo peor de 40, no de 502, y como
+la primera instantánea del día gana, ninguna pasada posterior lo corregía
+(revisión 14). Tampoco congela una lista con empresas que una fuente caída o sin
+cuota no pudo dar (`fallidas`, `signals._fallo_de_las_fuentes`): con EDGAR dando
+503 y Finnhub sin cuota para un sector entero, la lista salía `complete` y
+«evitar» salía de 442 empresas en vez de 502; FE quedaba congelado como «evitar»
+y, al volver las fuentes el mismo día, la lista entera decía A (revisión 15, H1).
+«No la tengo» no se arregla reintentando; una caída, sí. Un día sin lista
+completa no tiene instantánea de la lista, y Explorar lo dice junto a la
+cobertura parcial («La decisión de hoy aún no se registra en el historial…»). El análisis de empresa
 se congela cuando cambia algo **material**: otra acción, otro resultado en alguna
 regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de
 expectativas. Si solo se movió el precio, no: diez aperturas de la misma empresa
