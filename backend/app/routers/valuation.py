@@ -90,7 +90,7 @@ class ValoracionRequest(BaseModel):
     net_debt: float | None = None
     # Unas acciones escritas tienen que ser positivas: un 0 enviado se cambiaba en
     # silencio por las del filing (`x or valor`) y se valoraba con ellas como si
-    # fueran las tuyas (revisión 15, H11).
+    # fueran las tuyas (revisión 14, H11).
     shares_outstanding: float | None = Field(None, gt=0)
 
 
@@ -108,7 +108,7 @@ def _cimientos(service: MarketDataService, symbol: str) -> dict:
     # completo. `_traer` se tragaba los dos, y con EDGAR caído la pestaña
     # Valoración de la ficha decía que la empresa «no presenta 10-K»: una
     # ausencia, sin «Reintentar». El alias viejo de la ficha ya daba 502
-    # (revisión 15, H2; la misma clase que la segunda revisión del 2.1).
+    # (revisión 14, H2; la misma clase que la segunda revisión del 2.1).
     try:
         financials = service.get("financials", symbol=symbol)
     except DataNotFoundError:

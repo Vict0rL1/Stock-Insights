@@ -357,7 +357,7 @@ def test_interpret_devuelve_lo_que_gasto_para_ensenar_el_coste(monkeypatch):
     assert llm.interpret("sistema", "texto")["usage"] == {"entrada": 12, "salida": 3}
 
 
-# --- Revisión 15 ------------------------------------------------------------------
+# --- Revisión 14 ------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("cerrar", [

@@ -504,7 +504,7 @@ const LIMITE: Record<string, string> = { ge: 'como mínimo', le: 'como máximo',
 /** Un 422 de validación del módulo, en español y con las unidades de pantalla:
  *  «el cálculo admite como mínimo -50 % en el crecimiento del FCF del escenario
  *  bajista (hay -75 %)». El mensaje de Pydantic decía «Input should be greater
- *  than or equal to -0.5», en inglés y en tanto por uno (revisión 15, H3). */
+ *  than or equal to -0.5», en inglés y en tanto por uno (revisión 14, H3). */
 export function textoDeValidacion(errores: ErrorDeValidacion[]): string {
   const partes = errores.flatMap((e) => {
     const campo = String(e.loc[e.loc.length - 1])
@@ -538,7 +538,7 @@ function EntradasPanel({
   // De partida, el dato del filing: escribir encima es una decisión, no un
   // campo que ya venga relleno. El del filing, no el que se usó: tras valorar
   // con tu deuda, vaciar el campo enseñaba tu cifra de antes como si fuera la
-  // del filing (revisión 15, H8). Sin una valoración sin la tuya, no se sabe.
+  // del filing (revisión 14, H8). Sin una valoración sin la tuya, no se sabe.
   const ayuda = (campo: CampoEntrada): string =>
     Object.hasOwn(delFiling, campo) ? textoDeCampo(delFiling[campo], 0) || 'desconocido' : 'la del filing'
   return (
@@ -624,7 +624,7 @@ export function ValuationPage() {
         // valoración de antes se queda, con lo escrito en sus campos. Antes
         // borraba la valoración, salía el mensaje de Pydantic en inglés y en
         // tanto por uno, y se abrían «Tus entradas» como si faltara la deuda
-        // (revisión 15, H3).
+        // (revisión 14, H3).
         if (e instanceof ApiError && e.status === 422 && e.validacion) {
           setError(textoDeValidacion(e.validacion))
           return

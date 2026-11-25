@@ -48,7 +48,7 @@ import { RUTAS, rutaEmpresa } from '../lib/rutas'
 type View = 'ideas' | 'comprar' | 'vigilar' | 'evitar' | 'cartera' | 'todas'
 
 /** Objetivo táctil de 44 px en el móvil, sin cambiar la densidad desde `sm`
- *  (revisión 15, H15: a 390 px las vistas medían 28 px, los sectores 24 y
+ *  (revisión 14, H15: a 390 px las vistas medían 28 px, los sectores 24 y
  *  «Ver el análisis completo →», 16). */
 const TACTIL = 'min-h-11 sm:min-h-0'
 /** Lo mismo para el `summary` de un `details` con `py-3` en el móvil: con relleno,
@@ -163,7 +163,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
       <DecisionExplicada decision={decision} />
       {/* El enlace abre el Resumen de la ficha, que es donde están: «(pestaña
           «Qué cambió»)» mandaba a una pestaña que ya no existe (es una sección de
-          Novedades, y no tiene la traza; revisión 15, H11). */}
+          Novedades, y no tiene la traza; revisión 14, H11). */}
       {decision.traza_en_ficha && symbol && (
         <p className="text-[11px] text-slate-500">
           El porqué regla a regla y qué cambiaría esta decisión están en la{' '}
@@ -348,7 +348,7 @@ export function recuentos(data: TodayResponse | null): Recuentos {
  *  sitio»: cumplen las reglas de compra, pero los topes dejan su tamaño en 0).
  *  La cabecera decía «5 ideas de compra» con las cinco en «Sin sitio» debajo.
  *  Con el repaso (`cartera`), el mismo aviso que su tarjeta: una idea que ya
- *  tienes no es una idea sin sitio (revisión 15, H1). */
+ *  tienes no es una idea sin sitio (revisión 14, H1). */
 export function ideasSinSitio(
   shortlist: TodayResponse['shortlist'] | null | undefined,
   cartera?: TodayResponse['cartera'],
@@ -544,7 +544,7 @@ function IdeaCard({
   /** El de su fila (`avisoDeLaFila`): con su stop si ya la tienes. La tarjeta
    *  pasaba solo el tamaño, y una idea comprada después de calcular la lista
    *  decía «Comprar … Tamaño sugerido: 7,8 %» mientras su fila decía «Mantener»
-   *  (revisión 15, H1). */
+   *  (revisión 14, H1). */
   aviso: Aviso
   /** Los recortes del tamaño que la tocan (`recortesDe`). */
   motivosDelRecorte: string[]
@@ -650,7 +650,7 @@ function AvoidList({
 }) {
   if (signals.length === 0) return null
   // Plegada, como prometía el plan (`docs/PLAN_NAVEGACION.md`): desplegada
-  // empujaba la lista hacia abajo (revisión 15, H10). El recuento, a la vista.
+  // empujaba la lista hacia abajo (revisión 14, H10). El recuento, a la vista.
   return (
     <details className="rounded-xl border border-slate-200 bg-white px-4 py-3">
       <summary className={`cursor-pointer ${SUMARIO_TACTIL}`}>
@@ -714,7 +714,7 @@ function SizingPanel({ sizing }: { sizing: Sizing }) {
   // igual y salía «undefined %» (V3); ahora se dice. El panel sigue saliendo si
   // hay un aviso de la cartera o un límite sin comprobar.
   const sinCandidatas = Object.keys(sizing.pesos).length === 0
-  // Plegado, como prometía el plan (revisión 15, H10), salvo que haya algo que
+  // Plegado, como prometía el plan (revisión 14, H10), salvo que haya algo que
   // avisar: un límite sin comprobar o una cartera sin valorar no se esconden
   // detrás de un clic, y el resumen lo dice aunque se pliegue.
   const avisos = sinAplicar.length + (sizing.aviso_cartera ? 1 : 0)
@@ -1530,7 +1530,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                     <p>
                       «{query.trim()}» no está en {data.market_name}.
                     </p>
-                    {/* Mandaba a «Acciones», que ya no está en el menú (revisión 15,
+                    {/* Mandaba a «Acciones», que ya no está en el menú (revisión 14,
                         H11): el enlace siempre fue a su ficha, y así se dice. */}
                     <p className="mt-1 text-xs">
                       Puede estar en otro mercado, o fuera del universo. Abre la{' '}

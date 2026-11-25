@@ -1,5 +1,5 @@
 /**
- * Revisión 15: Inicio dice de cada posición lo mismo que Mi cartera y Explorar.
+ * Revisión 14: Inicio dice de cada posición lo mismo que Mi cartera y Explorar.
  *
  * El estado de cada posición (vender, reducir, sin comprobar, mantener) sale de
  * UNA fuente y UNA regla: el repaso de `/api/portfolio` (el de Explorar, con la

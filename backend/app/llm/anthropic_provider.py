@@ -26,7 +26,7 @@ def _uso(response, **extra) -> dict:
     del intento que produjo la respuesta: si el modelo pedido declina a mitad y
     contesta el de respaldo, lo del primero no aparecía y el coste enseñado era
     el del último intento (con Opus 5.5 → Opus 5, 0,025 USD enseñados frente a
-    0,042 cobrados; revisión 15). Lo de cada intento va en `usage.iterations`:
+    0,042 cobrados; revisión 14). Lo de cada intento va en `usage.iterations`:
     los que declinaron como `message` y el que contestó como `fallback_message`,
     cada uno con su modelo. Cuando hay uno de respaldo, se devuelven los intentos
     (`intentos`) para que el coste sume cada uno a la tarifa de su modelo."""

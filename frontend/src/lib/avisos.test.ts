@@ -174,7 +174,7 @@ describe('comprar sin tamaño', () => {
   })
 
   it('sin dimensionar pero sin hueco para ninguna idea nueva: «Sin sitio», con el motivo, y sin escribir un cero', () => {
-    // Revisión 15, H12: con «Ideas nuevas al 0 %», la cabecera decía «ninguna cabe
+    // Revisión 14, H12: con «Ideas nuevas al 0 %», la cabecera decía «ninguna cabe
     // hoy» y las que califican fuera de la lista corta, «Comprar» en verde.
     const a = avisoDe({ decision: comprar(), tamano: { pesoFinalPct: null, recortes: [RECORTES_DXCM[1]], sinHueco: true } })
     expect(a.tipo).toBe('comprar_sin_sitio')
@@ -381,7 +381,7 @@ describe('sin comprobar: lo que no se pudo mirar no está en orden', () => {
   })
 
   it('sin repaso, un precio viejo no es «Mantener»: lo mismo que con el repaso', () => {
-    // Revisión 15, H13: con el repaso era «Revisar»; sin él (falló, o la ficha,
+    // Revisión 14, H13: con el repaso era «Revisar»; sin él (falló, o la ficha,
     // que no lo tiene), «Mantener» con una nota.
     const lista = decision({
       action: 'mantener',
@@ -537,7 +537,7 @@ describe('el contexto de una fila de la lista', () => {
   })
 
   it('el aviso de la fila es el de su tarjeta: una idea que ya tienes habla de su stop', () => {
-    // Revisión 15, H1: la tarjeta pasaba solo el tamaño y decía «Comprar … Tamaño
+    // Revisión 14, H1: la tarjeta pasaba solo el tamaño y decía «Comprar … Tamaño
     // sugerido» de una idea comprada después de calcular la lista.
     const hsy = { symbol: 'HSY', decision: comprar(), price: { last: 144 } } as unknown as DailySignal
     expect(avisoDeLaFila(hsy, { cartera: undefined, shortlist }).tipo).toBe('comprar')

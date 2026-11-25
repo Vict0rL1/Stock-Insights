@@ -302,7 +302,7 @@ def rango_de_valor(
     bajo, alto = min(combinaciones), max(combinaciones)
     # Sobre el tamaño del centro, no sobre su signo: con un FCF negativo el centro
     # es negativo, y un rango del 43 % salía «Rango estrecho (-43 % del centro)»
-    # (revisión 15, H1).
+    # (revisión 14, H1).
     amplitud = (alto - bajo) / abs(valor_centro) if valor_centro else None
 
     return {
@@ -415,7 +415,7 @@ def sensibilidad_ordenada(
 
     filas = []
     for clave, (delta, etiqueta) in PERTURBACIONES.items():
-        # Sobre el tamaño, no el signo (revisión 15, H1): con un FCF de partida
+        # Sobre el tamaño, no el signo (revisión 14, H1): con un FCF de partida
         # negativo el paso salía negativo y «abajo» era un FCF mayor.
         paso = delta if delta is not None else abs(supuestos[clave]) * 0.10
         if paso == 0:
@@ -492,7 +492,7 @@ CRECIMIENTO_MAXIMO = 0.15  # el pasado no se extrapola alegremente
 # un año (−50 % medido) proponía un bajista del −75 % que el propio módulo
 # rechazaba con un 422 al recalcular sin tocar nada; y por debajo de −100 % el
 # FCF cambia de signo cada año, y una empresa con caja y sin deuda salía con un
-# rango negativo (revisión 15, H3).
+# rango negativo (revisión 14, H3).
 CRECIMIENTO_MINIMO = -0.5
 ANOS = 5
 ESCENARIOS = ("bajista", "base", "alcista")
@@ -593,7 +593,7 @@ def escenarios_por_defecto(crecimiento: dict, base_fcf: float | None = None) -> 
     # valor MÁS BAJO, y la ficha rotulaba «Si va bien» el rango de abajo
     # (centros −28,7 / −48,3 / −73,5). Victor decidió (24 nov) que el bajista sea
     # siempre el más bajo, como con el crecimiento negativo (M5): se intercambian
-    # los supuestos completos (revisión 15, H1).
+    # los supuestos completos (revisión 14, H1).
     if base_fcf is not None and base_fcf < 0:
         salida["bajista"], salida["alcista"] = salida["alcista"], salida["bajista"]
     return salida
@@ -609,7 +609,7 @@ def supuestos_con_procedencia(
     histórico sigue siendo un supuesto aunque vuelva en el cuerpo: «Recalcular
     con mis supuestos» reenvía los propuestos, y en cuanto se escribía la deuda
     neta en «Tus entradas» el 3 % dejaba de decirse y volvía a tener cara de
-    dato (revisión 15, H7). Lo mismo con el suelo del −50 %: si el escenario
+    dato (revisión 14, H7). Lo mismo con el suelo del −50 %: si el escenario
     vuelve con el crecimiento acotado, se sigue diciendo por qué.
     """
     propuestos = escenarios_por_defecto(crecimiento, base_fcf)
@@ -686,7 +686,7 @@ def rango_global(escenarios: dict[str, dict], precio: float | None) -> dict | No
     # Solo con el rango por encima de cero: con un extremo negativo (un FCF de
     # partida negativo, que el módulo valora con rangos negativos) el cociente
     # no mide nada, y salía «factor 0,3×» con todo el rango negativo y «-4,9×»
-    # cruzando el cero (revisión 15, H1).
+    # cruzando el cero (revisión 14, H1).
     bajo, alto = global_["bajo"], global_["alto"]
     factor = alto / bajo if bajo > 0 else None
     global_["factor"] = round(factor, 2) if factor is not None else None

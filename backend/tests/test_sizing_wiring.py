@@ -159,7 +159,7 @@ def test_sin_posiciones_abiertas_la_lista_corta_no_cambia_de_forma():
 
 
 def test_la_lista_corta_dice_si_ninguna_idea_nueva_cabe():
-    """Revisión 15, H12: con la cartera que ya tienes por encima del objetivo de
+    """Revisión 14, H12: con la cartera que ya tienes por encima del objetivo de
     volatilidad, el dimensionador deja las ideas al 0 % («Ideas nuevas al 0 %»),
     pero las que califican fuera de la lista corta no pasan por él, y la tabla las
     pintaba «Comprar» en verde bajo «ninguna cabe hoy». La respuesta lo dice con

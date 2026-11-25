@@ -126,7 +126,7 @@ function Guia({ ocultar }: { ocultar: () => void }) {
  *  el repaso del stop y la decisión de la lista): las mismas que cuenta la línea
  *  de Mi cartera. Antes Inicio hacía su propia cuenta con el stop de cada lote:
  *  callaba una venta por puntuación («Nada urgente») y repetía el aviso de cada
- *  lote (revisión 15). Una alerta que saltó no es «una posición que necesita
+ *  lote (revisión 14). Una alerta que saltó no es «una posición que necesita
  *  atención»: Mi cartera decía «ninguna necesita atención» con la alerta
  *  «Cumplida» más abajo; aquí va como alerta. Una tesis con un punto de
  *  vigilancia cruzado, como en Tesis y vigilancia: ámbar, no una orden de venta.
@@ -265,7 +265,7 @@ function Atenciones({
     tesis.estado === 'listo' ? tesis.datos : null,
   )
   // «Nada urgente» solo con TODO mirado: con las alertas aún sin llegar decía
-  // «Nada urgente» y al momento aparecía «Saltó tu alerta» en rojo (revisión 15).
+  // «Nada urgente» y al momento aparecía «Saltó tu alerta» en rojo (revisión 14).
   const pendientes = [alertas.estado === 'cargando' && 'tus alertas de precio', tesis.estado === 'cargando' && 'tus tesis'].filter(
     (x): x is string => typeof x === 'string',
   )
@@ -318,7 +318,7 @@ const simbolosDe = (filas: { symbol: string }[]) => [...new Set(filas.map((f) =>
 /** «· valor 18.000,00 USD, sin contar SHOP.TO (sin precio)». El total es el de
  *  las posiciones con precio y convertidas (`portfolio_summary`): Inicio lo daba
  *  como el de toda la cartera, y Mi cartera sí decía que una quedaba fuera
- *  (revisión 15). Ausente ≠ cero: lo que no se suma se nombra. */
+ *  (revisión 14). Ausente ≠ cero: lo que no se suma se nombra. */
 export function valorDeLaCartera(c: Portfolio): string {
   const base = c.divisas?.base
   if (!base) return ''
@@ -341,7 +341,7 @@ export function valorDeLaCartera(c: Portfolio): string {
 /** Tu cartera, una fila por SÍMBOLO con el verbo de Explorar (`AvisoDeAccion`,
  *  el mismo de su fila allí): contaba los LOTES («2 posiciones abiertas») y
  *  pintaba KO dos veces, «Por debajo de su límite» y «En orden» a la vez
- *  (revisión 15). */
+ *  (revisión 14). */
 function TuCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }) {
   return (
     <BloqueDatos carga={cartera} que="tu cartera">
@@ -477,7 +477,7 @@ type Idea = NonNullable<TodayResponse['shortlist']>['ideas'][number]
  *  Con el aviso de su fila (`avisoDeLaFila`: su tamaño y, si ya la tienes, el
  *  repaso de su stop): comprada DESPUÉS de calcular la lista, la tarjeta
  *  seguía diciendo «Comprar… Tamaño sugerido: 7,8 %», un tamaño calculado sin
- *  esa posición (revisión 15). Con el repaso, es una posición: su stop manda. */
+ *  esa posición (revisión 14). Con el repaso, es una posición: su stop manda. */
 function TarjetaIdea({ idea, datos }: { idea: Idea; datos: TodayResponse }) {
   const variacion = idea.price ? fmtPct(idea.price.change_pct, 2, { signo: true, enPuntos: true }) : ''
   const tono = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' }[signoLeido(variacion)]
@@ -510,7 +510,7 @@ function TarjetaIdea({ idea, datos }: { idea: Idea; datos: TodayResponse }) {
 /** Cuántas ideas hay, sin convertir «no se sabe» en «ninguna»: sin lista corta
  *  (`?? []`) decía «Hoy ninguna empresa cumple…», el `?? 0` que Explorar ya
  *  corrigió; y con la lista a medias, «ninguna» de las analizadas no es ninguna
- *  de todas (revisión 15). */
+ *  de todas (revisión 14). */
 function SinIdeas({ datos }: { datos: TodayResponse }) {
   if (!datos.shortlist) {
     return (
@@ -586,7 +586,7 @@ function IdeasEtfs() {
     if (simbolos.length === 0) return
     // Todo lo escrito, también lo que no cabe: el comparador lo pone en su campo
     // y nombra los que quedan fuera. Con solo los cuatro primeros, el quinto
-    // desaparecía sin que nada lo dijera (revisión 15; el `.slice(0, 4)` que la
+    // desaparecía sin que nada lo dijera (revisión 14; el `.slice(0, 4)` que la
     // revisión 12 quitó del comparador).
     void navigate(`${rutaExplorar({ tipo: 'etfs' })}&simbolos=${encodeURIComponent([...simbolos, ...descartados].join(','))}`)
   }
@@ -664,7 +664,7 @@ function Ideas({ lista }: { lista: ListaDiaria }) {
  *  en temporada de resultados, con 900, «ninguna empresa de tu cartera
  *  presenta» era una afirmación sobre lo que no se había mirado. Mientras la
  *  cartera carga, se dice que carga: decía «Sin tu cartera no se puede saber…»
- *  con «Comprobando tu cartera…» justo encima (revisión 15). */
+ *  con «Comprobando tu cartera…» justo encima (revisión 14). */
 function ProximosDias({ cartera, calendario }: { cartera: CargaConReintento<Portfolio>; calendario: CargaConReintento<CalendarioMercado> }) {
   return (
     <div className="space-y-2 text-sm text-slate-700">
@@ -711,7 +711,7 @@ function ProximosDias({ cartera, calendario }: { cartera: CargaConReintento<Port
         }}
       </BloqueDatos>
       {/* Las noticias generales del mercado: decía «de tus empresas» y la página
-          no lee la cartera (revisión 15). */}
+          no lee la cartera (revisión 14). */}
       <Link to={RUTAS.noticias} className="inline-flex min-h-11 items-center font-semibold text-sky-700 hover:underline">
         Noticias del mercado →
       </Link>

@@ -32,7 +32,7 @@ fuente tiene no lo impiden). Las pasadas parciales del arranque (40 o 120 de 502
 `useListaDiaria`) no congelan nada y lo dicen en `instantaneas.sin_congelar`:
 puntuaban el segundo sector contra una parte de sí mismo y lo que decían «evitar»
 era lo peor de 40, no de 502, y como la primera instantánea del día gana, ninguna
-pasada posterior lo corregía (revisión 15). Un día sin lista completa no tiene
+pasada posterior lo corregía (revisión 14). Un día sin lista completa no tiene
 instantánea de la lista. El análisis de empresa
 se congela cuando cambia algo **material**: otra acción, otro resultado en alguna
 regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de

@@ -497,7 +497,7 @@ calculan en esa petición, como siempre: la lista puede ser de hace 9 h, el repa
 de tus stops es de ahora. Con la copia caducada, el último cierre de cada señal
 entra en el repaso como precio **viejo** (`contexto_cartera.senales_para_el_stop`):
 sin cotización, un cierre de hace días por encima del stop daba «por encima»;
-ahora da `sin_comprobar` (revisión 15).
+ahora da `sin_comprobar` (revisión 14).
 
 Con la copia caducada a la vista («Lista de hace 9 h; actualizando…»), la pantalla
 pide la normal detrás y la sustituye al llegar. Sin ninguna (primera vez, o más de
@@ -680,7 +680,7 @@ El repaso mira lo mismo que el Portafolio (revisión 13):
   remite a «Actualizar»; «Mi cartera» se construye con el repaso: las filas de
   la lista, solo de lo abierto ahora; lo abierto después de puntuar, aparte y con
   su stop.
-- **Las tres pantallas, una fuente (revisión 15):** `GET /api/portfolio` sirve el
+- **Las tres pantallas, una fuente (revisión 14):** `GET /api/portfolio` sirve el
   mismo repaso (`repaso`, con la lista guardada de Inicio y las `senales` de lo
   abierto) y cada fila mira su stop con esos precios (`stop_perforado`,
   `stop_perforado_por`). La línea de Mi cartera e Inicio lo leen con
@@ -869,7 +869,7 @@ abiertas **ocupan presupuesto** en los cuatro límites:
   que sean malas, es que no cabe más riesgo. Eso vale también para las que
   califican fuera de la lista corta, que no pasan por el dimensionador: la
   respuesta lo dice con `shortlist.sin_hueco_de_riesgo` (`true` solo con ese
-  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 15).
+  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 14).
 
 Las posiciones abiertas **no se redimensionan** aquí — qué hacer con lo que ya
 tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los
@@ -1710,7 +1710,7 @@ valor total de la empresa con `value_per_share or equity_value` (M4): ahora es p
 acción o nada. No se portó el valor total sin acciones ni la matriz WACC ×
 crecimiento: la sensibilidad ordenada la sustituye y mezclar unidades era el fallo.
 
-Lo que fijó la revisión 15 (contrato de `POST /api/valuation/{s}`):
+Lo que fijó la revisión 14 (contrato de `POST /api/valuation/{s}`):
 
 - **404 o 502.** 404 solo si EDGAR no tiene la empresa; si no responde, 502 «No se
   pudieron descargar los estados financieros de EDGAR», como el informe completo.

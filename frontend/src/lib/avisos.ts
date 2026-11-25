@@ -236,7 +236,7 @@ export function recortesDe(symbol: string, recortes: string[], ideas: string[]):
  *  (`sin_hueco_de_riesgo`): entonces tampoco cabe ella, y se dice con el recorte
  *  que vale para todas. Con «Ideas nuevas al 0 %», las 118 que califican fuera
  *  de la lista corta decían «Comprar» en verde bajo «ninguna cabe hoy en tu
- *  cartera» (revisión 15, H12). */
+ *  cartera» (revisión 14, H12). */
 export function tamanoDeLaLista(symbol: string, shortlist: Shortlist | null | undefined): TamanoDeLaIdea | undefined {
   if (!shortlist) return undefined
   const ideas = shortlist.ideas ?? []
@@ -274,7 +274,7 @@ export function contextoDeLaFila(
  *  (`contextoDeLaFila`): su stop si la tienes, que es de ahora, y su tamaño si
  *  está en la lista corta. La tarjeta de una idea comprada después de calcular
  *  la lista decía «Comprar … Tamaño sugerido: 7,8 % de tu cartera» y su fila,
- *  «Mantener» (revisión 15, H1): quien pinte una empresa de la lista pide aquí
+ *  «Mantener» (revisión 14, H1): quien pinte una empresa de la lista pide aquí
  *  su aviso, y todas dicen lo mismo. */
 export function avisoDeLaFila(
   signal: Pick<DailySignal, 'symbol' | 'decision' | 'price'>,
@@ -487,7 +487,7 @@ function avisoDeLaLista(decision: Decision, precio: number | null | undefined, m
     // Lo que no se pudo comprobar no es «Mantener», tampoco sin el repaso: con él,
     // un precio viejo o un stop desconocido son «Revisar» (`avisoDePosicion`); sin
     // él —el repaso falló, o la ficha, que no lo tiene— salían «Mantener» con una
-    // nota (revisión 15, H13).
+    // nota (revisión 14, H13).
     const porque = stopSinComprobar(decision, precio, stop)
     if (porque !== null) {
       return aviso('sin_comprobar', porque, [AL_BROKER, 'Con lo que sí pudo mirar, tu regla dice mantener.'], cifrasDelStop(precio, stop, moneda, 'gris'))

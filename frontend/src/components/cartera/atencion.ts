@@ -74,7 +74,7 @@ export type AtencionDeCartera =
  * cotización a 120 era «Vender» en Explorar y «en orden» en las otras dos; una
  * venta por puntuación no salía ni en Mi cartera ni en Inicio («Nada urgente»);
  * Inicio contaba lotes y repetía el aviso de cada uno; y con un lote sin stop, Mi
- * cartera decía que la POSICIÓN no tenía límite (revisión 15).
+ * cartera decía que la POSICIÓN no tenía límite (revisión 14).
  */
 export function atencionDeCartera(cartera: Pick<Portfolio, 'positions' | 'repaso'>): AtencionDeCartera {
   const repaso = cartera.repaso

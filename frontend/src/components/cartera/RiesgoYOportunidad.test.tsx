@@ -137,7 +137,7 @@ describe('contribución al riesgo (ítem 2.1)', () => {
   })
 
   it('la dimensión de cada clúster se escribe con su etiqueta, no con el código', async () => {
-    // Salía «correlacion» sin tilde (el código del backend), e «industria» no tenía etiqueta (revisión 15).
+    // Salía «correlacion» sin tilde (el código del backend), e «industria» no tenía etiqueta (revisión 14).
     servir({ '/api/portfolio/contribucion?descargar=false': { status: 200, json: {
       disponible: true, posiciones: [], desconocidas: [], metodo: 'm', nota: 'n',
       clusters: [

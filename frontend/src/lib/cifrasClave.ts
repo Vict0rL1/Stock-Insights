@@ -138,7 +138,7 @@ function crecimiento(a: AnalisisEmpresa): CifraClave {
     // El motivo, del backend: el del DCF inverso o, sin él, el de la sección.
     // Sin motivo no se inventa uno: «faltan las cuentas o el precio» salía con
     // las dos delante en una acción tan cara que al 9 % no había crecimiento
-    // que la justificara (revisión 15, H6).
+    // que la justificara (revisión 14, H6).
     const motivo = inv ? inv.motivo : a.valoracion.motivo
     return { ...base, valor: '—', frase: motivo ? `No se puede calcular: ${sinPuntoFinal(motivo)}.` : 'No se pudo calcular.' }
   }
@@ -150,7 +150,7 @@ function crecimiento(a: AnalisisEmpresa): CifraClave {
   const verbo = signoLeido(valor) < 0 ? 'podría caer' : 'tendría que crecer'
   // Una deuda parcial cuenta como cero la partida que falta: si existe, el
   // precio exige más crecimiento que este. El backend lo dice en su nota y la
-  // tarjeta lo callaba (revisión 15, H5).
+  // tarjeta lo callaba (revisión 14, H5).
   const falta = inv?.deuda_parcial ?? []
   const parcial = falta.length
     ? ` Con la deuda parcial (falta ${falta.map((c) => etiqueta(c)).join(' y ')}, que cuenta como cero): si existe, el precio exige más crecimiento que este.`

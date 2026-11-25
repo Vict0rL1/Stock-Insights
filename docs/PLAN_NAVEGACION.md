@@ -67,7 +67,7 @@ Cómo quedó (fase B):
   (que congela al abrirse, como antes); «Más detalle» no abre nada hasta elegir. «Qué cambió»
   solo se abre con una pulsación en la ficha: volver con «atrás», recargar o abrir un enlace
   con `?pestana=novedades` (o `cambios`) abre Novedades sin abrir ninguna parte, porque lo
-  montaba solo y volvía a congelar sin que nadie lo pidiera (revisión 15).
+  montaba solo y volvía a congelar sin que nadie lo pidiera (revisión 14).
 - «Qué dice la app» lee el análisis con `GET /api/empresa/{s}/analisis?congelar=false` (el
   parámetro ya existía): abrir la ficha no congela instantáneas. La frase sale de la traza del
   motor (`frontend/src/lib/queDiceLaApp.ts`), probada contra decisiones reales de `decide()`
@@ -104,10 +104,10 @@ Cómo quedó (fase B):
    menor, para enseñar resultados en segundos, y las pasadas automáticas que ya existen
    (`MAX_PASADAS_AUTO`) completan el resto con la barra «312 de 502 empresas». Una lista
    parcial no congela instantáneas: la decisión del día sale de la primera que cubre el
-   mercado (revisión 15, `docs/DECISION_REPLAY.md`).
+   mercado (revisión 14, `docs/DECISION_REPLAY.md`).
 4. **La lista en memoria envejece.** El hook guarda cuándo se calculó cada lista, no su
    edad: pasadas 6 h (la vigencia de la caché del backend) se enseña como vieja, con su
-   edad al día, aunque no venga de la copia caducada (revisión 15).
+   edad al día, aunque no venga de la copia caducada (revisión 14).
 
 ## La IA
 
@@ -176,7 +176,7 @@ vender» cuenta los mismos avisos que el panel, por construcción. Una empresa d
 aviso a `avisoDeLaFila` (su fila, su tarjeta de idea, el recuento «sin sitio»): con su stop si ya
 la tienes y su tamaño si está en la lista corta. Con `shortlist.sin_hueco_de_riesgo` (la cartera
 que ya tienes supera sola el objetivo de volatilidad), las que califican fuera de la lista corta
-tampoco caben: «Sin sitio», no «Comprar» (revisión 15).
+tampoco caben: «Sin sitio», no «Comprar» (revisión 14).
 
 ## Cómo quedó
 
@@ -190,7 +190,7 @@ tampoco caben: «Sin sitio», no «Comprar» (revisión 15).
 | Pregúntale a la IA | `da31da5` | `POST /api/ia/preguntar` y `/coste` |
 | Ficha en cuatro pestañas | `0fe65c2` | Pestañas viejas → nuevas en `lib/pestanasFicha.ts`; «Qué dice la app» con el mismo aviso que Inicio |
 
-Explorar › Acciones (revisión 15): filtros Mejores ideas, Todas las que califican, Vigilar,
+Explorar › Acciones (revisión 14): filtros Mejores ideas, Todas las que califican, Vigilar,
 Evitar, Mi cartera y Todas; «Cómo se repartió el tamaño» y «Lo que NO comprar», plegados (el
 del tamaño se abre solo si hay un límite sin comprobar o una cartera sin valorar, y su resumen
 lo dice). Controles de 44 px a 390 px.

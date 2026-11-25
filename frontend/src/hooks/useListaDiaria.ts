@@ -64,7 +64,7 @@
  * las 17:00, al volver a Inicio, como «de ahora» («Actualizando la lista en
  * segundo plano»), sin edad y pasada ya su vigencia en el backend; y la edad de
  * la copia caducada se quedaba en la de cuando llegó («hace 9 h» tres horas
- * después; revisión 15). Ahora `vieja` se calcula contra el reloj, y la entrada
+ * después; revisión 14). Ahora `vieja` se calcula contra el reloj, y la entrada
  * se vuelve a evaluar sola en el momento en que su lista caduca.
  *
  * Una cadena de pasadas sin nadie mirando (se cambió de mercado o de pantalla)
@@ -93,7 +93,7 @@ import { mensajeDeError } from '../lib/useDato'
  *    grande), porque cada empresa gasta como mucho UNA unidad en 24 h: lo
  *    descargado se guarda, y lo que ninguna fuente tiene también se recuerda
  *    (`signals.SIN_FUNDAMENTALES`; antes gastaba en cada pasada, y con cinco así
- *    quedaban 2 pendientes, revisión 15). Lo que sí vuelve a gastar es un fallo
+ *    quedaban 2 pendientes, revisión 14). Lo que sí vuelve a gastar es un fallo
  *    de las fuentes (caídas, sin cuota, sin clave), que se reintenta: entonces
  *    puede quedar algo pendiente, y la pantalla lo dice («Seguir completando»).
  *  - Esta primera lista no congela «la decisión del día»: solo la congela la

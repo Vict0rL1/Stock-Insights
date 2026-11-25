@@ -274,7 +274,7 @@ describe('la línea de arriba', () => {
   })
 })
 
-describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 15)', () => {
+describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 14)', () => {
   it('KO perforada por el último cierre de la lista con la cotización por encima: «Vender», en la línea y en la fila', async () => {
     // Stop 118, la lista cerró a 117 y la cotización es 120 (`test_estado_por_simbolo.py`):
     // Explorar decía «Para vender 1» y Mi cartera «ninguna necesita atención».

@@ -353,7 +353,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
   // El rechazo de «Fijar stop» o «Anotar venta», con su símbolo y junto a la
   // tabla: con un solo `error`, «No se puede bajar un stop ya fijado» salía bajo
   // «Anotar una compra», debajo de toda la tabla, y se leía como un fallo de la
-  // compra (revisión 15).
+  // compra (revisión 14).
   const [errorDeFila, setErrorDeFila] = useState<string | null>(null)
   // Abierta sin histórico que medir: su stop es el punto medio de la clase y
   // queda fijado; la respuesta lo decía y nadie lo leía (revisión 9).
@@ -443,7 +443,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
   // Con varias divisas, cada importe dice la suya: «2.903,00» a secas no dice
   // si son dólares o dólares canadienses (ítem 1.7). Con una sola, sería ruido.
   // Sin la cartera no se sabe cuántas hay: el recorrido, que ya no espera a su
-  // carga, iba sin código (revisión 15); ante la duda, con él.
+  // carga, iba sin código (revisión 14); ante la duda, con él.
   const conCodigo = datos === null || variasMonedas(datos)
   const monedaDe = (m: string | null | undefined) => (conCodigo ? (m ?? null) : null)
 
@@ -563,7 +563,7 @@ export function Posiciones({ cartera }: { cartera: CargaConReintento<Portfolio> 
                             {data.positions.map((p) => {
                               // El peso de ESTE lote: `allocation_by_position` es por
                               // símbolo y con dos lotes de KO cada fila decía «100,0 %»
-                              // (la columna sumaba 200 %; revisión 15). Sin importe en
+                              // (la columna sumaba 200 %; revisión 14). Sin importe en
                               // la base (sin precio o sin convertir), no tiene peso.
                               const total = data.summary.total_market_value
                               const peso =

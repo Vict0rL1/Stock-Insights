@@ -98,7 +98,7 @@ export class ApiError extends Error {
 /** Un 422 con texto propio del backend: el filing no trae un dato sin el que no
  *  se puede calcular («escribe la deuda neta»). Un 422 de validación es otra
  *  cosa, un error de lo enviado, y contarlo como dato que falta abría «Tus
- *  entradas» del DCF como si faltara la deuda (revisión 15, H3). */
+ *  entradas» del DCF como si faltara la deuda (revisión 14, H3). */
 export function faltaUnDato(e: unknown): e is ApiError {
   return e instanceof ApiError && e.status === 422 && e.validacion === null
 }

@@ -72,7 +72,7 @@ def limpiar_pregunta(texto: str) -> str:
     pasada no bastaba: quitar una etiqueta escrita DENTRO de otra dejaba montada
     la de fuera («</pregunta_de_<pregunta_de_la_persona>la_persona>»), y un
     carácter de control en medio («</pregunta_de_la_\\x00persona>») pasaba el
-    filtro y luego se volvía un espacio (revisión 15). Ahora: primero los
+    filtro y luego se volvía un espacio (revisión 14). Ahora: primero los
     caracteres de control, luego los delimitadores hasta que no quede ninguno, y
     al final los ángulos sueltos se cambian por «‹ ›», así que ninguna
     combinación forma una etiqueta, ni siquiera una mal cerrada."""

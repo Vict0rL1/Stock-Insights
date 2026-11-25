@@ -161,7 +161,7 @@ def senales_para_el_stop(lista: dict | None, estado: str | None) -> list[dict]:
 
     Vivía en `pregunta_ia` y solo lo usaba la IA: Hoy, con la copia caducada que
     sirve `vencida=aceptar` (hasta 7 días), repasaba con el cierre «valido» y
-    daba «por encima» con yfinance caído, STALE → PASS (revisión 15). Aquí, una
+    daba «por encima» con yfinance caído, STALE → PASS (revisión 14). Aquí, una
     vez, para todos los que repasan con una lista guardada."""
     senales = list((lista or {}).get("signals") or [])
     if estado != datos.Estado.VIEJO.value:

@@ -483,7 +483,7 @@ describe('cifras escritas a mano (tercera pasada de la revisión del 2.1)', () =
   })
 })
 
-describe('la tabla de posiciones (revisión 15)', () => {
+describe('la tabla de posiciones (revisión 14)', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('el peso es el de cada lote: con dos lotes de KO la columna no suma 200 %', async () => {

@@ -45,7 +45,7 @@ describe('Termino', () => {
     expect(definicion()).toBeNull()
   })
 
-  it('en el móvil, con los eventos de un toque de verdad, el segundo toque la cierra (revisión 15)', () => {
+  it('en el móvil, con los eventos de un toque de verdad, el segundo toque la cierra (revisión 14)', () => {
     // Un toque emula la entrada del ratón y nunca su salida (Playwright, Pixel 5):
     // pointerenter → pointerdown → mouseover → mouseenter → focus → click; el
     // segundo, pointerenter → pointerdown → click. Con `onMouseEnter` la

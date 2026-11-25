@@ -153,7 +153,7 @@ def _validate(symbols: list[str]) -> list[str]:
 # `cache.RECORDAR_FALLO` con las cotizaciones. Sin recordarlo, como no se guarda
 # nada suyo, gastaba una unidad del presupuesto —y una llamada a Finnhub, y a
 # veces un companyfacts entero— en CADA pasada: con cinco así en el S&P 500, las
-# pasadas automáticas (40 + 4 × 120) se quedaban a 2 de cubrirlo (revisión 15).
+# pasadas automáticas (40 + 4 × 120) se quedaban a 2 de cubrirlo (revisión 14).
 # Un fallo de las fuentes (caídas, sin cuota, sin clave) no es una respuesta y
 # no se recuerda: se reintenta en la pasada siguiente.
 SIN_FUNDAMENTALES = "sin_fundamentales"
@@ -254,7 +254,7 @@ def _lista_corta_dimensionada(
     # candidatas se dimensionen (el dimensionador lo dice con este recorte). Las
     # que califican fuera de la lista corta no pasan por el dimensionador, y la
     # tabla las pintaba «Comprar» en verde —118 filas— bajo una cabecera que
-    # decía «ninguna cabe hoy en tu cartera» (revisión 15, H12). Va fuera de
+    # decía «ninguna cabe hoy en tu cartera» (revisión 14, H12). Va fuera de
     # `sizing` a propósito: es una lectura de su resultado, no un límite más.
     corta["sin_hueco_de_riesgo"] = any(
         r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) for r in corta["sizing"].get("recortes") or []
@@ -733,7 +733,7 @@ def _score_symbols(
         # la empresa salía gratis pero se volvía a pedir su companyfacts («EDGAR
         # no la tiene» era la suposición, y basta un 503 de EDGAR para que Finnhub
         # la tenga guardada): una descarga que nadie contaba, y con 40 de
-        # presupuesto se bajaban 80 (revisión 15). Ahora, con lo de Finnhub
+        # presupuesto se bajaban 80 (revisión 14). Ahora, con lo de Finnhub
         # guardado y sin lo de EDGAR, se puntúa con lo de Finnhub sin volver a
         # EDGAR hasta que caduque (24 h, lo mismo que vive lo de EDGAR).
         edgar_guardado = service.cache.get("financials", {"symbol": symbol}) is not None
@@ -1158,7 +1158,7 @@ def today(
     # Con la copia caducada, el cierre de cada señal viaja VIEJO
     # (`senales_para_el_stop`): decía «valido», el de cuando se calculó, y con
     # yfinance caído un cierre de hace 6 días por encima del stop daba «por
-    # encima» y «nada urgente», STALE → PASS (revisión 15).
+    # encima» y «nada urgente», STALE → PASS (revisión 14).
     from app.contexto_cartera import senales_para_el_stop
 
     respuesta = {k: v for k, v in payload.items() if k != "huella_cartera"}
@@ -1465,7 +1465,7 @@ def _today(
     # una parte de sí mismo, las «ideas» y lo que dice «evitar» eran lo mejor y
     # lo peor de 40, no de 502, y como la primera instantánea del día gana y es
     # inmutable, ninguna pasada posterior podía corregirlo: el forward testing
-    # medía cada día lo que dijo una lista a medias (revisión 15). Un día sin
+    # medía cada día lo que dijo una lista a medias (revisión 14). Un día sin
     # lista completa se queda sin instantánea, y la respuesta dice por qué: un
     # hueco en el registro es mejor que una decisión tomada sobre una parte.
     if complete:

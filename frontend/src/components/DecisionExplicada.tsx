@@ -145,7 +145,7 @@ export function QueLaCambiaria({ cambiaria }: { cambiaria: AlternativaDecision[]
 
 /** «¿Por qué esta decisión?» y «¿Qué la cambiaría?», plegados por defecto. Cada
  *  `summary`, de 44 px en el móvil sin que su recuadro crezca: medía 16 en las
- *  filas de Explorar (revisión 15, H15). */
+ *  filas de Explorar (revisión 14, H15). */
 export function DecisionExplicada({ decision, abierta = false }: { decision: Decision; abierta?: boolean }) {
   if (!decision.reglas?.length && !decision.cambiaria?.length) return null
   return (

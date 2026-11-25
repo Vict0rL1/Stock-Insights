@@ -413,7 +413,7 @@ def _bloque_ficha(session: Session, simbolo: str, lista: dict | None,
 
     La fila de una lista caducada hereda su estado: el bloque de la lista iba
     VIEJO y la misma fila (precio, stop, zona de entrada), repetida aquí, iba
-    `valido`, sin el aviso del prompt ni la marca en pantalla (revisión 15)."""
+    `valido`, sin el aviso del prompt ni la marca en pantalla (revisión 14)."""
     titulo = f"Ficha de {simbolo}"
     en_lista = next((s for s in (lista or {}).get("signals") or [] if s.get("symbol") == simbolo), None)
     snap = sn.anterior_comparable(session, simbolo)
@@ -542,7 +542,7 @@ def _huella(modelo: str | None, pregunta: str, contexto: dict, ahora: datetime) 
     Era la huella del prompt entero, y el prompt lleva el reloj: la hora de la
     consulta en el bloque de la cartera y el «hace X» de cada bloque. La caché
     solo acertaba dentro del mismo minuto, y «Resúmeme el día» dos veces con la
-    misma lista volvía a cobrar (revisión 15). Ahora cuenta el modelo, las
+    misma lista volvía a cobrar (revisión 14). Ahora cuenta el modelo, las
     instrucciones, la pregunta limpia, el día de la consulta (el que dice el
     prompt: una respuesta no se reutiliza de un día para otro) y, de cada bloque,
     su fuente, la fecha del dato, su estado, su nota y su texto; y lo que falta.

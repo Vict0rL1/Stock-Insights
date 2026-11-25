@@ -54,7 +54,7 @@ INTERNAS = {
     "palabras": "palabras clave que escribió el usuario",
     "contexto": "texto del usuario en el paquete de casos",
     "nombre": "texto del usuario en el paquete de casos",
-    # El repaso de stops de `/api/portfolio` (revisión 15) los trae, como el de Hoy.
+    # El repaso de stops de `/api/portfolio` (revisión 14) los trae, como el de Hoy.
     "proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
     "precio_proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
 }

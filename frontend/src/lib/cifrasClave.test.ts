@@ -56,7 +56,7 @@ describe('cifras clave', () => {
     expect(cifras[3].frase).toBe('No se puede calcular: sin precio o sin acciones.')
   })
 
-  it('con deuda parcial, el crecimiento implícito dice que el precio exige más (revisión 15, H5)', () => {
+  it('con deuda parcial, el crecimiento implícito dice que el precio exige más (revisión 14, H5)', () => {
     const a = analisis(deudaParcial)
     expect(a.valoracion.dcf_inverso?.deuda_parcial).toEqual(['short_term_debt'])
     const crecimiento = cifrasClave(a)[3]
@@ -67,7 +67,7 @@ describe('cifras clave', () => {
     expect(cifrasClave(analisis(completa))[3].frase).not.toMatch(/parcial/)
   })
 
-  it('sin crecimiento implícito al 9 % dice el motivo del backend, no «faltan las cuentas o el precio» (revisión 15, H6)', () => {
+  it('sin crecimiento implícito al 9 % dice el motivo del backend, no «faltan las cuentas o el precio» (revisión 14, H6)', () => {
     // Una acción tan cara que al 9 % ni creciendo al 60 % anual se justifica su
     // precio: la curva está disponible (hay rango al 7 y al 8 %) y el punto del
     // 9 % no tiene valor. El motivo, el que sirve el backend para ese punto.

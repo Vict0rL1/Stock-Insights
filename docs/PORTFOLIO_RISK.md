@@ -35,7 +35,7 @@ motor, del riesgo abierto (`risk_budget`) y de cada fila de `/api/portfolio`
 (`stop_perforado`), donde la tabla enseña el stop y el perforado en rojo. El
 panel de riesgo abierto nombra la posición que cuenta entera por su stop perforado.
 
-**Una fuente para Inicio, Mi cartera y Explorar (revisión 15).** La misma posición
+**Una fuente para Inicio, Mi cartera y Explorar (revisión 14).** La misma posición
 se juzgaba distinto según la pantalla: Explorar con este repaso y las decisiones
 de la lista (`frontend/src/lib/avisos.ts`, `avisosDeCartera`), Mi cartera e Inicio
 con `stop_perforado` por lote y solo la cotización. KO con el stop en 118, la

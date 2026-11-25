@@ -913,7 +913,7 @@ def _con_estado_del_stop(posiciones: list[dict], repaso: dict) -> None:
     la cotización y, de reserva, el último cierre de la lista), fail-safe como él:
     perforado si lo perfora cualquiera. Solo con la cotización, KO con el stop en
     118, la lista cerrada a 117 y la cotización a 120 era «Vender» en Explorar y
-    una fila «en orden» aquí (revisión 15). `stop_perforado_por`: el precio que lo
+    una fila «en orden» aquí (revisión 14). `stop_perforado_por`: el precio que lo
     perfora cuando no es el de la fila, para escribirlo junto a ella.
     """
     precios = {p["symbol"]: p.get("precios") or [] for p in repaso.get("posiciones") or []}
@@ -932,7 +932,7 @@ def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) 
     que también mira el último cierre de la lista) y las decisiones de la lista
     (`avisos.ts`, `avisosDeCartera`): KO era «Vender» en Explorar y «en orden» en
     las otras dos; una venta por puntuación no salía en ninguna de ellas; y dos
-    lotes eran dos posiciones en Inicio (revisión 15). Aquí se sirve el MISMO
+    lotes eran dos posiciones en Inicio (revisión 14). Aquí se sirve el MISMO
     repaso, con la lista del día que Explorar enseña al abrir —la guardada de
     `vencida=aceptar`, la vigente o la última caducada con su precio VIEJO
     (`senales_para_el_stop`)—, sin calcular nada, y las filas de esa lista de las

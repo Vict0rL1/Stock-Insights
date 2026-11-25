@@ -1,4 +1,4 @@
-"""Revisión 15: Inicio, Mi cartera y Explorar dicen lo mismo de cada posición.
+"""Revisión 14: Inicio, Mi cartera y Explorar dicen lo mismo de cada posición.
 
 La misma posición se juzgaba distinto según la pantalla: Explorar con el repaso
 de stops (`contexto_cartera.stops_de_la_cartera`, que también mira el último
@@ -153,7 +153,7 @@ def test_un_fallo_del_repaso_no_cuesta_la_cartera_ni_se_calla(session_factory, m
 
 
 def test_vencida_el_repaso_de_stops_no_da_por_encima_con_el_cierre_de_una_lista_de_hace_dias(con_reloj, session_factory):
-    """La reproducción de la revisión 15 (carga, H1), en otro mercado: la lista
+    """La reproducción de la revisión 14 (carga, H1), en otro mercado: la lista
     guardada se servía con el bloque de precio de cuando se calculó, `valido`, y
     sin cotización el cierre de hace 6 días daba «por encima»."""
     c, service, reloj = con_reloj

@@ -84,10 +84,10 @@ describe('el módulo abierto desde la ficha (ítem 3.3)', () => {
   })
 })
 
-describe('revisión 15', () => {
+describe('revisión 14', () => {
   const RANGO = 'Rango de valor, del escenario más pesimista al más optimista'
   // Lo que responde el backend de verdad a un bajista de −75 % (el que proponía
-  // antes del suelo, `test_revision15_dcf.py`): un 422 de Pydantic, en lista.
+  // antes del suelo, `test_revision14_dcf.py`): un 422 de Pydantic, en lista.
   const PYDANTIC = {
     detail: [{ type: 'greater_than_equal', loc: ['body', 'escenarios', 'bajista', 'growth_rate'],
                msg: 'Input should be greater than or equal to -0.5', input: -0.75, ctx: { ge: -0.5 } }],

@@ -69,7 +69,7 @@ describe('la frase de «Qué dice la app»', () => {
 
   it('fail-safe: un stop que no se pudo comprobar y un precio viejo no se callan', () => {
     expect(frase('mantener_sin_stop')).toContain('Pero la app no pudo comprobar si ha llegado a tu stop: revísalo tú.')
-    // También al reducir (revisión 15, H4): la puntuación no es la única salida
+    // También al reducir (revisión 14, H4): la puntuación no es la única salida
     // si el stop puede estar ya perforado. «Lo que comprueba» ya pintaba «?».
     expect(frase('reducir_sin_stop')).toMatch(
       /^Su precio ha perdido la tendencia .*: la app sugiere vender una parte\. Pero la app no pudo comprobar si ha llegado a tu stop: revísalo tú\. La app sugerirá vender cuando/,

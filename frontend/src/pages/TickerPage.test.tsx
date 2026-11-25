@@ -431,7 +431,7 @@ describe('ficha de una empresa', () => {
   })
 
   it('«atrás» a una ficha con Novedades abierta no reabre «Qué cambió» ni vuelve a pedir el análisis que congela', async () => {
-    // Revisión 15 (H9): con la pestaña en la URL, A (Novedades) → B → «atrás»
+    // Revisión 14 (H9): con la pestaña en la URL, A (Novedades) → B → «atrás»
     // volvía a `?pestana=novedades`, montaba «Qué cambió» y congelaba otra vez
     // sin que nadie lo abriera. Lo mismo al recargar o con un enlace guardado.
     const rutas: Record<string, Respuesta> = { '/api/empresa/ACME/analisis': 'pendiente' }
@@ -612,7 +612,7 @@ describe('la ficha en cuatro pestañas', () => {
       expect(await pestana(nombre)).toHaveAttribute('aria-selected', 'true')
     }
     // «Qué cambió» congela al abrirse: un enlace lleva a su pestaña, pero no lo
-    // abre sin una pulsación (revisión 15, H9).
+    // abre sin una pulsación (revisión 14, H9).
     const congela = vista.seccion === 'cambios'
     const abierto = () => screen.getAllByRole('button').find((b) => b.getAttribute('aria-pressed') === 'true' && b.textContent !== 'Más detalle (avanzado)')
     if (vista.seccion && !congela) {

@@ -359,7 +359,7 @@ def seccion_valoracion(fund: dict, precio: float | None) -> dict:
     # Con la curva disponible, el punto del 9 % puede no tener valor: una acción
     # tan cara que ni creciendo al 60 % anual se justifica su precio. Iba sin
     # motivo, y la tarjeta de la ficha decía «faltan las cuentas o el precio» con
-    # las dos delante, justo en las acciones más caras (revisión 15, H6).
+    # las dos delante, justo en las acciones más caras (revisión 14, H6).
     if not curva.get("disponible"):
         motivo = curva.get("nota")
     elif implicito is not None:

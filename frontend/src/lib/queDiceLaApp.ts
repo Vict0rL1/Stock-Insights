@@ -111,7 +111,7 @@ const SOBRE_LA_POSICION: [string, string][] = [
  *  nada. Para mantener y para reducir: solo `mantener` lo decía, y al reducir
  *  unas acciones de un spin-off (coste 0, sin stop guardado) la frase daba la
  *  puntuación como única salida cuando el stop podía estar ya perforado y pedir
- *  venderlo todo (revisión 15, H4). Al vender todo, lo que falte por comprobar
+ *  venderlo todo (revisión 14, H4). Al vender todo, lo que falte por comprobar
  *  ya no cambia la acción (y «Lo que comprueba la app» enseña su «?»). */
 function sinComprobar(d: Decision): string {
   const r = (id: string) => regla(d, id)

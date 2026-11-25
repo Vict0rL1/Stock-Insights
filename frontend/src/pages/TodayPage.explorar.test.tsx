@@ -1,5 +1,5 @@
 /**
- * Revisión 15: Explorar › Acciones (la lista de Hoy incrustada) y sus avisos
+ * Revisión 14: Explorar › Acciones (la lista de Hoy incrustada) y sus avisos
  * de compra y venta. Parte de la respuesta REAL de Hoy (`hoy_completo.json`),
  * cambiada en cada caso por lo que el backend sirve en esa situación.
  *

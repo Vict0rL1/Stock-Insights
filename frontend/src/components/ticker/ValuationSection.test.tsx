@@ -83,7 +83,7 @@ describe('la pestaña Valoración de la ficha', () => {
   })
 })
 
-describe('revisión 15', () => {
+describe('revisión 14', () => {
   it('con EDGAR caído (502) es un fallo, con «Reintentar»; no «no presenta 10-K» (guarda de H2: el arreglo es del backend)', async () => {
     const DETALLE = "No se pudieron descargar los estados financieros de EDGAR: todas las fuentes fallaron para 'financials'"
     servir({ '/api/valuation/ACME': { status: 502, json: { detail: DETALLE } } })

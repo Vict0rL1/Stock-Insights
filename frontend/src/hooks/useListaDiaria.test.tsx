@@ -263,7 +263,7 @@ describe('useListaDiaria: compartida entre pantallas', () => {
   })
 })
 
-describe('useListaDiaria: la lista en memoria envejece (revisión 15)', () => {
+describe('useListaDiaria: la lista en memoria envejece (revisión 14)', () => {
   const DIEZ = '2026-11-24T10:00:00+00:00'
   const calculadaALasDiez = (extra: Record<string, unknown> = {}) => lista(502, { as_of: DIEZ, fetched_at: DIEZ, ...extra })
 

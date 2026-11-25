@@ -11,7 +11,7 @@
  * Y pasar por encima es cosa de un ratón de verdad: un toque emula también la
  * entrada del ratón (`mouseenter`) y nunca su salida, así que con
  * `onMouseEnter` la definición quedaba «encima» para siempre y el segundo
- * toque no la cerraba (revisión 15, H10; visto con Playwright: un toque
+ * toque no la cerraba (revisión 14, H10; visto con Playwright: un toque
  * dispara pointerenter → pointerdown → mouseover → mouseenter → focus → click).
  */
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'

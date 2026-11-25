@@ -3,7 +3,7 @@
  * cambian las posiciones de una respuesta real: con la forma que sirve
  * `contexto_cartera.stops_de_la_cartera`. Cambiar las filas de los lotes sin
  * cambiar el repaso ya no cambia lo que se cuenta: la línea de Mi cartera e
- * Inicio leen el repaso, por símbolo (revisión 15).
+ * Inicio leen el repaso, por símbolo (revisión 14).
  */
 import type { DailySignal, Decision, RepasoDeCartera, StopDePosicion } from '../api/types'
 

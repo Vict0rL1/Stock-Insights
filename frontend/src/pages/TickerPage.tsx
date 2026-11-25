@@ -211,7 +211,7 @@ export function TickerPage() {
   // «Qué cambió» congela una instantánea al abrirse, así que solo se abre con
   // una pulsación en esta ficha. Desde que la pestaña va en la URL, volver con
   // «atrás», recargar o abrir un enlace guardado con `?pestana=novedades` lo
-  // montaba solo y volvía a pedir el análisis que congela (revisión 15, H9; la
+  // montaba solo y volvía a pedir el análisis que congela (revisión 14, H9; la
   // segunda revisión del 2.1 ya lo había corregido con la pestaña en el estado).
   // Así se abre Novedades sin abrir ninguna parte. Vale para este símbolo: otro
   // símbolo lo olvida en ese mismo render (ni uno con el de antes, que ya pedía).
