@@ -74,3 +74,22 @@ def test_un_crecimiento_medido_de_cero_no_se_cambia_por_el_de_ingresos(client):
     d = client(periodos=planos).get("/api/stocks/AAPL/valuation/defaults").json()
     assert d["historical_growth"]["fcf_cagr"] == pytest.approx(0.0)
     assert d["suggested_growth_capped"] == 0.0
+
+
+# --- Ítem 3.3: un solo DCF. Estos dos endpoints quedan como alias obsoletos -----
+
+
+def test_los_dos_endpoints_de_la_ficha_se_anuncian_obsoletos_y_dicen_adonde_ir(client):
+    """La ficha enseña ya un resumen de `POST /api/valuation/{s}`. Los de la ficha
+    se quedan una versión con su respuesta de siempre (golden `dcf_ficha`), pero lo
+    dicen en cada respuesta y en OpenAPI, para que nadie construya encima."""
+    c = client()
+    cuerpo = {"base_fcf": 1000e6, "net_debt": 0.0, "shares_outstanding": 100e6, "scenarios": ESCENARIOS}
+    for r in (c.get("/api/stocks/AAPL/valuation/defaults"), c.post("/api/stocks/AAPL/valuation/dcf", json=cuerpo)):
+        assert r.status_code == 200, r.text
+        assert r.headers["Deprecation"] == "true"
+        assert r.headers["Link"] == '</api/valuation/AAPL>; rel="successor-version"'
+    rutas = c.get("/openapi.json").json()["paths"]
+    assert rutas["/api/stocks/{symbol}/valuation/defaults"]["get"]["deprecated"] is True
+    assert rutas["/api/stocks/{symbol}/valuation/dcf"]["post"]["deprecated"] is True
+    assert not rutas["/api/valuation/{symbol}"]["post"].get("deprecated")

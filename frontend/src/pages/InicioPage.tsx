@@ -1,0 +1,838 @@
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { api } from '../api/client'
+import type {
+  CalendarioMercado,
+  IndexEntry,
+  Portfolio,
+  PriceAlert,
+  RepasoDeCartera,
+  SectorEntry,
+  TodayResponse,
+  VigilanciaResponse,
+} from '../api/types'
+import { AvisoDeAccion, TONOS } from '../components/AvisoDeAccion'
+import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
+import { ProgresoAnalisis } from '../components/ProgresoAnalisis'
+import { alcanceDeLaRegla, atencionDeCartera, decidida, deLaLista, porQueSoloSuStop, type AtencionDeCartera } from '../components/cartera/atencion'
+import { PreguntaIA } from '../components/ia/PreguntaIA'
+import { useListaDiaria, type ListaDiaria } from '../hooks/useListaDiaria'
+import { avisoDeLaFila, carteraRepasada, type AvisoDePosicion } from '../lib/avisos'
+import { etiqueta } from '../lib/etiquetas'
+import { fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
+import { RUTAS, rutaCartera, rutaEmpresa, rutaExplorar } from '../lib/rutas'
+import { listaDeSimbolos } from '../lib/simbolos'
+import { useDato, type CargaConReintento } from '../lib/useDato'
+import { ChangeChip, Procedencia } from './DashboardPage'
+import { MAX_ETFS } from './EtfsPage'
+import { NotaDeLaLista } from './MiCarteraPage'
+import { AvisoListaDesfasada } from './TodayPage'
+
+/**
+ * Inicio: el día de un vistazo (`docs/PLAN_NAVEGACION.md`). Contesta tres
+ * preguntas en este orden — ¿pasa algo con lo mío?, ¿qué hay para invertir
+ * hoy?, ¿cómo está el mercado? — y todo lo demás está a un toque.
+ *
+ * Antes la app abría en «Hoy», una lista de 502 empresas con su panel de
+ * tamaño, y la primera vez del día se quedaba en «Puntuando el universo…» un
+ * par de minutos sin enseñar nada. Aquí cada tarjeta pide lo suyo y se pinta
+ * en cuanto llega: la cartera y el mercado no esperan a la lista.
+ */
+
+const MERCADO = 'us_sp500'
+const CLAVE_GUIA = 'inicio.guia-oculta'
+
+function guiaOculta(): boolean {
+  try {
+    return window.localStorage.getItem(CLAVE_GUIA) === '1'
+    // eslint-disable-next-line no-restricted-syntax -- sin almacenamiento (ventana privada, datos bloqueados) la guía se enseña: es el lado seguro y no hay nada que decir.
+  } catch {
+    return false
+  }
+}
+
+function Tarjeta({
+  titulo,
+  id,
+  enlace,
+  children,
+  className = '',
+}: {
+  titulo: string
+  id: string
+  enlace?: { to: string; texto: string }
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section aria-labelledby={id} className={`rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 ${className}`}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 id={id} className="text-base font-semibold text-slate-900">
+          {titulo}
+        </h2>
+        {enlace && (
+          <Link to={enlace.to} className="inline-flex min-h-11 items-center text-sm font-medium text-sky-700 hover:underline">
+            {enlace.texto}
+          </Link>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Guia({ ocultar }: { ocultar: () => void }) {
+  const pasos: [string, string][] = [
+    ['Mira las ideas del día.', 'La app compara cada empresa con las de su sector y te enseña las mejor situadas.'],
+    ['Ábrelas para entender por qué.', 'Cada ficha empieza con una frase en lenguaje claro; los números están debajo.'],
+    ['Anota lo que compres.', 'La app vigila cada posición y te avisa aquí si baja de tu límite de pérdida.'],
+  ]
+  return (
+    <section aria-labelledby="guia-t" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="guia-t" className="text-base font-semibold text-slate-900">
+          Cómo usar la app, en tres pasos
+        </h2>
+        <button
+          type="button"
+          onClick={ocultar}
+          className="min-h-11 rounded-lg border border-sky-200 px-3 text-sm text-slate-700 hover:text-slate-900"
+        >
+          Entendido, ocultar
+        </button>
+      </div>
+      <ol className="grid gap-3 lg:grid-cols-3">
+        {pasos.map(([titulo, texto], i) => (
+          <li key={titulo} className="flex gap-3">
+            <span
+              aria-hidden="true"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white"
+            >
+              {i + 1}
+            </span>
+            <span className="text-sm leading-relaxed text-slate-700">
+              <b className="text-slate-900">{titulo}</b> {texto}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/** Lo que necesita atención, del más urgente al menos: tus posiciones, tus
+ *  alertas de precio y tus tesis, cada cosa dicha como lo que es.
+ *
+ *  Las posiciones, con el aviso de Explorar (`atencionDeCartera`, por símbolo:
+ *  el repaso del stop y la decisión de la lista): las mismas que cuenta la línea
+ *  de Mi cartera. Antes Inicio hacía su propia cuenta con el stop de cada lote:
+ *  callaba una venta por puntuación («Nada urgente») y repetía el aviso de cada
+ *  lote (revisión 14). Una alerta que saltó no es «una posición que necesita
+ *  atención»: Mi cartera decía «ninguna necesita atención» con la alerta
+ *  «Cumplida» más abajo; aquí va como alerta. Una tesis con un punto de
+ *  vigilancia cruzado, como en Tesis y vigilancia: ámbar, no una orden de venta.
+ *
+ *  Fail-safe (CLAUDE.md): sin precio, con un precio viejo, sin stop o sin poder
+ *  pedir algo, se dice «sin comprobar»; nunca se calla ni pasa por «en orden». */
+export type Atencion = {
+  tono: 'rojo' | 'naranja' | 'ambar'
+  /** Una posición (lo que cuenta Mi cartera), una alerta de precio o una tesis. */
+  de: 'posicion' | 'alerta' | 'tesis'
+  clave: string
+  titulo: string
+  texto: string
+  to: string
+}
+
+function atencionDePosicion(x: AvisoDePosicion): Atencion {
+  const { symbol, aviso, stop } = x
+  const sinStop = stop !== null && stop.stop === null
+  const titulo =
+    aviso.tipo === 'vender'
+      ? stop?.estado === 'perforado'
+        ? `${symbol} bajó de tu límite de pérdida`
+        : `Tu regla dice vender ${symbol}`
+      : aviso.tipo === 'reducir'
+        ? `Tu regla dice reducir ${symbol}`
+        : sinStop
+          ? `${symbol} no tiene límite de pérdida`
+          : `${symbol}: sin comprobar`
+  return {
+    tono: aviso.tono === 'rojo' ? 'rojo' : aviso.tono === 'naranja' ? 'naranja' : 'ambar',
+    de: 'posicion',
+    clave: `posicion-${symbol}`,
+    titulo,
+    // La frase del aviso de Explorar, con sus pasos («Es un precio viejo…», «La
+    // cotización de ahora está por encima…»): lo mismo, dicho igual.
+    texto: [aviso.frase, ...aviso.pasos].join(' '),
+    to: sinStop ? rutaCartera() : rutaEmpresa(symbol),
+  }
+}
+
+function atencionesDeTesis(tesis: VigilanciaResponse): Atencion[] {
+  const salida: Atencion[] = []
+  for (const t of tesis.tesis) {
+    const v = t.vigilancia
+    if (v.saltan > 0) {
+      // El texto del punto lo escribió el usuario: sin su punto final, para no doblarlo.
+      const cruzados = v.disparadores.filter((d) => d.medible && d.salta).map((d) => d.descripcion.trim().replace(/\.$/, ''))
+      salida.push({
+        tono: 'ambar',
+        de: 'tesis',
+        clave: `tesis-${t.thesis_id}`,
+        titulo: `Tu tesis de ${t.symbol}: ${
+          v.saltan === 1 ? 'saltó un punto de vigilancia' : `saltaron ${fmtNum(v.saltan, 0)} puntos de vigilancia`
+        }`,
+        texto: `${cruzados.length > 0 ? `${cruzados.join('; ')}. ` : ''}No es una orden de venta: es lo que dijiste que importaba al escribirla.`,
+        to: rutaCartera('tesis'),
+      })
+    } else if (v.sin_medir > 0) {
+      salida.push({
+        tono: 'ambar',
+        de: 'tesis',
+        clave: `tesis-${t.thesis_id}`,
+        titulo: `Tu tesis de ${t.symbol}: sin comprobar`,
+        texto: `${fmtNum(v.sin_medir, 0)} de sus ${fmtNum(v.total, 0)} puntos de vigilancia no se ${plural(v.sin_medir, 'ha', 'han')} podido medir.`,
+        to: rutaCartera('tesis'),
+      })
+    }
+  }
+  return salida
+}
+
+const ORDEN_DEL_TONO = { rojo: 0, naranja: 1, ambar: 2 } as const
+const ORDEN_DE_QUE = { posicion: 0, alerta: 1, tesis: 2 } as const
+
+export function atencionesDeInicio(
+  cartera: AtencionDeCartera,
+  alertas: PriceAlert[] | null,
+  tesis: VigilanciaResponse | null,
+): Atencion[] {
+  const lista: Atencion[] = cartera.repasada ? cartera.avisos.map(atencionDePosicion) : []
+  for (const a of alertas ?? []) {
+    if (!a.active) continue
+    if (a.triggered === true) {
+      lista.push({ tono: 'rojo', de: 'alerta', clave: `alerta-${a.id}`, titulo: `Saltó tu alerta de ${a.symbol}`, texto: a.motivo, to: rutaEmpresa(a.symbol) })
+    } else if (a.triggered === null) {
+      lista.push({ tono: 'ambar', de: 'alerta', clave: `alerta-${a.id}`, titulo: `Tu alerta de ${a.symbol}: sin comprobar`, texto: a.motivo, to: rutaCartera() })
+    }
+  }
+  if (tesis) lista.push(...atencionesDeTesis(tesis))
+  // Estable: dentro de cada tono, el orden de Explorar (y el de las alertas).
+  return lista.sort((x, y) => ORDEN_DEL_TONO[x.tono] - ORDEN_DEL_TONO[y.tono] || ORDEN_DE_QUE[x.de] - ORDEN_DE_QUE[y.de])
+}
+
+const PREFIJO: Record<Atencion['de'], (tono: Atencion['tono']) => string> = {
+  posicion: (tono) => (tono === 'ambar' ? 'Revisa: ' : 'Necesita tu atención: '),
+  alerta: () => 'Alerta de precio: ',
+  tesis: () => 'Revisa: ',
+}
+
+const MARCO: Record<Atencion['tono'], string> = {
+  rojo: 'border-red-200 bg-red-50',
+  naranja: 'border-orange-200 bg-orange-100',
+  ambar: 'border-amber-200 bg-amber-50',
+}
+
+function Atenciones({
+  cartera,
+  alertas,
+  tesis,
+}: {
+  cartera: CargaConReintento<Portfolio>
+  alertas: CargaConReintento<{ alerts: PriceAlert[] }>
+  tesis: CargaConReintento<VigilanciaResponse>
+}) {
+  if (cartera.estado === 'cargando') {
+    return (
+      <p role="status" className="text-sm text-slate-400">
+        Comprobando tu cartera…
+      </p>
+    )
+  }
+  if (cartera.estado === 'error') {
+    // No poder mirar no es «nada urgente».
+    return (
+      <div className="space-y-1">
+        <ErrorDeCarga que="tu cartera" error={cartera.error} reintentar={cartera.reintentar} />
+        <p className="text-sm text-amber-800">Ningún límite de pérdida se ha podido comprobar.</p>
+      </div>
+    )
+  }
+  const a = atencionDeCartera(cartera.datos)
+  const lista = atencionesDeInicio(
+    a,
+    alertas.estado === 'listo' ? alertas.datos.alerts : null,
+    tesis.estado === 'listo' ? tesis.datos : null,
+  )
+  // «Nada urgente» solo con TODO mirado: con las alertas aún sin llegar decía
+  // «Nada urgente» y al momento aparecía «Saltó tu alerta» en rojo (revisión 14).
+  const pendientes = [alertas.estado === 'cargando' && 'tus alertas de precio', tesis.estado === 'cargando' && 'tus tesis'].filter(
+    (x): x is string => typeof x === 'string',
+  )
+  const todoMirado = a.repasada && alertas.estado === 'listo' && tesis.estado === 'listo'
+  return (
+    <div className="space-y-2">
+      {lista.map((x) => (
+        <div key={x.clave} className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${MARCO[x.tono]}`}>
+          <div className="min-w-0 flex-1">
+            <div className={`text-sm font-semibold ${TONOS[x.tono].texto}`}>
+              {PREFIJO[x.de](x.tono)}
+              {x.titulo}
+            </div>
+            <p className="mt-0.5 text-sm leading-snug text-slate-700">{x.texto}</p>
+          </div>
+          <Link
+            to={x.to}
+            className="inline-flex min-h-11 items-center rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            Revisar
+          </Link>
+        </div>
+      ))}
+      {!a.repasada && <p className="text-sm text-amber-800">Ningún límite de pérdida se ha podido comprobar: {a.error}</p>}
+      {alertas.estado === 'error' && (
+        <p className="text-sm text-amber-800">Tus alertas de precio no se han podido comprobar ({alertas.error}).</p>
+      )}
+      {tesis.estado === 'error' && (
+        <p className="text-sm text-amber-800">Los puntos de vigilancia de tus tesis no se han podido comprobar ({tesis.error}).</p>
+      )}
+      {pendientes.length > 0 && (
+        <p role="status" className="text-sm text-slate-400">
+          Comprobando {pendientes.join(' y ')}…
+        </p>
+      )}
+      {a.repasada && a.avisos.some(deLaLista) && <NotaDeLaLista lista={a.lista} deLaLista />}
+      {todoMirado && lista.length === 0 && a.abiertas > 0 && <p className="text-sm text-slate-600">{nadaUrgente(a)}</p>}
+    </div>
+  )
+}
+
+/** Lo que se dice cuando nada necesita atención, sin afirmar de la regla lo que
+ *  no ha mirado: «la regla no manda vender ni reducir ninguna» solo de las que
+ *  la lista decide como posición, y con la lista caducada, de cuándo es esa
+ *  regla. Lo decía de SHOP.TO (fuera de la lista), de una posición abierta
+ *  después de calcularla, de las aún sin puntuar en una lista parcial y con la
+ *  lista de hace 5 días como si fuera de hoy (revisión 15, cartera H2 y
+ *  costuras H2). */
+export function nadaUrgente(a: Extract<AtencionDeCartera, { repasada: true }>): string {
+  if (a.lista === null) {
+    return 'Ningún límite de pérdida perforado. Sin la lista del día guardada no se ha mirado si la regla manda vender o reducir alguna.'
+  }
+  const { decididas, soloSuStop, vieja } = alcanceDeLaRegla(a)
+  const deCuando = vieja ? ` (según ${vieja}: Explorar la recalcula)` : ''
+  if (soloSuStop === null) {
+    return `Nada urgente: todas tus posiciones siguen por encima de su límite de pérdida y la regla no manda vender ni reducir ninguna${deCuando}.`
+  }
+  const regla =
+    decididas === 0
+      ? ' La regla de la lista no ha decidido sobre ninguna.'
+      : decididas === 1
+        ? ` La regla no manda vender ni reducir la única que decide la lista${deCuando}.`
+        : ` La regla no manda vender ni reducir ninguna de las ${fmtNum(decididas, 0)} que decide la lista${deCuando}.`
+  return `Ningún límite de pérdida perforado: todas tus posiciones siguen por encima.${regla} ${soloSuStop}`
+}
+
+const simbolosDe = (filas: { symbol: string }[]) => [...new Set(filas.map((f) => f.symbol))]
+
+/** «· valor 18.000,00 USD, sin contar SHOP.TO (sin precio)». El total es el de
+ *  las posiciones con precio y convertidas (`portfolio_summary`): Inicio lo daba
+ *  como el de toda la cartera, y Mi cartera sí decía que una quedaba fuera
+ *  (revisión 14). Ausente ≠ cero: lo que no se suma se nombra. */
+export function valorDeLaCartera(c: Portfolio): string {
+  const base = c.divisas?.base
+  if (!base) return ''
+  const total = c.summary.total_market_value
+  const sinPrecio = simbolosDe(c.positions.filter((p) => p.price === null))
+  const sinConvertir = simbolosDe(c.positions.filter((p) => p.price !== null && p.market_value_base === null))
+  const fuera = [
+    sinPrecio.length > 0 && `${sinPrecio.join(', ')} (sin precio)`,
+    sinConvertir.length > 0 && `${sinConvertir.join(', ')} (sin convertir)`,
+  ].filter((x): x is string => typeof x === 'string')
+  if (total === null || total === undefined) {
+    // RY.TO con precio y sin tipo de cambio decía «ninguna tiene precio de hoy»:
+    // tiene precio, lo que falta es convertirlo (revisión 15, cartera H3).
+    if (sinConvertir.length === 0) return ' · valor desconocido: ninguna tiene precio de hoy'
+    return ` · valor desconocido: ${fuera.join(' ni ')}`
+  }
+  const viejos = c.summary.precios_viejos ?? []
+  return (
+    ` · valor ${fmtDinero(total, base)}` +
+    (fuera.length > 0 ? `, sin contar ${fuera.join(' ni ')}` : '') +
+    (viejos.length > 0 ? `; con precio viejo en ${viejos.join(', ')}` : '')
+  )
+}
+
+/** Tu cartera, una fila por SÍMBOLO con el verbo de Explorar (`AvisoDeAccion`,
+ *  el mismo de su fila allí): contaba los LOTES («2 posiciones abiertas») y
+ *  pintaba KO dos veces, «Por debajo de su límite» y «En orden» a la vez
+ *  (revisión 14). */
+function TuCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }) {
+  return (
+    <BloqueDatos carga={cartera} que="tu cartera">
+      {(c) => {
+        if (c.positions.length === 0) {
+          return (
+            <div className="space-y-2 text-sm text-slate-600">
+              <p>Todavía no has anotado ninguna posición.</p>
+              <p>
+                Cuando compres algo, anótalo en{' '}
+                <Link to={rutaCartera()} className="font-medium text-sky-700 hover:underline">
+                  Mi cartera
+                </Link>{' '}
+                y la app vigilará su límite de pérdida.
+              </p>
+            </div>
+          )
+        }
+        const a = atencionDeCartera(c)
+        const enlace = (symbol: string) => (
+          <Link to={rutaEmpresa(symbol)} className="inline-flex min-h-11 items-center font-semibold text-slate-900 hover:underline">
+            {symbol}
+          </Link>
+        )
+        return (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              {a.abiertas} {plural(a.abiertas, 'posición abierta', 'posiciones abiertas')}
+              {valorDeLaCartera(c)}
+            </p>
+            <ul className="space-y-1.5">
+              {a.repasada
+                ? a.posiciones.map((x) => (
+                    <li key={x.symbol} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-3">
+                      {enlace(x.symbol)}
+                      <span className="flex flex-wrap items-center justify-end gap-x-2 text-right">
+                        {/* «Mantener» de una que la regla no ha mirado se leía como «tu
+                            regla dice mantener»: de ella solo se ha mirado el stop
+                            (revisión 15, cartera H2). */}
+                        {!decidida(x) && x.aviso.tipo === 'mantener' && (
+                          <span className="text-xs text-slate-500" title={porQueSoloSuStop(x, a.lista)}>
+                            solo su límite de pérdida
+                          </span>
+                        )}
+                        <AvisoDeAccion aviso={x.aviso} tamano="compacto" conFrase={false} />
+                      </span>
+                    </li>
+                  ))
+                : a.simbolos.map((symbol) => (
+                    <li key={symbol} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-3">
+                      {enlace(symbol)}
+                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${TONOS.ambar.chip}`}>{etiqueta('sin_comprobar')}</span>
+                    </li>
+                  ))}
+            </ul>
+          </div>
+        )
+      }}
+    </BloqueDatos>
+  )
+}
+
+/** S&P 500, Nasdaq 100 y el VIX, si están; si no, los tres primeros que lleguen. */
+export function indicesDeInicio(lista: IndexEntry[]): IndexEntry[] {
+  const preferidos = ['SPY', 'QQQ']
+  const elegidos = preferidos.map((s) => lista.find((i) => i.symbol === s)).filter((i): i is IndexEntry => !!i)
+  const vix = lista.find((i) => /VIX/i.test(i.symbol) || /VIX/i.test(i.label))
+  if (vix) elegidos.push(vix)
+  for (const i of lista) if (elegidos.length < 3 && !elegidos.includes(i)) elegidos.push(i)
+  return elegidos.slice(0, 3)
+}
+
+/** El sector que más sube y el que más baja, solo entre los que tienen dato. */
+export function extremosDeSectores(lista: SectorEntry[]): { sube: SectorEntry; baja: SectorEntry } | null {
+  const con = lista.filter((s) => s.change_pct !== null)
+  if (con.length < 2) return null
+  const orden = [...con].sort((a, b) => (b.change_pct as number) - (a.change_pct as number))
+  return { sube: orden[0], baja: orden[orden.length - 1] }
+}
+
+function Mercado({ indices, sectores }: { indices: CargaConReintento<IndexEntry[]>; sectores: CargaConReintento<SectorEntry[]> }) {
+  return (
+    <div className="space-y-3">
+      <BloqueDatos carga={indices} que="los índices" vacio={(d) => d.length === 0} mensajeVacio="Ninguna fuente devolvió índices.">
+        {(lista) => {
+          const elegidos = indicesDeInicio(lista)
+          return (
+            <>
+              <div className="grid grid-cols-3 gap-2">
+                {elegidos.map((ix) => (
+                  <div key={ix.symbol} className="rounded-xl bg-slate-100 px-3 py-2.5">
+                    <div className="text-xs text-slate-500">{ix.label}</div>
+                    <div className="text-lg font-semibold tabular-nums text-slate-900">
+                      {ix.quote ? fmtPrecio(ix.quote.price) : '—'}
+                    </div>
+                    <div className="text-sm">
+                      <ChangeChip pct={ix.quote?.change_pct} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {elegidos.some((i) => /VIX/i.test(i.symbol) || /VIX/i.test(i.label)) && (
+                <p className="text-xs text-slate-500">
+                  El VIX es el «índice del miedo»: mide cuánto esperan que se mueva la bolsa; cuanto más alto, más nervios.
+                </p>
+              )}
+              <Procedencia quotes={elegidos.map((i) => i.quote)} className="text-[11px] text-slate-400" />
+            </>
+          )
+        }}
+      </BloqueDatos>
+      <BloqueDatos carga={sectores} que="los sectores" vacio={(d) => extremosDeSectores(d) === null} mensajeVacio="Sin dato de sectores.">
+        {(lista) => {
+          const e = extremosDeSectores(lista)!
+          const linea = (rotulo: string, s: SectorEntry) => {
+            const texto = fmtPct(s.change_pct, 2, { signo: true, enPuntos: true })
+            const tono = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' }[signoLeido(texto)]
+            return (
+              <div className="text-sm">
+                <span className="text-slate-500">{rotulo}</span> {s.label} <span className={`tabular-nums ${tono}`}>{texto}</span>
+              </div>
+            )
+          }
+          return (
+            <div className="space-y-1">
+              {linea('Sector que más sube:', e.sube)}
+              {linea('Sector que más baja:', e.baja)}
+            </div>
+          )
+        }}
+      </BloqueDatos>
+    </div>
+  )
+}
+
+type Idea = NonNullable<TodayResponse['shortlist']>['ideas'][number]
+
+/** Una idea de la lista corta con el mismo aviso que en Explorar
+ *  (`AvisoDeAccion`): «Comprar» con sus precios y su tamaño, o «Sin sitio»
+ *  cuando la cartera no deja tamaño. Antes decía «Comprar» aunque el tamaño
+ *  fuera 0 (petición del 24 nov: alertas de compra y venta más claras).
+ *
+ *  Con el aviso de su fila (`avisoDeLaFila`: su tamaño y, si ya la tienes, el
+ *  repaso de su stop): comprada DESPUÉS de calcular la lista, la tarjeta
+ *  seguía diciendo «Comprar… Tamaño sugerido: 7,8 %», un tamaño calculado sin
+ *  esa posición (revisión 14). Con el repaso, es una posición: su stop manda.
+ *
+ *  El repaso, el de «Tu cartera» en esta misma página (`/api/portfolio`, pedido
+ *  en cada montaje) cuando ha llegado: el que viaja con la lista compartida
+ *  puede ser de antes de anotar la compra (la lista de hace menos de un minuto no
+ *  se vuelve a pedir, y la de ahora tarda), y la tarjeta decía «Comprar… 7,8 %»
+ *  de HSY con «Tu cartera» diciendo «Mantener» (revisión 15, costuras H3). */
+function TarjetaIdea({ idea, datos, repaso }: { idea: Idea; datos: TodayResponse; repaso: RepasoDeCartera | undefined }) {
+  const variacion = idea.price ? fmtPct(idea.price.change_pct, 2, { signo: true, enPuntos: true }) : ''
+  const tono = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' }[signoLeido(variacion)]
+  const aviso = avisoDeLaFila(idea, { shortlist: datos.shortlist, cartera: carteraRepasada(repaso) ? repaso : datos.cartera })
+  return (
+    <li className="flex flex-col gap-3 rounded-xl bg-slate-100 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-semibold text-slate-900">
+            {idea.symbol} <span className="font-normal text-slate-500">{idea.context.name}</span>
+          </div>
+          <div className="text-xs text-slate-400">{idea.context.sector_name}</div>
+        </div>
+        {idea.price && (
+          <div className="shrink-0 text-right">
+            <div className="font-semibold tabular-nums text-slate-900">{fmtPrecio(idea.price.last)}</div>
+            <div className={`text-xs tabular-nums ${tono}`}>{variacion}</div>
+          </div>
+        )}
+      </div>
+      <AvisoDeAccion aviso={aviso} />
+      {idea.conviction.resumen && <p className="text-sm leading-snug text-slate-700">{idea.conviction.resumen}</p>}
+      <Link to={rutaEmpresa(idea.symbol)} className="mt-auto inline-flex min-h-11 items-center text-sm font-semibold text-sky-700 hover:underline">
+        Ver por qué →
+      </Link>
+    </li>
+  )
+}
+
+/** Cuántas ideas hay, sin convertir «no se sabe» en «ninguna»: sin lista corta
+ *  (`?? []`) decía «Hoy ninguna empresa cumple…», el `?? 0` que Explorar ya
+ *  corrigió; y con la lista a medias, «ninguna» de las analizadas no es ninguna
+ *  de todas (revisión 14). */
+function SinIdeas({ datos }: { datos: TodayResponse }) {
+  if (!datos.shortlist) {
+    return (
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        Esta respuesta no trae la lista corta de ideas, así que no se puede decir cuántas hay: no es lo mismo que ninguna.
+        Mira la lista completa.
+      </p>
+    )
+  }
+  if (datos.complete === false) {
+    return (
+      <p className="text-sm text-slate-600">
+        De momento ninguna entre las {fmtNum(datos.scored, 0)} de {fmtNum(datos.requested, 0)} empresas analizadas: la
+        lista aún no está completa.
+      </p>
+    )
+  }
+  return <p className="text-sm text-slate-600">Hoy ninguna empresa cumple todas las condiciones de compra. No comprar también es una decisión.</p>
+}
+
+function IdeasAcciones({ lista, repaso }: { lista: ListaDiaria; repaso: RepasoDeCartera | undefined }) {
+  // La misma lista que Explorar, compartida (`useListaDiaria`): abrir Inicio y
+  // luego Explorar no repite la puntuación. Con una lista guardada de horas
+  // atrás se enseña al momento con su antigüedad y la nueva la sustituye.
+  const d = lista.data
+  if (!d) {
+    return (
+      <div className="space-y-2">
+        <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
+        {lista.error && <ErrorDeCarga que="las ideas de hoy" error={lista.error.mensaje} reintentar={lista.error.reintentar} />}
+      </div>
+    )
+  }
+  const ideas = (d.shortlist?.ideas ?? []).slice(0, 3)
+  return (
+    <div className="space-y-3">
+      <ProgresoAnalisis lista={lista} onSeguir={lista.seguirCompletando} />
+      {lista.error && <ErrorDeCarga que="la lista de hoy" error={lista.error.mensaje} reintentar={lista.error.reintentar} />}
+      {/* Como en Explorar: una idea comprada después de calcular la lista ya no es una idea. */}
+      {d.lista_desfasada && (
+        <AvisoListaDesfasada cambios={d.lista_desfasada} calculada={d.as_of} recalcular="Explorar la recalcula con «Actualizar»." />
+      )}
+      {ideas.length === 0 ? (
+        <SinIdeas datos={d} />
+      ) : (
+        <ul className="grid gap-3 lg:grid-cols-3">
+          {ideas.map((i) => (
+            <TarjetaIdea key={i.symbol} idea={i} datos={d} repaso={repaso} />
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+        <p className="max-w-2xl text-xs leading-relaxed text-slate-500">
+          Cómo elige: puntúa cada empresa frente a las de su sector en valor, calidad y tendencia del precio, y solo
+          sugiere comprar si acompañan. No predice precios.
+        </p>
+        <Link to={rutaExplorar()} className="inline-flex min-h-11 items-center text-sm font-semibold text-sky-700 hover:underline">
+          Ver la lista completa →
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/** Para ETFs no hay una lista del día (no hay universo de ETFs que puntuar):
+ *  se explica qué son y se lleva al comparador con los que elija el usuario. */
+function IdeasEtfs() {
+  const navigate = useNavigate()
+  const [texto, setTexto] = useState('')
+  const { simbolos, descartados } = listaDeSimbolos(texto, MAX_ETFS)
+  const enviar = (e: FormEvent) => {
+    e.preventDefault()
+    if (simbolos.length === 0) return
+    // Todo lo escrito, también lo que no cabe: el comparador lo pone en su campo
+    // y nombra los que quedan fuera. Con solo los cuatro primeros, el quinto
+    // desaparecía sin que nada lo dijera (revisión 14; el `.slice(0, 4)` que la
+    // revisión 12 quitó del comparador).
+    void navigate(`${rutaExplorar({ tipo: 'etfs' })}&simbolos=${encodeURIComponent([...simbolos, ...descartados].join(','))}`)
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm leading-relaxed text-slate-700">
+        Un ETF es una cesta de muchas acciones que se compra de una vez: la forma más sencilla de diversificar. La app
+        compara los que le digas por lo que cuestan cada año, si su tendencia acompaña, su tamaño y cuántas empresas
+        comparten entre sí.
+      </p>
+      <form onSubmit={enviar} className="flex flex-wrap gap-2">
+        <label htmlFor="etfs-inicio" className="sr-only">
+          ETFs que quieres comparar
+        </label>
+        <input
+          id="etfs-inicio"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Hasta 4, separados por comas: SPY, QQQ, VTI"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
+        />
+        <button
+          type="submit"
+          disabled={simbolos.length === 0}
+          className="min-h-11 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+        >
+          Comparar
+        </button>
+      </form>
+      {descartados.length > 0 && (
+        <p className="text-xs text-amber-800">
+          Se comparan {MAX_ETFS} a la vez: {descartados.join(', ')} {plural(descartados.length, 'queda', 'quedan')} fuera.
+          En el comparador puedes elegir cuáles entran.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Ideas({ lista, repaso }: { lista: ListaDiaria; repaso: RepasoDeCartera | undefined }) {
+  const [tipo, setTipo] = useState<'acciones' | 'etfs'>('acciones')
+  return (
+    <section aria-labelledby="ideas-t" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="ideas-t" className="text-lg font-semibold text-slate-900">
+            Ideas para invertir hoy
+          </h2>
+          <p className="text-sm text-slate-500">Las mejor situadas frente a sus comparables. Son reglas escritas, no predicciones.</p>
+        </div>
+        <div role="group" aria-label="Tipo de inversión" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">
+          {(['acciones', 'etfs'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-pressed={tipo === t}
+              onClick={() => setTipo(t)}
+              className={`min-h-11 rounded-lg px-4 text-sm font-semibold ${
+                tipo === t ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t === 'acciones' ? 'Acciones' : 'ETFs'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tipo === 'acciones' ? <IdeasAcciones lista={lista} repaso={repaso} /> : <IdeasEtfs />}
+    </section>
+  )
+}
+
+/** Los resultados de tu cartera en el calendario de dos semanas.
+ *
+ *  El backend sirve los 120 eventos más próximos y `total` dice cuántos había:
+ *  en temporada de resultados, con 900, «ninguna empresa de tu cartera
+ *  presenta» era una afirmación sobre lo que no se había mirado. Mientras la
+ *  cartera carga, se dice que carga: decía «Sin tu cartera no se puede saber…»
+ *  con «Comprobando tu cartera…» justo encima (revisión 14). */
+function ProximosDias({ cartera, calendario }: { cartera: CargaConReintento<Portfolio>; calendario: CargaConReintento<CalendarioMercado> }) {
+  return (
+    <div className="space-y-2 text-sm text-slate-700">
+      <BloqueDatos carga={calendario} que="el calendario de resultados">
+        {(c) => {
+          if (c.error != null || c.events == null) {
+            return <p className="text-amber-800">El calendario de resultados no respondió: no se sabe quién presenta.</p>
+          }
+          if (cartera.estado === 'cargando') return <p className="text-slate-400">Comprobando cuáles son de tu cartera…</p>
+          if (cartera.estado === 'error') {
+            return <p className="text-slate-500">Sin tu cartera no se puede saber cuáles de estos resultados son tuyos.</p>
+          }
+          const mias = new Set(cartera.datos.positions.map((p) => p.symbol))
+          const tuyos = c.events.filter((e) => mias.has(e.symbol))
+          const recortado = c.total != null && c.total > c.events.length
+          const deCuantos = recortado
+            ? `el calendario solo trae los ${fmtNum(c.events.length, 0)} más próximos de ${fmtNum(c.total, 0)}`
+            : ''
+          if (tuyos.length === 0) {
+            return recortado ? (
+              <p>
+                <b className="text-slate-900">Resultados:</b> {deCuantos}; entre ellos no hay ninguno de tu cartera, pero no
+                se puede asegurar para las próximas dos semanas.
+              </p>
+            ) : (
+              <p>
+                <b className="text-slate-900">Resultados:</b> ninguna empresa de tu cartera presenta cuentas en el calendario
+                de las próximas dos semanas.
+              </p>
+            )
+          }
+          return (
+            <>
+              <ul className="space-y-1">
+                {tuyos.map((e) => (
+                  <li key={`${e.symbol}-${e.date}`}>
+                    <b className="text-slate-900">{e.symbol}</b> presenta resultados el {fmtFecha(e.date)}.
+                  </li>
+                ))}
+              </ul>
+              {recortado && <p className="text-xs text-slate-500">Puede haber más: {deCuantos}.</p>}
+            </>
+          )
+        }}
+      </BloqueDatos>
+      {/* Las noticias generales del mercado: decía «de tus empresas» y la página
+          no lee la cartera (revisión 14). */}
+      <Link to={RUTAS.noticias} className="inline-flex min-h-11 items-center font-semibold text-sky-700 hover:underline">
+        Noticias del mercado →
+      </Link>
+    </div>
+  )
+}
+
+export function InicioPage() {
+  const [verGuia, setVerGuia] = useState(() => !guiaOculta())
+  const cartera = useDato(() => api.portfolio(), 'inicio-cartera')
+  const alertas = useDato(() => api.alerts(), 'inicio-alertas')
+  const tesis = useDato(() => api.vigilancia(), 'inicio-tesis')
+  const indices = useDato(() => api.marketOverview().then((d) => d.indices), 'inicio-indices')
+  const sectores = useDato(() => api.marketSectors().then((d) => d.sectors), 'inicio-sectores')
+  const calendario = useDato(() => api.calendar(), 'inicio-calendario')
+  const lista = useListaDiaria(MERCADO)
+
+  // El estado de cada posición sale del repaso de `/api/portfolio`, el de
+  // Explorar con la lista GUARDADA (una fuente para las tres pantallas; ver
+  // `atencionDeCartera`). Si la lista de aquí arriba es otra —la de ahora
+  // sustituye a la caducada, o termina una pasada—, la cartera se vuelve a pedir
+  // una vez por lista: sin esto, Inicio decía de una posición lo que decía la
+  // lista de ayer mientras la tarjeta de ideas enseñaba la de hoy.
+  const asOfLista = lista.data?.as_of
+  const asOfRepaso = cartera.estado === 'listo' ? (cartera.datos.repaso?.lista?.as_of ?? null) : undefined
+  const refrescarCartera = cartera.refrescar
+  const pedidaCon = useRef<string | null>(null)
+  useEffect(() => {
+    if (!asOfLista || asOfRepaso === undefined || asOfRepaso === asOfLista || pedidaCon.current === asOfLista) return
+    pedidaCon.current = asOfLista
+    refrescarCartera()
+  }, [asOfLista, asOfRepaso, refrescarCartera])
+
+  const ocultarGuia = () => {
+    setVerGuia(false)
+    try {
+      window.localStorage.setItem(CLAVE_GUIA, '1')
+      // eslint-disable-next-line no-restricted-syntax -- sin almacenamiento (ventana privada) se oculta solo esta vez; no hay nada que avisar.
+    } catch {
+      // Nada: la guía ya está oculta en esta visita.
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Tu día en la bolsa</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">
+          Lo importante en una página: si algo de tu cartera necesita atención, qué ideas hay para invertir y cómo está
+          el mercado. Toca cualquier tarjeta para ver el detalle.
+        </p>
+      </header>
+
+      {verGuia && <Guia ocultar={ocultarGuia} />}
+
+      <Atenciones cartera={cartera} alertas={alertas} tesis={tesis} />
+
+      <Ideas lista={lista} repaso={cartera.estado === 'listo' ? cartera.datos.repaso : undefined} />
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Tarjeta titulo="Tu cartera" id="cartera-t" enlace={{ to: rutaCartera(), texto: 'Ver mi cartera' }}>
+          <TuCartera cartera={cartera} />
+        </Tarjeta>
+        <Tarjeta titulo="El mercado hoy" id="mercado-t" enlace={{ to: RUTAS.mercado, texto: 'Ver más' }}>
+          <Mercado indices={indices} sectores={sectores} />
+        </Tarjeta>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Lo que la IA dice va aparte y etiquetado; solo usa lo ya calculado. */}
+        <PreguntaIA mercado={MERCADO} />
+        <Tarjeta titulo="Próximos días" id="proximos-t">
+          <ProximosDias cartera={cartera} calendario={calendario} />
+        </Tarjeta>
+      </div>
+
+      <p className="text-xs leading-relaxed text-slate-400">
+        Herramienta personal: sugiere a partir de reglas escritas y datos con su fuente y su fecha. No es asesoría
+        financiera ni predice precios; la decisión es tuya.
+      </p>
+    </div>
+  )
+}

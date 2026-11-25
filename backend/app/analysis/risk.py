@@ -50,3 +50,23 @@ def max_drawdown(closes: pd.Series) -> dict | None:
         "peak": str(closes.index[peak_pos]),
         "trough": str(closes.index[trough_pos]),
     }
+
+
+def ventana(closes: pd.Series, pedidas: int) -> dict:
+    """La ventana REAL de las métricas: cuántas sesiones hay, desde cuándo y si
+    llega a las `pedidas`.
+
+    El endpoint de riesgo rotulaba «1Y (barras diarias)», fijo y en inglés: no
+    decía desde cuándo había serie (la de ACME empezaba el 26 dic 2025) ni
+    avisaba de un histórico de menos de un año bajo beta y drawdown «(1A)»
+    (revisión 12, visual). Es la regla de `Ventana` en el frontend para los
+    CAGR: una cifra con una ventana más corta que la nominal lo dice.
+    """
+    sesiones = len(closes)
+    return {
+        "sesiones": sesiones,
+        "pedidas": pedidas,
+        "desde": str(closes.index[0]) if sesiones else None,
+        "hasta": str(closes.index[-1]) if sesiones else None,
+        "parcial": sesiones < pedidas,
+    }

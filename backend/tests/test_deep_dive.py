@@ -331,3 +331,122 @@ def test_el_prompt_del_informe_da_a_la_ia_la_ventana_real():
 
     texto = _narrative_prompt("ACME", {"growth": {"years": 2, "revenue_cagr": 0.1, "eps_cagr": 0.1, "fcf_cagr": None}})
     assert "CAGR ingresos 2A" in texto and "CAGR BPA 2A" in texto and "5A" not in texto
+
+
+# ---------------------------------------------------------------------------
+# Revisión 12 (visual): lo que no se pudo comprobar, lo anual y las fechas
+# ---------------------------------------------------------------------------
+
+
+def test_lo_que_no_se_pudo_comprobar_no_se_lee_como_nada_en_contra():
+    """El recuadro verde decía «En contra: sin señales de alarma en los datos» sin
+    valoración frente a su historia, sin cobertura de intereses y sin Altman Z:
+    «no se pudo comprobar» se leía como «nada en contra»."""
+    verdict = build_verdict(
+        None, {"cheapness_score": None}, {"revenue_cagr": 0.10},
+        {"interest_coverage": None, "altman_z": {"score": None, "zone": None}},
+        {"current": {"operating_margin": 0.21}, "trends": {"operating_margin": None}, "ejercicio": "2025"},
+    )
+    # La postura sale de lo comprobado, como antes: eso no cambia aquí.
+    assert verdict["stance"] == "constructiva"
+    assert verdict["sin_comprobar"] == [
+        "valoración frente a su historia", "tendencia del margen operativo", "cobertura de intereses", "Altman Z",
+    ]
+    assert "sin señales de alarma" not in verdict["summary"]
+    assert "En contra: nada entre lo que se pudo comprobar." in verdict["summary"]
+    assert verdict["summary"].endswith(
+        "Sin comprobar por falta de datos: valoración frente a su historia, tendencia del margen "
+        "operativo, cobertura de intereses y Altman Z."
+    )
+    # Con todo comprobado y nada en contra, sí se puede decir.
+    completo = build_verdict(
+        None, {"cheapness_score": 0.5}, {"revenue_cagr": 0.10},
+        {"interest_coverage": 12.0, "altman_z": {"zone": "segura"}},
+        {"current": {"operating_margin": 0.21}, "trends": {"operating_margin": "estable"}},
+    )
+    assert completo["sin_comprobar"] == []
+    assert "En contra: sin señales de alarma en los datos." in completo["summary"]
+
+
+def test_el_margen_del_informe_dice_que_es_anual_y_de_que_ejercicio():
+    """«Margen operativo del 21,0 %: márgenes sólidos» no decía que era el del
+    ejercicio, y «Qué cambió» enseñaba al lado un trimestre al 12,0 %."""
+    margenes = margins_section(derive_ratio_series(_periods(6)))
+    assert margenes["ejercicio"] == "2023"
+    assert margenes["reading"].startswith("Margen operativo anual del 20,0 % (ejercicio 2023): márgenes sólidos")
+    verdict = build_verdict(None, {}, {}, {}, margenes)
+    assert "margen operativo anual del 20,0 % (ejercicio 2023)" in verdict["positives"]
+    assert verdict["alcance"] == (
+        "Lectura del ejercicio anual 2023 y de la valoración frente a su propia historia. No entran "
+        "los trimestres publicados después ni el DCF precargado de más abajo."
+    )
+
+
+def test_un_umbral_de_riesgo_sin_dato_no_cuenta_como_comprobado():
+    """«Ninguno de los umbrales del modelo se dispara» con la deuda/capital, la
+    cobertura y la valoración frente a su historia sin calcular."""
+    from app.analysis.deep_dive import assemble
+
+    periods = _periods(2)
+    for p in periods:
+        for clave in ("long_term_debt", "short_term_debt", "interest_expense", "equity"):
+            p.pop(clave)
+    informe = assemble("ACME", {}, {"periods": periods}, {"cheapness_score": None},
+                       None, None, None, [], [], [], None)
+    assert informe["risks"] == []
+    assert informe["riesgos_sin_comprobar"] == [
+        "deuda/capital", "cobertura de intereses", "tendencia del margen operativo",
+        "valoración frente a su historia", "máxima caída del último año",
+    ]
+
+
+def test_los_catalizadores_dicen_su_ventana_y_si_ya_pasaron():
+    """«Catalizadores próximos (6-18 meses)» encabezaba unos resultados a 24 días
+    y los últimos filings, que ya se habían presentado."""
+    from app.analysis.deep_dive import assemble
+    from app.routers.deep_dive import NARRATIVE_SYSTEM, _narrative_prompt
+
+    informe = assemble("ACME", {}, {"periods": []}, {}, None, None, None,
+                       [{"date": "2026-10-06", "eps_estimate": 0.52}],
+                       [{"type": "10-Q", "filed_at": "2026-08-01", "url": "https://example.com/q"}], [], None)
+    assert informe["catalysts_note"] == (
+        "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC."
+    )
+    assert "6-18" not in NARRATIVE_SYSTEM
+    texto = _narrative_prompt("ACME", informe)
+    assert "Resultados (previsto el 6 oct 2026)" in texto
+    assert "10-Q (presentado el 1 ago 2026)" in texto
+    assert "CATALIZADORES PRÓXIMOS" not in texto
+
+
+def test_el_prompt_de_la_ia_sabe_lo_que_no_se_comprobo():
+    """La IA recibía «En contra: ninguno» con medio informe sin calcular."""
+    from app.routers.deep_dive import _narrative_prompt
+
+    verdict = build_verdict(None, {}, {"revenue_cagr": 0.10}, {}, {"current": {"operating_margin": 0.21}})
+    texto = _narrative_prompt("ACME", {"verdict": verdict})
+    assert "Sin comprobar por falta de datos (no cuentan ni a favor ni en contra): valoración frente a su historia" in texto
+    assert "Alcance: Lectura del último ejercicio anual" in texto
+
+
+def test_una_serie_sin_un_solo_punto_dice_que_dato_falta():
+    """«Solo 0 observaciones (mínimo 12)» en el P/B decía que faltaba historia,
+    cuando lo que faltaba era el patrimonio: el P/E tenía su serie."""
+    periods = _periods(6)
+    for p in periods:
+        p.pop("equity")
+    filings = [{"type": "10-K", "filed_at": f"{2019 + i}-02-15"} for i in range(6)]
+    result = valuation_vs_history(periods, filings, _bars(date(2019, 1, 1), 1500, 40.0), 40.0)
+    pb = result["multiples"]["pb"]
+    assert pb["available"] is False and pb["n"] == 0
+    assert pb["reason"] == (
+        "Sin observaciones: a los ejercicios publicados en esas fechas les falta el patrimonio "
+        "neto (positivo) o el número de acciones."
+    )
+    assert result["multiples"]["pe"]["available"] is True
+    # Sin precios no es que falte un dato del ejercicio.
+    sin_precios = valuation_vs_history(periods, filings, [], 40.0)
+    assert sin_precios["multiples"]["pe"]["reason"].startswith("Sin observaciones: no hay histórico de precios")
+    # Ni con precios de antes de cualquier ejercicio publicado.
+    antes = valuation_vs_history(periods, filings, _bars(date(2010, 1, 1), 400, 40.0), 40.0)
+    assert "aún no había ningún ejercicio publicado" in antes["multiples"]["pe"]["reason"]

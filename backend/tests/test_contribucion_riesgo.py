@@ -178,6 +178,52 @@ def test_el_endpoint_con_la_cartera_de_la_base(session_factory):
     assert r["cobertura_peso"] == pytest.approx(1.0)  # CAD1 y NOPRICE no tienen peso medible
 
 
+def test_con_la_cartera_vacia_no_habla_de_posiciones_sin_datos(session_factory):
+    """Revisión 12, visual: sin ninguna posición, la contribución decía «Ninguna
+    posición abierta tiene precio y moneda conocidos», como si las hubiera sin
+    datos, y Cartera ofrecía descargar el histórico de nada. Las dos respuestas
+    dicen ahora `sin_posiciones`; con una posición sin precio no lo dicen."""
+    from datetime import datetime, timezone
+
+    from fastapi.testclient import TestClient
+
+    from app.db.engine import get_session
+    from app.db.models import Instrument, Position
+    from app.deps import get_service
+    from app.main import app
+    from tests.fakes_empresa import ServicioFalso
+
+    ahora = datetime(2026, 9, 12, tzinfo=timezone.utc)
+
+    def override():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = override
+    app.dependency_overrides[get_service] = lambda: ServicioFalso(ahora)
+    try:
+        c = TestClient(app)
+        vacia = c.get("/api/portfolio/contribucion").json()
+        riesgo = c.get("/api/portfolio/riesgo?descargar=false").json()
+        with session_factory() as s:
+            inst = Instrument(symbol="NOPRICE", currency="USD")
+            s.add(inst)
+            s.commit()
+            s.add(Position(instrument_id=inst.id, quantity=1, cost_basis=10.0, opened_at=ahora - timedelta(days=3)))
+            s.commit()
+        sin_precio = c.get("/api/portfolio/contribucion").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert vacia["sin_posiciones"] is True and vacia["disponible"] is False
+    assert "Ninguna posición abierta tiene precio" not in vacia["nota"]
+    assert "No hay posiciones abiertas" in vacia["nota"]
+    assert riesgo["sin_posiciones"] is True
+    assert "sin_posiciones" not in sin_precio and "Ninguna posición abierta tiene precio" in sin_precio["nota"]
+
+
 def test_el_analisis_de_empresa_dice_cuanto_riesgo_aporta_o_aportaria(session_factory):
     from datetime import datetime, timezone
 

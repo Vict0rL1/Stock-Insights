@@ -23,6 +23,12 @@ function tonoDe(symbol: string): string {
   return TONOS[suma % TONOS.length]
 }
 
+// Los símbolos cuyo logo ya falló en esta sesión. Un remontaje (el de
+// `BloqueDatos` al refrescar tras una acción, por ejemplo) volvía a pedir cada
+// logo inexistente, y ese 404 no lo guarda el navegador (tercera pasada de la
+// revisión del 2.1).
+const SIN_LOGO = new Set<string>()
+
 const TAMAÑOS = {
   sm: { caja: 'h-5 w-5', texto: 'text-[9px]', radio: 'rounded' },
   md: { caja: 'h-8 w-8', texto: 'text-[11px]', radio: 'rounded-md' },
@@ -49,9 +55,9 @@ export function CompanyLogo({
   size?: keyof typeof TAMAÑOS
   className?: string
 }) {
-  const [falló, setFalló] = useState(false)
-  const t = TAMAÑOS[size]
   const limpio = (symbol || '').trim().toUpperCase()
+  const [falló, setFalló] = useState(() => SIN_LOGO.has(limpio))
+  const t = TAMAÑOS[size]
   const iniciales = limpio.slice(0, 2) || '?'
 
   if (falló || !limpio) {
@@ -72,7 +78,10 @@ export function CompanyLogo({
       alt=""
       aria-hidden="true"
       loading="lazy"
-      onError={() => setFalló(true)}
+      onError={() => {
+        SIN_LOGO.add(limpio)
+        setFalló(true)
+      }}
       className={`shrink-0 bg-white object-contain ${t.caja} ${t.radio} ${className}`}
     />
   )

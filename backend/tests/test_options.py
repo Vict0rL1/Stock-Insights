@@ -103,7 +103,7 @@ def test_la_basura_se_filtra_y_se_dice_por_que():
     assert len(limpios) == 1
     assert calidad["descartados"] == 4
     assert set(calidad["motivos"]) == {"iv_absurda", "horquilla", "sin_cruce_reciente", "sin_precio"}
-    assert "300 %" in calidad["nota"]
+    assert "300\u00a0%" in calidad["nota"]  # con espacio duro (revisión del 2.12)
 
 
 def test_una_cadena_ilíquida_no_produce_señales():

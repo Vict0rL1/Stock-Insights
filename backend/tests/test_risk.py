@@ -58,3 +58,47 @@ def test_max_drawdown_tolera_fechas_duplicadas():
     )
     result = max_drawdown(closes)
     assert result["max_drawdown"] == pytest.approx(-1 / 3)  # 80/120 − 1
+
+
+# --- Revisión 12, visual: la ventana de las métricas de riesgo ---------------
+#
+# El endpoint rotulaba «1Y (barras diarias)», fijo y en inglés: no decía desde
+# cuándo había serie (la de ACME, desde el 26 dic 2025) ni marcaba «parcial» un
+# histórico de menos de un año bajo beta y drawdown «(1A)».
+
+
+def test_ventana_dice_cuantas_sesiones_hay_y_si_es_parcial():
+    from app.analysis.risk import ventana
+
+    closes = pd.Series([1.0, 2.0, 3.0], index=["2025-12-26", "2025-12-29", "2025-12-30"])
+    assert ventana(closes, 252) == {
+        "sesiones": 3, "pedidas": 252, "desde": "2025-12-26", "hasta": "2025-12-30", "parcial": True,
+    }
+    assert ventana(closes, 3)["parcial"] is False
+    vacia = ventana(pd.Series([], dtype=float), 252)
+    assert vacia["sesiones"] == 0 and vacia["desde"] is None and vacia["parcial"] is True
+
+
+@pytest.mark.parametrize("n, sesiones, parcial", [(180, 180, True), (300, 252, False)])
+def test_el_endpoint_de_riesgo_declara_la_ventana_medida(session_factory, n, sesiones, parcial):
+    from datetime import timedelta
+
+    from fastapi.testclient import TestClient
+
+    from app.deps import get_service
+    from app.main import app
+    from tests.fakes_empresa import AHORA, ServicioFalso, barras
+
+    servicio = ServicioFalso(AHORA).empresa("ACME")
+    hasta = AHORA.date() - timedelta(days=1)
+    servicio.historias["ACME"] = barras(hasta, n=n)
+    app.dependency_overrides[get_service] = lambda: servicio
+    try:
+        r = TestClient(app).get("/api/stocks/ACME/risk").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert "window" not in r  # el rótulo fijo en inglés ya no viaja
+    v = r["ventana"]
+    assert (v["sesiones"], v["pedidas"], v["parcial"]) == (sesiones, 252, parcial)
+    assert v["hasta"] == hasta.isoformat()
+    assert v["desde"] == (hasta - timedelta(days=sesiones - 1)).isoformat()

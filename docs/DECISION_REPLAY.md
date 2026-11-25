@@ -9,13 +9,13 @@ empresa.
 
 | Pieza | Archivo | Qué hace |
 |---|---|---|
-| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None |
+| Regla común anti-anticipación | `backend/app/punto_en_el_tiempo.py` | `disponible_en(publicado, decision, obtenido_en)` → True / False / None; lo descargado durante el propio cálculo cuenta hasta `MARGEN_DE_DESCARGA` después: la cotización y la puntuación de pares (`descargado_a_tiempo`, fechadas al descargarlas) y el desempate por `obtenido_en` (la barra o el filing de hoy). El análisis, la congelación (`anomalias_temporales`) y el replay usan la misma regla |
 | Análisis de empresa | `backend/app/analisis_empresa.py` | Reúne precio, EDGAR con linaje, DCF inverso, tesis, noticias, señal, posición, decisión, riesgo, calidad, expectativas, confianza y coste de oportunidad |
 | Traza de reglas | `backend/app/analysis/decision.py` | Cada decisión trae `reglas` (resultado, valor, umbral, papel) y `cambiaria` |
 | Congelar y reproducir | `backend/app/snapshots.py` | `congelar_analisis`, `anterior_comparable`, `reproducir` |
 | Diff material | `backend/app/analysis/cambios.py` | `comparar(anterior, actual)` con `MATERIALIDAD` |
 | Confianza por evidencia | `backend/app/analysis/confianza.py` | 10 factores, regla de agregación escrita |
-| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis`, `/historial`, `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
+| API | `backend/app/routers/empresa.py`, `routers/snapshots.py` | `GET /api/empresa/{s}/analisis` (su `cambios.decision` sirve `umbrales_puntuacion_antes` y `umbrales_puntuacion_ahora`, los de cada traza, para escribir cada lado de la puntuación), `/historial` (con los `thresholds` de la puntuación y, en cada fila, los `umbrales_puntuacion` de su propia traza, para escribirla de su lado), `/cambios/{id}`, `/materialidad`; `GET /api/snapshots/{id}/replay` |
 
 ## El registro: `DecisionSnapshot`, el mismo de siempre
 
@@ -26,11 +26,35 @@ ORM, triggers de SQLite (migración 0004) y huella SHA-256— con:
 - `contexto = {esquema: 2, analisis, reglas, huella_material}`.
 
 **Cuándo se crea una instantánea nueva.** La lista diaria congela la *primera*
-decisión del día (es un experimento de forward testing). El análisis de empresa
+decisión del día (es un experimento de forward testing), y solo de una lista que
+cubre el mercado entero (`complete`: nada pendiente y nada que las fuentes no
+pudieran dar; las empresas que ninguna fuente tiene no lo impiden). Las pasadas
+parciales del arranque (40 o 120 de 502, `useListaDiaria`) no congelan nada y lo
+dicen en `instantaneas.sin_congelar`: puntuaban el segundo sector contra una
+parte de sí mismo y lo que decían «evitar» era lo peor de 40, no de 502, y como
+la primera instantánea del día gana, ninguna pasada posterior lo corregía
+(revisión 14). Tampoco congela una lista con empresas que una fuente caída o sin
+cuota no pudo dar (`fallidas`, `signals._fallo_de_las_fuentes`): con EDGAR dando
+503 y Finnhub sin cuota para un sector entero, la lista salía `complete` y
+«evitar» salía de 442 empresas en vez de 502; FE quedaba congelado como «evitar»
+y, al volver las fuentes el mismo día, la lista entera decía A (revisión 15, H1).
+«No la tengo» no se arregla reintentando; una caída, sí. Un día sin lista
+completa no tiene instantánea de la lista, y Explorar lo dice junto a la
+cobertura parcial («La decisión de hoy aún no se registra en el historial…»). El análisis de empresa
 se congela cuando cambia algo **material**: otra acción, otro resultado en alguna
 regla, un filing nuevo, la tesis editada, otro estado de calidad, de riesgo o de
 expectativas. Si solo se movió el precio, no: diez aperturas de la misma empresa
 en una tarde no son diez decisiones. Al día siguiente siempre hay instantánea del día.
+
+**Cuándo NO se congela aunque se pida.** Si el análisis no tiene precio (ni
+cotización ni último cierre) ni estados financieros —un error de tecleo, «AAPLL»,
+o una caída de todas las fuentes—, se devuelve pero no se guarda: una instantánea
+es inmutable, y la de algo que quizá no existe no se podría borrar nunca. Se
+decide con lo que el análisis ya trae, sin volver a preguntar a las fuentes
+(`analisis_empresa.sin_ningun_dato`). La respuesta lo dice en `sin_congelar`
+(`None` si se congeló o no se pidió), distinguiendo «ninguna fuente lo tiene» de
+«no respondieron». Basta el precio o los estados para que se congele (VACIA, solo
+con estados de EDGAR, se congela). `./start.sh validar` lo cuenta como UNKNOWN.
 
 `evaluar_instantaneas.py` sigue midiendo solo **afirmaciones** (comprar, vender,
 reducir, evitar): un «mantener» se congela para poder reconstruirlo, pero no es
@@ -89,6 +113,34 @@ se cumple decide. Por eso la atribución es su traza, no un segundo sistema:
 comprar → vigilar
 «Precio ≥ media de 200 sesiones + 2 %»: cumple (110.00 frente a 101.14) → no cumple (99.00 frente a 100.66)
 papel: puntuacion_favorable  decide → a_favor   (sigue cumpliendo; ya no basta)
+```
+
+Una decisión «Sin datos» tiene una traza de una sola regla («Precio y puntuación
+válidos») y el resto no se evalúa, así que el cruce no tiene con qué comparar. La
+explicación dice entonces qué faltaba (su `faltan`) y, si ahora sí hay datos, las
+reglas que deciden y antes no se evaluaron:
+
+```
+sin_datos → vigilar
+Antes no había una puntuación válida («Precio y puntuación válidos»: no cumple) y el motor no podía decidir. Ahora la acción sale de sus reglas:
+«Puntuación ≥ +0,35»: no se evaluaba → cumple (+0,60 frente a +0,35).
+«Precio ≥ media de 200 sesiones + 2 %»: no se evaluaba → no cumple (92,00 frente a 96,68).
+```
+
+Con posición y ninguna regla de venta cumplida no hay ninguna que decida (todas
+son `evaluada`) y la acción es la de por defecto, «Mantener». La explicación
+acababa entonces en «Ahora la acción sale de sus reglas:» sin nada detrás
+(revisión 13); ahora dice que no se cumple ninguna y enseña las evaluadas, con su
+resultado. Si alguna quedó «desconocido» (sin stop, sin media de 200 sesiones),
+no se escribe «no se cumple ninguna», sino que ninguna se cumple con lo que se
+pudo comprobar:
+
+```
+sin_datos → mantener
+Antes no había una puntuación válida (…) y el motor no podía decidir. Ahora decide el motor, no se cumple ninguna de sus reglas y queda la acción por defecto:
+«Puntuación ≤ -0,35»: no se evaluaba → no cumple (+0,10 frente a -0,35).
+«Precio en o bajo el stop de la posición»: no se evaluaba → no cumple (110,00 frente a 80,00).
+«Precio ≤ media de 200 sesiones − 1 %»: no se evaluaba → no cumple (110,00 frente a 99,00).
 ```
 
 `cambiaria` lista, para cada acción alternativa, las condiciones con su umbral y

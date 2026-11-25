@@ -157,6 +157,8 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
     "app.analysis.decision.BANDA_TENDENCIA_ENTRAR_PCT": [(3.0, "decide")],
     "app.analysis.decision.BANDA_TENDENCIA_SALIR_PCT": [(2.0, "decide")],
     "app.analysis.decision.SESIONES_MES": [(42, "decide")],
+    # Los cierres de la volatilidad del stop (antes un 63 escrito en la función).
+    "app.analysis.decision.CIERRES_VOL": [(42, "analisis")],
     "app.analysis.sizing.MAX_POR_POSICION_PCT": [(20.0, "sizing")],
     "app.analysis.sizing.MAX_POR_SECTOR_PCT": [(50.0, "sizing")],
     "app.analysis.sizing.MAX_POR_CLUSTER_PCT": [(50.0, "sizing")],
@@ -251,17 +253,20 @@ UMBRALES: dict[str, list[tuple[object, str]]] = {
     "app.analisis_empresa.DIAS_NOTICIAS": [(28, "analisis")],
     "app.routers.signals.SPARK_MIN_PUNTOS": [(42, "hoy")],
     "app.routers.signals.TOLERANCIA_HISTORIAL": [(0.025, "hoy")],
-    "app.routers.valuation.FACTOR_CRECIMIENTO": [({"bajista": 0.8, "base": 2.0, "alcista": 3.0}, "dcf_modulo")],
-    "app.routers.valuation.DESCUENTO": [({"bajista": 0.22, "base": 0.18, "alcista": 0.16}, "dcf_modulo")],
-    "app.routers.valuation.TERMINAL": [({"bajista": 0.03, "base": 0.05, "alcista": 0.06}, "dcf_modulo")],
-    "app.routers.valuation.CRECIMIENTO_SUPUESTO": [(0.06, "dcf_modulo")],
-    "app.routers.valuation.CRECIMIENTO_MAXIMO": [(0.075, "dcf_modulo")],
+    "app.analysis.valuation.FACTOR_CRECIMIENTO": [({"bajista": 0.8, "base": 2.0, "alcista": 3.0}, "dcf_modulo")],
+    "app.analysis.valuation.DESCUENTO": [({"bajista": 0.22, "base": 0.18, "alcista": 0.16}, "dcf_modulo")],
+    "app.analysis.valuation.TERMINAL": [({"bajista": 0.03, "base": 0.05, "alcista": 0.06}, "dcf_modulo")],
+    "app.analysis.valuation.CRECIMIENTO_SUPUESTO": [(0.06, "dcf_modulo")],
+    "app.analysis.valuation.CRECIMIENTO_MAXIMO": [(0.075, "dcf_modulo")],
+    # Ningún caso baja del −50 %: un suelo por encima del bajista de `base` (2,4 %) lo ve.
+    "app.analysis.valuation.CRECIMIENTO_MINIMO": [(0.05, "dcf_modulo")],
 }
 
 # Lo que no es una decisión, o no la ve el golden por una razón dicha aquí.
 _BACKTEST = ("parámetro del backtest de reglas, que se ejecuta aparte (botón en Señales) y se guarda; "
              "el análisis lee ese resultado guardado, no lo recalcula")
 EXENTOS: dict[str, str] = {
+    "app.analysis.markets.VERSION_LISTA_DIARIA": "versión de la forma de la lista en caché; no decide nada",
     "app.analysis.decision.STOP_MIN_PCT": "se copia en TOPES_STOP al importar: lo que se lee es la tabla (cubierta)",
     "app.analysis.decision.STOP_MAX_PCT": "se copia en TOPES_STOP al importar: lo que se lee es la tabla (cubierta)",
     "app.analysis.sizing.SESIONES_ANO": "sin uso en sizing: la anualización vive en portfolio_risk (cubierta)",
@@ -269,6 +274,11 @@ EXENTOS: dict[str, str] = {
     "app.analysis.reverse_dcf.ITERACIONES": "precisión de la bisección: con 30 o 120 el resultado a 6 decimales no cambia",
     "app.analysis.signal.MIN_OBSERVATIONS": "fiabilidad de la calibración del historial de puntuaciones, no una decisión",
     "app.analysis.fx.DIAS_FRESCO": "solo decide un aviso de texto y una comprobación de coherencia, ninguna cifra",
+    "app.analysis.thesis_watch.TOPE_LEGADO": (
+        "solo decide si un punto de invalidación sin `unidad` guardada se lee también ×100; lo cubre "
+        "test_thesis_watch, no el golden (su único punto en «veces» es D/E > 2,0, que no entra en la doble "
+        "lectura). El caso del golden para un punto viejo en «veces» espera el visto bueno de Victor"
+    ),
     "app.analysis.risk_budget.HEAT_MAXIMO_PCT": "presupuesto de riesgo de la página de cartera: avisa, no recorta",
     "app.analysis.risk_budget.HEAT_GRUPO_MAXIMO_PCT": "presupuesto de riesgo de la página de cartera: avisa, no recorta",
     "app.analysis.rule_backtest.DIVISA_PCT": (
@@ -276,7 +286,6 @@ EXENTOS: dict[str, str] = {
         "a comparar con la cartera; el paquete de extremos aún no tiene ese caso"),
     "app.analysis.rule_backtest.MAX_SESIONES": _BACKTEST,
     "app.analysis.rule_backtest.SESIONES_SMA": _BACKTEST,
-    "app.analysis.rule_backtest.MIN_BARRAS_VOL": _BACKTEST,
     "app.analysis.rule_backtest.MIN_OPERACIONES_VENTANA": _BACKTEST,
     "app.analysis.rule_backtest.MIN_PARA_FORMA": _BACKTEST,
     "app.analysis.rule_backtest.ANCHOS_BONITOS": _BACKTEST,
@@ -285,7 +294,7 @@ EXENTOS: dict[str, str] = {
     "app.routers.signals.MAX_UNIVERSE": "tope de coste de llamadas, no una decisión",
     "app.routers.signals.DEFAULT_FETCH_BUDGET": "tope de coste de llamadas, no una decisión",
     "app.routers.valuation.MAX_PARES": "cuántos comparables se piden: tope de coste",
-    "app.routers.valuation.ANOS": (
+    "app.analysis.valuation.ANOS": (
         "valor por defecto de un campo de la petición (se fija al definir el modelo y no se puede mover en "
         "caliente); comprobado a mano: con ANOS = 10, dcf_modulo cambia"),
 }

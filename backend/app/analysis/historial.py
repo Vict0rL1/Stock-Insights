@@ -8,10 +8,12 @@ cifra y no la misma experiencia, y la segunda es la que hace vender abajo.
 ## Tres decisiones que deciden si esta curva miente
 
 **1. Esto es el valor de las posiciones ABIERTAS, no el de tu cuenta.** La app
-no lleva saldo en efectivo: cuando cierras una posición, el dinero sale del
-modelo. Así que un cierre hace BAJAR la curva, y eso no es una pérdida — es una
-retirada. Sin decirlo, cada venta se leería como un desplome. Se dice en cada
-respuesta y se marca cada fecha en que se cerró algo.
+no lleva la cuenta del efectivo: el que anotas es una foto que escribes tú, no
+un saldo que se mueva con cada venta, así que cuando cierras una posición el
+dinero sale del modelo. Un cierre hace BAJAR la curva, y eso no es una pérdida —
+es una retirada. Sin decirlo, cada venta se leería como un desplome. Se dice en
+cada respuesta y se marca cada fecha en que se cerró algo. (Antes el aviso decía
+«no lleva saldo en efectivo», falso desde que se puede anotar; revisión de M3.)
 
 **2. El cambio es el de CADA DÍA, no el de hoy.** Convertir todo el histórico
 al tipo actual daría «qué valdría hoy lo que tenías entonces», que no es lo que
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from datetime import date
+from app.analysis import fx
 from app.formato import plural
 
 # Por debajo de esto no hay curva: hay dos puntos y una recta entre ellos.
@@ -74,12 +77,18 @@ def historial(
 
     tipos = tipos or {}
     idx_precio = {s: _indice(p) for s, p in series.items() if p}
-    idx_fx = {m: _indice(t) for m, t in (tipos or {}).items() if t}
+    idx_fx = {m: _indice(t) for m, t in ((m, fx.puntos_en_banda(m, t)) for m, t in tipos.items()) if t}
 
     usables, excluidas = [], []
     for p in posiciones:
         symbol = p["symbol"]
-        moneda = (p.get("currency") or "").upper() or None
+        try:
+            moneda = fx.normalizar(p.get("currency"))
+        except fx.SinTipo:
+            # Se sabe en qué está; lo que no se puede es convertirla. Antes salía
+            # «moneda desconocida», como en la cartera (revisión de A3).
+            excluidas.append({"symbol": symbol, "motivo": f"en céntimos ({fx.codigo(p.get('currency'))}), sin conversión"})
+            continue
         if moneda is None:
             # Antes: `currency or base`, o sea, la moneda desconocida se suponía
             # dólar y una posición canadiense se dibujaba un 37 % más grande.
@@ -96,12 +105,18 @@ def historial(
         usables.append({**p, "currency": moneda})
 
     if not usables:
+        # Con el motivo de cada una: «pulsa Descargar histórico» se decía también
+        # de una cartera toda en peniques, que tiene histórico y no se puede
+        # convertir (revisión 3). La descarga solo se sugiere si falta histórico.
+        falta_historico = any(e["motivo"] == "sin histórico de precios en caché" for e in excluidas)
         return {
             "disponible": False,
             "excluidas": excluidas,
             "nota": (
-                "Ninguna posición tiene histórico utilizable. Abre Cartera y pulsa "
-                "«Descargar histórico completo» para que haya con qué dibujar."
+                "Ninguna posición se puede dibujar ("
+                + "; ".join(f"{e['symbol']}, {e['motivo']}" for e in excluidas[:4]) + ")."
+                + (" Abre Cartera y pulsa «Descargar histórico completo» para que haya con qué dibujar."
+                   if falta_historico else "")
             ),
         }
 
@@ -305,8 +320,8 @@ def _resumen(puntos: list[dict]) -> dict:
 
 def _aviso(base: str, cierres: list[date], excluidas: list[dict], hay_divisas: bool) -> str:
     partes = [
-        f"Es el valor de las posiciones ABIERTAS en {base}, no el de tu cuenta: la "
-        "app no lleva saldo en efectivo."
+        f"Es el valor de las posiciones ABIERTAS en {base}, no el de tu cuenta: el "
+        "efectivo que anotas no entra en la curva, ni el de cada venta tampoco."
     ]
     if cierres:
         partes.append(
@@ -321,9 +336,11 @@ def _aviso(base: str, cierres: list[date], excluidas: list[dict], hay_divisas: b
             "usar el actual convertiría un movimiento de divisa en uno de la acción."
         )
     if excluidas:
-        nombres = ", ".join(e["symbol"] for e in excluidas[:4])
+        # Con el motivo de cada una: «por no tener histórico» se decía también de
+        # una moneda desconocida o en céntimos, que lo tienen y no se convierten.
+        nombres = "; ".join(f"{e['symbol']}, {e['motivo']}" for e in excluidas[:4])
         partes.append(
-            f"{len(excluidas)} {plural(len(excluidas), 'posición queda', 'posiciones quedan')} fuera de la curva ({nombres}) por "
-            "no tener histórico: la línea describe el resto."
+            f"{len(excluidas)} {plural(len(excluidas), 'posición queda', 'posiciones quedan')} fuera de la curva ({nombres}): "
+            "la línea describe el resto."
         )
     return " ".join(partes)

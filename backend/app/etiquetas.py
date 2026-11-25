@@ -50,6 +50,13 @@ _BASE: dict[str, str] = {
     "debil": "débil",
     "critico": "crítico",
     "intacta": "intacta",
+    "sin_comprobar": "sin comprobar",
+    # El estado del stop de una posición en el repaso de Hoy (revisión 12, visual).
+    "perforado": "perforado",
+    # De dónde sale el precio con que se mira ese stop (revisión 13).
+    "cotizacion": "cotización",
+    "cierre_de_la_lista": "último cierre de la lista",
+    "sin_puntos": "sin puntos vigilables",
     "valido": "válido",
     "viejo": "viejo",
     "sin_cartera": "sin cartera",
@@ -65,6 +72,10 @@ _BASE: dict[str, str] = {
     "precaucion": "precaución",
     "cumple": "cumple",
     "no_cumple": "no cumple",
+    # Los filtros del screener: un dato que falta no es un suspenso (revisión 12, visual).
+    "pasa": "pasa",
+    "no_pasa": "no pasa",
+    "sin_dato": "sin dato",
     # --- Métricas y datos ---
     "revenue": "ingresos",
     "ingresos": "ingresos",
@@ -202,6 +213,8 @@ _BASE: dict[str, str] = {
     "correlacion": "correlación",
     "rebalanceo": "rebalanceo",
     "sector": "sector",
+    # Dimensión de un clúster de riesgo (`portfolio_risk.clusters_de_riesgo`): salía en crudo (revisión 14).
+    "industria": "industria",
     "moneda": "moneda",
     "evidencia": "evidencia",
     "volatilidad": "volatilidad",

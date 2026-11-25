@@ -336,6 +336,25 @@ def test_si_el_modelo_no_esta_disponible_se_dice_con_503(client):
     assert "no disponible" in r.json()["detail"]
 
 
+def test_sin_ia_el_coste_y_el_analisis_lo_dicen_con_503_sin_descargar_nada(client):
+    """Revisión 12, visual: sin ANTHROPIC_API_KEY, `get_llm` da None y «Ver qué
+    costaría» respondía «Error HTTP 500» (`None.contar_tokens`). Ahora es un 503
+    que dice qué falta, antes de gastar cuota de EDGAR; la lista y el historial
+    no necesitan la IA y siguen respondiendo."""
+    c, service, _ = client
+    app.dependency_overrides[get_llm] = lambda: None
+    with TestClient(app, raise_server_exceptions=False) as sin_ia:
+        for r in (
+            sin_ia.get("/api/earnings/AAPL/coste"),
+            sin_ia.post("/api/earnings/AAPL/analizar", json={"comparar": False}),
+        ):
+            assert r.status_code == 503
+            assert "ANTHROPIC_API_KEY" in r.json()["detail"]
+        assert service.llamadas == {}
+        assert sin_ia.get("/api/earnings/AAPL/disponibles").status_code == 200
+        assert sin_ia.get("/api/earnings/AAPL").status_code == 200
+
+
 def test_un_filing_inexistente_da_404(client):
     c, _, _ = client
     r = c.post("/api/earnings/AAPL/analizar", json={"accession_no": "no-existe"})

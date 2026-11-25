@@ -15,6 +15,7 @@ from app.db.engine import get_session
 from app.deps import get_service
 from app.main import app
 from app.providers.base import DataNotFoundError, iso_utc
+from tests.fakes_empresa import AHORA, ServicioFalso, periodo
 
 PRECIO = 140.0
 ACCIONES = 100e6
@@ -182,7 +183,7 @@ def test_los_supuestos_de_partida_salen_del_historico_real_y_viajan_visibles(cli
 
 
 def test_el_crecimiento_de_partida_se_acota_para_no_extrapolar_el_mejor_quinquenio(client):
-    from app.routers.valuation import CRECIMIENTO_MAXIMO
+    from app.analysis.valuation import CRECIMIENTO_MAXIMO
 
     c, _ = client()
     d = _valorar(c)
@@ -389,3 +390,182 @@ def test_con_las_dos_patas_no_hay_aviso(client):
     c, _ = client()
     entradas = _valorar(c)["entradas"]
     assert entradas["deuda_parcial"] is None and entradas["nota_deuda"] is None
+
+
+# --- Revisión 15: recalcular con otro FCF, la nota del intercambio, FCF cero ----------------
+#
+# Con el servicio falso de `tests/fakes_empresa.py`: un filing de dos ejercicios con
+# ventas +10 % y un FCF de −200 (cfo 100, capex 300) o de +200 (cfo 500).
+
+QUEMA_CAJA = 100.0  # el cfo con el que el FCF es −200
+GENERA_CAJA = 500.0  # y +200
+
+
+def _ejercicios(cfo: float, deuda_largo: float = 600.0) -> list[dict]:
+    comunes = dict(capex=300.0, shares_outstanding=100.0, cash=100.0, long_term_debt=deuda_largo,
+                   short_term_debt=0.0, eps_diluted=1.0)
+    return [
+        periodo(2024, "2025-02-12", revenue=1000.0, cfo=cfo, **comunes),
+        periodo(2025, "2026-02-10", revenue=1100.0, cfo=cfo, **comunes),
+    ]
+
+
+@pytest.fixture
+def acme(session_factory):
+    """Un cliente sobre ACME con los ejercicios que se le den."""
+
+    def _hacer(periodos: list[dict]) -> TestClient:
+        servicio = ServicioFalso(AHORA).empresa("ACME", precio=20.0, periodos=periodos, score=None)
+
+        def sesion():
+            s = session_factory()
+            try:
+                yield s
+            finally:
+                s.close()
+
+        app.dependency_overrides[get_service] = lambda: servicio
+        app.dependency_overrides[get_session] = sesion
+        return TestClient(app)
+
+    yield _hacer
+    app.dependency_overrides.clear()
+
+
+def _centros(r: dict) -> list[float]:
+    return [r["escenarios"][k]["rango"]["centro"] for k in ("bajista", "base", "alcista")]
+
+
+def test_los_escenarios_que_no_mandas_los_propone_la_app_con_tu_fcf(acme):
+    """Revisión 15, H1. El filing da FCF −200 y la app propone bajista y alcista
+    intercambiados. Escribes un FCF normalizado de +200 y cambias el WACC del base:
+    «Recalcular» reenviaba los tres escenarios de antes, y con un FCF positivo el
+    bajista intercambiado salía el MÁS ALTO (centros 63,5 / 38,3 / 18,7). Ahora el
+    módulo manda solo el que tocaste y los demás se proponen con tu FCF. Antes, un
+    cuerpo con solo el base devolvía solo el base."""
+    c = acme(_ejercicios(QUEMA_CAJA))
+    primero = c.post("/api/valuation/ACME").json()
+    base = {**primero["escenarios"]["base"]["supuestos"], "discount_rate": 0.12}
+    r = c.post("/api/valuation/ACME", json={"escenarios": {"base": base}, "base_fcf": 200.0}).json()
+    assert list(r["escenarios"]) == ["bajista", "base", "alcista"], r["escenarios"]
+    e = r["escenarios"]
+    assert e["base"]["supuestos"]["discount_rate"] == 0.12
+    # Los propuestos para un FCF positivo: el bajista crece menos que el alcista y vale menos.
+    assert e["bajista"]["supuestos"]["growth_rate"] < e["alcista"]["supuestos"]["growth_rate"]
+    assert e["bajista"]["rango"]["centro"] < e["alcista"]["rango"]["centro"], _centros(r)
+    assert "aviso_orden" not in r
+
+
+@pytest.mark.parametrize("cfo, fcf_tuyo", [(QUEMA_CAJA, 200.0), (GENERA_CAJA, -200.0)])
+def test_tus_escenarios_de_otro_signo_mandan_pero_avisan_del_orden(acme, cfo, fcf_tuyo):
+    """Revisión 15, H1: si mandas los tres escenarios pensados para el FCF del otro
+    signo (los tocaste antes de escribir el FCF), son los tuyos y mandan, pero el
+    bajista sale por encima del alcista y eso se dice, con los centros."""
+    c = acme(_ejercicios(cfo))
+    primero = c.post("/api/valuation/ACME").json()
+    assert "aviso_orden" not in primero  # lo propuesto siempre va en orden
+    tuyos = {k: v["supuestos"] for k, v in primero["escenarios"].items()}
+    r = c.post("/api/valuation/ACME", json={"escenarios": tuyos, "base_fcf": fcf_tuyo}).json()
+    assert {k: v["supuestos"] for k, v in r["escenarios"].items()} == tuyos  # tu elección manda
+    assert _centros(r) != sorted(_centros(r)), _centros(r)
+    aviso = r.get("aviso_orden")
+    assert aviso and "no van de menos a más" in aviso, aviso
+    assert ("negativo" if fcf_tuyo < 0 else "positivo") in aviso
+
+
+def test_recalcular_con_los_propuestos_conserva_la_explicacion_del_intercambio(acme):
+    """Revisión 15, H2. Con el FCF de partida negativo, `nota_supuestos` explica por
+    qué el bajista lleva 15 % / 8 % y el alcista 4 % / 11 %. Se decía solo sin
+    cuerpo: «Recalcular» tras escribir la deuda neta (que reenviaba los mismos
+    escenarios) la borraba, y también tocar solo el base."""
+    c = acme(_ejercicios(QUEMA_CAJA))
+    primero = c.post("/api/valuation/ACME").json()
+    assert "quemar más caja" in primero["nota_supuestos"]
+    propuestos = {k: v["supuestos"] for k, v in primero["escenarios"].items()}
+    otra_deuda = c.post("/api/valuation/ACME", json={"escenarios": propuestos, "net_debt": 500.0}).json()
+    assert "quemar más caja" in otra_deuda["nota_supuestos"], otra_deuda["nota_supuestos"]
+    solo_base = {"base": {**propuestos["base"], "discount_rate": 0.12}}
+    tocado = c.post("/api/valuation/ACME", json={"escenarios": solo_base}).json()
+    assert "quemar más caja" in tocado["nota_supuestos"]
+    # Guarda: con bajista y alcista tuyos ya no son los intercambiados, y no se dice.
+    tuyos = {**propuestos, "bajista": {**propuestos["bajista"], "growth_rate": 0.02},
+             "alcista": {**propuestos["alcista"], "growth_rate": 0.01}}
+    r = c.post("/api/valuation/ACME", json={"escenarios": tuyos}).json()
+    assert "quemar más caja" not in r["nota_supuestos"]
+
+
+def test_el_3_por_ciento_supuesto_se_sigue_diciendo_en_lo_que_no_mandas(acme):
+    """Guarda de H1 sobre la revisión 14 (H7): sin crecimiento medible, los
+    escenarios que la app propone porque no los mandas siguen diciendo que el 3 %
+    es un supuesto, y el que mandas con otro crecimiento ya no."""
+    un_ejercicio = [periodo(2025, "2026-02-10", revenue=1100.0, cfo=250.0, capex=50.0, eps_diluted=1.65,
+                            shares_outstanding=100.0, cash=120.0, long_term_debt=300.0, short_term_debt=0.0)]
+    c = acme(un_ejercicio)
+    base = {"growth_rate": 0.05, "discount_rate": 0.09, "terminal_growth": 0.025}
+    e = c.post("/api/valuation/ACME", json={"escenarios": {"base": base}}).json()["escenarios"]
+    assert e["base"]["procedencia"] == {"crecimiento_supuesto": False, "motivo": None}
+    for nombre in ("bajista", "alcista"):
+        assert e[nombre]["procedencia"]["crecimiento_supuesto"] is True
+        assert "se SUPONE" in e[nombre]["procedencia"]["motivo"]
+
+
+def test_la_nota_del_rango_bajo_cero_no_culpa_al_fcf_si_la_causa_es_la_deuda(acme):
+    """Revisión 15, H5: FCF +200 y deuda neta 5.000. La nota decía que «la empresa
+    quema más de lo que vale lo que tiene, casi siempre por un FCF de partida
+    negativo», con «FCF de partida 200» al lado."""
+    r = acme(_ejercicios(GENERA_CAJA, deuda_largo=5100.0)).post("/api/valuation/ACME").json()
+    assert (r["entradas"]["base_fcf"], r["entradas"]["net_debt"]) == (200.0, 5000.0)
+    g = r["rango_global"]
+    assert g["alto"] < 0, g
+    assert "quema" not in g["nota"], g["nota"]
+    assert "Todo el rango está por debajo de cero" in g["nota"] and "deuda neta" in g["nota"]
+    # Con el FCF negativo, la causa sí es el FCF.
+    quema = acme(_ejercicios(QUEMA_CAJA)).post("/api/valuation/ACME").json()["rango_global"]
+    assert "quema caja" in quema["nota"], quema["nota"]
+
+
+def test_con_fcf_cero_y_sin_deuda_el_rango_es_cero_no_negativo(acme):
+    """Revisión 15, H5: rango 0–0 y la nota decía «Todo el rango está por debajo de
+    cero (de 0 a 0)» y que la empresa «quema» caja."""
+    c = acme(_ejercicios(GENERA_CAJA))
+    g = c.post("/api/valuation/ACME", json={"base_fcf": 0.0, "net_debt": 0.0}).json()["rango_global"]
+    assert (g["bajo"], g["alto"], g["factor"]) == (0, 0, None), g
+    assert "por debajo de cero" not in g["nota"] and "quema" not in g["nota"], g["nota"]
+    assert "Todo el rango es cero" in g["nota"]
+
+
+def test_con_fcf_cero_ningun_supuesto_es_el_que_mas_mueve(acme):
+    """Revisión 15, H6: con FCF 0 el valor por acción es −deuda neta / acciones en
+    todas las combinaciones, y la sensibilidad decía «El supuesto que más mueve el
+    resultado es «Crecimiento del FCF»: su banda cambia el valor un 0 %». Con la
+    deuda neta a 0 decía que los supuestos «no producen un valor»: producen 0."""
+    c = acme(_ejercicios(GENERA_CAJA))
+    r = c.post("/api/valuation/ACME", json={"base_fcf": 0.0}).json()
+    s = r["sensibilidad"]
+    assert s["disponible"] is True and s["supuestos"], s
+    assert all(f["recorrido_pct"] == 0 for f in s["supuestos"]), s["supuestos"]
+    assert s["dominante"] is None, (s["dominante"], s["nota"])
+    assert "más mueve" not in s["nota"] and "FCF de partida de cero" in s["nota"], s["nota"]
+    # El rango de cada escenario no culpa al peso del valor terminal.
+    nota_rango = r["escenarios"]["base"]["rango"]["nota"]
+    assert "Rango estrecho" not in nota_rango and "FCF de partida de cero" in nota_rango, nota_rango
+    cero = c.post("/api/valuation/ACME", json={"base_fcf": 0.0, "net_debt": 0.0}).json()["sensibilidad"]
+    assert cero["disponible"] is True and cero["centro"] == 0, cero
+    assert "no producen un valor" not in cero["nota"] and cero["dominante"] is None, cero
+
+
+@pytest.mark.parametrize("campo, cambio", [
+    ("base_fcf", {"capex": None}),
+    ("net_debt", {"long_term_debt": None, "short_term_debt": None}),
+    ("shares_outstanding", {"shares_outstanding": None}),
+])
+def test_el_422_de_un_dato_que_falta_dice_que_campo_en_una_cabecera(acme, campo, cambio):
+    """Revisión 15, H8: el módulo no sabía qué dato no trae el filing, y la ayuda
+    del campo vacío de la deuda decía «la del filing» al lado del 422 que dice que
+    no la trae. El `detail` (el texto que se enseña) no cambia. La cabecera, con su
+    nombre escrito: es lo que lee el frontend (`api/client.ts`)."""
+    periodos = [{**p, **cambio} for p in _ejercicios(GENERA_CAJA)]
+    r = acme(periodos).post("/api/valuation/ACME")
+    assert r.status_code == 422, r.json()
+    assert isinstance(r.json()["detail"], str)
+    assert r.headers.get("X-Dato-Que-Falta") == campo

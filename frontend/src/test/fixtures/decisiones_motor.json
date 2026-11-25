@@ -1,0 +1,3996 @@
+{
+ "casos": {
+  "comprar": {
+   "action": "comprar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 104.0,
+       "condicion": "precio < 96,68 (media 200 + 2 %)",
+       "distancia": -7.04,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      },
+      {
+       "actual": null,
+       "condicion": "anuncio de resultados en los próximos 7 días",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "vigilar",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Comprar",
+   "levels": {
+    "entrada_desde": 101.92,
+    "entrada_hasta": 106.08,
+    "objetivo": 134.58,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 88.71,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,60 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (94,78): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 104.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar entre 101,92 y 106,08",
+    "Salir si cierra en o por debajo de 88,71 (-14,7 %)",
+    "Tomar beneficios en 134,58 (+29,4 %)"
+   ]
+  },
+  "evitar": {
+   "action": "evitar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.52,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 0.87,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 92.0,
+       "condicion": "precio ≥ 96,68 (media 200 + 2 %)",
+       "distancia": 5.09,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -0.52,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.17,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Evitar",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación -0,52: queda por detrás de sus comparables de sector en valor, calidad y momentum."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.52
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": -0.52
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 92.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "mantener": {
+   "action": "mantener",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 100.0,
+       "condicion": "precio ≤ 70,00 (stop)",
+       "distancia": -30.0,
+       "regla": "stop_perforado",
+       "umbral": 70.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 100.0,
+       "condicion": "precio ≤ 93,83 (media 200 − 1 %)",
+       "distancia": -6.17,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "reducir",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Mantener",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 103.52,
+    "objetivo_pct": 3.5,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 70.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -30.0
+   },
+   "owned": true,
+   "pnl_pct": 25.0,
+   "reasons": [
+    "Puntuación +0,40 y el precio está claramente sobre su media de 200 sesiones (94,78): no hay motivo para tocar la posición.",
+    "Llevas un +25,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 70.0,
+      "valor": 100.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 100.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 70,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "mantener_con_precio_viejo": {
+   "action": "mantener",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 100.0,
+       "condicion": "precio ≤ 70,00 (stop)",
+       "distancia": -30.0,
+       "regla": "stop_perforado",
+       "umbral": 70.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 100.0,
+       "condicion": "precio ≤ 93,83 (media 200 − 1 %)",
+       "distancia": -6.17,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "reducir",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Mantener",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 103.52,
+    "objetivo_pct": 3.5,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 70.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -30.0
+   },
+   "owned": true,
+   "pnl_pct": 25.0,
+   "reasons": [
+    "Puntuación +0,40 y el precio está claramente sobre su media de 200 sesiones (94,78): no hay motivo para tocar la posición.",
+    "Llevas un +25,00 % sobre tu precio de compra.",
+    "Precio viejo (de hace 20 min: las fuentes fallaron). Compruébalo en tu broker antes de actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 70.0,
+      "valor": 100.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 100.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 20
+     },
+     "efecto": null,
+     "id": "precio_viejo",
+     "papel": "informa",
+     "regla": "Precio rescatado de caché",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 70,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "mantener_sin_stop": {
+   "action": "mantener",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 100.0,
+       "condicion": "precio ≤ 93,83 (media 200 − 1 %)",
+       "distancia": -6.17,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "reducir",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Mantener",
+   "levels": null,
+   "owned": true,
+   "pnl_pct": null,
+   "reasons": [
+    "Puntuación +0,40 y el precio está claramente sobre su media de 200 sesiones (94,78): no hay motivo para tocar la posición."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 100.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 100.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si el precio perfora tu stop",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "ninguna": {
+   "action": "ninguna",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.12,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 0.23,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 92.0,
+       "condicion": "precio ≥ 96,68 (media 200 + 2 %)",
+       "distancia": 5.09,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.12,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.47,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Sin acción",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,12: ni destaca ni preocupa frente a sus comparables. No hay motivo para actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.12
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.12
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "bloquea",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 92.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Revisar si supera +0,35"
+   ]
+  },
+  "ninguna_con_resultados": {
+   "action": "ninguna",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.12,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 0.23,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 92.0,
+       "condicion": "precio ≥ 96,68 (media 200 + 2 %)",
+       "distancia": 5.09,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      },
+      {
+       "actual": "2026-09-15",
+       "condicion": "que pasen los resultados del 15 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.12,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.47,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Sin acción",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,12: ni destaca ni preocupa frente a sus comparables. No hay motivo para actuar.",
+    "Presenta resultados el 15 sept 2026: espera volatilidad."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.12
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.12
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "bloquea",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 92.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-15"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "informa",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Revisar si supera +0,35"
+   ]
+  },
+  "reducir": {
+   "action": "reducir",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 90.0,
+       "condicion": "precio > 70,00 (stop)",
+       "distancia": -22.22,
+       "regla": "stop_perforado",
+       "umbral": 70.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 90.0,
+       "condicion": "precio > 93,83 (media 200 − 1 %)",
+       "distancia": 4.26,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 90.0,
+       "condicion": "precio ≤ 70,00 (stop)",
+       "distancia": -22.22,
+       "regla": "stop_perforado",
+       "umbral": 70.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Reducir",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 103.52,
+    "objetivo_pct": 15.0,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 70.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -22.2
+   },
+   "owned": true,
+   "pnl_pct": 12.5,
+   "reasons": [
+    "Cotiza por debajo de su media de 200 sesiones (94,78): la tendencia se giró en contra aunque los fundamentales aguanten.",
+    "Llevas un +12,50 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 70.0,
+      "valor": 90.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 90.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "decide",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 70,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "reducir_sin_stop": {
+   "action": "reducir",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 90.0,
+       "condicion": "precio > 93,83 (media 200 − 1 %)",
+       "distancia": 4.26,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Reducir",
+   "levels": null,
+   "owned": true,
+   "pnl_pct": null,
+   "reasons": [
+    "Cotiza por debajo de su media de 200 sesiones (94,78): la tendencia se giró en contra aunque los fundamentales aguanten."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 90.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 90.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "decide",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si el precio perfora tu stop",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "sin_datos": {
+   "action": "sin_datos",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": null,
+       "condicion": "que haya una puntuación válida",
+       "regla": "datos_minimos",
+       "umbral": null
+      }
+     ],
+     "hacia": "cualquier acción",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "ninguna",
+   "faltan": [
+    "puntuación"
+   ],
+   "label": "Sin datos",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "No se puede decidir sobre esta empresa: falta puntuación. Esto NO es una recomendación neutra ni un «no pasa nada» — es que el sistema no tiene con qué evaluarlo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "faltan": [
+       "puntuación"
+      ]
+     },
+     "efecto": "sin_datos",
+     "id": "datos_minimos",
+     "papel": "decide",
+     "regla": "Precio y puntuación válidos",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "sin_datos_ni_precio": {
+   "action": "sin_datos",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": null,
+       "condicion": "que haya un precio válido",
+       "regla": "datos_minimos",
+       "umbral": null
+      },
+      {
+       "actual": null,
+       "condicion": "que haya una puntuación válida",
+       "regla": "datos_minimos",
+       "umbral": null
+      }
+     ],
+     "hacia": "cualquier acción",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "ninguna",
+   "faltan": [
+    "precio",
+    "puntuación"
+   ],
+   "label": "Sin datos",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "No se puede decidir sobre esta empresa: falta precio, puntuación. Esto NO es una recomendación neutra ni un «no pasa nada» — es que el sistema no tiene con qué evaluarlo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "faltan": [
+       "precio",
+       "puntuación"
+      ]
+     },
+     "efecto": "sin_datos",
+     "id": "datos_minimos",
+     "papel": "decide",
+     "regla": "Precio y puntuación válidos",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "vender_por_puntuacion_y_stop": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.5,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.15,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 60.0,
+       "condicion": "precio > 70,00 (stop)",
+       "distancia": 16.67,
+       "regla": "stop_perforado",
+       "umbral": 70.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 60.0,
+       "condicion": "precio > 93,83 (media 200 − 1 %)",
+       "distancia": 56.38,
+       "regla": "tendencia_perdida",
+       "umbral": 93.83,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 103.52,
+    "objetivo_pct": 72.5,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 70.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": 16.7
+   },
+   "owned": true,
+   "pnl_pct": -25.0,
+   "reasons": [
+    "La puntuación cayó a -0,50: la razón por la que se compró ya no se sostiene frente a sus comparables.",
+    "Llevas un -25,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.5
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 70.0,
+      "valor": 60.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 93.83,
+      "valor": 60.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 70,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 93,83 (media 200 − 1 %)"
+   ]
+  },
+  "vender_por_stop": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 0.4,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.75,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 0.003,
+       "condicion": "precio > 0,004 (stop)",
+       "distancia": 33.33,
+       "regla": "stop_perforado",
+       "umbral": 0.004,
+       "unidad": "%"
+      },
+      {
+       "actual": 0.003,
+       "condicion": "precio > 0,003465 (media 200 − 1 %)",
+       "distancia": 15.5,
+       "regla": "tendencia_perdida",
+       "umbral": 0.003465,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 0.00647,
+    "objetivo_pct": 115.7,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 0.004,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": 33.3
+   },
+   "owned": true,
+   "pnl_pct": -40.0,
+   "reasons": [
+    "El precio (0,003) perforó el stop de la posición (0,004), un 20,0 % bajo tu coste.",
+    "Llevas un -40,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.4
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.004,
+      "valor": 0.003
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "decide",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.003465,
+      "valor": 0.003
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 0,004",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 0,003465 (media 200 − 1 %)"
+   ]
+  },
+  "vigilar_bajo_la_media": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 92.0,
+       "condicion": "precio ≥ 96,68 (media 200 + 2 %)",
+       "distancia": 5.09,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 90.16,
+    "entrada_hasta": 93.84,
+    "objetivo": 119.05,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 78.48,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,60, pero cotiza bajo su media de 200 sesiones (94,78): buena empresa en tendencia bajista.",
+    "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 92.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando cierre en o por encima de 96,68 (media 200 + 2 %)"
+   ]
+  },
+  "vigilar_dentro_de_la_banda": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 95.5,
+       "condicion": "precio ≥ 96,68 (media 200 + 2 %)",
+       "distancia": 1.24,
+       "regla": "tendencia_a_favor",
+       "umbral": 96.68,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 93.59,
+    "entrada_hasta": 97.41,
+    "objetivo": 123.58,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 81.46,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,60, pero cotiza cerca de su media de 200 sesiones (94,78), dentro de la banda en la que la tendencia no está clara.",
+    "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 95.5
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando cierre en o por encima de 96,68 (media 200 + 2 %)"
+   ]
+  },
+  "vigilar_por_precio_viejo": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": "viejo",
+       "condicion": "volver a tener precio actual",
+       "distancia": null,
+       "regla": "precio_viejo",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 101.92,
+    "entrada_hasta": 106.08,
+    "objetivo": 134.58,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 88.71,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "El precio es viejo (de hace 20 min: todas las fuentes fallaron). La idea puede ser buena, pero no se fija una zona de compra contra un precio que quizá ya no existe.",
+    "Puntuación +0,60 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (94,78): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 104.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 20
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "modifica",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Reevaluar cuando vuelva a haber precio actual",
+    "Salir si cierra en o por debajo de 88,71 (-14,7 %)",
+    "Tomar beneficios en 134,58 (+29,4 %)"
+   ]
+  },
+  "vigilar_por_resultados": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": "2026-09-15",
+       "condicion": "que pasen los resultados del 15 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 101.92,
+    "entrada_hasta": 106.08,
+    "objetivo": 134.58,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 88.71,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "Presenta resultados el 15 sept 2026. La idea es buena, pero entrar justo antes es apostar a una noticia que el modelo no puede ver; el movimiento del día lo decide la sorpresa, no los factores.",
+    "Puntuación +0,60 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (94,78): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 96.68,
+      "valor": 104.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-15"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "modifica",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando hayan publicado (15 sept 2026) y la puntuación aguante",
+    "Salir si cierra en o por debajo de 88,71 (-14,7 %)",
+    "Tomar beneficios en 134,58 (+29,4 %)"
+   ]
+  },
+  "vigilar_sin_media": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 92.0,
+       "condicion": "precio ≥ media 200 + 2 %",
+       "distancia": null,
+       "nota": "desconocido: no hay media de 200 sesiones utilizable",
+       "regla": "tendencia_a_favor",
+       "umbral": null,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación < +0,35",
+       "distancia": -0.25,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.6,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.95,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 90.16,
+    "entrada_hasta": 93.84,
+    "objetivo": 119.05,
+    "objetivo_pct": 29.4,
+    "peso_bruto_pct": 6.8,
+    "ratio": 2.0,
+    "stop": 78.48,
+    "stop_pct": 14.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,60, pero la tendencia es desconocida (no hay una media de 200 sesiones utilizable).",
+    "Sin tendencia medible, la regla no compra: espera a tener una media de 200 sesiones."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.6
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.6
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 92.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando haya una media de 200 sesiones con que medir la tendencia"
+   ]
+  }
+ },
+ "combinaciones": {
+  "comprar|sin_posicion|puntuacion_favorable:cumple:decide|tendencia_a_favor:cumple:decide": {
+   "action": "comprar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 105.0,
+       "condicion": "precio < 102,00 (media 200 + 2 %)",
+       "distancia": -2.86,
+       "regla": "tendencia_a_favor",
+       "umbral": 102.0,
+       "unidad": "%"
+      },
+      {
+       "actual": null,
+       "condicion": "anuncio de resultados en los próximos 7 días",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "vigilar",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Comprar",
+   "levels": {
+    "entrada_desde": 102.9,
+    "entrada_hasta": 107.1,
+    "objetivo": 133.77,
+    "objetivo_pct": 27.4,
+    "peso_bruto_pct": 7.3,
+    "ratio": 2.0,
+    "stop": 90.61,
+    "stop_pct": 13.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,35 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (100,00): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar entre 102,90 y 107,10",
+    "Salir si cierra en o por debajo de 90,61 (-13,7 %)",
+    "Tomar beneficios en 133,77 (+27,4 %)"
+   ]
+  },
+  "evitar|sin_posicion|puntuacion_desfavorable:cumple:decide": {
+   "action": "evitar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 1.35,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.65,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Evitar",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación -1,00: queda por detrás de sus comparables de sector en valor, calidad y momentum."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -1.0
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": -1.0
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "evitar|sin_posicion|puntuacion_desfavorable:cumple:decide|resultados_proximos:cumple:informa": {
+   "action": "evitar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 1.35,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": "2026-09-16",
+       "condicion": "que pasen los resultados del 16 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.65,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Evitar",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación -1,00: queda por detrás de sus comparables de sector en valor, calidad y momentum.",
+    "Presenta resultados el 16 sept 2026: espera volatilidad."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -1.0
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": -1.0
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-16"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "informa",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "mantener|con_posicion": {
+   "action": "mantener",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio ≤ 90,00 (stop)",
+       "distancia": -14.29,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 105.0,
+       "condicion": "precio ≤ 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "reducir",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Mantener",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 90.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -14.3
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "Puntuación -0,34 y el precio está claramente sobre su media de 200 sesiones (100,00): no hay motivo para tocar la posición.",
+    "Llevas un +5,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 90.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 90,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "mantener|con_posicion|precio_viejo:cumple:informa": {
+   "action": "mantener",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio ≤ 90,00 (stop)",
+       "distancia": -14.29,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 105.0,
+       "condicion": "precio ≤ 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "reducir",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Mantener",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 90.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -14.3
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "Puntuación -0,34 y el precio está claramente sobre su media de 200 sesiones (100,00): no hay motivo para tocar la posición.",
+    "Llevas un +5,00 % sobre tu precio de compra.",
+    "Precio viejo (de hace 30 min: las fuentes fallaron). Compruébalo en tu broker antes de actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 90.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 30
+     },
+     "efecto": null,
+     "id": "precio_viejo",
+     "papel": "informa",
+     "regla": "Precio rescatado de caché",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 90,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "ninguna|sin_posicion|puntuacion_favorable:no_cumple:bloquea": {
+   "action": "ninguna",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 0.69,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Sin acción",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación -0,34: ni destaca ni preocupa frente a sus comparables. No hay motivo para actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": -0.34
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "bloquea",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Revisar si supera +0,35"
+   ]
+  },
+  "ninguna|sin_posicion|puntuacion_favorable:no_cumple:bloquea|resultados_proximos:cumple:informa": {
+   "action": "ninguna",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≥ +0,35",
+       "distancia": 0.69,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": "2026-09-16",
+       "condicion": "que pasen los resultados del 16 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Sin acción",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "Puntuación -0,34: ni destaca ni preocupa frente a sus comparables. No hay motivo para actuar.",
+    "Presenta resultados el 16 sept 2026: espera volatilidad."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": -0.34
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "bloquea",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "evaluada",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-16"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "informa",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Revisar si supera +0,35"
+   ]
+  },
+  "reducir|con_posicion|tendencia_perdida:cumple:decide": {
+   "action": "reducir",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 99.0,
+       "condicion": "precio > 90,00 (stop)",
+       "distancia": -9.09,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 99.0,
+       "condicion": "precio > 99,00 (media 200 − 1 %)",
+       "distancia": 0.0,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 99.0,
+       "condicion": "precio ≤ 90,00 (stop)",
+       "distancia": -9.09,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "vender",
+     "requiere": "alguna"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Reducir",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 28.7,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 90.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -9.1
+   },
+   "owned": true,
+   "pnl_pct": -1.0,
+   "reasons": [
+    "Cotiza por debajo de su media de 200 sesiones (100,00): la tendencia se giró en contra aunque los fundamentales aguanten.",
+    "Llevas un -1,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 90.0,
+      "valor": 99.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 99.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "decide",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 90,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "sin_datos|con_posicion|datos_minimos:no_cumple:decide": {
+   "action": "sin_datos",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": null,
+       "condicion": "que haya una puntuación válida",
+       "regla": "datos_minimos",
+       "umbral": null
+      }
+     ],
+     "hacia": "cualquier acción",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "ninguna",
+   "faltan": [
+    "puntuación"
+   ],
+   "label": "Sin datos",
+   "levels": null,
+   "owned": true,
+   "reasons": [
+    "No se puede decidir sobre esta empresa: falta puntuación. Esto NO es una recomendación neutra ni un «no pasa nada» — es que el sistema no tiene con qué evaluarlo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "faltan": [
+       "puntuación"
+      ]
+     },
+     "efecto": "sin_datos",
+     "id": "datos_minimos",
+     "papel": "decide",
+     "regla": "Precio y puntuación válidos",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "sin_datos|sin_posicion|datos_minimos:no_cumple:decide": {
+   "action": "sin_datos",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": null,
+       "condicion": "que haya una puntuación válida",
+       "regla": "datos_minimos",
+       "umbral": null
+      }
+     ],
+     "hacia": "cualquier acción",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "ninguna",
+   "faltan": [
+    "puntuación"
+   ],
+   "label": "Sin datos",
+   "levels": null,
+   "owned": false,
+   "reasons": [
+    "No se puede decidir sobre esta empresa: falta puntuación. Esto NO es una recomendación neutra ni un «no pasa nada» — es que el sistema no tiene con qué evaluarlo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "faltan": [
+       "puntuación"
+      ]
+     },
+     "efecto": "sin_datos",
+     "id": "datos_minimos",
+     "papel": "decide",
+     "regla": "Precio y puntuación válidos",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": []
+  },
+  "vender|con_posicion|precio_viejo:cumple:informa|puntuacion_desfavorable:cumple:decide": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.65,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 90,00 (stop)",
+       "distancia": -14.29,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 90.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -14.3
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "La puntuación cayó a -1,00: la razón por la que se compró ya no se sostiene frente a sus comparables.",
+    "Llevas un +5,00 % sobre tu precio de compra.",
+    "Precio viejo (de hace 30 min: las fuentes fallaron). Compruébalo en tu broker antes de actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -1.0
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 90.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 30
+     },
+     "efecto": null,
+     "id": "precio_viejo",
+     "papel": "informa",
+     "regla": "Precio rescatado de caché",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 90,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "vender|con_posicion|precio_viejo:cumple:informa|stop_perforado:cumple:decide": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 110,00 (stop)",
+       "distancia": 4.76,
+       "regla": "stop_perforado",
+       "umbral": 110.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 110.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": 4.8
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "El precio (105,00) perforó el stop de la posición (110,00), por encima de tu coste: protegía beneficio.",
+    "Llevas un +5,00 % sobre tu precio de compra.",
+    "Precio viejo (de hace 30 min: las fuentes fallaron). Compruébalo en tu broker antes de actuar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 110.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "decide",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 30
+     },
+     "efecto": null,
+     "id": "precio_viejo",
+     "papel": "informa",
+     "regla": "Precio rescatado de caché",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 110,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "vender|con_posicion|puntuacion_desfavorable:cumple:decide": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -1.0,
+       "condicion": "puntuación > -0,35",
+       "distancia": 0.65,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 90,00 (stop)",
+       "distancia": -14.29,
+       "regla": "stop_perforado",
+       "umbral": 90.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 90.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": -14.3
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "La puntuación cayó a -1,00: la razón por la que se compró ya no se sostiene frente a sus comparables.",
+    "Llevas un +5,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -1.0
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "decide",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 90.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "evaluada",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 90,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "vender|con_posicion|stop_perforado:cumple:decide": {
+   "action": "vender",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": -0.34,
+       "condicion": "puntuación > -0,35",
+       "distancia": -0.01,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 110,00 (stop)",
+       "distancia": 4.76,
+       "regla": "stop_perforado",
+       "umbral": 110.0,
+       "unidad": "%"
+      },
+      {
+       "actual": 105.0,
+       "condicion": "precio > 99,00 (media 200 − 1 %)",
+       "distancia": -5.71,
+       "regla": "tendencia_perdida",
+       "umbral": 99.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "mantener",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vender",
+   "levels": {
+    "entrada_desde": null,
+    "entrada_hasta": null,
+    "objetivo": 127.4,
+    "objetivo_pct": 21.3,
+    "peso_bruto_pct": null,
+    "ratio": 2.0,
+    "stop": 110.0,
+    "stop_fijado_al_abrir": true,
+    "stop_pct": 4.8
+   },
+   "owned": true,
+   "pnl_pct": 5.0,
+   "reasons": [
+    "El precio (105,00) perforó el stop de la posición (110,00), por encima de tu coste: protegía beneficio.",
+    "Llevas un +5,00 % sobre tu precio de compra."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": -0.34
+     },
+     "efecto": "vender",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 110.0,
+      "valor": 105.0
+     },
+     "efecto": "vender",
+     "id": "stop_perforado",
+     "papel": "decide",
+     "regla": "Precio en o bajo el stop de la posición",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 99.0,
+      "valor": 105.0
+     },
+     "efecto": "reducir",
+     "id": "tendencia_perdida",
+     "papel": "evaluada",
+     "regla": "Precio ≤ media de 200 sesiones − 1 %",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Vender si cierra en o por debajo de 110,00",
+    "Vender si la puntuación baja de -0,35",
+    "Reducir si cierra en o por debajo de 99,00 (media 200 − 1 %)"
+   ]
+  },
+  "vigilar|sin_posicion|precio_viejo:cumple:modifica|puntuacion_favorable:cumple:decide|tendencia_a_favor:cumple:decide": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": "viejo",
+       "condicion": "volver a tener precio actual",
+       "distancia": null,
+       "regla": "precio_viejo",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 102.9,
+    "entrada_hasta": 107.1,
+    "objetivo": 133.77,
+    "objetivo_pct": 27.4,
+    "peso_bruto_pct": 7.3,
+    "ratio": 2.0,
+    "stop": 90.61,
+    "stop_pct": 13.7
+   },
+   "owned": false,
+   "reasons": [
+    "El precio es viejo (de hace 30 min: todas las fuentes fallaron). La idea puede ser buena, pero no se fija una zona de compra contra un precio que quizá ya no existe.",
+    "Puntuación +0,35 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (100,00): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": 30
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "modifica",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "cumple"
+    }
+   ],
+   "triggers": [
+    "Reevaluar cuando vuelva a haber precio actual",
+    "Salir si cierra en o por debajo de 90,61 (-13,7 %)",
+    "Tomar beneficios en 133,77 (+27,4 %)"
+   ]
+  },
+  "vigilar|sin_posicion|puntuacion_favorable:cumple:a_favor|resultados_proximos:cumple:informa|tendencia_a_favor:desconocido:bloquea": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 110.0,
+       "condicion": "precio ≥ media 200 + 2 %",
+       "distancia": null,
+       "nota": "desconocido: no hay media de 200 sesiones utilizable",
+       "regla": "tendencia_a_favor",
+       "umbral": null,
+       "unidad": "%"
+      },
+      {
+       "actual": "2026-09-16",
+       "condicion": "que pasen los resultados del 16 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 107.8,
+    "entrada_hasta": 112.2,
+    "objetivo": 146.3,
+    "objetivo_pct": 33.0,
+    "peso_bruto_pct": 6.1,
+    "ratio": 2.0,
+    "stop": 91.85,
+    "stop_pct": 16.5
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,35, pero la tendencia es desconocida (no hay una media de 200 sesiones utilizable).",
+    "Sin tendencia medible, la regla no compra: espera a tener una media de 200 sesiones.",
+    "Presenta resultados el 16 sept 2026: espera volatilidad."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 110.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-16"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "informa",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando haya una media de 200 sesiones con que medir la tendencia"
+   ]
+  },
+  "vigilar|sin_posicion|puntuacion_favorable:cumple:a_favor|resultados_proximos:cumple:informa|tendencia_a_favor:no_cumple:bloquea": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 101.0,
+       "condicion": "precio ≥ 102,00 (media 200 + 2 %)",
+       "distancia": 0.99,
+       "regla": "tendencia_a_favor",
+       "umbral": 102.0,
+       "unidad": "%"
+      },
+      {
+       "actual": "2026-09-16",
+       "condicion": "que pasen los resultados del 16 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 98.98,
+    "entrada_hasta": 103.02,
+    "objetivo": 128.67,
+    "objetivo_pct": 27.4,
+    "peso_bruto_pct": 7.3,
+    "ratio": 2.0,
+    "stop": 87.16,
+    "stop_pct": 13.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,35, pero cotiza cerca de su media de 200 sesiones (100,00), dentro de la banda en la que la tendencia no está clara.",
+    "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar.",
+    "Presenta resultados el 16 sept 2026: espera volatilidad."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 101.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-16"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "informa",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando cierre en o por encima de 102,00 (media 200 + 2 %)"
+   ]
+  },
+  "vigilar|sin_posicion|puntuacion_favorable:cumple:a_favor|tendencia_a_favor:desconocido:bloquea": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 110.0,
+       "condicion": "precio ≥ media 200 + 2 %",
+       "distancia": null,
+       "nota": "desconocido: no hay media de 200 sesiones utilizable",
+       "regla": "tendencia_a_favor",
+       "umbral": null,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 107.8,
+    "entrada_hasta": 112.2,
+    "objetivo": 146.3,
+    "objetivo_pct": 33.0,
+    "peso_bruto_pct": 6.1,
+    "ratio": 2.0,
+    "stop": 91.85,
+    "stop_pct": 16.5
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,35, pero la tendencia es desconocida (no hay una media de 200 sesiones utilizable).",
+    "Sin tendencia medible, la regla no compra: espera a tener una media de 200 sesiones."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": null,
+      "valor": 110.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "desconocido"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando haya una media de 200 sesiones con que medir la tendencia"
+   ]
+  },
+  "vigilar|sin_posicion|puntuacion_favorable:cumple:a_favor|tendencia_a_favor:no_cumple:bloquea": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": 101.0,
+       "condicion": "precio ≥ 102,00 (media 200 + 2 %)",
+       "distancia": 0.99,
+       "regla": "tendencia_a_favor",
+       "umbral": 102.0,
+       "unidad": "%"
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 98.98,
+    "entrada_hasta": 103.02,
+    "objetivo": 128.67,
+    "objetivo_pct": 27.4,
+    "peso_bruto_pct": 7.3,
+    "ratio": 2.0,
+    "stop": 87.16,
+    "stop_pct": 13.7
+   },
+   "owned": false,
+   "reasons": [
+    "Puntuación +0,35, pero cotiza cerca de su media de 200 sesiones (100,00), dentro de la banda en la que la tendencia no está clara.",
+    "Comprar aquí es apostar a que el suelo ya pasó. La regla espera a que el precio supere la media 200 + 2 % antes de entrar."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "a_favor",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 101.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "bloquea",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "fecha": null
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "evaluada",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando cierre en o por encima de 102,00 (media 200 + 2 %)"
+   ]
+  },
+  "vigilar|sin_posicion|puntuacion_favorable:cumple:decide|resultados_proximos:cumple:modifica|tendencia_a_favor:cumple:decide": {
+   "action": "vigilar",
+   "cambiaria": [
+    {
+     "condiciones": [
+      {
+       "actual": "2026-09-16",
+       "condicion": "que pasen los resultados del 16 sept 2026",
+       "distancia": null,
+       "regla": "resultados_proximos",
+       "umbral": null,
+       "unidad": null
+      }
+     ],
+     "hacia": "comprar",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación < +0,35",
+       "distancia": 0.0,
+       "regla": "puntuacion_favorable",
+       "umbral": 0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "ninguna",
+     "requiere": "todas"
+    },
+    {
+     "condiciones": [
+      {
+       "actual": 0.35,
+       "condicion": "puntuación ≤ -0,35",
+       "distancia": -0.7,
+       "regla": "puntuacion_desfavorable",
+       "umbral": -0.35,
+       "unidad": "puntos"
+      }
+     ],
+     "hacia": "evitar",
+     "requiere": "todas"
+    }
+   ],
+   "confidence": "sin_calibrar",
+   "escenarios": null,
+   "label": "Vigilar",
+   "levels": {
+    "entrada_desde": 102.9,
+    "entrada_hasta": 107.1,
+    "objetivo": 133.77,
+    "objetivo_pct": 27.4,
+    "peso_bruto_pct": 7.3,
+    "ratio": 2.0,
+    "stop": 90.61,
+    "stop_pct": 13.7
+   },
+   "owned": false,
+   "reasons": [
+    "Presenta resultados el 16 sept 2026. La idea es buena, pero entrar justo antes es apostar a una noticia que el modelo no puede ver; el movimiento del día lo decide la sorpresa, no los factores.",
+    "Puntuación +0,35 — mejor que sus comparables de sector.",
+    "Cotiza sobre su media de 200 sesiones (100,00): la tendencia acompaña, no estás comprando algo que sigue cayendo."
+   ],
+   "reglas": [
+    {
+     "datos": {
+      "umbral": -0.35,
+      "valor": 0.35
+     },
+     "efecto": "evitar",
+     "id": "puntuacion_desfavorable",
+     "papel": "evaluada",
+     "regla": "Puntuación ≤ -0,35",
+     "resultado": "no_cumple"
+    },
+    {
+     "datos": {
+      "umbral": 0.35,
+      "valor": 0.35
+     },
+     "efecto": "comprar",
+     "id": "puntuacion_favorable",
+     "papel": "decide",
+     "regla": "Puntuación ≥ +0,35",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "umbral": 102.0,
+      "valor": 105.0
+     },
+     "efecto": "comprar",
+     "id": "tendencia_a_favor",
+     "papel": "decide",
+     "regla": "Precio ≥ media de 200 sesiones + 2 %",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "fecha": "2026-09-16"
+     },
+     "efecto": "vigilar",
+     "id": "resultados_proximos",
+     "papel": "modifica",
+     "regla": "Presenta resultados en los próximos 7 días",
+     "resultado": "cumple"
+    },
+    {
+     "datos": {
+      "minutos": null
+     },
+     "efecto": "vigilar",
+     "id": "precio_viejo",
+     "papel": "evaluada",
+     "regla": "Precio rescatado de caché (todas las fuentes fallaron)",
+     "resultado": "no_cumple"
+    }
+   ],
+   "triggers": [
+    "Comprar cuando hayan publicado (16 sept 2026) y la puntuación aguante",
+    "Salir si cierra en o por debajo de 90,61 (-13,7 %)",
+    "Tomar beneficios en 133,77 (+27,4 %)"
+   ]
+  }
+ }
+}

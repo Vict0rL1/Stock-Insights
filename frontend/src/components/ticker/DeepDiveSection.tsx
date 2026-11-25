@@ -1,15 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import type {
   DeepDiveNarrative,
   DeepDiveReport,
+  LlmStatus,
   MultipleStats,
+  UmbralInforme,
 } from '../../api/types'
 import { etiqueta } from '../../lib/etiquetas'
-import { fmtCompacto, fmtFecha, fmtNum, fmtPct, plural } from '../../lib/formato'
+import { fmtCompacto, fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../../lib/formato'
 import { useLlmStatus } from '../../lib/llm'
+import { ausenteSi404, mensajeDeError, useDato } from '../../lib/useDato'
+import { BloqueDatos } from '../EstadoDato'
 import { BloqueIA, BotonIA } from '../ia/ContenidoIA'
 import { DeudaParcial } from './DeudaParcial'
+import { ResumenDcf } from '../valoracion/ResumenDcf'
+import { rutaValoracion } from '../valoracion/ruta'
 import { Ventana } from '../Ventana'
 
 const STANCE_STYLES: Record<string, string> = {
@@ -25,6 +32,9 @@ const SEVERITY_STYLES: Record<string, string> = {
 
 // La flecha es estilo; la palabra, su etiqueta.
 const FLECHA: Record<string, string> = { mejorando: '▲', 'deteriorándose': '▼', estable: '→' }
+
+/** «a, b y c», como `_lista` en el backend. */
+const enLista = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`)
 
 function Section({ title, reading, children }: { title: string; reading?: string; children?: React.ReactNode }) {
   return (
@@ -67,8 +77,10 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       <div className="mt-3 space-y-4">
         {Object.entries(report.valuation.multiples).map(([key, stats]) => (
           <div key={key}>
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
+            {/* Con `gap` y el rótulo sin encoger: a 390 px el motivo ocupaba todo
+                el ancho y se leía «P/ESolo 10 observaciones…» (ítem 2.12). */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+              <span className="shrink-0 font-medium text-slate-700">{etiqueta(key, { mayuscula: true })}</span>
               {stats.available ? (
                 <span className="tabular-nums text-slate-600">
                   actual{' '}
@@ -102,7 +114,7 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
       {report.valuation.cheapness_score !== null && (
         <p className="mt-3 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
           Índice de baratura frente a su historia:{' '}
-          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100 % = lo más barata que
+          <b>{fmtPct(report.valuation.cheapness_score, 0)}</b> (100&nbsp;% = lo más barata que
           ha estado en el periodo).
         </p>
       )}
@@ -118,41 +130,85 @@ function ValuationBlock({ report }: { report: DeepDiveReport }) {
   )
 }
 
-export function DeepDiveSection({ symbol }: { symbol: string }) {
-  const [report, setReport] = useState<DeepDiveReport | null>(null)
-  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+/** `redactarAlAbrir`: la ficha llega aquí desde «Explícamelo con IA» y la
+ *  narrativa se pide sola, una vez, en cuanto el informe está (y se avisa con
+ *  `alRedactar` para que volver a esta sección no la pida otra vez). */
+export function DeepDiveSection({
+  symbol,
+  redactarAlAbrir = false,
+  alRedactar,
+}: {
+  symbol: string
+  redactarAlAbrir?: boolean
+  alRedactar?: () => void
+}) {
+  // Un 404 es que EDGAR no tiene sus estados (desde que la ruta da 502 si EDGAR
+  // no respondió): ausencia, sin «Reintentar» (segunda revisión del 2.1).
+  const carga = useDato(() => ausenteSi404(api.deepDive(symbol)), symbol)
   const llm = useLlmStatus()
+  // Al cambiar de símbolo el bloque vuelve a «cargando» e `Informe` se monta de
+  // nuevo: la narrativa del anterior no se queda bajo el informe del nuevo.
+  return (
+    <BloqueDatos carga={carga} que="el informe" ausente={(m) => m}>
+      {(report) => (
+        <Informe symbol={symbol} report={report} llm={llm} redactarAlAbrir={redactarAlAbrir} alRedactar={alRedactar} />
+      )}
+    </BloqueDatos>
+  )
+}
 
-  useEffect(() => {
-    setReport(null)
-    setNarrative(null)
-    setError(null)
-    api.deepDive(symbol).then(setReport, (e) => setError(e.message))
-  }, [symbol])
+function Informe({
+  symbol,
+  report,
+  llm,
+  redactarAlAbrir,
+  alRedactar,
+}: {
+  symbol: string
+  report: DeepDiveReport
+  llm: LlmStatus | null
+  redactarAlAbrir: boolean
+  alRedactar?: () => void
+}) {
+  const [narrative, setNarrative] = useState<DeepDiveNarrative | null>(null)
+  // El fallo de la narrativa es de la narrativa: antes sustituía la sección
+  // entera y el informe calculado desaparecía por un 503 de la IA (ítem 2.1).
+  const [errorNarrativa, setErrorNarrativa] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const seccionNarrativa = useRef<HTMLElement>(null)
+  // Una sola vez aunque el efecto corra dos (StrictMode): cada pedida gasta API.
+  const pedida = useRef(false)
 
-  const writeNarrative = async () => {
-    if (!report) return
+  const writeNarrative = useCallback(async () => {
     setBusy(true)
+    setErrorNarrativa(null)
     try {
       setNarrative(await api.deepDiveNarrative(symbol, report))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error')
+      setErrorNarrativa(mensajeDeError(e))
     } finally {
       setBusy(false)
     }
-  }
+  }, [symbol, report])
 
-  if (error)
-    return (
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-        {error}
-      </p>
-    )
-  if (!report) return <p className="text-sm text-slate-400">Elaborando el informe…</p>
+  const configurada = llm?.configured === true
+  useEffect(() => {
+    if (!redactarAlAbrir || !configurada || pedida.current) return
+    pedida.current = true
+    alRedactar?.()
+    // La narrativa va al final del informe: sin esto, el toque no se veía hacer nada.
+    seccionNarrativa.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    void writeNarrative()
+  }, [redactarAlAbrir, configurada, alRedactar, writeNarrative])
 
   const { business, growth, margins, debt, cash_flow: cash, verdict } = report
+  const sinComprobar = report.riesgos_sin_comprobar ?? []
+  const catalizadoresSinComprobar = report.catalysts_sin_comprobar ?? []
+  // La cifra de la casilla, igual que en la lectura de encima: frente a las mismas
+  // fronteras. Con decimales fijos, «cobertura de intereses 4,996× — ajustada»
+  // llevaba al lado «Cobertura 5,0×», con holgada por encima de 5 (revisión 11).
+  const frente = (clave: UmbralInforme, valor: number | null, opciones?: { pct?: boolean; ceros?: boolean }) =>
+    fmtFrente(valor, report.umbrales?.[clave] ?? [], opciones)
 
   return (
     <div className="space-y-4">
@@ -169,6 +225,10 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
           )}
         </div>
         <p className="mt-2 text-sm">{verdict.summary}</p>
+        {/* De qué sale y qué no entra: el recuadro verde convivía sin decirlo con
+            un DCF muy por debajo del precio y con un trimestre que invalidaba la
+            tesis en «Qué cambió» (revisión 12, visual). */}
+        {verdict.alcance && <p className="mt-1 text-xs opacity-80">{verdict.alcance}</p>}
 
         <div className="mt-3">
           <div className="text-xs font-semibold">Qué rompería esta lectura</div>
@@ -221,7 +281,9 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
                 <dt className="text-xs text-slate-400">
                   {rotulo} {ventana}
                 </dt>
-                <dd className="tabular-nums">{fmtPct(valor)}</dd>
+                <dd className="tabular-nums">
+                  {clave === 'ingresos' ? frente('revenue_cagr', valor, { pct: true }) : fmtPct(valor)}
+                </dd>
               </div>
             ))}
           </dl>
@@ -235,14 +297,20 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
           </ul>
         </Section>
 
-        <Section title="Márgenes" reading={margins.reading}>
+        {/* Anuales, y de qué ejercicio: «21,0 %» a secas se leía como el de hoy
+            junto a un trimestre al 12,0 % en «Qué cambió» (revisión 12, visual). */}
+        <Section title={margins.ejercicio ? `Márgenes del ejercicio ${margins.ejercicio}` : 'Márgenes'} reading={margins.reading}>
           <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
             {(['gross_margin', 'operating_margin', 'net_margin'] as const).map((key) => (
               <div key={key}>
                 <dt className="text-xs text-slate-400">
                   {etiqueta(key, { mayuscula: true })}
                 </dt>
-                <dd className="tabular-nums">{fmtPct(margins.current[key])}</dd>
+                <dd className="tabular-nums">
+                  {key === 'operating_margin'
+                    ? frente('operating_margin', margins.current[key], { pct: true })
+                    : fmtPct(margins.current[key])}
+                </dd>
                 <dd className="text-[10px] text-slate-400">
                   {margins.trends[key] ? `${FLECHA[margins.trends[key]] ?? ''} ${etiqueta(margins.trends[key])}`.trim() : ''}
                 </dd>
@@ -260,18 +328,18 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
             </div>
             <div>
               <dt className="text-xs text-slate-400">Deuda/Capital</dt>
-              <dd className="tabular-nums">{fmtNum(debt.debt_to_equity)}</dd>
+              <dd className="tabular-nums">{frente('debt_to_equity', debt.debt_to_equity)}</dd>
             </div>
             <div>
               <dt className="text-xs text-slate-400">Cobertura</dt>
               <dd className="tabular-nums">
-                {debt.interest_coverage !== null ? `${fmtNum(debt.interest_coverage, 1)}×` : '—'}
+                {debt.interest_coverage !== null ? `${frente('interest_coverage', debt.interest_coverage, { ceros: false })}×` : '—'}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-slate-400">Altman Z</dt>
               <dd className="tabular-nums">
-                {fmtNum(debt.altman_z.score)}
+                {fmtFrente(debt.altman_z.score, debt.altman_z.umbrales ?? [])}
                 {debt.altman_z.zone && (
                   <span className="ml-1 text-[10px] text-slate-500">({debt.altman_z.zone})</span>
                 )}
@@ -289,7 +357,7 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
             <div>
               <dt className="text-xs text-slate-400">Conversión</dt>
               <dd className="tabular-nums">
-                {fmtPct(cash.current.fcf_conversion as number | null)}
+                {frente('fcf_conversion', cash.current.fcf_conversion as number | null, { pct: true, ceros: false })}
               </dd>
             </div>
             <div>
@@ -304,33 +372,28 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
 
       <ValuationBlock report={report} />
 
+      {/* El mismo DCF que la pestaña Valoración y el módulo (ítem 3.3): antes
+          era un tercero, con WACC 12/10/9 % y un valor puntual por escenario.
+          Lo que no precarga (FCF de partida no positivo o sin acciones) lo dice,
+          con el enlace al módulo, que sí lo valora: la sección desaparecía sin
+          decir que faltaba (revisión 15, H7). */}
       {report.dcf && (
-        <Section title="Valor intrínseco (DCF precargado)">
-          <div className="mt-2 grid gap-3 sm:grid-cols-3">
-            {(['bear', 'base', 'bull'] as const).map((kind) => {
-              const sc = report.dcf!.scenarios[kind]
-              if (!sc) return null
-              const vs =
-                sc.value_per_share !== null && report.price
-                  ? sc.value_per_share / report.price - 1
-                  : null
-              return (
-                <div key={kind} className="rounded-lg border border-slate-200 p-3">
-                  <div className="text-xs text-slate-500">
-                    {etiqueta(kind, { mayuscula: true })}
-                  </div>
-                  <div className="text-xl font-semibold tabular-nums">
-                    {fmtNum(sc.value_per_share)}
-                  </div>
-                  <div className="text-xs text-slate-500">
-                    {vs !== null && `${fmtPct(vs)} vs. precio · `}terminal{' '}
-                    {fmtPct(sc.terminal_weight)}
-                  </div>
-                </div>
-              )
-            })}
+        <Section title="¿Cuánto podría valer? (DCF)">
+          <div className="mt-2">
+            {report.dcf.disponible ? (
+              <ResumenDcf datos={report.dcf} symbol={symbol} />
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">{report.dcf.motivo}</p>
+                <Link
+                  to={rutaValoracion(symbol)}
+                  className="inline-block rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                >
+                  Abrir el análisis completo
+                </Link>
+              </div>
+            )}
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">{report.dcf.note}</p>
         </Section>
       )}
 
@@ -338,9 +401,9 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
         <Section title="Riesgos detectados en los datos">
           {report.risks.length === 0 ? (
             <p className="mt-1 text-sm text-slate-400">
-              Ninguno de los umbrales del modelo se dispara. No significa ausencia de
-              riesgo: los riesgos cualitativos (competencia, regulación, gestión) no salen
-              de las cifras.
+              {sinComprobar.length ? 'Ninguno de los umbrales comprobados se dispara.' : 'Ninguno de los umbrales del modelo se dispara.'}{' '}
+              No significa ausencia de riesgo: los riesgos cualitativos (competencia, regulación,
+              gestión) no salen de las cifras.
             </p>
           ) : (
             <ul className="mt-2 space-y-2">
@@ -360,15 +423,33 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
               ))}
             </ul>
           )}
+          {/* Un umbral sin dato no se dispara, pero tampoco se ha mirado: «ninguno
+              se dispara» salía con la deuda/capital y la cobertura sin calcular
+              (revisión 12, visual). */}
+          {sinComprobar.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              Sin comprobar por falta de datos: {enLista(sinComprobar)}.
+            </p>
+          )}
         </Section>
 
-        <Section title="Catalizadores próximos (6-18 meses)">
+        {/* Lo que hay, no un plazo: «(6-18 meses)» encabezaba unos resultados a
+            24 días y los últimos filings, que ya pasaron (revisión 12, visual). */}
+        <Section title="Catalizadores y fechas a vigilar" reading={report.catalysts_note}>
+          {/* Con una fuente caída, la lista vacía no es «ninguno»: el calendario o la
+              SEC no respondieron y no se sabe si hay algo (revisión 13). */}
           {report.catalysts.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-400">Ninguno identificado en los datos.</p>
+            catalizadoresSinComprobar.length > 0 ? (
+              <p className="mt-1 text-sm text-amber-800">
+                Sin comprobar. Fuentes que no respondieron: {enLista(catalizadoresSinComprobar)}.
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-400">Ninguno identificado en los datos.</p>
+            )
           ) : (
             <ul className="mt-2 space-y-1 text-sm">
               {report.catalysts.map((c, i) => (
-                <li key={i} className="flex justify-between border-b border-slate-100 py-1">
+                <li key={i} className="flex justify-between gap-3 border-b border-slate-100 py-1">
                   <span className="text-slate-700">
                     {c.url ? (
                       <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
@@ -379,10 +460,19 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
                     )}
                     <span className="ml-2 text-xs text-slate-400">{c.detail}</span>
                   </span>
-                  <span className="shrink-0 text-xs text-slate-400">{c.when ?? '—'}</span>
+                  {/* Con `fmtFecha`: salía «2026-10-06» en crudo. Y con su verbo: un
+                      filing ya presentado y unos resultados por venir se leían igual. */}
+                  <span className="shrink-0 text-xs text-slate-400">
+                    {c.when ? `${c.source === 'edgar' ? 'presentado el' : 'previsto el'} ${fmtFecha(c.when)}` : fmtFecha(c.when)}
+                  </span>
                 </li>
               ))}
             </ul>
+          )}
+          {report.catalysts.length > 0 && catalizadoresSinComprobar.length > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              La lista puede estar incompleta. Fuentes que no respondieron: {enLista(catalizadoresSinComprobar)}.
+            </p>
           )}
         </Section>
       </div>
@@ -391,7 +481,7 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
           Sin ANTHROPIC_API_KEY la sección entera desaparece: el informe
           calculado se sostiene solo. */}
       {(narrative || llm?.configured) && (
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section ref={seccionNarrativa} className="rounded-xl border border-slate-200 bg-white p-4">
         {!narrative ? (
           <>
             <h3 className="text-sm font-semibold text-slate-700">Narrativa del informe</h3>
@@ -402,6 +492,9 @@ export function DeepDiveSection({ symbol }: { symbol: string }) {
             <BotonIA onClick={writeNarrative} disabled={busy} className="mt-2 px-3 text-sm">
               {busy ? 'Redactando…' : 'Redactar informe (IA)'}
             </BotonIA>
+            {errorNarrativa && (
+              <p className="mt-2 text-sm text-red-700">No se pudo redactar el informe: {errorNarrativa}</p>
+            )}
           </>
         ) : (
           <BloqueIA modelo={narrative.model} aviso={narrative.disclaimer}>

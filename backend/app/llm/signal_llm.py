@@ -11,7 +11,13 @@ precios, y dejarle emitir la señal convertiría el motor en teatro.
 
 from __future__ import annotations
 
-from app.formato import fmt_num, fmt_pct
+from app.analysis.signal import LABEL_THRESHOLDS
+from app.formato import fmt_frente, fmt_num, fmt_pct
+
+# La puntuación, de su lado de las fronteras de la etiqueta que va al lado: con
+# dos decimales, 0,3496 llegaba como «+0,35 / neutral» y 0,99996 como «+1,00 /
+# favorable» (revisión 10).
+FRONTERAS_ETIQUETA = [t for t, _ in LABEL_THRESHOLDS]
 from app.registro import log
 
 import json
@@ -146,7 +152,7 @@ def explain_signal(llm: LLMProvider, signal: dict, context: dict) -> dict:
 Sector: {context.get('sector') or 'desconocido'}
 Horizonte del modelo: {signal.get('horizon')}
 
-Puntuación compuesta (z-score frente al universo): {fmt_num(signal.get('score'), signo=True)}
+Puntuación compuesta (z-score frente al universo): {fmt_frente(signal.get('score'), FRONTERAS_ETIQUETA, signo=True)}
 Etiqueta del modelo: {signal.get('label')}
 Cobertura de datos: {fmt_pct(signal.get('coverage'), 0)} de los factores
 Probabilidad calibrada: {

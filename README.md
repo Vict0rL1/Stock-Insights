@@ -16,9 +16,10 @@ precios y no ejecuta órdenes**.
 - **Toda cifra lleva fuente y fecha.** El backend nunca entrega un número sin
   `source` y `as_of`; la UI lo muestra siempre (badge junto a cada bloque),
   incluyendo si el dato viene de caché y desde cuándo.
-- **Sin predicciones puntuales.** El DCF devuelve escenarios bajista/base/
-  alcista con supuestos editables y una matriz de sensibilidad, nunca un
-  precio objetivo único.
+- **Sin predicciones puntuales.** El DCF devuelve un rango por escenario
+  bajista/base/alcista con supuestos editables y dice qué supuesto mueve más
+  el resultado, nunca un precio objetivo. Hay uno solo, el del módulo
+  Valoración, y la ficha y el informe enseñan su resumen.
 - **Lo calculado ≠ lo generado por LLM.** Indicadores y ratios se calculan a
   partir de datos; el contenido de IA aparece con etiqueta morada, modelo
   usado y disclaimer, y queda registrado en `llm_outputs`.
@@ -36,8 +37,9 @@ precios y no ejecuta órdenes**.
   precio ancla; la vista de Tesis compara después cómo envejeció, con tasa de
   acierto y error mediano de estimación. Si el modelo falla seguido, se ve.
 - **Un dato ausente se muestra como "—", nunca como cero.** Un filtro del
-  screener nunca se aprueba por falta de datos; una posición sin precio no
-  vale cero, queda fuera de los totales y la UI lo dice.
+  screener nunca se aprueba por falta de datos, ni se suspende: la empresa
+  queda «sin comprobar» y se cuenta aparte de las que no pasan; una posición
+  sin precio no vale cero, queda fuera de los totales y la UI lo dice.
 
 ## Tema oscuro por inversión de paleta
 
@@ -87,6 +89,32 @@ http://localhost:8000/docs. Los logs quedan en `/tmp/bolsa-backend.log` y
 `start.sh` reinstala las dependencias de Python solo si `requirements.txt`
 cambió (compara un hash), y libera los puertos 8000 y 5173 si quedaron
 ocupados por una ejecución anterior que no cerró bien.
+
+El backend escucha solo en 127.0.0.1 y, además, solo atiende a una cabecera
+`Host` de esta máquina (`localhost`, `127.0.0.1`, `[::1]`); cualquier otra es un
+400. Escuchar en local no basta: con *DNS rebinding*, una web puede hacer que su
+dominio resuelva a 127.0.0.1 y llamar a la API con su propio `Host`. Para usar
+otro nombre, `ALLOWED_HOSTS` en `.env` (lista JSON): lo que pongas se **añade** a
+los de esta máquina, que siguen siempre (el proxy de Vite llama como `localhost`).
+
+Tampoco atiende a otras webs abiertas en el mismo navegador: una petición cuyo
+`Origin` no es la interfaz (`CORS_ORIGINS`, el Vite de `localhost:5173`) ni el
+propio backend, o que sin `Origin` llega marcada `Sec-Fetch-Site: cross-site` o
+`same-site` (o, sin ninguna de las dos, con un `Referer` de otra web), es un 403.
+`Sec-Fetch-Site: same-origin`, que pone el navegador, siempre pasa: abierta como
+`localhost`, `127.0.0.1` o `[::1]`, la interfaz por el proxy de Vite funciona en
+cualquier puerto. Para abrirla con un nombre de `ALLOWED_HOSTS`, Vite también tiene
+que aceptarlo: por defecto solo escucha en `localhost` y rechaza otro `Host` antes de
+llegar al proxy («Blocked request»), así que hace falta `server.allowedHosts` (y
+`server.host` si el nombre no resuelve a 127.0.0.1) en `frontend/vite.config.ts`. Por
+http, con ese nombre el navegador no manda Fetch Metadata y se miran el `Origin` o el
+`Referer`: valen los puertos de `CORS_ORIGINS` (el 5173 de Vite por defecto); con Vite
+en otro puerto, añade ese origen a `CORS_ORIGINS`, o hasta las lecturas dan 403. CORS solo impide *leer* la respuesta:
+sin esto, un `<img>` de cualquier web congelaba análisis en tu historial y gastaba
+la cuota de los proveedores. Límite: a un nombre de `ALLOWED_HOSTS` en http el
+navegador no le manda Fetch Metadata, y una petición sin `Origin` ni `Referer` pasa;
+con `localhost` no hay ese hueco. `start.sh` da el backend por arrancado solo si `/api/meta/health`
+responde sin error (`curl -sf`).
 
 ### La base de datos se migra sola (desde el RC1)
 
@@ -154,7 +182,7 @@ cd frontend && npm run build               # type-check estricto + build
 
 ### Capturas de pantalla
 
-Todas las pantallas, a 1440 px y a 390 px, con datos ficticios (nunca tu base):
+Todas las pantallas, a 1440 px, a 820 px (tableta) y a 390 px, con datos ficticios (nunca tu base):
 
 ```bash
 cd frontend && npm run capturas -- /ruta/de/salida               # todos los escenarios
@@ -166,6 +194,12 @@ puerto 8077) con el paquete de casos extremos y el reloj congelado, así que dos
 pasadas del mismo código dan las mismas imágenes. Escenarios: normal, cartera vacía,
 día sin candidatas, empresa sin datos y contenido de IA visible. La primera vez:
 `npx playwright install chromium`.
+
+A 820 y a 390 px la pasada **falla** (sale con código 1) si una pantalla desborda en
+horizontal, si un contenedor con `overflow-x: hidden` recorta texto o si parte un texto
+palabra a palabra; a 390 fotografía además el menú de móvil abierto y la
+navegación desde él. Los clics son normales, no «a la fuerza»: si algo tapa un botón,
+es un fallo de la pantalla.
 
 ### Validación con datos reales
 
@@ -211,6 +245,13 @@ Notas: el endpoint de velas de Finnhub dejó de ser gratuito en 2024, por eso
 el histórico viene de Twelve Data. IEX Cloud cerró en 2024; Polygon.io ahora
 se llama Massive (no se usan).
 
+El calendario del panel de Mercado (`GET /api/market/calendar`) sirve los 120
+resultados más próximos de los 14 días y `total`, cuántos hay antes de recortar
+(la pantalla enseña 40 y dice «40 de N, los más próximos»). Si el calendario no
+responde, `events` y `total` son `null` y `error` dice por qué, y la pantalla lo
+pinta como fallo, con «Reintentar»: con `events: []` un calendario caído se leía
+«Ninguna empresa anuncia resultados en los próximos 14 días» (revisión 13).
+
 ## Cómo se minimiza el gasto de API
 
 El coste es una restricción de diseño, no una optimización posterior:
@@ -218,7 +259,7 @@ El coste es una restricción de diseño, no una optimización posterior:
 | Palanca | Detalle |
 |---|---|
 | **EDGAR primero** | Una descarga de `companyfacts` (gratis, caché 24 h) alimenta ratios, crecimiento, DCF, Altman Z y Piotroski F. **También la puntuación diaria**: los múltiplos salen del último ejercicio publicado más el precio que la descarga de momentum ya trajo, así que puntuar las 502 del índice cuesta **cero llamadas de Finnhub**. Antes iban ahí y su tier de 60/min se agotaba en los primeros 60 símbolos, dejando el resto sin puntuar y secando la cuota que necesitan noticias y calendario. |
-| **TTL por tipo de dato** | Cotización 1 min · histórico 15 min · fundamentales/filings 24 h · calendario 12 h · **pares 7 días · composición de ETFs 7 días**. |
+| **TTL por tipo de dato** | Cotización 1 min · histórico 15 min · fundamentales/filings 24 h · calendario 12 h · **pares 7 días · composición de ETFs 7 días**. Una cotización que fallan todas las fuentes (sin copia que rescatar) también se recuerda 1 min (`cache.RECORDAR_FALLO`): con las fuentes caídas, los reintentos (tres por fuente, 3 s de espera por fuente) se pagan una vez por minuto, no en cada petición. |
 | **Carga perezosa en la UI** | La vista de ticker solo pide datos de la pestaña abierta; el resto no gasta nada hasta que la abres. |
 | **LLM bajo demanda** | La interpretación de una noticia solo se genera con botón explícito, con `max_tokens` acotado, y se guarda con hash del prompt: repetirla no vuelve a llamar al API. |
 | **Screener acotado** | Evalúa el universo que le das (máx. 25 tickers) con fundamentales cacheados, en vez de fingir un barrido de mercado imposible con tiers gratuitos. |
@@ -268,7 +309,7 @@ endpoint HTTP → MarketDataService → CacheStore (SQLite, TTL por tipo de dato
 |---|---|
 | **Hoy** | Pantalla de entrada. S&P 500, NASDAQ y grandes canadienses puntuadas, cruzadas con tu cartera y resueltas en una acción concreta —comprar, vigilar, mantener, reducir, vender— con precio de entrada, stop, objetivo y tamaño. Ver abajo. |
 | **Mercado** | Índices vía ETFs proxy, sectores SPDR, curva de rendimientos y spread 10A-2A, macro FRED, próximos resultados. |
-| **Acciones** | Gráfico de velas con SMA/RSI/MACD, fundamentales, estados financieros de EDGAR, DCF por escenarios con sensibilidad, Altman Z / Piotroski F, riesgo (beta, volatilidad, drawdown), filings e insiders. |
+| **Acciones** | Gráfico de velas con SMA/RSI/MACD, fundamentales, estados financieros de EDGAR, resumen del DCF del módulo Valoración (un rango por escenario y el enlace al análisis completo), Altman Z / Piotroski F, riesgo (beta, volatilidad, drawdown), filings e insiders. |
 | **Noticias** | Feed por ticker o general, con interpretación de IA bajo demanda claramente etiquetada. |
 | **ETFs** | Composición, expense ratio, AUM, desglose sectorial, comparador y **solapamiento entre ETFs**. |
 | **Screener** | Filtros combinables con presets que documentan su lógica de inversión. |
@@ -298,7 +339,21 @@ permanente. Esa es la trampa de valor clásica, y la app la nombra.
 
 La sección **Lectura conjunta** sintetiza qué dicen los datos con su postura
 (constructiva / mixta / cautelosa), lo que juega a favor y en contra, y —
-siempre — **qué observaciones futuras romperían esa lectura**. Es contexto para
+siempre — **qué observaciones futuras romperían esa lectura**. Lo que mira y no
+pudo comprobar por falta del dato (la valoración frente a su historia, la
+cobertura de intereses, el Altman Z…) se nombra aparte (`sin_comprobar`): con
+algo sin comprobar, «en contra» dice «nada entre lo que se pudo comprobar», no
+«sin señales de alarma». Y dice su alcance (`alcance`): lee el último ejercicio
+anual y la valoración frente a su historia; los trimestres publicados después y
+el DCF precargado no entran en ella. Los riesgos hacen lo mismo con sus umbrales
+sin dato (`riesgos_sin_comprobar`), y los catalizadores dicen qué son
+(`catalysts_note`: resultados previstos a 120 días y los últimos documentos
+presentados), sin prometer un plazo. Si el calendario o la lista de documentos no
+responden, la lista vacía no es «ninguno»: `catalysts_sin_comprobar` nombra la
+fuente caída y la nota lo dice (una fuente que responde que no hay sigue siendo
+una lista vacía). La narrativa de la IA recibe las dos listas: sin ellas leía
+«Ninguno relevante detectado» con la deuda/capital sin calcular, y «Ninguno
+identificado» con el calendario caído (revisión 13). Es contexto para
 entender la empresa, no la decisión: quien dice comprar o vender es el motor de
 decisión de la vista **Hoy**, con sus reglas y sus niveles.
 
@@ -405,11 +460,94 @@ día sin datos; a partir de ahí el botón sigue estando.
 El S&P 500 son ~500 empresas y los tiers gratuitos dan 60 llamadas/minuto. El
 limitador de cuota **descarta, no espera**, así que lanzar 500 llamadas de
 golpe puntuaría las primeras 60 y perdería el resto. En su lugar cada petición
-descarga como mucho 120 fundamentales nuevos, los cachea 24 h y deja el resto
-pendiente; la siguiente pasada sigue por donde iba, porque lo ya cacheado sale
-gratis. La UI muestra la barra de cobertura y un botón para continuar. Los
+descarga como mucho 120 fundamentales nuevos (`budget`, por defecto
+`DEFAULT_FETCH_BUDGET`), los cachea 24 h y deja el resto pendiente; la siguiente
+pasada sigue por donde iba, porque lo ya cacheado sale gratis. Cuenta **cada
+empresa que descarga algo, una vez**: su companyfacts de EDGAR o, si EDGAR no la
+tiene, sus fundamentales de Finnhub. Hasta noviembre de 2026 solo contaba el
+respaldo de Finnhub, y la primera pasada bajaba los ~500 companyfacts de EDGAR de
+una vez (varios MB cada uno: un par de minutos) por pequeño que fuera el
+presupuesto. Lo guardado de cada fuente se mira por separado: con los
+fundamentales de Finnhub guardados y sin los de EDGAR (EDGAR falló un rato), la
+empresa se puntúa con los de Finnhub y no se vuelve a pedir su companyfacts hasta
+que caducan; antes salía gratis pero bajaba EDGAR sin contarlo (con 40 de
+presupuesto, 80 descargas). Y una empresa que **ninguna fuente tiene** (EDGAR y
+Finnhub contestaron que no) se recuerda 24 h (`signals.SIN_FUNDAMENTALES`, como
+`RECORDAR_FALLO` con las cotizaciones): antes gastaba una unidad en cada pasada.
+Un fallo de las fuentes (caídas, sin cuota) no se recuerda: se reintenta en la
+pasada siguiente, y mientras quede alguna empresa así la lista **no está
+completa** (`fallidas` en la respuesta y en cada sector; `complete = pending == 0
+y fallidas == 0`). Antes contaba como «sin fundamentales en ninguna fuente» y una
+lista con un sector caído salía completa (revisión 15). Una cadena sin ninguna
+fuente configurada no es un fallo: no hay a quién volver a preguntar. La UI
+muestra la barra de cobertura, cuántas quedan sin analizar por un fallo, y un
+botón para continuar. Los
 nombres de las empresas salen del propio archivo del universo: pedirlos al API
 costaría otras 500 llamadas por información puramente cosmética.
+
+### La primera carga, sin bloquear
+
+Sin lista vigente (caché de 6 h), Hoy se quedaba en «Puntuando el universo…» los
+minutos de una pasada. Ahora la pantalla (`frontend/src/hooks/useListaDiaria.ts`)
+pide primero **la lista guardada**, que no calcula nada:
+
+| Petición | Respuesta |
+|---|---|
+| `GET /api/signals/today?market=…&vencida=aceptar` con lista vigente | La de siempre (`cached: true`, sin `estado`). |
+| Ídem, con la lista caducada pero de la última semana (el margen de rescate de la caché) | Esa copia, al momento, con `estado: "viejo"`, `antiguedad_segundos` (null si no se sabe) y su `fetched_at`. **No recalcula ni congela instantáneas**: una lista servida es la decisión de cuando se calculó, que ya se congeló entonces. Una copia con la forma de otra versión no se sirve. |
+| Ídem, sin ninguna | `404` con el motivo en `detail` («No hay ninguna lista de … guardada, ni vigente ni de la última semana…»). |
+| `vencida` con otro valor, o junto a `refresh=true` | `422`: una pide lo guardado al momento y la otra recalcular. |
+
+En los tres casos de `200` el repaso de stops (`cartera`) y `lista_desfasada` se
+calculan en esa petición, como siempre: la lista puede ser de hace 9 h, el repaso
+de tus stops es de ahora. Con la copia caducada, el último cierre de cada señal
+entra en el repaso como precio **viejo** (`contexto_cartera.senales_para_el_stop`):
+sin cotización, un cierre de hace días por encima del stop daba «por encima»;
+ahora da `sin_comprobar` (revisión 14).
+
+Con la copia caducada a la vista («Lista de hace 9 h; actualizando…»), la pantalla
+pide la normal detrás y la sustituye al llegar. Sin ninguna (primera vez, o más de
+una semana sin abrir la app), la primera pasada va **corta** (`budget=40`,
+`PRIMERA_PASADA`): unos segundos en vez de minutos y, aunque EDGAR fallara entero,
+40 llamadas a Finnhub dejan margen en su minuto para lo demás de la pantalla. Las
+cuatro pasadas automáticas de 120 completan el resto (40 + 4 × 120 = 520 ≥ 502:
+cada empresa gasta como mucho una unidad en 24 h, también la que ninguna fuente
+tiene; si las fuentes fallan, lo fallido se reintenta y vuelve a gastar, la lista
+no se da por completa y, si la fuente sigue caída al llegar al tope de pasadas,
+la pantalla dice cuántas quedan sin analizar por un fallo y ofrece «Seguir
+completando») con la barra
+«Analizando el mercado en segundo plano: 312 de 502 empresas. Ya puedes usar la
+app; las ideas se completan solas.» Esa primera lista es **parcial y lo dice**:
+el presupuesto se gasta sector a sector, así que cubre los primeros sectores del
+universo.
+
+**Una lista parcial no congela instantáneas.** La decisión del día
+(`decision_snapshots`, la primera gana y es inmutable) se congela con la primera
+lista que cubre el mercado entero (`complete`; las empresas que ninguna fuente
+tiene no lo impiden, las que una fuente caída no pudo dar sí), y la respuesta
+parcial lo dice en `instantaneas.sin_congelar` (`null` cuando se congeló), con lo
+que falta contado por su causa («22 sin datos por un fallo de las fuentes, que se
+reintentan»). Explorar lo dice en una línea junto a la cobertura parcial, y
+también si la congelación falló (`instantaneas.error`, el detalle en el log). Antes congelaba la primera
+pasada, de 40 o 120 de 502: con el segundo sector puntuado contra una parte de sí
+mismo y «evitar» lo peor de 40, no de 502, y ninguna pasada posterior podía
+corregirlo. Un día sin lista completa se queda sin instantánea (`docs/DECISION_REPLAY.md`).
+
+Las peticiones en vuelo y la última lista se comparten por mercado entre las
+pantallas que la usan: montar otra pantalla con la lista ya recibida no pide nada
+(si tiene más de un minuto, la pide una vez para tener el repaso de stops de
+ahora, y solo encadena pasadas si el backend la recalculó), y StrictMode no
+duplica ninguna petición. **La lista en memoria envejece**: el hook guarda
+cuándo se calculó (no su edad), y pasadas 6 h (`VIGENCIA_LISTA_HORAS`, la vigencia
+de la caché del backend) la enseña como vieja, con su edad al día, aunque no
+venga de la copia caducada; también mientras pide la de ahora o si esa falla. El
+aviso dice entonces que el repaso de stops es de cuando llegó, no de ahora. La
+cabecera de Explorar («Calculado hace 3 h») usa esa misma fecha
+(`lista.calculadaEn`) y se repinta cada minuto (`lib/usePintarCadaMinuto.ts`), como
+el precio de cada stop; y pasado un minuto, el «nada urgente» lleva la edad de su
+repaso («nada urgente · repaso de hace 3 h»). Antes la cabecera se quedaba en
+«hace 5 min» y, con la copia caducada, decía una edad distinta de la línea de
+progreso (revisión 15).
 
 ### De dónde salen las listas
 
@@ -449,15 +587,23 @@ cambia — no hay criterio discrecional escondido.
 | Condición | Acción |
 |---|---|
 | Puntuación ≤ −0,35 | **Evitar** — queda por detrás de sus comparables de sector |
-| Puntuación ≥ +0,35 **y** cotiza sobre su media de 200 sesiones | **Comprar** |
-| Puntuación ≥ +0,35 pero por debajo de la media de 200 | **Vigilar** — buena empresa en tendencia bajista |
+| Puntuación ≥ +0,35 **y** cierra en o por encima de su media de 200 sesiones + 2 % | **Comprar** |
+| Puntuación ≥ +0,35 pero por debajo de la media de 200 + 2 % | **Vigilar** — buena empresa sin la tendencia a favor (bajo la media o aún dentro de la banda) |
 | Entre ambos umbrales | **Sin acción** |
 
 El filtro de la media de 200 sesiones es el que evita el error caro de este
 tipo de modelo: comprar algo *barato porque sigue cayendo*. Una empresa puede
 puntuar excelente en valor precisamente porque el mercado la está descontando
 por algo que los estados financieros aún no reflejan. La regla no la descarta,
-la manda a **Vigilar** y espera a que el precio recupere la media.
+la manda a **Vigilar** y espera a que el precio supere la media con margen.
+
+La banda (`BANDA_TENDENCIA_ENTRAR_PCT` y `BANDA_TENDENCIA_SALIR_PCT` en
+`decision.py`) evita que un precio que oscila alrededor de la media cambie de
+acción cada día: para entrar hay que cerrar en o por encima de la media + 2 %, y
+para reducir, en o por debajo de la media − 1 %. Entre las dos, la acción no
+cambia por la tendencia. Los umbrales que se escriben se redondean hacia el lado
+en que la frase es cierta: «Comprar cuando cierre en o por encima de 102,01» con
+un umbral exacto de 102,00408.
 
 «Sin acción» es un estado propio y no un sinónimo de «Vigilar»: casi la mitad
 del S&P 500 cae en la franja neutral, y meterla en la lista de espera la
@@ -471,7 +617,7 @@ Portafolio):
 |---|---|
 | Puntuación ≤ −0,35 | **Vender** — la razón por la que la compraste ya no se sostiene |
 | Precio ≤ stop calculado sobre **tu precio de coste** | **Vender** |
-| Cotiza bajo su media de 200 sesiones | **Reducir** |
+| Cierra en o por debajo de su media de 200 sesiones − 1 % | **Reducir** |
 | Resto | **Mantener**, con tu P&L sobre el precio de compra |
 
 ### Los niveles: stop, objetivo y tamaño
@@ -497,7 +643,8 @@ Toda propuesta de compra viene con su salida ya definida. Se calculan así:
   cartera**. Stop lejano → posición pequeña. Así una idea equivocada cuesta lo
   mismo que cualquier otra, y el tamaño lo fija el riesgo en vez de la
   convicción. Es un **porcentaje de la cartera, no un número de acciones**: la
-  app no sabe cuánto dinero tienes y no va a fingir que sí.
+  app solo sabe el dinero que tienes si anotas el efectivo en Cartera (más abajo,
+  «Tamaño de posición»), y no va a fingir que sí.
 
 Cada fila desplegada muestra además **cuándo actuar**: la lista de
 disparadores que ejecutan o cancelan la idea (comprar en este rango, salir
@@ -510,6 +657,65 @@ muestra en pantalla es la distancia que queda **desde el precio actual**, que
 puede ser positiva si el stop ya está perforado. No hay zona de compra ni peso
 sugerido: no se propone entrar en algo que ya tienes, y menos si la acción es
 vender.
+
+**El stop de TODA tu cartera se repasa en Hoy, esté o no en el mercado elegido.**
+La lista solo decide sobre las empresas que puntúa; una posición de otro mercado
+(una canadiense en `.TO`, una que no está en el S&P 500) quedaba fuera y su stop
+no lo miraba nadie: la cabecera decía «Para vender 0 · nada urgente» con un stop
+perforado. Ahora `/api/signals/today` trae `cartera` —calculado en cada petición,
+fuera de la caché de la lista— con cada posición abierta y su estado con la regla
+del motor (`perforado`: en o por debajo del stop; `por_encima`; o `sin_comprobar`
+con su motivo). Lo perforado sale arriba en rojo y cuenta en «Para vender»; lo que
+no se pudo comprobar sale en ámbar y «nada urgente» solo se dice si se miró todo.
+«En cartera» cuenta todas las abiertas y dice cuántas quedan fuera de la lista;
+«Mi cartera» las enseña aparte, con su stop.
+
+El repaso mira lo mismo que el Portafolio (revisión 13):
+
+- **Precio:** la cotización (caché de 1 min, la del Portafolio) de TODAS las
+  posiciones, y el último cierre de la lista solo como reserva. Antes, para las
+  de la lista, ese cierre (de hasta 12 h: 6 de la descarga y 6 de la lista): KO a
+  112 con el stop en 116 salía «por encima» en Hoy y perforada en el Portafolio.
+  Fail-safe: perforada si la perfora cualquiera de los precios que haya;
+  `por_encima` solo con un precio válido; un precio viejo por encima del stop es
+  `sin_comprobar`, con su antigüedad. Cada fila dice de dónde y de cuándo es su
+  precio (`precio_fuente`, `precio_proveedor`, `precio_fecha`; todos los mirados
+  en `precios`).
+- **Stop:** el de CADA lote, con la misma función que el Portafolio
+  (`portfolio.stop_del_lote`: el fijado al abrir o, sin él, el recalculado desde
+  el coste de ese lote). Un símbolo está perforado si lo está cualquiera de sus
+  lotes; se sirve el stop más alto y cuántos lotes lo recalculan (`lotes`,
+  `lotes_recalculados`, `lotes_por_clase`, `lotes_sin_stop`).
+- **Coste:** una cotización por posición y petición, de la caché; con las
+  fuentes caídas, el fallo se recuerda un minuto (ver «TTL por tipo de dato»).
+- **Lista desfasada:** la lista sigue cacheada 6 h con la cartera de cuando se
+  puntuó (decisión abierta, M3), pero guarda con qué cartera (`huella_cartera`:
+  posiciones abiertas y efectivo anotado; solo en la caché, no en la respuesta) y
+  Hoy sirve `lista_desfasada` con qué
+  cambió desde entonces (`abiertas`, `cerradas`, `cambiadas`, `efectivo`; o
+  `error` si no se pudo comparar; `null` si es la misma). La pantalla lo avisa y
+  remite a «Actualizar»; «Mi cartera» se construye con el repaso: las filas de
+  la lista, solo de lo abierto ahora; lo abierto después de puntuar, aparte y con
+  su stop.
+- **Las tres pantallas, una fuente (revisión 14):** `GET /api/portfolio` sirve el
+  mismo repaso (`repaso`, con la lista guardada de Inicio y las `senales` de lo
+  abierto) y cada fila mira su stop con esos precios (`stop_perforado`,
+  `stop_perforado_por`). La línea de Mi cartera e Inicio lo leen con
+  `avisosDeCartera`, por símbolo, como «Para vender» en Explorar. Detalle en
+  `docs/PORTFOLIO_RISK.md`.
+- **Una regla para el símbolo y para el lote (revisión 15):**
+  `contexto_cartera.estado_del_stop` decide el repaso de cada símbolo y la fila de
+  cada lote (`stop_estado`, `stop_motivo`, `stop_precio`). Con una cotización,
+  aunque sea vieja, el último cierre de la lista no da «por encima» (sí perfora); sin
+  ninguna cotización sigue dándolo (revisión 13, pendiente de Victor). Un precio de
+  antes de abrir el lote no cuenta para su stop. Las posiciones del mercado que una
+  lista parcial aún no ha puntuado van `pendiente`, y `repaso.lista` dice si es
+  `completa`. Inicio y Mi cartera solo afirman «la regla no manda vender ni reducir»
+  de las que la lista decide, y dicen de cuándo es la lista. La ficha
+  (`/api/empresa/{symbol}/analisis`) trae el `repaso` de su posición y avisa con él,
+  y el motor decide con el stop de cada lote: con varios lotes y alguno sin stop
+  guardado, el más protector de todos, con el recalculado desde su coste
+  (`stop_recalculado`), en vivo.
 
 ### ¿Y funcionan? El backtest de reglas
 
@@ -540,9 +746,11 @@ resultado se guarda igual que desde la interfaz, así que al terminar la vista
 
 El segundo es el que valida lo que la app realmente ejecuta, y es una
 **simulación por eventos**: en cada fecha se puntúa el universo con datos
-point-in-time, se abre posición en las que cumplen las reglas, y cada operación
-se sigue sesión a sesión hasta que salta el stop, toca el objetivo o vence el
-año. Tres decisiones lo gobiernan:
+point-in-time, se abre posición en las que cumplen las reglas (la misma
+tendencia que el motor, con su banda: media + 2 %; hasta la revisión 4 entraba con
+«precio > media», y los backtests guardados antes, sin `banda_tendencia_pct`, se
+calcularon así), y cada operación se sigue sesión a sesión hasta que salta el
+stop, toca el objetivo o vence el año. Tres decisiones lo gobiernan:
 
 - **Se entra al cierre siguiente a la señal.** Comprar al precio del día en que
   se conoce la señal es comprar con información que aún no tenías. Es el error
@@ -636,7 +844,8 @@ ETFs) usa lo que sí predice el resultado de un ETF:
    gane o pierda el fondo. Se muestra en dinero —«75 al año por cada 10.000
    invertidos»— porque «0,75 %» no significa nada a simple vista. Sin símbolo
    de moneda: es una proporción, y vale igual para un fondo en dólares.
-2. **La tendencia.** El mismo filtro de la media de 200 sesiones.
+2. **La tendencia.** El mismo filtro de la media de 200 sesiones que las acciones, con
+   su banda: compra en o por encima de la media + 2 %, y dentro de la banda espera.
 3. **El tamaño.** Por debajo de 100 M de patrimonio hay riesgo real de liquidación, y si
    cierran el fondo te devuelven el dinero cuando a ellos les conviene.
 
@@ -687,7 +896,16 @@ abiertas **ocupan presupuesto** en los cuatro límites:
   y mirando solo las candidatas entre sí era invisible.
 - El objetivo de volatilidad se mide sobre la cartera combinada. Si la que ya
   tienes se pasa sola, las ideas nuevas salen al 0 % y se dice por qué: no es
-  que sean malas, es que no cabe más riesgo.
+  que sean malas, es que no cabe más riesgo. Eso vale también para las que
+  califican fuera de la lista corta, que no pasan por el dimensionador: la
+  respuesta lo dice con `shortlist.sin_hueco_de_riesgo` (`true` solo con ese
+  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 14). Solo con
+  la cartera medida sobre el capital (`sizing.base_cartera: capital`): sin efectivo
+  anotado, o sin sumarlo por una posición sin valorar, la cartera se mide como
+  invertida al 100 % y «no cabe» es una conclusión del supuesto, así que la bandera
+  es `null` (no se sabe) y las ideas salen con el tamaño sin calcular y «anota tu
+  efectivo», nunca «vende algo antes», como el INDETERMINADO del coste de
+  oportunidad (revisión 15).
 
 Las posiciones abiertas **no se redimensionan** aquí — qué hacer con lo que ya
 tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los
@@ -698,7 +916,19 @@ tienes se mide sobre tu capital total —posiciones más el efectivo anotado en
 Cartera (migración 0008), con la misma conversión que el coste de oportunidad—,
 y si no hay efectivo anotado, o está en una moneda sin tipo de cambio, sobre el
 valor de las posiciones abiertas: tu concentración real es entonces menor y los
-topes aprietan antes de lo debido, y la nota lo dice; y las posiciones que un barrido no cubre
+topes aprietan antes de lo debido, y la nota lo dice. Si hay posiciones que el
+barrido no puede valorar, el efectivo tampoco se suma (sumarlo entero a media
+cartera inventaría liquidez) y la nota no afirma ninguna dirección: las que
+faltan aflojan los topes de su sector y las valoradas pesan de más, así que el
+tamaño puede quedarse corto o pasarse; sin ninguna valorada, los topes no ven
+nada y el tamaño es una cota superior. Sin ninguna posición abierta no habla de
+«lo que ya tienes»: con efectivo, los pesos y la liquidez son porcentajes de ese
+efectivo; sin él (o sin tipo de cambio), de un capital que la app no conoce, y lo
+dice. La nota dice qué efectivo se usó y de qué fecha (y
+la del tipo de cambio si tiene más de una semana; nunca se usa uno posterior), y
+la instantánea de la lista guarda la base y el efectivo. Hoy se calcula con la
+cartera y el efectivo del momento en que se puntuó la lista (caché de 6 h):
+tras anotar efectivo o abrir una posición, «Actualizar» la recalcula; y las posiciones que un barrido no cubre
 (otro mercado, sin precio) quedan fuera de los topes, lo cual se avisa en vez de
 dejar que un tope calculado sobre media cartera pase por completo.
 
@@ -746,6 +976,31 @@ Y si el histórico común no llega a la ventana pedida, la peor ventana sale
 semanas viajaba rotulado como «peor 12 meses», y un número mal rotulado es peor
 que ninguno porque se compara con otros que sí significan lo que dicen.
 
+Las posiciones sin histórico guardado (o con menos de 60 sesiones) no entran, y
+el resto se repondera: por eso `/api/portfolio` dice qué parte del dinero mide
+(`estres.cobertura_peso`) y cuáles se quedan fuera (`sin_historico`, cada una con
+su motivo en el aviso del panel), como el estrés de crisis. Antes se quitaban en
+silencio y la caída de un 9 % de la cartera pasaba por la de toda. Las series van
+en dólares, como los pesos (una acción canadiense plana mientras el CAD caía
+«no perdía nada»), y el tramo final sale de las mismas copias que el stop y el
+minigráfico: el de un año vigente, el mismo caducado hace menos de un día o el
+largo si se descargó hace menos de un día. El largo vive 7 días en la caché:
+servirlo antes que una copia de un año de hace horas daba el stop perforado en la
+Cartera y no en la ficha. El stop y el minigráfico se quedan con el último año; el
+estrés empalma delante el largo mientras siga en la caché (`_cierres_empalmados`,
+el mismo empalme que Opciones), porque recortado a 252 sesiones la peor ventana
+de 12 meses (que pide más de 252) no salía nunca, y con el largo solo de menos de
+un día, al día siguiente de descargarlo «Peor 12 meses» desaparecía y la nota
+decía «solo hay guardado el último año» con 700 sesiones guardadas (revisión 13).
+En la costura, lo anterior se lleva a la escala de la copia reciente con una
+sesión común: el largo viene ajustado por dividendos y el año puede no estarlo, y
+un split entre las dos descargas partía la serie en una «caída» que no ocurrió.
+Una posición con el largo pero sin ninguna copia reciente queda fuera (acabaría
+hace días y cortaría a las demás), con ese motivo. Si aun así no llega, la nota
+dice con cuántas sesiones mide, entre qué fechas, y qué posiciones no tienen
+ningún largo guardado: lo baja Cartera («Descargar histórico completo») y vale
+mientras siga en la caché (7 días).
+
 Nada de esto se calculaba en la aplicación hasta ahora: `peor_ventana()` y
 `con_caida_esperada()` existían en el repositorio, con sus tests, y **no las
 llamaba ningún endpoint**. Hoy `/api/portfolio` las sirve y el portafolio las
@@ -785,6 +1040,19 @@ umbral de margen es enorme y no se ve.
 **Solo se vigilan métricas del NEGOCIO.** No hay múltiplos en el catálogo:
 vigilar el P/E sería vigilar la cotización, y para eso están las alertas de
 precio. Un punto de invalidación habla de la empresa.
+
+**Cada métrica en su unidad.** El catálogo (`GET /api/theses/vigilancia/metricas`) dice
+la `unidad` de cada una: los márgenes, el ROE, el ROIC y los crecimientos son `pct` (se
+escriben en %, «18», y se guardan como fracción, 0,18); deuda/capital, ratio corriente y
+cobertura de intereses son `veces` (un ratio corriente de 1,2 se escribe y se guarda 1,2).
+Antes el formulario lo pedía todo en % y dividía entre 100: «ratio corriente < 1» se
+guardaba como 0,01 y el punto no saltaba nunca. Los puntos nuevos guardan su `unidad`. Uno
+en `veces` sin `unidad` guardada se lee de las dos formas, tal cual y ×100, solo si la
+lectura ×100 cabe en la métrica (`TOPE_LEGADO`: hasta 10 veces en deuda/capital y ratio
+corriente, hasta 30 en cobertura; un «D/E > 0,5» no puede ser 50 veces y se lee tal cual): si
+coinciden, ese es el resultado, con un aviso de la duda; si no, queda **sin comprobar** y dice
+qué daría cada una, hasta que lo quites y lo crees de nuevo. La nota de la tesis solo dice «no
+se ha cruzado» de los puntos que sí se comprobaron.
 
 ### Que un punto salte NO es una señal de venta
 
@@ -861,7 +1129,8 @@ Dos decisiones que los hacen legibles en vez de decorativos:
 - **El RSI lleva escala FIJA 0-100.** Con escala automática, el eje se reajusta
   en cada rango y un RSI de 55 parece un extremo porque es el máximo de esa
   ventana. Con 0-100, la altura significa siempre lo mismo. Y las bandas 70/30
-  van dibujadas: un RSI sin ellas es una curva sin referencia.
+  van dibujadas: un RSI sin ellas es una curva sin referencia. En su eje solo
+  salen las bandas: las marcas automáticas caían en 75 y 25, debajo de ellas.
 - **El histograma del MACD va en verde o rojo según el signo**, porque el signo
   ES la señal y un solo color la escondería.
 
@@ -878,6 +1147,15 @@ comportamientos que la documentación no menciona:
    subpaneles, el último en fijarse consigue su valor exacto mientras el otro se
    queda con el resto. Repartirlos a partes iguales no se puede; lo que sí se
    garantiza es que ninguno baje del mínimo legible.
+3. **Las opciones de la escala derecha de un panel se copian a las de la
+   gráfica**, y el panel que se crea después las hereda: la escala fija y sin
+   cifras del RSI acababa también en el MACD. Se fijan cuando ya existen todos.
+
+El gráfico no se queda con la página: la rueda y el arrastre vertical (también
+con el dedo) la desplazan; el gráfico se mueve arrastrando en horizontal y se
+amplía con dos dedos, arrastrando un eje o con los rangos. Con los bordes fijos
+la serie no deja un hueco a la derecha y la primera fecha del eje sale entera, y
+ninguna cifra de un eje sale cortada por el borde de su panel (revisión 12).
 
 ## El recorrido de la cartera, no solo el P&L de hoy
 
@@ -913,7 +1191,8 @@ aportes ni ventas**, que es el único comparable con un índice.
 ### Tres decisiones más que deciden si la curva miente
 
 1. **Es el valor de las posiciones ABIERTAS, no el de tu cuenta.** La app no
-   lleva saldo en efectivo, así que un cierre hace bajar la línea — y eso es una
+   lleva la cuenta del efectivo (el que anotas es una foto, no un saldo que se
+   mueva con cada venta), así que un cierre hace bajar la línea — y eso es una
    retirada, no una pérdida. Se dice en cada respuesta y se marca cada fecha.
 2. **El cambio es el de CADA DÍA, no el de hoy.** Convertir el histórico al tipo
    actual convertiría un movimiento de divisa en uno de la acción. Hay un test
@@ -968,7 +1247,13 @@ siguiente fuente) y al convertir.
 Sin tipo, la posición queda **fuera del total** y se nombra en pantalla con su
 motivo, en vez de convertirse a la par o sumarse a pelo. Un total parcial que se
 sabe parcial sirve; uno que se cree completo, no. La divisa, por cierto, siempre
-venía en la cotización y el portafolio se quedaba solo con el precio.
+venía en la cotización y el portafolio se quedaba solo con el precio. Lo mismo una
+cotización en peniques o centavos (GBX, ZAC, ILA): se ve, fuera del total, con el
+motivo («son céntimos de GBP, no una moneda»), sin suponer que un penique es una libra.
+Yahoo los escribe con minúscula («GBp» son peniques; «GBP», libras): todo código de
+moneda que llega se lee con `fx.codigo`, nunca con un `upper()` a ciegas. La fila cuenta
+como otra divisa (los importes llevan su código) y la curva y las cerradas dicen el
+mismo motivo.
 
 ## Tres gráficos que enseñan lo que un número esconde
 
@@ -1141,8 +1426,14 @@ cuál.
 - **El movimiento real se mide del cierre anterior al anuncio al siguiente**, y
   el calendario de Finnhub llega entero: se filtra por símbolo, porque devuelve
   también el de las demás empresas.
-- **La volatilidad realizada sale del histórico largo ya cacheado** por el
-  estrés de cartera. Pedirlo otra vez sería pagar dos veces por el mismo dato.
+- **Nada se descarga para esto**: los cierres son los ya cacheados. La
+  volatilidad realizada de 30 días sale de la copia reciente, con el mismo
+  lector que la Cartera (el histórico de un año, o el largo si se descargó hace
+  menos de un día; nunca una copia de días, que inflaba la prima). El histórico
+  largo del estrés de cartera solo aporta lo anterior, para los resultados de
+  hace dos años, llevado a la escala de la copia reciente en la costura (el
+  mismo empalme que el estrés del Portafolio, revisión 13). Pedirlo otra vez
+  sería pagar dos veces por el mismo dato.
 
 ### Lo que no se hace
 
@@ -1242,6 +1533,14 @@ cartera en 2008»**: es «las seis que existían, reponderadas». Se calcula igu
   cartera»;
 - sin ningún histórico se dice «no es que aguantara bien: es que no existía o
   no hay datos», porque el silencio se lee como buena noticia.
+
+Las series van **en dólares**, como los pesos, con una serie de cambio que
+empieza en una fecha fija, un mes antes de la crisis de 2008 (la misma ventana
+y la misma entrada de caché para toda la Cartera): en moneda local, una acción
+canadiense plana en CAD «se habría quedado plana» en 2008 mientras en dólares
+caía un 27 %. Contada desde hoy, la ventana habría dejado de cubrir 2008 en
+octubre de 2027 sin decirlo. Lo que no se puede convertir queda fuera y se
+nombra.
 
 Se simula con **mezcla constante**, rebalanceando a los pesos de hoy, por la
 misma razón que en `sizing.peor_ventana`: comprar y no tocar deja que los pesos
@@ -1406,6 +1705,129 @@ sentido. Ahora razona sobre el rango entero, y cuando el histórico cae dentro d
 lo único informativo que hay que decir — que no decide la empresa, decide tu tasa
 de descuento, y dónde está la frontera.
 
+### Un solo DCF (ítem 3.3)
+
+Había tres DCF con supuestos distintos, y la misma empresa valía una cosa u otra
+según la pantalla. Ahora hay uno, el de este módulo (`POST /api/valuation/{s}`,
+funciones en `app/analysis/valuation.py`: `cimientos`, `escenarios_por_defecto`,
+`escenarios_con_rango`, `rango_global`). La pestaña Valoración de la ficha enseña
+un resumen de esa misma respuesta —un rango por escenario, «si va mal», «escenario
+base» y «si va bien», nunca un valor suelto— con el botón **Abrir el análisis
+completo**, que abre el módulo con la empresa (`/valoracion?simbolo=ACME`; el
+enlace lo construye `rutaValoracion` en `components/valoracion/ruta.ts`). El
+informe completo calcula su `dcf` con las mismas funciones y lo pinta con el mismo
+componente (`ResumenDcf`). Un test del backend comprueba que el informe y el módulo
+dan los mismos rangos y otro del frontend, que la ficha y el módulo los escriben
+igual con las mismas respuestas del backend.
+
+Lo que tenía cada uno:
+
+| | Módulo (el que se queda) | Ficha (`/api/stocks/{s}/valuation/{defaults,dcf}`) | Informe (`dcf` precargado) |
+|---|---|---|---|
+| Crecimiento de partida | CAGR del FCF; si no, de ingresos; si no, un 3 % **declarado** como supuesto. Tope del 15 %; un negativo medido se respeta | El mismo CAGR, acotado a [0 %, 15 %]: un negativo medido subía a 0 %; sin histórico, campo vacío | El mismo, tope del 15 %; sin histórico, el 3 % sin declararlo |
+| Crecimiento por escenario | Base × 0,4 / 1 / 1,5 (con crecimiento negativo, al revés: el bajista encoge más; con FCF negativo, bajista y alcista intercambian sus supuestos), con un suelo del −50 % que el escenario acotado declara | Base −3 (suelo −5 %) / base / +3 puntos, escrito en el frontend | Base −4 (suelo −2 %) / base / +4 puntos |
+| WACC bajista / base / alcista | 11 / 9 / 8 % | 11 / 10 / 9 % | 12 / 10 / 9 % |
+| Perpetuidad | 1,5 / 2,5 / 3,0 % | 2,0 / 2,5 / 3,0 % | 1,5 / 2,5 / 3,0 % |
+| Años | 5 (editable de 3 a 10) | 5 (editable) | 5 |
+| Resultado | Un rango por escenario (±2 pp de crecimiento, ±1 pp de WACC, tres cifras significativas), rango global y qué supuesto manda | Un valor por escenario (tres precios objetivo) y la matriz WACC × crecimiento | Un valor por escenario |
+| Deuda neta desconocida | 422 que lo dice | Campo vacío que hay que escribir | Cada escenario «indeterminado» |
+| Deuda parcial (Ronda 2) | `deuda_parcial` y `nota_deuda` | `deuda_parcial` y `nota_deuda` | No la leía (`total_debt`) |
+| Sin acciones | 422 | Valor total de la empresa en vez de por acción, también en la matriz «valor/acción» (M4) | No se precargaba |
+| Entradas editables | Por API sí; en pantalla solo los escenarios | FCF, deuda neta, acciones y años | No |
+
+Lo que se portó al módulo: los campos **Tus entradas** (deuda neta, FCF de partida,
+acciones y años; vacío es el dato del filing, nunca un cero), que se abren solos
+cuando el backend no puede valorar por un dato que falta —el 422 decía «escríbela en
+el campo de deuda neta» y no había campo—; el marcador de deuda parcial compartido
+con Salud y el informe (`DeudaParcial`), y en el informe, la deuda parcial que no
+leía. Arreglos de paso: con crecimiento negativo el escenario bajista crecía más que
+el alcista (M5), y la matriz de sensibilidad y la sensibilidad ordenada caían al
+valor total de la empresa con `value_per_share or equity_value` (M4): ahora es por
+acción o nada. No se portó el valor total sin acciones ni la matriz WACC ×
+crecimiento: la sensibilidad ordenada la sustituye y mezclar unidades era el fallo.
+
+Lo que fijó la revisión 14 (contrato de `POST /api/valuation/{s}`):
+
+- **404 o 502.** 404 solo si EDGAR no tiene la empresa; si no responde, 502 «No se
+  pudieron descargar los estados financieros de EDGAR», como el informe completo.
+  Antes los dos eran 404 «no presentan 10-K», y la ficha pintaba un EDGAR caído
+  como una ausencia, sin «Reintentar».
+- **Lo que se propone se acepta.** Los crecimientos propuestos tienen el mismo suelo
+  que admite el validador, `CRECIMIENTO_MINIMO` = −50 % (`app/analysis/valuation.py`),
+  y el escenario acotado lo dice en `procedencia.motivo` (con `crecimiento_supuesto`
+  falso: es el medido, acotado). Un FCF que cae a la mitad proponía un bajista del
+  −75 % que «Recalcular» rechazaba con un 422.
+- **La procedencia sobrevive al recalcular** (`supuestos_con_procedencia`): un
+  escenario que vuelve con el crecimiento propuesto conserva su `procedencia`, así
+  que el 3 % supuesto se sigue diciendo después de escribir la deuda neta.
+- **`shares_outstanding` enviado tiene que ser positivo** (422 si no): un 0 se
+  cambiaba en silencio por las acciones del filing.
+- En el módulo, solo un 422 con texto del backend («el filing no trae la deuda»)
+  abre «Tus entradas»; uno de validación (lista de Pydantic) es un error de lo
+  escrito: se dice en español, con las unidades de pantalla, y la valoración que se
+  veía se queda. La ayuda de cada campo vacío es el dato del filing, no el último
+  que escribiste.
+- **Con el FCF de partida negativo, el bajista es el más bajo** (visto bueno de
+  Victor, 25 nov). Crecer es quemar más caja, y un descuento menor y una perpetuidad
+  mayor agrandan la quema: los supuestos del alcista daban el valor más bajo y la
+  ficha rotulaba «Si va bien» el rango de abajo. `escenarios_por_defecto` intercambia
+  los supuestos completos del bajista y el alcista cuando `base_fcf < 0` (lo dicen
+  `nota_supuestos` en el módulo y una línea en `ResumenDcf`). Del mismo caso: la
+  amplitud y el `recorrido_pct` de la sensibilidad se miden sobre el tamaño del
+  centro, no su signo (con el centro negativo el orden se invertía y «el supuesto que
+  más mueve» era el que menos), y `rango_global.factor` es `null` si el extremo bajo
+  no es positivo, con una nota que dice si el rango está entero bajo cero o lo cruza.
+  Cambió el golden `dcf_modulo`, solo en sus 4 casos `fcf_negativo`.
+
+Lo que fijó la revisión 15 (sin cambiar el golden: ningún caso manda escenarios y la
+prosa no entra en el canon):
+
+- **Los escenarios que no mandas los propone la app con las entradas de esa
+  llamada.** Un cuerpo con solo `escenarios.base` devuelve los tres: el base tuyo y
+  el bajista y el alcista propuestos para el FCF de partida de ESA llamada (antes
+  devolvía solo el base). «Recalcular con mis supuestos» manda solo los escenarios
+  que tocaste (y los que ya eran tuyos): reenviaba los tres de la respuesta
+  anterior, y con un FCF escrito de otro signo que el del filing el bajista
+  intercambiado salía el más alto (centros 63,5 / 38,3 / 18,7). El 3 % supuesto y el
+  suelo del −50 % se siguen diciendo en `procedencia`, también en los que propone.
+- **`aviso_orden`** (solo cuando pasa): tus escenarios mandan aunque sus centros no
+  vayan de menos a más (bajista ≤ base ≤ alcista), y entonces la respuesta lo dice,
+  con los centros y la causa según el signo del FCF. Lo propuesto siempre va en
+  orden, así que sin escenarios tuyos no aparece.
+- La frase del intercambio de `nota_supuestos` se dice siempre que el bajista o el
+  alcista que se usan sean los propuestos e intercambiados (FCF negativo), no solo
+  sin cuerpo: «Recalcular» tras escribir la deuda neta la borraba.
+- **Un 422 de un dato que falta lleva la cabecera `X-Dato-Que-Falta`** con el campo
+  del cuerpo (`base_fcf`, `net_debt` o `shares_outstanding`); el `detail` no cambia.
+  Con ella, el campo vacío de «Tus entradas» dice «sin dato en el filing» en vez de
+  prometer «la del filing» junto al 422 que dice que no la trae.
+- Un fallo que no es un dato que falta (un 502 de EDGAR) al recalcular la misma
+  empresa deja la valoración que se veía y lo escrito, dice el fallo y deja volver a
+  pulsar; antes la borraba y con ella «Recalcular con mis supuestos».
+- `rango_global` recibe el FCF de partida: la nota de un rango entero bajo cero da
+  la causa según su signo (con FCF positivo, la deuda neta que los flujos no cubren;
+  culpaba siempre al FCF), y un rango de 0 a 0 es «cero», no «por debajo de cero».
+  Con un FCF de partida de cero, la sensibilidad no nombra un `dominante` (todos los
+  recorridos son 0 %) y lo dice, un centro de cero es un valor (no «no producen un
+  valor»), y la nota del rango de cada escenario dice que es un solo punto.
+- **El `dcf` del informe completo lleva `disponible`.** Con el FCF de partida no
+  positivo, sin FCF o sin acciones el informe no lo precarga (Victor decidió que se
+  quede así), pero ya no calla: `{"disponible": false, "motivo": …}`, y el informe lo
+  pinta con el enlace al módulo (`rutaValoracion`), que sí lo valora. Antes era
+  `null` y la sección desaparecía.
+- En la ficha, la pulsación de «Qué cambió» vale para la visita, no solo para el
+  símbolo: buscar la misma empresa desde su ficha y volver «atrás» a
+  `?pestana=novedades` ya no lo monta ni congela otra vez.
+
+**`GET /api/stocks/{s}/valuation/defaults` y `POST /api/stocks/{s}/valuation/dcf`
+son alias obsoletos durante una versión**: responden lo de siempre (el golden
+`dcf_ficha` lo congela), van marcados `deprecated` en OpenAPI y con las cabeceras
+`Deprecation: true` y `Link: </api/valuation/{s}>; rel="successor-version"`, y su
+aritmética es la de `app/analysis/valuation.py`. Se retiran en la siguiente. El
+frontend ya no los llama. El `dcf` de `/api/deep-dive/{s}` cambió de forma: era
+`{scenarios: {bear, base, bull}, …}` con un valor por escenario y ahora es
+`{escenarios, rango_global, entradas}`, la misma forma que el módulo.
+
 ## Reportes trimestrales: extracción con el API de Claude
 
 ### Lo que NO se puede analizar, dicho primero
@@ -1473,6 +1895,12 @@ la parte más citable del análisis.
 `GET /api/earnings/{symbol}/coste` cuenta los tokens con `count_tokens` y da el
 coste estimado **sin llamar al modelo**. Un 10-Q largo cuesta bastante más que
 uno corto, y eso hay que saberlo antes, no en la factura.
+
+Sin `ANTHROPIC_API_KEY`, `coste` y `analizar` responden **503 con el motivo**,
+antes de descargar nada de EDGAR (antes era un 500: «Ver qué costaría» acababa
+en «Error HTTP 500»). La lista de reportes y el historial de los ya analizados
+no necesitan la IA y siguen funcionando; la pantalla avisa arriba de que la
+extracción la hace la IA y no ofrece «Ver qué costaría».
 
 Un documento que no cabe en el presupuesto **se declara y no se recorta**: un
 análisis sobre media sección parece completo, no lo es, y no lo dice en ninguna
@@ -1754,7 +2182,10 @@ ninguna de ellas** — un modelo de lenguaje predice tokens, no retornos:
    hacia abajo, cuál es la debilidad del análisis y qué la invalidaría.
 
 Todo lo generado por IA aparece con etiqueta morada, modelo usado y
-disclaimer, y se registra en `llm_outputs`.
+disclaimer, y se registra en `llm_outputs`. Su Markdown (`content_md`) se pinta
+con un subconjunto seguro —párrafos, negrita, cursiva, código, encabezados de
+`#` a `###` y listas—, como elementos de React (`components/ia/MarkdownIA.tsx`):
+el HTML que escriba el modelo se lee como texto, nunca se interpreta.
 
 #### Activarlo
 
@@ -1770,13 +2201,78 @@ dice tal cual («Modelo de Claude no válido: <id>. Revisa CLAUDE_MODEL en
 .env.»). El nombre anterior, `ANTHROPIC_MODEL`, se sigue leyendo. La
 estimación de coste antes de analizar un filing usa la tarifa del modelo
 configurado; para un modelo sin tarifa conocida dice que no se puede estimar.
+La tabla (`app/llm/coste.py`, de la tarifa oficial del API) tiene Sonnet 5.5,
+Opus 5.5 y Opus 5, y también Sonnet 5 y Opus 4.8, los modelos de respaldo del
+servidor: sin ellas, una respuesta servida por el respaldo con el modelo por
+defecto no tenía coste en dólares (revisión 15).
 
 **Sin key la app funciona entera**: precios, fundamentales, valoración, salud,
-señales, backtest e informe cuantitativo no tocan el LLM — solo desaparecen
-los tres botones de interpretación escrita. Es la única API de pago del
+señales, backtest e informe cuantitativo no tocan el LLM — solo los botones
+que piden algo a la IA desaparecen o salen desactivados con el motivo a la
+vista (`BotonIA` consulta el estado de la IA), y Resultados avisa arriba de que
+su extracción la hace la IA. Es la única API de pago del
 proyecto (las demás tienen tier gratuito), así que solo corre cuando pulsas
 uno de esos botones, con `max_tokens` acotado, y el resultado se guarda por
 hash del prompt: repetir la misma consulta no vuelve a cobrar.
+
+#### «Pregúntale a la IA» (`POST /api/ia/preguntar`)
+
+Una pregunta libre (o una sugerencia: «Resúmeme el día», «Explícame la mejor
+idea de hoy», «¿Qué ETF sirve para empezar?») que Claude contesta con **lo que
+la app ya calculó y nada más** (`app/pregunta_ia.py`; el bloque es
+`components/ia/PreguntaIA.tsx`, para Inicio). El contexto sale solo de la caché
+y de la base, **sin descargar nada**: preguntar no dispara la lista del día ni
+una cotización por posición.
+
+| Bloque | De dónde sale | Fecha |
+|---|---|---|
+| Lista del día del mercado | la caché de `/api/signals/today`: vigente (6 h) o la última copia caducada (`get_vencido`, hasta 7 días), marcada VIEJA con su antigüedad | la de su cálculo |
+| Tu cartera y sus stops | las posiciones abiertas y `stops_de_la_cartera` con los precios guardados: sin precio guardado, o con solo el cierre de una lista vieja, el stop queda «sin comprobar», nunca «por encima» | la de cada precio |
+| El mercado | las cotizaciones guardadas de los índices del panel de Mercado | la de cada cotización |
+| La ficha (`simbolo`) | su fila de la lista y su último análisis congelado, sin el «objetivo» de los niveles; si la fila sale de la lista caducada, el bloque hereda su estado y va VIEJO | la del análisis (la de la lista, si va VIEJO) |
+| Cómo compara la app los ETFs | los umbrales de `analysis/etf_picks.py` | — (son reglas) |
+
+Lo que no está guardado no se calcula: va en `datos_ausentes` y el prompt le
+dice a la IA que falta. Las instrucciones: español claro para quien empieza,
+solo cifras del contexto y con su fecha, decir cuándo falta un dato, sin precios
+objetivo ni predicciones, y recordar que la decisión es tuya. La pregunta (500
+caracteres como mucho) va delimitada como dato y no puede cerrar su delimitador:
+se le quitan los caracteres de control, luego los delimitadores hasta que no
+quede ninguno (una etiqueta escrita dentro de otra ya no deja montada la de
+fuera) y los `<` y `>` sueltos se cambian por «‹ ›», así que ninguna combinación
+forma una etiqueta.
+
+- **Cuerpo:** `{ pregunta, mercado?, simbolo? }` (`mercado` por defecto
+  `us_sp500`; uno desconocido, un símbolo inválido o una pregunta vacía o de más
+  de 500 caracteres son un 422 en español, sin llamar al modelo).
+- **Respuesta:** `generado_por: "ia"`, `content_md` (Markdown), `model`,
+  `cached`, `creado_en`, `coste` (tokens de entrada y salida que dio el API y su
+  precio a la tarifa del modelo; si contestó el modelo de respaldo del servidor,
+  la suma de cada intento de `usage.iterations` a la tarifa de su modelo, y lo
+  dice; desde caché, sin coste nuevo), `datos_usados`
+  (cada bloque con `titulo`, `fuente`, `fecha`, `estado` `valido`/`viejo`,
+  `antiguedad_segundos` y `nota`), `datos_ausentes` y `aviso`.
+- **Antes de enviar:** `POST /api/ia/preguntar/coste`, mismo cuerpo con la
+  pregunta opcional, cuenta los tokens con `count_tokens` (sin generar nada) y da
+  el coste estimado (`coste_estimado`, la misma tarifa que Resultados, ahora en
+  `app/llm/coste.py`) y los datos que se pasarían. El bloque lo pide al
+  montarse, porque las sugerencias envían al tocarlas.
+- **Sin `ANTHROPIC_API_KEY`:** las dos rutas responden **503** con cómo
+  añadirla; el bloque lo explica (`.env`, `./start.sh`) en vez de desaparecer.
+  Un fallo del modelo es un 502 con su motivo. Si el modelo (y su respaldo)
+  declinan, el `detail` dice además lo gastado en los intentos declinados
+  (`llm.base.ModeloDeclino`, `coste.coste_declinado`: tokens de cada intento a la
+  tarifa de su modelo, «como mucho» si alguno declinó antes de escribir; sin
+  recuento, que pudo cobrarse) y que repetir vuelve a gastar (revisión 15).
+- **Caché:** la respuesta se guarda en `llm_outputs` (`kind = pregunta_ia`) por
+  la huella de lo que la define (`pregunta_ia._huella`): el modelo, las
+  instrucciones, la pregunta, el día de la consulta y, de cada bloque, su fuente,
+  la fecha del dato, su estado, su nota y su texto (de la cartera, sus filas con
+  cada precio y su fecha en vez del texto, que dice la edad de un precio viejo
+  contra el reloj); no la hora de la consulta ni los «hace X» del prompt, que la
+  hacían acertar solo dentro del mismo minuto. La
+  misma pregunta con los mismos datos, el mismo día, no vuelve a cobrar; la
+  respuesta guardada dice cuándo se generó.
 
 ## Alertas que avisan con la app cerrada
 
@@ -1961,8 +2457,10 @@ convicción) que el dimensionador usa como entrada declarada. Nada de esto usa u
 LLM, salvo el resumen opcional del diff y el guidance extraído de filings, que
 van marcados.
 
-Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales)
-y **0008** (efectivo anotado). Se aplican solas al arrancar, como las anteriores.
+Migraciones nuevas: **0007** (eventos, expectativas inmutables, resultados reales),
+**0008** (efectivo anotado) y **0009** (vacía la moneda «GBP» que el código anterior
+guardaba por los peniques «GBp» de Londres; se vuelve a aprender del proveedor). Se
+aplican solas al arrancar, como las anteriores.
 
 ## Estado
 

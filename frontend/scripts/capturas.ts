@@ -1,7 +1,7 @@
 /**
  * Capturas repetibles de todas las pantallas (ítem 0.6 del plan de correcciones).
  *
- *     npm run capturas -- <carpeta-de-salida> [--escenarios normal,con_ia] [--solo 01_hoy,13_cartera]
+ *     npm run capturas -- <carpeta-de-salida> [--escenarios normal,con_ia] [--solo 00_inicio,13_cartera]
  *
  * Una orden lo regenera todo: compila el frontend, levanta por escenario el
  * backend de demostración (`backend/tests/fixtures/servidor_demo.py`, datos
@@ -39,83 +39,127 @@ const ALTO_MAXIMO = 4000
 const AHORA = new Date('2026-09-12T14:40:00Z')
 const CARGANDO = /Cargando|Analizando|Calculando…|Calculando\.\.\.|Redactando|Interpretando|Resumiendo/
 
+// `comprobar`: aplicar las guardas del 2.12 (desbordes, recortes y texto partido).
+// 820 px es una tableta en vertical: entre 768 y ~1140 px la barra lateral
+// vuelve a estar fija y la lista de Hoy perdía la puntuación y la acción, sin
+// que ninguna captura lo viera (revisión de A7).
 const ANCHOS = [
-  { sufijo: '1440', viewport: { width: 1440, height: 900 }, movil: false },
-  { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true },
+  { sufijo: '1440', viewport: { width: 1440, height: 900 }, movil: false, comprobar: false },
+  { sufijo: '820', viewport: { width: 820, height: 1180 }, movil: false, comprobar: true },
+  { sufijo: '390', viewport: { width: 390, height: 844 }, movil: true, comprobar: true },
 ]
 
-type Pantalla = { nombre: string; ruta: string; pestana?: string; accion?: (p: Page) => Promise<void> }
+// `pestana`: lo que se pulsa por su nombre antes de fotografiar, en orden (una
+// pestaña de la ficha y, si junta varias secciones, la sección).
+type Pantalla = { nombre: string; ruta: string; pestana?: string | string[]; accion?: (p: Page) => Promise<void>; soloMovil?: boolean }
 
-const PESTANAS_FICHA: [string, string][] = [
-  ['03_ficha_resumen', 'Resumen'],
-  ['04_ficha_informe', 'Informe completo'],
-  ['05_ficha_fundamentales', 'Fundamentales'],
-  ['06_ficha_valoracion', 'Valoración'],
-  ['07_ficha_salud', 'Salud y riesgo'],
-  ['08_ficha_que_cambio', 'Qué cambió'],
-  ['09_ficha_expectativas', 'Resultados vs expectativas'],
-  ['10_ficha_calidad', 'Calidad de beneficios'],
-  ['11_ficha_historial', 'Decisiones y replay'],
-  ['12_ficha_opciones', 'Opciones'],
-  ['12b_ficha_filings', 'Filings'],
+// La ficha en cuatro pestañas y «Más detalle» (docs/PLAN_NAVEGACION.md): cada
+// sección de las once de antes sigue teniendo su captura, con su nombre de antes.
+const MAS_DETALLE = 'Más detalle (avanzado)'
+const PESTANAS_FICHA: [string, string[]][] = [
+  ['03_ficha_resumen', ['Resumen']],
+  ['04_ficha_informe', [MAS_DETALLE, 'Informe completo']],
+  ['05_ficha_fundamentales', ['Números', 'Fundamentales']],
+  ['06_ficha_valoracion', ['Valoración']],
+  ['07_ficha_salud', ['Números', 'Salud y riesgo']],
+  ['08_ficha_que_cambio', ['Novedades', 'Qué cambió']],
+  ['09_ficha_expectativas', ['Novedades', 'Resultados vs expectativas']],
+  ['10_ficha_calidad', ['Números', 'Calidad de beneficios']],
+  ['11_ficha_historial', [MAS_DETALLE, 'Decisiones y replay']],
+  ['12_ficha_opciones', [MAS_DETALLE, 'Opciones']],
+  ['12b_ficha_filings', ['Novedades', 'Filings']],
 ]
 
-const ficha = (symbol: string, cuales?: string[]): Pantalla[] =>
-  PESTANAS_FICHA.filter(([n]) => !cuales || cuales.includes(n)).map(([nombre, pestana]) => ({
+const ficha = (symbol: string, cuales?: string[]): Pantalla[] => [
+  ...PESTANAS_FICHA.filter(([n]) => !cuales || cuales.includes(n)).map(([nombre, pestana]) => ({
     nombre,
     ruta: `/ticker/${symbol}`,
     pestana,
-  }))
+  })),
+  // Una ruta vieja con su pestaña de antes llega a su sitio nuevo.
+  ...(!cuales || cuales.includes('07b_ficha_pestana_vieja')
+    ? [{ nombre: '07b_ficha_pestana_vieja', ruta: `/ticker/${symbol}?pestana=salud` }]
+    : []),
+]
+
+/** Pulsa una pestaña (o, si no hay pestaña con ese nombre, el botón). */
+async function pulsarPestana(p: Page, nombre: string) {
+  const tab = p.getByRole('tab', { name: nombre, exact: true })
+  const destino = (await tab.count()) ? tab : p.getByRole('button', { name: nombre, exact: true })
+  if (!(await destino.count())) throw new Error(`no aparece la pestaña o el botón «${nombre}»`)
+  await destino.first().click({ timeout: 10000 })
+}
 
 const pulsar = (texto: RegExp) => async (p: Page) => {
   const boton = p.getByRole('button', { name: texto }).first()
   if (!(await boton.count())) throw new Error(`no aparece el botón ${texto}`)
-  // `force`: en 390 px la barra lateral tapa el contenido (V2) y el clic
-  // normal espera para siempre a que el botón quede libre.
-  await boton.click({ force: true, timeout: 10000 })
+  // Sin `force`: antes del 2.12 la barra lateral tapaba el contenido a 390 px
+  // y el clic normal esperaba para siempre a que el botón quedara libre. Si
+  // algo lo tapa, es un fallo de la pantalla, no del script.
+  await boton.click({ timeout: 10000 })
   await esperar(p)
 }
 
+// La barra de abajo del móvil (rediseño de la navegación), con clics de
+// verdad: desde Inicio se llega a la cartera y queda marcada como actual.
+const navegarAbajo = async (p: Page) => {
+  const abajo = p.getByRole('navigation', { name: 'Principal' }).last()
+  await abajo.getByRole('link', { name: 'Cartera' }).click({ timeout: 10000 })
+  await p.waitForURL('**/cartera', { timeout: 10000 })
+  await esperar(p)
+  if ((await abajo.getByRole('link', { name: 'Cartera' }).getAttribute('aria-current')) !== 'page')
+    throw new Error('la barra de abajo no marca la cartera como pantalla actual')
+}
+
 const TODAS: Pantalla[] = [
-  { nombre: '01_hoy', ruta: '/hoy' },
-  { nombre: '02_mercado', ruta: '/dashboard' },
+  { nombre: '00_inicio', ruta: '/' },
+  { nombre: '00_menu_navega', ruta: '/', soloMovil: true, accion: navegarAbajo },
+  { nombre: '01_explorar', ruta: '/explorar' },
+  // La lista entera, con sus columnas: «Mejores ideas» son tarjetas y la lista de
+  // señales no se medía nunca (revisión de A7).
+  { nombre: '01b_explorar_todas', ruta: '/explorar', accion: pulsar(/^Todas \(/) },
+  { nombre: '02_mercado', ruta: '/avanzado/mercado' },
   ...ficha('ACME'),
+  // Mi cartera (fase 3): Portafolio, Cartera, Tesis y Vigilancia en tres
+  // sub-pestañas. `/portafolio`, `/tesis` y `/vigilancia` redirigen aquí.
   { nombre: '13_cartera', ruta: '/cartera' },
-  { nombre: '14_portafolio', ruta: '/portafolio' },
-  { nombre: '15_tesis', ruta: '/tesis' },
-  { nombre: '16_vigilancia', ruta: '/vigilancia' },
-  { nombre: '17_valoracion_modulo', ruta: '/valoracion' },
-  { nombre: '18_screener', ruta: '/screener' },
-  { nombre: '19_multifactor', ruta: '/multifactor' },
-  { nombre: '20_resultados', ruta: '/resultados' },
-  { nombre: '21_senales', ruta: '/senales' },
-  { nombre: '22_etfs', ruta: '/etfs' },
+  { nombre: '13b_cartera_riesgo', ruta: '/cartera?pestana=riesgo' },
+  { nombre: '13c_cartera_tesis', ruta: '/cartera?pestana=tesis' },
+  { nombre: '17_valoracion_modulo', ruta: '/avanzado/valoracion' },
+  { nombre: '18_screener', ruta: '/explorar?filtros=simples' },
+  { nombre: '19_multifactor', ruta: '/explorar?filtros=factores' },
+  { nombre: '20_resultados', ruta: '/avanzado/resultados' },
+  { nombre: '21_senales', ruta: '/avanzado/senales' },
+  { nombre: '22_etfs', ruta: '/explorar?tipo=etfs' },
   // La recomendación de ETFs: hasta la revisión de la Fase 0, «/api/etfs/{symbol}»
   // tapaba su ruta y este botón nunca había funcionado.
   {
     nombre: '22b_etfs_recomendar',
-    ruta: '/etfs',
+    ruta: '/explorar?tipo=etfs',
     accion: async (p) => {
       await p.getByPlaceholder(/Hasta 4 ETFs/).fill('INDX, TECX, TOTX')
       await pulsar(/Analizar y recomendar/)(p)
     },
   },
-  { nombre: '23_noticias', ruta: '/noticias' },
+  { nombre: '23_noticias', ruta: '/avanzado/noticias' },
+  { nombre: '24_avanzado', ruta: '/avanzado' },
 ]
 
 const ESCENARIOS: Record<string, Pantalla[]> = {
   normal: TODAS,
-  cartera_vacia: TODAS.filter((p) => ['01_hoy', '13_cartera', '14_portafolio'].includes(p.nombre)),
-  sin_candidatas: TODAS.filter((p) => p.nombre === '01_hoy'),
-  // Sin cotización, la ficha entera se sustituye por «No se encontró el símbolo»
-  // y sus pestañas no existen, aunque EDGAR sí tenga datos (hallazgo de la
-  // revisión de la Fase 0, para el ítem 2.1). Mientras tanto se fotografía eso.
-  // Antes no se veía porque la demo inventaba una cotización para VACIA.
+  cartera_vacia: TODAS.filter((p) => ['00_inicio', '01_explorar', '13_cartera', '13b_cartera_riesgo', '13c_cartera_tesis'].includes(p.nombre)),
+  sin_candidatas: TODAS.filter((p) => ['00_inicio', '01_explorar'].includes(p.nombre)),
+  // Sin cotización: desde el ítem 2.1 la ficha enseña la cabecera (nombre del
+  // perfil o símbolo), «Precio no disponible…» y todas sus pestañas; antes se
+  // sustituía entera por «No se encontró el símbolo» aunque EDGAR tuviera datos.
+  // La demo ya no inventa una cotización para VACIA.
   empresa_sin_datos: [{ nombre: '03_ficha_sin_cotizacion', ruta: '/ticker/VACIA' }],
   con_ia: [
-    { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: 'Informe completo', accion: pulsar(/Redactar informe \(IA\)/) },
-    { nombre: '08_ficha_que_cambio_ia', ruta: '/ticker/ACME', pestana: 'Qué cambió', accion: pulsar(/Resumir este diff con IA/) },
-    { nombre: '23_noticias_ia', ruta: '/noticias', accion: pulsar(/Por qué importa\? \(IA\)/) },
+    // «Explícamelo con IA», arriba de la ficha: abre el informe y lo redacta.
+    { nombre: '03b_ficha_explicame_ia', ruta: '/ticker/ACME', accion: pulsar(/^Explícamelo con IA$/) },
+    { nombre: '04_ficha_informe_ia', ruta: '/ticker/ACME', pestana: [MAS_DETALLE, 'Informe completo'], accion: pulsar(/Redactar informe \(IA\)/) },
+    { nombre: '08_ficha_que_cambio_ia', ruta: '/ticker/ACME', pestana: ['Novedades', 'Qué cambió'], accion: pulsar(/Resumir este diff con IA/) },
+    { nombre: '23_noticias_ia', ruta: '/avanzado/noticias', accion: pulsar(/Por qué importa\? \(IA\)/) },
   ],
 }
 
@@ -144,21 +188,37 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
     const p = await contexto.newPage()
     for (const pantalla of pantallas) {
       if (solo && !solo.some((s) => pantalla.nombre.startsWith(s))) continue
+      if (pantalla.soloMovil && !ancho.movil) continue
       const archivo = join(carpeta, `${pantalla.nombre}_${ancho.sufijo}.png`)
       try {
         await p.goto(WEB + pantalla.ruta, { waitUntil: 'networkidle', timeout: 30000 })
         await esperar(p)
-        if (pantalla.pestana) {
-          await p.getByRole('button', { name: pantalla.pestana, exact: true }).click()
+        for (const nombre of [pantalla.pestana ?? []].flat()) {
+          await pulsarPestana(p, nombre)
           await esperar(p)
         }
         if (pantalla.accion) await pantalla.accion(p)
+        // Ítem 2.12: a 390 px ninguna pantalla desborda en horizontal. Se dice
+        // qué lo empuja (las tablas van dentro de su propio contenedor con
+        // scroll, que no cuenta). Se fotografía igual, para verlo.
+        const desborde = ancho.comprobar ? await p.evaluate(desbordeHorizontal) : null
+        const recortado = ancho.comprobar ? await p.evaluate(recortes) : []
+        const partidos = ancho.comprobar ? await p.evaluate(palabraAPalabra) : []
+        // Arriba antes de fotografiar: tras pulsar un botón la página queda
+        // desplazada y la cabecera fija de móvil salía pintada a media página,
+        // tapando una fila. Y `fullPage` siempre: con `clip` solo, una página de
+        // más de ALTO_MAXIMO salía recortada a la primera pantalla (844 px a 390),
+        // y la lista de Hoy en móvil no llegaba a verse (revisión del 2.12).
+        await p.evaluate(() => window.scrollTo(0, 0))
         const alto = await p.evaluate(() => document.documentElement.scrollHeight)
         await p.screenshot({
           path: archivo,
-          fullPage: alto <= ALTO_MAXIMO,
+          fullPage: true,
           clip: alto > ALTO_MAXIMO ? { x: 0, y: 0, width: ancho.viewport.width, height: ALTO_MAXIMO } : undefined,
         })
+        if (desborde) throw new Error(`desborda en horizontal: ${desborde}`)
+        if (recortado.length) throw new Error(`contenido recortado en su marco: ${recortado.join('; ')}`)
+        if (partidos.length) throw new Error(`texto partido palabra a palabra: ${partidos.join('; ')}`)
         console.log(`  ✓ ${archivo}`)
       } catch (e) {
         const motivo = String(e).split('\n')[0]
@@ -169,6 +229,98 @@ async function fotografiar(navegador: Browser, pantallas: Pantalla[], carpeta: s
     await contexto.close()
   }
   return fallos
+}
+
+/** En el navegador: null si la página no desborda en horizontal; si no, cuánto
+ *  y los elementos más externos que salen del ancho (sin contar lo que está
+ *  dentro de un contenedor con scroll propio). */
+function desbordeHorizontal(): string | null {
+  const ancho = document.documentElement.clientWidth
+  const sobra = document.documentElement.scrollWidth - ancho
+  if (sobra <= 0) return null
+  const conScroll = (el: Element | null): boolean => {
+    for (let e = el?.parentElement; e; e = e.parentElement) {
+      const o = getComputedStyle(e).overflowX
+      if (o === 'auto' || o === 'scroll' || o === 'hidden') return true
+    }
+    return false
+  }
+  const culpables: string[] = []
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const r = el.getBoundingClientRect()
+    if (r.right <= ancho + 1 || r.width === 0 || conScroll(el)) continue
+    const padre = el.parentElement?.getBoundingClientRect()
+    if (padre && padre.right > ancho + 1 && !conScroll(el.parentElement)) continue
+    const clase = typeof el.className === 'string' ? el.className.split(' ').slice(0, 3).join('.') : ''
+    culpables.push(`${el.tagName.toLowerCase()}${clase ? '.' + clase : ''} «${(el.textContent ?? '').trim().slice(0, 30)}»`)
+    if (culpables.length >= 4) break
+  }
+  return `${sobra} px (${culpables.join('; ')})`
+}
+
+/** En el navegador: lo que un marco `overflow-hidden` (o `clip`) recorta en
+ *  horizontal. La página no se ensancha, así que `desbordeHorizontal` no lo ve,
+ *  y en Hoy la columna «Acción» quedaba entera fuera de la lista (revisión de
+ *  A7). Lo que se recorta a propósito con puntos suspensivos (`truncate`) o
+ *  por líneas (`line-clamp`) no cuenta, ni lo que solo se oculta a la vista. */
+function recortes(): string[] {
+  const salida: string[] = []
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const s = getComputedStyle(el)
+    if (s.overflowX !== 'hidden' && s.overflowX !== 'clip') continue
+    if (s.textOverflow === 'ellipsis' || s.webkitLineClamp !== 'none' || el.classList.contains('sr-only')) continue
+    const h = el as HTMLElement
+    if (h.clientWidth === 0 || h.scrollWidth <= h.clientWidth + 1) continue
+    const clase = typeof el.className === 'string' ? el.className.split(' ').slice(0, 3).join('.') : ''
+    salida.push(`${el.tagName.toLowerCase()}${clase ? '.' + clase : ''} (${h.scrollWidth} px en ${h.clientWidth})`)
+    if (salida.length >= 4) break
+  }
+  return salida
+}
+
+/** En el navegador: los textos de tres o más palabras partidos casi palabra a
+ *  palabra, que es lo que pasaba a 390 px con la barra lateral fija (ítem 2.12).
+ *
+ *  Por elemento y no por nodo de texto (React parte `{a} {b}` en varios
+ *  nodos), y por proporción y no por igualdad: en español «de la» o «y el»
+ *  comparten línea, y «Margen / de la / empresa» pasaba (revisión de A7). */
+function palabraAPalabra(): string[] {
+  const salida: string[] = []
+  // Un icono (svg/img, en bloque por el preflight de Tailwind) o un hijo oculto no
+  // parten el texto del elemento: antes lo sacaban entero de la guarda (revisión 3).
+  const enBloque = (e: Element) => {
+    const d = getComputedStyle(e).display
+    return d !== 'none' && !d.startsWith('inline') && !['svg', 'img', 'picture', 'video', 'canvas'].includes(e.tagName.toLowerCase())
+  }
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    const conTexto = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())
+    if (!conTexto || Array.from(el.children).some(enBloque)) continue
+    const texto = (el.textContent ?? '').trim()
+    // Sin partir por el espacio duro: «10,0 %» es una cifra, no dos palabras.
+    const palabras = texto.split(/[^\S\u00a0]+/).filter(Boolean)
+    if (palabras.length < 3) continue
+    // Solo las cajas del TEXTO (un `<input>` dentro de la `label` contaba como
+    // otra línea), agrupadas por solapamiento vertical y no por `top`: el texto
+    // de una insignia con otro tamaño, en la misma línea, tiene otro `top`.
+    const cajas: DOMRect[] = []
+    const textos = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    for (let n = textos.nextNode(); n; n = textos.nextNode()) {
+      const rango = document.createRange()
+      rango.selectNodeContents(n)
+      cajas.push(...Array.from(rango.getClientRects()).filter((r) => r.width > 0))
+    }
+    const lineas: { arriba: number; abajo: number }[] = []
+    for (const r of cajas.sort((a, b) => a.top - b.top)) {
+      const misma = lineas.find((l) => r.top < l.abajo - 2 && r.bottom > l.arriba + 2)
+      if (misma) {
+        misma.arriba = Math.min(misma.arriba, r.top)
+        misma.abajo = Math.max(misma.abajo, r.bottom)
+      } else lineas.push({ arriba: r.top, abajo: r.bottom })
+    }
+    if (lineas.length >= Math.max(3, Math.ceil(palabras.length * 0.6))) salida.push(`«${texto.slice(0, 40)}»`)
+    if (salida.length >= 4) break
+  }
+  return salida
 }
 
 async function hastaQueResponda(url: string, segundos = 90) {
@@ -224,7 +376,12 @@ async function main() {
     for (const escenario of escenarios) {
       if (!ESCENARIOS[escenario]) throw new Error(`Escenario desconocido: ${escenario}`)
       console.log(`Escenario «${escenario}»`)
-      api = arrancar(python, ['-m', 'tests.fixtures.servidor_demo', '--escenario', escenario, '--puerto', String(PUERTO_API)], BACKEND)
+      // El backend solo atiende a la interfaz de esta máquina (`Origin`, revisión
+      // de A6): aquí la sirve `vite preview` en otro puerto, y sin esto cada
+      // POST de las capturas (el botón de IA, anotar efectivo) era un 403.
+      api = arrancar(python, ['-m', 'tests.fixtures.servidor_demo', '--escenario', escenario, '--puerto', String(PUERTO_API)], BACKEND, {
+        CORS_ORIGINS: JSON.stringify([WEB]),
+      })
       await hastaQueResponda(`http://127.0.0.1:${PUERTO_API}/api/meta/llm`)
       const carpeta = resolve(salida, escenario)
       mkdirSync(carpeta, { recursive: true })

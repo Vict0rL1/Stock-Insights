@@ -461,7 +461,12 @@ class EdgarProvider(DataProvider):
             )
         if resp.status_code != 200:
             raise ProviderError(f"edgar: HTTP {resp.status_code}")
-        return resp.json()
+        # Como en Finnhub: un 200 que no es JSON es un fallo del proveedor, no
+        # un ValueError que sube sin capturar (revisión de M3).
+        try:
+            return resp.json()
+        except ValueError as exc:
+            raise ProviderError("edgar: respuesta no es JSON") from exc
 
     def _cik_for(self, symbol: str) -> int:
         now = time.time()

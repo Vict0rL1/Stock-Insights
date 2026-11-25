@@ -54,9 +54,11 @@
       "year": "2025"
      },
      "fcf_trend": null,
-     "reading": "Convierte el 121 % del beneficio en caja: el beneficio contable subestima la generación real."
+     "reading": "Convierte el 121,2 % del beneficio en caja: el beneficio contable subestima la generación real."
     },
     "catalysts": [],
+    "catalysts_note": "Resultados previstos en los próximos 120 días (calendario) y los 3 últimos documentos presentados ante la SEC.",
+    "catalysts_sin_comprobar": [],
     "computed_by": "app",
     "data_sources": {
      "as_of": "2026-09-12T14:35:00+00:00",
@@ -64,64 +66,100 @@
      "quote": "finnhub"
     },
     "dcf": {
-     "base_fcf": 200.0,
-     "current_price": 92.0,
-     "net_debt": 180.0,
-     "note": "Supuestos de partida derivados del histórico, acotados al 15 % de crecimiento. Edítalos en la pestaña Valoración: el resultado es muy sensible a la tasa de descuento y al crecimiento terminal.",
-     "scenarios": {
+     "disponible": true,
+     "entradas": {
+      "base_fcf": 200.0,
+      "deuda_parcial": null,
+      "fiscal_year": "2025",
+      "net_debt": 180.0,
+      "nota_deuda": null,
+      "precio_actual": 92.0,
+      "shares_outstanding": 100.0,
+      "source": "edgar",
+      "years": 5
+     },
+     "escenarios": {
+      "alcista": {
+       "procedencia": {
+        "crecimiento_supuesto": false,
+        "motivo": null
+       },
+       "rango": {
+        "alto": 91.9,
+        "amplitud_pct": 62.1,
+        "bajo": 50.5,
+        "banda": {
+         "crecimiento_pp": 2.0,
+         "descuento_pp": 1.0
+        },
+        "centro": 66.7,
+        "disponible": true,
+        "nota": "El rango abarca un 62 % del valor central: con esta sensibilidad el DCF no discrimina entre «cara» y «barata». Sirve para entender el negocio, no para decidir el precio. El 82 % del valor está en el valor terminal, o sea en lo que pasa después del horizonte proyectado. Esto no es una valoración de los próximos años: es una apuesta sobre la perpetuidad con unos años de detalle delante.",
+        "peso_terminal": 0.823
+       },
+       "supuestos": {
+        "discount_rate": 0.08,
+        "growth_rate": 0.15,
+        "terminal_growth": 0.03
+       }
+      },
+      "bajista": {
+       "procedencia": {
+        "crecimiento_supuesto": false,
+        "motivo": null
+       },
+       "rango": {
+        "alto": 27.5,
+        "amplitud_pct": 41.4,
+        "bajo": 18.3,
+        "banda": {
+         "crecimiento_pp": 2.0,
+         "descuento_pp": 1.0
+        },
+        "centro": 22.3,
+        "disponible": true,
+        "nota": "El rango abarca un 41 % del valor central. Es lo normal en un DCF; el número del medio no es más cierto que los extremos.",
+        "peso_terminal": 0.653
+       },
+       "supuestos": {
+        "discount_rate": 0.11,
+        "growth_rate": 0.0444,
+        "terminal_growth": 0.015
+       }
+      },
       "base": {
-       "assumptions": {
-        "base_fcf": 200.0,
-        "discount_rate": 0.1,
-        "growth_rate": 0.11111111111111116,
-        "net_debt": 180.0,
-        "shares_outstanding": 100.0,
-        "terminal_growth": 0.025,
-        "years": 5
+       "procedencia": {
+        "crecimiento_supuesto": false,
+        "motivo": null
        },
-       "equity_value": 3724.911871290161,
-       "faltan": [],
-       "indeterminado": false,
-       "motivo": null,
-       "terminal_weight": 0.7360467303129015,
-       "value_per_share": 37.249118712901605
-      },
-      "bear": {
-       "assumptions": {
-        "base_fcf": 200.0,
-        "discount_rate": 0.12,
-        "growth_rate": 0.07111111111111115,
-        "net_debt": 180.0,
-        "shares_outstanding": 100.0,
-        "terminal_growth": 0.015,
-        "years": 5
+       "rango": {
+        "alto": 56.7,
+        "amplitud_pct": 51.7,
+        "bajo": 34.2,
+        "banda": {
+         "crecimiento_pp": 2.0,
+         "descuento_pp": 1.0
+        },
+        "centro": 43.5,
+        "disponible": true,
+        "nota": "El rango abarca un 52 % del valor central. Es lo normal en un DCF; el número del medio no es más cierto que los extremos. El 77 % del valor está en el valor terminal, o sea en lo que pasa después del horizonte proyectado. Esto no es una valoración de los próximos años: es una apuesta sobre la perpetuidad con unos años de detalle delante.",
+        "peso_terminal": 0.766
        },
-       "equity_value": 2243.064030696345,
-       "faltan": [],
-       "indeterminado": false,
-       "motivo": null,
-       "terminal_weight": 0.638299283706303,
-       "value_per_share": 22.43064030696345
-      },
-      "bull": {
-       "assumptions": {
-        "base_fcf": 200.0,
+       "supuestos": {
         "discount_rate": 0.09,
-        "growth_rate": 0.15111111111111117,
-        "net_debt": 180.0,
-        "shares_outstanding": 100.0,
-        "terminal_growth": 0.03,
-        "years": 5
-       },
-       "equity_value": 5511.238676946029,
-       "faltan": [],
-       "indeterminado": false,
-       "motivo": null,
-       "terminal_weight": 0.7924336530594773,
-       "value_per_share": 55.112386769460294
+        "growth_rate": 0.1111,
+        "terminal_growth": 0.025
+       }
       }
      },
-     "shares_outstanding": 100.0
+     "rango_global": {
+      "alto": 91.9,
+      "bajo": 18.3,
+      "factor": 5.02,
+      "nota": "Del escenario más pesimista al más optimista hay un factor de 5,0×. Un rango así no sirve para decidir un precio de entrada; sirve para ver qué supuestos lo abren tanto — mira abajo cuál manda. Estrecharlo exige defender supuestos más ceñidos, no quedarse con el del medio.",
+      "posicion": "por encima",
+      "precio_actual": 92.0
+     }
     },
     "debt": {
      "altman_z": {
@@ -134,6 +172,10 @@
       },
       "note": "Fórmula original (1968) para industriales cotizadas; no aplicable a bancos/financieras.",
       "score": null,
+      "umbrales": [
+       1.81,
+       2.99
+      ],
       "zone": null
      },
      "by_year": [
@@ -249,7 +291,8 @@
       "net_margin": 0.15,
       "operating_margin": 0.21
      },
-     "reading": "Margen operativo del 21,0 %: márgenes sólidos.",
+     "ejercicio": "2025",
+     "reading": "Margen operativo anual del 21,0 % (ejercicio 2025): márgenes sólidos.",
      "trends": {
       "gross_margin": null,
       "net_margin": null,
@@ -258,6 +301,12 @@
     },
     "price": 92.0,
     "quant_signal": null,
+    "riesgos_sin_comprobar": [
+     "deuda/capital",
+     "cobertura de intereses",
+     "tendencia del margen operativo",
+     "valoración frente a su historia"
+    ],
     "risk_metrics": {
      "annualized_volatility": 0.0011747494915901335,
      "max_drawdown": {
@@ -268,6 +317,38 @@
     },
     "risks": [],
     "symbol": "ACME",
+    "umbrales": {
+     "debt_to_equity": [
+      1,
+      2,
+      3
+     ],
+     "fcf_conversion": [
+      0.6,
+      1.1
+     ],
+     "interest_coverage": [
+      1.5,
+      2,
+      3,
+      5,
+      8
+     ],
+     "max_drawdown": [
+      -0.35
+     ],
+     "operating_margin": [
+      0.05,
+      0.15,
+      0.25
+     ],
+     "revenue_cagr": [
+      0,
+      0.05,
+      0.08,
+      0.15
+     ]
+    },
     "valuation": {
      "caveats": [
       "Los múltiplos usan el BPA y el patrimonio del último ejercicio ANUAL publicado, no cifras TTM trimestrales: la serie es más rugosa que la de un terminal profesional.",
@@ -283,7 +364,7 @@
       "pb": {
        "available": false,
        "n": 0,
-       "reason": "Solo 0 observaciones (mínimo 12): la serie no describe un rango histórico utilizable."
+       "reason": "Sin observaciones: a los ejercicios publicados en esas fechas les falta el patrimonio neto (positivo) o el número de acciones."
       },
       "pe": {
        "available": false,
@@ -295,16 +376,23 @@
      "years_covered": 10
     },
     "verdict": {
+     "alcance": "Lectura del ejercicio anual 2025 y de la valoración frente a su propia historia. No entran los trimestres publicados después ni el DCF precargado de más abajo.",
      "disclaimer": "Lectura conjunta de los datos, no una recomendación de compra o venta. Qué hacer depende de tu cartera, horizonte y tolerancia al riesgo, que el modelo no conoce. Un informe favorable sobre una empresa excelente sigue pudiendo ser una mala compra al precio equivocado.",
      "negatives": [],
      "positives": [
       "ingresos creciendo al 10,0 % anual",
-      "margen operativo del 21,0 %"
+      "margen operativo anual del 21,0 % (ejercicio 2025)"
      ],
      "quant_label": null,
      "quant_score": null,
+     "sin_comprobar": [
+      "valoración frente a su historia",
+      "tendencia del margen operativo",
+      "cobertura de intereses",
+      "Altman Z"
+     ],
      "stance": "constructiva",
-     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo del 21,0 %. En contra: sin señales de alarma en los datos.",
+     "summary": "Los datos apuntan en dirección favorable. A favor: ingresos creciendo al 10,0 % anual; margen operativo anual del 21,0 % (ejercicio 2025). En contra: nada entre lo que se pudo comprobar. Sin comprobar por falta de datos: valoración frente a su historia, tendencia del margen operativo, cobertura de intereses y Altman Z.",
      "what_would_change_it": [
       "Dos trimestres seguidos de caída del margen operativo.",
       "Que el crecimiento de ingresos se vuelva negativo de forma sostenida.",
@@ -732,7 +820,7 @@
         "id": "historico"
        },
        {
-        "detalle": "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+        "detalle": "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
         "estado": "debil",
         "factor": "Sensibilidad de la valoración al WACC",
         "id": "sensibilidad_valoracion"
@@ -770,7 +858,7 @@
        "1 dato desconocido: puntuación",
        "finnhub y yfinance difieren un 11,5 %",
        "2 ejercicios y 260 sesiones de precio",
-       "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+       "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
        "sin dato (ninguna)"
       ],
       "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."
@@ -965,19 +1053,23 @@
        "guidance": null,
        "impacto_en_tesis": [
         {
+         "disparador_id": 1,
          "estado": "invalidado",
          "metrica": "operating_margin",
          "operador": "gte",
          "previo": 0.21,
          "punto": "margen operativo < 18%",
          "real": 0.11999999999999998,
+         "tesis_id": 1,
          "umbral": 0.18
         },
         {
+         "disparador_id": 2,
          "estado": "sin_resolver",
          "metrica": null,
          "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-         "punto": "recall"
+         "punto": "recall",
+         "tesis_id": 1
         }
        ],
        "sorpresa_ingresos": 0.033333
@@ -1512,7 +1604,7 @@
          "umbral": 0.18
         },
         "descripcion": "margen operativo < 18%",
-        "detalle": "Margen operativo = 0,210; el punto salta si cae por debajo de 0,180. Todavía no lo cruza.",
+        "detalle": "Margen operativo = 21,0 %; el punto salta si cae por debajo de 18,0 %. Todavía no lo cruza.",
         "id": 1,
         "kind": "metrica",
         "medible": true,
@@ -1521,6 +1613,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"
@@ -1749,7 +1842,9 @@
       "explicacion": [],
       "generado_por": "app",
       "papeles_que_cambiaron": [],
-      "reglas_que_cambiaron": []
+      "reglas_que_cambiaron": [],
+      "umbrales_puntuacion_ahora": [],
+      "umbrales_puntuacion_antes": []
      },
      "generado_por": "app",
      "irrelevantes": 11,
@@ -1767,8 +1862,10 @@
         "ahora": 0.11999999999999998,
         "antes": 0.21,
         "detalle": "según los resultados de 2026-Q2 (trimestre, no ejercicio)",
+        "disparador_id": 1,
         "origen": "resultados",
         "punto": "margen operativo < 18%",
+        "tesis_id": 1,
         "umbral": 0.18
        }
       ],
@@ -1919,7 +2016,1517 @@
      "id": 2,
      "nueva": true,
      "origen": "analisis:14:35:00"
-    }
+    },
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
+    "sin_congelar": null
+   },
+   "status": 200
+  },
+  "/api/empresa/ACME/analisis?congelar=false": {
+   "json": {
+    "analisis": {
+     "analizado_en": "2026-09-12T14:35:00+00:00",
+     "calidad": {
+      "avisos": [],
+      "ejercicio": "2025",
+      "estado": "valido",
+      "evidencias": [
+       {
+        "categoria": "conversion_caja",
+        "ejercicios_debiles": [],
+        "entradas": {
+         "beneficio_neto": {
+          "accn": "A-2025",
+          "etiqueta": "Tagnet_income",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 165.0
+         },
+         "capex": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcapex",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 50.0
+         },
+         "cfo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 250.0
+         }
+        },
+        "estado": "bueno",
+        "fcf_sobre_beneficio": 1.212121,
+        "fuente": "edgar",
+        "metodo": "flujo operativo / beneficio neto del ejercicio",
+        "periodo": "2025",
+        "persistente": false,
+        "regla": "CFO / beneficio neto ≥ 1 bueno; < 0,8 aviso (y FCF / beneficio < 0,6 aviso)",
+        "umbral": {
+         "aviso": 0.8,
+         "bueno": 1.0,
+         "fcf_debil": 0.6
+        },
+        "valor": 1.515152
+       },
+       {
+        "categoria": "accruals",
+        "entradas": {
+         "activos": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         },
+         "beneficio_neto": {
+          "accn": "A-2025",
+          "etiqueta": "Tagnet_income",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 165.0
+         },
+         "cfo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 250.0
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "falta beneficio, CFO o activos",
+        "periodo": "2025",
+        "regla": "(beneficio − CFO) / activos medios < 0,05 bueno; > 0,1 aviso",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "cuentas_por_cobrar",
+        "entradas": {
+         "cuentas por cobrar": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "la empresa no reporta cuentas por cobrar con las etiquetas conocidas (puede no tenerlo)",
+        "periodo": "2025",
+        "regla": "crecimiento de cuentas por cobrar − crecimiento de ingresos > 10 % aviso (> 5 % normal)",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "inventario",
+        "entradas": {
+         "inventario": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "la empresa no reporta inventario con las etiquetas conocidas (puede no tenerlo)",
+        "periodo": "2025",
+        "regla": "crecimiento de inventario − crecimiento de ingresos > 10 % aviso (> 5 % normal)",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "sbc",
+        "entradas": {
+         "sbc": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "sin compensación en acciones reportada o sin ingresos",
+        "periodo": "2025",
+        "regla": "SBC / ingresos < 5 % bueno; > 10 % aviso; creciente 3 años seguidos aviso",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "capital_circulante",
+        "entradas": {
+         "cfo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 250.0
+         },
+         "change_inventory": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         },
+         "change_payables": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         },
+         "change_receivables": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "sin variaciones de circulante en el estado de flujos, o CFO no positivo",
+        "periodo": "2025",
+        "regla": "parte del CFO que viene del circulante > 25 % aviso (> 10 % normal)",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "costes_capitalizados",
+        "entradas": {
+         "capitalizado": {
+          "accn": null,
+          "etiqueta": null,
+          "formulario": null,
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": null
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "no se identifican costes capitalizados con las etiquetas conocidas",
+        "periodo": "2025",
+        "regla": "software capitalizado / ingresos > 5 % aviso",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "extraordinarios",
+        "entradas": {
+         "beneficio_neto": {
+          "accn": "A-2025",
+          "etiqueta": "Tagnet_income",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 165.0
+         }
+        },
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "no se identifican partidas no recurrentes ni el tipo fiscal",
+        "periodo": "2025",
+        "regla": "|partidas no recurrentes| / |beneficio neto| > 10 % aviso; tipo fiscal efectivo < 10 % con beneficio antes de impuestos positivo aviso",
+        "umbral": null,
+        "valor": null
+       },
+       {
+        "categoria": "calidad_fcf",
+        "entradas": {},
+        "estado": "desconocido",
+        "fuente": "edgar",
+        "motivo": "hacen falta tres ejercicios",
+        "periodo": "2025",
+        "regla": "beneficio +5 % y FCF −5 % en los dos últimos ejercicios aviso",
+        "umbral": null,
+        "valor": null
+       }
+      ],
+      "generado_por": "app",
+      "global": "desconocido",
+      "historia": [
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.2,
+        "periodo": "2024",
+        "publicado": "2025-02-12",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "brecha_cobros": null,
+        "brecha_inventario": null,
+        "cfo_sobre_beneficio": 1.515152,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.212121,
+        "periodo": "2025",
+        "publicado": "2026-02-10",
+        "sbc_sobre_ingresos": null
+       }
+      ],
+      "huella": "96d2bc2d22c5",
+      "limite": "Las partidas no recurrentes salen de etiquetas XBRL concretas: lo que se encuentra es real; lo que no aparece puede existir con otra etiqueta.",
+      "por_categoria": {
+       "accruals": "desconocido",
+       "calidad_fcf": "desconocido",
+       "capital_circulante": "desconocido",
+       "conversion_caja": "bueno",
+       "costes_capitalizados": "desconocido",
+       "cuentas_por_cobrar": "desconocido",
+       "extraordinarios": "desconocido",
+       "inventario": "desconocido",
+       "sbc": "desconocido"
+      },
+      "puntuacion": {
+       "evaluables": 1,
+       "regla": "bueno +1, normal 0, aviso −1; las desconocidas no puntúan",
+       "valor": 1
+      },
+      "regla_global": "≥2 avisos → PRECAUCIÓN; 1 aviso → VIGILAR; ningún aviso y al menos la mitad de las categorías evaluables → SÓLIDA; más de la mitad desconocidas → DESCONOCIDA.",
+      "trimestral": [
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2024-Q2",
+        "publicado": "2024-07-28",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2024-Q3",
+        "publicado": "2024-10-28",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2024-Q4",
+        "publicado": "2025-02-10",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2025-Q1",
+        "publicado": "2025-04-28",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2025-Q2",
+        "publicado": "2025-07-28",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2025-Q3",
+        "publicado": "2025-10-28",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.466667,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 1.166667,
+        "periodo": "2025-Q4",
+        "publicado": "2026-02-10",
+        "sbc_sobre_ingresos": null
+       },
+       {
+        "cfo_sobre_beneficio": 1.290323,
+        "dias_de_cobro": null,
+        "fcf_sobre_beneficio": 0.806452,
+        "periodo": "2026-Q2",
+        "publicado": "2026-07-30",
+        "sbc_sobre_ingresos": null
+       }
+      ]
+     },
+     "confianza": {
+      "criticos": 0,
+      "debiles": 5,
+      "factores": [
+       {
+        "detalle": "1 dato desconocido: puntuación",
+        "estado": "debil",
+        "factor": "Datos desconocidos en el análisis",
+        "id": "completitud"
+       },
+       {
+        "detalle": "cotización actual",
+        "estado": "ok",
+        "factor": "Precio actual",
+        "id": "frescura_precio"
+       },
+       {
+        "detalle": "último trimestre (2026-Q2) publicado hace 44 días",
+        "estado": "ok",
+        "factor": "Antigüedad de los fundamentales",
+        "id": "frescura_fundamentales"
+       },
+       {
+        "detalle": "finnhub y yfinance difieren un 11,5 %",
+        "estado": "debil",
+        "factor": "Acuerdo entre proveedores",
+        "id": "contraste_proveedores"
+       },
+       {
+        "detalle": "2 ejercicios y 260 sesiones de precio",
+        "estado": "debil",
+        "factor": "Histórico disponible",
+        "id": "historico"
+       },
+       {
+        "detalle": "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+        "estado": "debil",
+        "factor": "Sensibilidad de la valoración al WACC",
+        "id": "sensibilidad_valoracion"
+       },
+       {
+        "detalle": "ningún umbral al alcance de un movimiento pequeño",
+        "estado": "ok",
+        "factor": "Distancia de la decisión a sus umbrales",
+        "id": "estabilidad"
+       },
+       {
+        "detalle": "todas las reglas se pudieron evaluar",
+        "estado": "ok",
+        "factor": "Reglas del motor sin evaluar",
+        "id": "reglas_desconocidas"
+       },
+       {
+        "detalle": "sin resultados en los próximos 7 días",
+        "estado": "ok",
+        "factor": "Resultados inminentes",
+        "id": "resultados_proximos"
+       },
+       {
+        "detalle": "sin dato (ninguna)",
+        "estado": "debil",
+        "factor": "Reglas validadas con histórico",
+        "id": "validacion_reglas"
+       }
+      ],
+      "generado_por": "app",
+      "huella": "38492e31e647",
+      "nivel": "baja",
+      "nota": "Mide la calidad de la evidencia que respalda la decisión, no la probabilidad de acertar.",
+      "razones": [
+       "1 dato desconocido: puntuación",
+       "finnhub y yfinance difieren un 11,5 %",
+       "2 ejercicios y 260 sesiones de precio",
+       "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+       "sin dato (ninguna)"
+      ],
+      "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."
+     },
+     "coste_oportunidad": {
+      "candidata": {
+       "accion": "sin_datos",
+       "atractivo": {
+        "desconocidos": [
+         "senal"
+        ],
+        "desglose": [
+         {
+          "criterio": "senal",
+          "nota": "desconocido: no suma ni resta",
+          "puntos": 0,
+          "valor": "sin_datos"
+         },
+         {
+          "criterio": "tesis",
+          "nota": "estado de la tesis",
+          "puntos": 1,
+          "valor": "intacta"
+         },
+         {
+          "criterio": "valoracion",
+          "nota": "DCF inverso frente al crecimiento histórico",
+          "puntos": -1,
+          "valor": "cara"
+         },
+         {
+          "criterio": "confianza",
+          "nota": "calidad de la evidencia",
+          "puntos": -1,
+          "valor": "baja"
+         }
+        ],
+        "puntos": -1
+       },
+       "confianza": "baja",
+       "escenarios": null,
+       "riesgo_por_peso": 0.0,
+       "symbol": "ACME",
+       "tesis": "intacta",
+       "valoracion": "cara"
+      },
+      "efectivo": {
+       "detalle": [
+        {
+         "as_of": "2026-09-11T14:35:00+00:00",
+         "importe": 1500.0,
+         "moneda": "USD",
+         "usd": 1500.0
+        }
+       ],
+       "estado": "valido",
+       "usd": 1500.0
+      },
+      "generado_por": "app",
+      "huella": "NO_ACCION:None",
+      "impuestos": {
+       "nota": "tipo impositivo no indicado: los impuestos son DESCONOCIDOS, no cero",
+       "tipo": null
+      },
+      "parametros": {
+       "atractivo": {
+        "confianza": {
+         "alta": 1,
+         "baja": -1,
+         "media": 0
+        },
+        "senal": {
+         "comprar": 2,
+         "evitar": -3,
+         "mantener": 0,
+         "ninguna": 0,
+         "reducir": -2,
+         "vender": -3,
+         "vigilar": 1
+        },
+        "tesis": {
+         "intacta": 1,
+         "puntos_cruzados": -2,
+         "sin_comprobar": 0,
+         "sin_puntos": 0,
+         "sin_tesis": 0
+        },
+        "valoracion": {
+         "barata": 1,
+         "cara": -1,
+         "razonable": 0
+        }
+       },
+       "banda_rebalanceo_pct": 2.0,
+       "correlacion_alta": 0.7,
+       "coste_por_punto_pct": 1.0,
+       "mejora_minima": 3,
+       "prioridad_de_revision": {
+        "senal": {
+         "reducir": 2,
+         "vender": 3
+        },
+        "tesis": {
+         "puntos_cruzados": 3,
+         "sin_comprobar": 1,
+         "sin_tesis": 1
+        },
+        "valoracion": {
+         "barata": -1,
+         "cara": 2
+        }
+       },
+       "puntos_prudencia_impuestos": 1,
+       "tenencia_minima_dias": 30
+      },
+      "sizing": {
+       "controles": null,
+       "recortes": null,
+       "todos_los_limites_aplicados": null
+      },
+      "veredicto": {
+       "accion": "NO_ACCION",
+       "motivo": "La señal de ACME es «sin datos», no de compra: no hay nada que financiar."
+      }
+     },
+     "decision": {
+      "action": "sin_datos",
+      "cambiaria": [
+       {
+        "condiciones": [
+         {
+          "actual": null,
+          "condicion": "que haya una puntuación válida",
+          "regla": "datos_minimos",
+          "umbral": null
+         }
+        ],
+        "hacia": "cualquier acción",
+        "requiere": "todas"
+       }
+      ],
+      "confidence": "ninguna",
+      "faltan": [
+       "puntuación"
+      ],
+      "label": "Sin datos",
+      "levels": null,
+      "owned": false,
+      "reasons": [
+       "No se puede decidir sobre esta empresa: falta puntuación. Esto NO es una recomendación neutra ni un «no pasa nada» — es que el sistema no tiene con qué evaluarlo."
+      ],
+      "reglas": [
+       {
+        "datos": {
+         "faltan": [
+          "puntuación"
+         ]
+        },
+        "efecto": "sin_datos",
+        "id": "datos_minimos",
+        "papel": "decide",
+        "regla": "Precio y puntuación válidos",
+        "resultado": "no_cumple"
+       }
+      ],
+      "triggers": []
+     },
+     "esquema": 2,
+     "expectativas": {
+      "estado": "valido",
+      "huella": 1,
+      "proximo": null,
+      "ultimo": {
+       "a_favor": [
+        "Ingresos supera (consenso)"
+       ],
+       "clasificacion": "mixto",
+       "en_contra": [
+        "BPA diluido por debajo (consenso)",
+        "Margen operativo por debajo (modelo interno)"
+       ],
+       "evento": {
+        "creado_en": "2026-07-14T14:35:00+00:00",
+        "descripcion": null,
+        "fecha_prevista": "2026-07-30",
+        "id": 1,
+        "periodo": "2026-Q2",
+        "periodo_fin": null,
+        "symbol": "ACME",
+        "tipo": "earnings"
+       },
+       "guidance": null,
+       "impacto_en_tesis": [
+        {
+         "disparador_id": 1,
+         "estado": "invalidado",
+         "metrica": "operating_margin",
+         "operador": "gte",
+         "previo": 0.21,
+         "punto": "margen operativo < 18%",
+         "real": 0.11999999999999998,
+         "tesis_id": 1,
+         "umbral": 0.18
+        },
+        {
+         "disparador_id": 2,
+         "estado": "sin_resolver",
+         "metrica": null,
+         "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
+         "punto": "recall",
+         "tesis_id": 1
+        }
+       ],
+       "sorpresa_ingresos": 0.033333
+      }
+     },
+     "faltan": [
+      {
+       "dato": "puntuación",
+       "motivo": "La empresa no está en ninguna lista diaria calculada y no se pudo puntuar contra sus pares. Sin puntuación, el motor no decide.",
+       "seccion": "senal"
+      }
+     ],
+     "fundamentales": {
+      "crecimiento_5a": {
+       "eps_cagr": 0.09999999999999987,
+       "fcf_cagr": 0.11111111111111116,
+       "revenue_cagr": 0.10000000000000009,
+       "years": 1
+      },
+      "ejercicio": "2025",
+      "ejercicios_disponibles": 2,
+      "estado": "valido",
+      "excluidos_por_fecha": 0,
+      "fuente": "edgar",
+      "metricas": {
+       "deuda_neta": {
+        "entradas": {
+         "caja": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcash",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 120.0
+         },
+         "deuda_corto": {
+          "accn": "A-2025",
+          "etiqueta": "Tagshort_term_debt",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 0.0
+         },
+         "deuda_largo": {
+          "accn": "A-2025",
+          "etiqueta": "Taglong_term_debt",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 300.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "deuda a largo + a corto − caja (caja ausente = 0: error en dirección prudente)",
+        "unidad": "USD",
+        "valor": 180.0
+       },
+       "eps_diluted": {
+        "accn": "A-2025",
+        "etiqueta": "Tageps_diluted",
+        "formulario": "10-K",
+        "fuente": "edgar",
+        "obtenido_en": "2026-09-12T14:35:00+00:00",
+        "periodo_fin": "2025-12-31",
+        "publicado": "2026-02-10",
+        "unidad": "USD/acción",
+        "valor": 1.65
+       },
+       "fcf": {
+        "entradas": {
+         "capex": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcapex",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 50.0
+         },
+         "cfo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 250.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "flujo operativo − capex",
+        "unidad": "USD",
+        "valor": 200.0
+       },
+       "fcf_growth": {
+        "entradas": {
+         "capex": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcapex",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 50.0
+         },
+         "capex_anterior": {
+          "accn": "A-2024",
+          "etiqueta": "Tagcapex",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2024-12-31",
+          "publicado": "2025-02-12",
+          "valor": 40.0
+         },
+         "cfo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 250.0
+         },
+         "cfo_anterior": {
+          "accn": "A-2024",
+          "etiqueta": "Tagcfo",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2024-12-31",
+          "publicado": "2025-02-12",
+          "valor": 220.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "FCF del ejercicio / FCF del anterior − 1",
+        "unidad": "fracción",
+        "valor": 0.111111
+       },
+       "gross_margin": {
+        "entradas": {
+         "beneficio_bruto": {
+          "accn": "A-2025",
+          "etiqueta": "Taggross_profit",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 440.0
+         },
+         "ingresos": {
+          "accn": "A-2025",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 1100.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "beneficio bruto / ingresos",
+        "unidad": "fracción",
+        "valor": 0.4
+       },
+       "net_margin": {
+        "entradas": {
+         "beneficio_neto": {
+          "accn": "A-2025",
+          "etiqueta": "Tagnet_income",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 165.0
+         },
+         "ingresos": {
+          "accn": "A-2025",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 1100.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "beneficio neto / ingresos",
+        "unidad": "fracción",
+        "valor": 0.15
+       },
+       "operating_margin": {
+        "entradas": {
+         "ingresos": {
+          "accn": "A-2025",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 1100.0
+         },
+         "resultado_operativo": {
+          "accn": "A-2025",
+          "etiqueta": "Tagoperating_income",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 231.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "resultado operativo / ingresos",
+        "unidad": "fracción",
+        "valor": 0.21
+       },
+       "revenue": {
+        "accn": "A-2025",
+        "etiqueta": "Tagrevenue",
+        "formulario": "10-K",
+        "fuente": "edgar",
+        "obtenido_en": "2026-09-12T14:35:00+00:00",
+        "periodo_fin": "2025-12-31",
+        "publicado": "2026-02-10",
+        "unidad": "USD",
+        "valor": 1100.0
+       },
+       "revenue_growth": {
+        "entradas": {
+         "ingresos": {
+          "accn": "A-2025",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-12-31",
+          "publicado": "2026-02-10",
+          "valor": 1100.0
+         },
+         "ingresos_anterior": {
+          "accn": "A-2024",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-K",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2024-12-31",
+          "publicado": "2025-02-12",
+          "valor": 1000.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "ingresos del ejercicio / ingresos del anterior − 1",
+        "unidad": "fracción",
+        "valor": 0.1
+       }
+      },
+      "obtenido_en": "2026-09-12T14:35:00+00:00",
+      "partidas_descartadas": null,
+      "periodo_fin": "2025-12-31",
+      "publicado": "2026-02-10",
+      "trimestre": {
+       "operating_margin": {
+        "entradas": {
+         "ingresos": {
+          "accn": "Q-2026-2",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-Q",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2026-06-30",
+          "publicado": "2026-07-30",
+          "valor": 310.0
+         },
+         "resultado_operativo": {
+          "accn": "Q-2026-2",
+          "etiqueta": "Tagoperating_income",
+          "formulario": "10-Q",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2026-06-30",
+          "publicado": "2026-07-30",
+          "valor": 37.199999999999996
+         }
+        },
+        "estado": "valido",
+        "metodo": "resultado operativo / ingresos (trimestre)",
+        "unidad": "fracción",
+        "valor": 0.12
+       },
+       "periodo": "2026-Q2",
+       "periodo_fin": "2026-06-30",
+       "publicado": "2026-07-30",
+       "revenue": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagrevenue",
+        "formulario": "10-Q",
+        "fuente": "edgar",
+        "obtenido_en": "2026-09-12T14:35:00+00:00",
+        "periodo_fin": "2026-06-30",
+        "publicado": "2026-07-30",
+        "valor": 310.0
+       },
+       "revenue_yoy": {
+        "entradas": {
+         "ingresos": {
+          "accn": "Q-2026-2",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-Q",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2026-06-30",
+          "publicado": "2026-07-30",
+          "valor": 310.0
+         },
+         "ingresos_hace_un_ano": {
+          "accn": "Q-2025-2",
+          "etiqueta": "Tagrevenue",
+          "formulario": "10-Q",
+          "fuente": "edgar",
+          "obtenido_en": "2026-09-12T14:35:00+00:00",
+          "periodo_fin": "2025-06-30",
+          "publicado": "2025-07-28",
+          "valor": 279.0
+         }
+        },
+        "estado": "valido",
+        "metodo": "ingresos del trimestre / mismo trimestre del año anterior − 1",
+        "unidad": "fracción",
+        "valor": 0.111111
+       }
+      }
+     },
+     "generado_por": "app",
+     "marcas": [
+      {
+       "dato": "precio",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-09-12T14:35:00+00:00"
+      },
+      {
+       "dato": "histórico de precios",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-09-11"
+      },
+      {
+       "dato": "revenue:revenue",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "revenue_growth:ingresos",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "revenue_growth:ingresos_anterior",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2025-02-12"
+      },
+      {
+       "dato": "gross_margin:beneficio_bruto",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "gross_margin:ingresos",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "operating_margin:resultado_operativo",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "operating_margin:ingresos",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "net_margin:beneficio_neto",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "net_margin:ingresos",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "fcf:cfo",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "fcf:capex",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "fcf_growth:cfo",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "fcf_growth:capex",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "fcf_growth:cfo_anterior",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2025-02-12"
+      },
+      {
+       "dato": "fcf_growth:capex_anterior",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2025-02-12"
+      },
+      {
+       "dato": "eps_diluted:eps_diluted",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "deuda_neta:deuda_largo",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "deuda_neta:deuda_corto",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "deuda_neta:caja",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-02-10"
+      },
+      {
+       "dato": "trimestre 2026-Q2",
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-07-30"
+      }
+     ],
+     "mercado": {
+      "cambio_pct": -1.2876,
+      "drawdown_pct": 0.0,
+      "estado": "valido",
+      "historico": {
+       "fuente": "yfinance",
+       "hasta": "2026-09-11",
+       "motivo": null,
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "sesiones": 260,
+       "ultimo_cierre": 104.0
+      },
+      "precio": {
+       "antiguedad_segundos": null,
+       "estado": "valido",
+       "fuente": "finnhub",
+       "moneda": "USD",
+       "motivo": null,
+       "obtenido_en": "2026-09-12T14:35:00+00:00",
+       "publicado": "2026-09-12T14:35:00+00:00",
+       "valor": 92.0
+      },
+      "sma200": 94.78,
+      "vol_diaria_pct": 0.002
+     },
+     "nombre": "ACME Corp",
+     "noticias": {
+      "estado": "valido",
+      "excluidas_futuras": 0,
+      "excluidas_sin_fecha": 0,
+      "fuente": "finnhub",
+      "items": [],
+      "motivo": null,
+      "obtenido_en": "2026-09-12T14:35:00+00:00"
+     },
+     "posicion": null,
+     "resultados_proximos": null,
+     "riesgo": {
+      "cluster_nivel": "bajo",
+      "contribucion": 2.7e-05,
+      "correlacion_con_cartera": 0.0078,
+      "en_cartera": false,
+      "estado": "valido",
+      "huella": "0.0:bajo",
+      "nota": "Si la añadieras al 10,0 % (lo que propone el motor, con el tope por posición).",
+      "peso_supuesto": 0.1,
+      "riesgo_por_peso": 0.0,
+      "volatilidad_cartera_antes": 0.040028,
+      "volatilidad_cartera_despues": 0.035972
+     },
+     "sector": "Tech",
+     "senal": {
+      "estado": "desconocido",
+      "motivo": "La empresa no está en ninguna lista diaria calculada y no se pudo puntuar contra sus pares. Sin puntuación, el motor no decide.",
+      "score": null
+     },
+     "symbol": "ACME",
+     "tesis": {
+      "actualizada": "2026-07-14T14:35:00+00:00",
+      "creada": "2026-07-14T14:35:00+00:00",
+      "cuerpo": "Margen operativo por encima del umbral.",
+      "cuerpo_sha256": "0e0b83590a6184a59d4aba6f8a319ea33390c2c4aae0b6f0be632789a09d4144",
+      "cuerpo_truncado": false,
+      "disparadores": [
+       {
+        "config": {
+         "metrica": "operating_margin",
+         "op": "lt",
+         "umbral": 0.18
+        },
+        "descripcion": "margen operativo < 18%",
+        "detalle": "Margen operativo = 21,0 %; el punto salta si cae por debajo de 18,0 %. Todavía no lo cruza.",
+        "id": 1,
+        "kind": "metrica",
+        "medible": true,
+        "salta": false,
+        "umbral": 0.18,
+        "valor": 0.21
+       },
+       {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
+        "config": {
+         "palabras": [
+          "recall"
+         ]
+        },
+        "descripcion": "recall",
+        "detalle": "Ninguno de los 0 titulares de los últimos 14 días contiene esas palabras.",
+        "id": 2,
+        "kind": "noticia",
+        "medible": true,
+        "salta": false,
+        "umbral": null,
+        "valor": null
+       }
+      ],
+      "estado": "intacta",
+      "id": 1,
+      "invalidacion": null,
+      "resumen": "Ninguno de los 2 puntos de invalidación se ha cruzado.",
+      "titulo": "El margen aguanta"
+     },
+     "valoracion": {
+      "dcf_inverso": {
+       "crecimiento_implicito": 0.3006,
+       "estado": "valido",
+       "motivo": null,
+       "nota": "Crecimiento anual del FCF que justifica el precio de hoy CON estos supuestos. No es un dato de la empresa.",
+       "rango": {
+        "alto": 0.4251,
+        "bajo": 0.1965
+       },
+       "supuestos": {
+        "anos": 5,
+        "descuento": 0.09,
+        "terminal": 0.025
+       }
+      },
+      "estado": "valido",
+      "fcf_yield": {
+       "entradas": {
+        "fcf": {
+         "entradas": {
+          "capex": {
+           "accn": "A-2025",
+           "etiqueta": "Tagcapex",
+           "formulario": "10-K",
+           "fuente": "edgar",
+           "obtenido_en": "2026-09-12T14:35:00+00:00",
+           "periodo_fin": "2025-12-31",
+           "publicado": "2026-02-10",
+           "valor": 50.0
+          },
+          "cfo": {
+           "accn": "A-2025",
+           "etiqueta": "Tagcfo",
+           "formulario": "10-K",
+           "fuente": "edgar",
+           "obtenido_en": "2026-09-12T14:35:00+00:00",
+           "periodo_fin": "2025-12-31",
+           "publicado": "2026-02-10",
+           "valor": 250.0
+          }
+         },
+         "estado": "valido",
+         "metodo": "flujo operativo − capex",
+         "unidad": "USD",
+         "valor": 200.0
+        },
+        "precio": {
+         "fuente": "cotización",
+         "valor": 92.0
+        }
+       },
+       "estado": "valido",
+       "metodo": "FCF / (precio × acciones en circulación)",
+       "unidad": "fracción",
+       "valor": 0.021739
+      },
+      "pe": {
+       "entradas": {
+        "bpa": {
+         "accn": "A-2025",
+         "etiqueta": "Tageps_diluted",
+         "formulario": "10-K",
+         "fuente": "edgar",
+         "obtenido_en": "2026-09-12T14:35:00+00:00",
+         "periodo_fin": "2025-12-31",
+         "publicado": "2026-02-10",
+         "unidad": "USD/acción",
+         "valor": 1.65
+        },
+        "precio": {
+         "fuente": "cotización",
+         "valor": 92.0
+        }
+       },
+       "estado": "valido",
+       "metodo": "precio / BPA diluido del último ejercicio",
+       "unidad": "veces",
+       "valor": 55.757576
+      }
+     }
+    },
+    "anterior": {
+     "accion": "sin_datos",
+     "creado_en": "2026-09-12T14:35:00+00:00",
+     "id": 2
+    },
+    "cambios": {
+     "categorias": {},
+     "contra": {
+      "creado_en": "2026-09-12T14:35:00+00:00",
+      "id": 2
+     },
+     "decision": {
+      "ahora": "sin_datos",
+      "antes": "sin_datos",
+      "cambio": false,
+      "explicacion": [],
+      "generado_por": "app",
+      "papeles_que_cambiaron": [],
+      "reglas_que_cambiaron": [],
+      "umbrales_puntuacion_ahora": [],
+      "umbrales_puntuacion_antes": []
+     },
+     "generado_por": "app",
+     "irrelevantes": 17,
+     "materiales": 0,
+     "nota": "0 cambios materiales y 17 por debajo de su umbral (se cuentan, no se enseñan). La aparición o pérdida de un dato se enseña siempre.",
+     "tesis": {
+      "confirmados": [],
+      "deteriorados": [],
+      "estado": {
+       "ahora": "intacta",
+       "antes": "intacta"
+      },
+      "invalidaciones": [],
+      "misma_tesis": true,
+      "nuevos_riesgos": []
+     },
+     "umbrales": {
+      "valores": {
+       "correlacion_cartera": {
+        "categoria": "riesgo",
+        "etiqueta": "Correlación con la cartera",
+        "tipo": "absoluto",
+        "umbral": 0.1,
+        "unidad": "correlación"
+       },
+       "dcf_inverso": {
+        "categoria": "valoracion",
+        "etiqueta": "Crecimiento implícito (DCF inverso, 9 %)",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "deuda_neta": {
+        "categoria": "fundamentales",
+        "etiqueta": "Deuda neta",
+        "tipo": "relativo",
+        "umbral": 0.1,
+        "unidad": "USD"
+       },
+       "eps_diluted": {
+        "categoria": "fundamentales",
+        "etiqueta": "BPA diluido",
+        "tipo": "relativo",
+        "umbral": 0.03,
+        "unidad": "USD/acción"
+       },
+       "fcf": {
+        "categoria": "fundamentales",
+        "etiqueta": "Flujo de caja libre",
+        "tipo": "relativo",
+        "umbral": 0.05,
+        "unidad": "USD"
+       },
+       "fcf_growth": {
+        "categoria": "fundamentales",
+        "etiqueta": "Crecimiento del FCF",
+        "tipo": "absoluto",
+        "umbral": 0.05,
+        "unidad": "fracción"
+       },
+       "fcf_yield": {
+        "categoria": "valoracion",
+        "etiqueta": "Rentabilidad por FCF",
+        "tipo": "absoluto",
+        "umbral": 0.005,
+        "unidad": "fracción"
+       },
+       "gross_margin": {
+        "categoria": "fundamentales",
+        "etiqueta": "Margen bruto",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "net_margin": {
+        "categoria": "fundamentales",
+        "etiqueta": "Margen neto",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "operating_margin": {
+        "categoria": "fundamentales",
+        "etiqueta": "Margen operativo",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "pe": {
+        "categoria": "valoracion",
+        "etiqueta": "P/E",
+        "tipo": "relativo",
+        "umbral": 0.05,
+        "unidad": "veces"
+       },
+       "peso_cartera": {
+        "categoria": "riesgo",
+        "etiqueta": "Peso en la cartera",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "precio": {
+        "categoria": "mercado",
+        "etiqueta": "Precio",
+        "tipo": "relativo",
+        "umbral": 0.03,
+        "unidad": "moneda"
+       },
+       "revenue_growth": {
+        "categoria": "fundamentales",
+        "etiqueta": "Crecimiento de ingresos",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "riesgo_contribucion": {
+        "categoria": "riesgo",
+        "etiqueta": "Contribución al riesgo de la cartera",
+        "tipo": "absoluto",
+        "umbral": 0.02,
+        "unidad": "fracción"
+       },
+       "score": {
+        "categoria": "decision",
+        "etiqueta": "Puntuación frente a comparables",
+        "tipo": "absoluto",
+        "umbral": 0.15,
+        "unidad": "puntos"
+       },
+       "sorpresa_ingresos": {
+        "categoria": "resultados",
+        "etiqueta": "Sorpresa en ingresos",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "trimestre_operating_margin": {
+        "categoria": "fundamentales",
+        "etiqueta": "Margen operativo del trimestre",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       },
+       "trimestre_revenue_yoy": {
+        "categoria": "fundamentales",
+        "etiqueta": "Ingresos del trimestre (interanual)",
+        "tipo": "absoluto",
+        "umbral": 0.01,
+        "unidad": "fracción"
+       }
+      },
+      "version": "d252a79dace1"
+     }
+    },
+    "instantanea": null,
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
+    "sin_congelar": null
    },
    "status": 200
   },
@@ -2318,7 +3925,8 @@
       "precio": 92.0,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      },
      {
       "accion": "sin_datos",
@@ -2330,16 +3938,23 @@
       "precio": 104.0,
       "reglas_version": "5c98dd9a4ec0",
       "replay": true,
-      "score": null
+      "score": null,
+      "umbrales_puntuacion": []
      }
     ],
     "reglas_version_actual": "5c98dd9a4ec0",
-    "symbol": "ACME"
+    "symbol": "ACME",
+    "thresholds": {
+     "desfavorable": -0.35,
+     "favorable": 0.35
+    }
    },
    "status": 200
   },
   "/api/expectativas/calibracion?symbol=ACME": {
    "json": {
+    "definiciones": "Error medio: la media del error sin signo, relativo en importes y BPA y en puntos en los márgenes. Cerca: la parte de los pares que cayó dentro de la tolerancia con que la lectura dice «en línea» (±1 % en ingresos, ±2 % en BPA diluido, ±0,5 pp en margen bruto, ±0,5 pp en margen operativo); un rango se mide desde su centro.",
+    "excluidos_otro_trimestre": 0,
     "nota": "Cada fuente se calibra por separado: mezclar el consenso con el modelo interno daría la calibración de nadie. Con menos de 5 pares, el número describe la muestra, no a la fuente.",
     "pares": 6,
     "por_fuente": {
@@ -2389,18 +4004,18 @@
       "por_empresa": {
        "ACME": {
         "cerca_pct": 0.25,
-        "error_medio_abs": 0.252151,
+        "error_medio_abs": 0.250505,
         "n": 4,
-        "sesgo": -0.242546,
+        "sesgo": -0.244553,
         "suficiente": false
        }
       },
       "por_metrica": {
        "eps_diluted": {
         "cerca_pct": 0.0,
-        "error_medio_abs": 0.899394,
+        "error_medio_abs": 0.900115,
         "n": 1,
-        "sesgo": -0.899394,
+        "sesgo": -0.900115,
         "suficiente": false
        },
        "gross_margin": {
@@ -2419,17 +4034,17 @@
        },
        "revenue": {
         "cerca_pct": 0.0,
-        "error_medio_abs": 0.01921,
+        "error_medio_abs": 0.011903,
         "n": 1,
-        "sesgo": 0.01921,
+        "sesgo": 0.011903,
         "suficiente": false
        }
       },
       "total": {
        "cerca_pct": 0.25,
-       "error_medio_abs": 0.252151,
+       "error_medio_abs": 0.250505,
        "n": 4,
-       "sesgo": -0.242546,
+       "sesgo": -0.244553,
        "suficiente": false
       }
      }
@@ -2524,15 +4139,15 @@
        "bajo": null,
        "detalle": {
         "base": {
-         "periodo": "2025-Q1",
-         "valor": 277.0
+         "periodo": "2025-Q2",
+         "valor": 279.0
         },
         "crecimiento_mediano": 0.098041,
         "metodo": "mismo trimestre del año anterior × (1 + mediana del crecimiento interanual de los últimos 4 trimestres)",
         "observaciones": 4,
-        "trimestre_objetivo_fin": "2026-03-31"
+        "trimestre_objetivo_fin": "2026-06-30"
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 3,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2540,22 +4155,22 @@
        "operador": null,
        "registrado_en": "2026-07-14T14:35:00+00:00",
        "unidad": "USD",
-       "valor": 304.15728
+       "valor": 306.353362
       },
       {
        "alto": null,
        "bajo": null,
        "detalle": {
         "base": {
-         "periodo": "2025-Q1",
-         "valor": 0.46166666666666667
+         "periodo": "2025-Q2",
+         "valor": 0.465
         },
         "crecimiento_mediano": 0.098041,
         "metodo": "mismo trimestre del año anterior × (1 + mediana del crecimiento interanual de los últimos 4 trimestres)",
         "observaciones": 4,
-        "trimestre_objetivo_fin": "2026-03-31"
+        "trimestre_objetivo_fin": "2026-06-30"
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 4,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2563,14 +4178,14 @@
        "operador": null,
        "registrado_en": "2026-07-14T14:35:00+00:00",
        "unidad": "USD/acción",
-       "valor": 0.506929
+       "valor": 0.510589
       },
       {
        "alto": null,
        "bajo": null,
        "detalle": {
         "metodo": "media de los últimos 4 trimestres",
-        "trimestre_objetivo_fin": "2026-03-31",
+        "trimestre_objetivo_fin": "2026-06-30",
         "valores": [
          0.4,
          0.4,
@@ -2578,7 +4193,7 @@
          0.4
         ]
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 5,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2593,7 +4208,7 @@
        "bajo": null,
        "detalle": {
         "metodo": "media de los últimos 4 trimestres",
-        "trimestre_objetivo_fin": "2026-03-31",
+        "trimestre_objetivo_fin": "2026-06-30",
         "valores": [
          0.21,
          0.21,
@@ -2601,7 +4216,7 @@
          0.21
         ]
        },
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "id": 6,
        "informacion_hasta": "2026-02-10T00:00:00+00:00",
@@ -2641,21 +4256,26 @@
     "guidance_detalle": null,
     "impacto_en_tesis": [
      {
+      "disparador_id": 1,
       "estado": "invalidado",
       "metrica": "operating_margin",
       "operador": "gte",
       "previo": 0.21,
       "punto": "margen operativo < 18%",
       "real": 0.11999999999999998,
+      "tesis_id": 1,
       "umbral": 0.18
      },
      {
+      "disparador_id": 2,
       "estado": "sin_resolver",
       "metrica": null,
       "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-      "punto": "recall"
+      "punto": "recall",
+      "tesis_id": 1
      }
     ],
+    "no_comparables": [],
     "parcial": false,
     "por_fuente": {
      "consenso": [
@@ -2708,15 +4328,15 @@
         "alto": null,
         "bajo": null,
         "operador": null,
-        "valor": 304.15728
+        "valor": 306.353362
        },
        "etiqueta": "Ingresos",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "supera",
        "metrica": "revenue",
        "real": 310.0,
-       "sorpresa": 0.01921,
+       "sorpresa": 0.011903,
        "tipo_sorpresa": "relativa",
        "tolerancia": {
         "tipo": "relativo",
@@ -2729,15 +4349,15 @@
         "alto": null,
         "bajo": null,
         "operador": null,
-        "valor": 0.506929
+        "valor": 0.510589
        },
        "etiqueta": "BPA diluido",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "por_debajo",
        "metrica": "eps_diluted",
        "real": 0.051,
-       "sorpresa": -0.899394,
+       "sorpresa": -0.900115,
        "tipo_sorpresa": "relativa",
        "tolerancia": {
         "tipo": "relativo",
@@ -2753,7 +4373,7 @@
         "valor": 0.4
        },
        "etiqueta": "Margen bruto",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "en_linea",
        "metrica": "gross_margin",
@@ -2774,7 +4394,7 @@
         "valor": 0.21
        },
        "etiqueta": "Margen operativo",
-       "fuente": "app: modelo interno v1",
+       "fuente": "app: modelo interno v2",
        "fuente_tipo": "modelo_interno",
        "lectura": "por_debajo",
        "metrica": "operating_margin",
@@ -3175,8 +4795,21 @@
      "tipos_usados": {}
     },
     "estres": {
-     "nota": "Sin cartera o sin histórico.",
-     "suficiente": false
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "aviso_sin_historico": null,
+     "años_cubiertos": 1.4,
+     "cobertura": "10 abr 2025 → 11 sept 2026",
+     "cobertura_peso": 1.0,
+     "drawdown_desde": "2026-08-22",
+     "drawdown_hasta": "2026-09-01",
+     "max_drawdown_pct": -0.58,
+     "peor_ventana_desde": "2025-09-04",
+     "peor_ventana_hasta": "2026-05-14",
+     "peor_ventana_meses": 12,
+     "peor_ventana_nota": null,
+     "peor_ventana_pct": 5.23,
+     "sin_historico": [],
+     "suficiente": true
     },
     "note": "Las posiciones sin precio disponible se excluyen de los totales y de los pesos; el resumen indica sobre cuántas se calculó. Toda la cartera está en USD: no hay nada que convertir.",
     "positions": [
@@ -3238,12 +4871,61 @@
        67.57
       ],
       "stop": 50.0,
+      "stop_estado": "por_encima",
       "stop_fijado_al_abrir": true,
+      "stop_motivo": null,
+      "stop_perforado": false,
+      "stop_perforado_por": null,
+      "stop_por_clase": false,
+      "stop_precio": {
+       "estado": "valido",
+       "fecha": "2026-09-12T14:35:00+00:00",
+       "fuente": "cotizacion",
+       "precio": 60.0,
+       "proveedor": "finnhub"
+      },
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
       "unrealized_pnl": 600.0
      }
     ],
+    "repaso": {
+     "abiertas": 1,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [
+      {
+       "en_lista": false,
+       "estado": "por_encima",
+       "lotes": 1,
+       "lotes_por_clase": 0,
+       "lotes_recalculados": 0,
+       "lotes_sin_stop": 0,
+       "moneda": "USD",
+       "motivo": null,
+       "pendiente": false,
+       "precio": 60.0,
+       "precio_estado": "valido",
+       "precio_fecha": "2026-09-12T14:35:00+00:00",
+       "precio_fuente": "cotizacion",
+       "precio_proveedor": "finnhub",
+       "precios": [
+        {
+         "estado": "valido",
+         "fecha": "2026-09-12T14:35:00+00:00",
+         "fuente": "cotizacion",
+         "precio": 60.0,
+         "proveedor": "finnhub"
+        }
+       ],
+       "stop": 50.0,
+       "stop_fijado_al_abrir": true,
+       "stop_por_clase": false,
+       "symbol": "KO"
+      }
+     ],
+     "senales": []
+    },
     "risk_budget": {
      "avisos": [
       "Tienes un 16,7 % de la cartera en riesgo a la vez, por encima del 6 % que se suele considerar el tope. Si todo se gira en tu contra, eso es lo que pierdes.",
@@ -3252,7 +4934,7 @@
      "margen_pct": 0.0,
      "nota": "El riesgo abierto es lo que perderías si TODAS tus posiciones tocaran su stop. Se agrupa por sector —y cripto en bloque, porque las grandes se correlacionan casi por completo— ya que lo que se mueve junto no diversifica. Los topes son convención de gestión de riesgo, no un resultado medido en esta app; la aritmética sí es exacta.",
      "por_grupo": {
-      "Consumer Staples": 16.67
+      "Consumer Staples": 16.666666666667
      },
      "posiciones": [
       {
@@ -3263,14 +4945,15 @@
        "symbol": "KO"
       }
      ],
-     "riesgo_total_pct": 16.67,
+     "riesgo_total_pct": 16.666666666667,
      "sin_calcular": 0,
      "tope_grupo_pct": 3.0,
      "tope_pct": 6.0
     },
     "summary": {
-     "aviso_cobertura": "Sin histórico suficiente para estimar la caída máxima. Un retorno esperado sin su caída al lado no se puede interpretar.",
-     "max_drawdown_esperado_pct": null,
+     "aviso_cobertura": "ATENCIÓN: el histórico solo cubre 1,4 años, desde 2025. Esta cartera NO ha vivido la crisis financiera de 2008, ni el desplome de marzo de 2020, ni el mercado bajista de 2022. Su peor caída histórica es el peor de los escenarios que dio tiempo a ocurrir, que no es lo mismo que el peor escenario posible.",
+     "max_drawdown_esperado_pct": -0.58,
+     "peor_ventana_pct": 5.23,
      "precios_viejos": [],
      "priced_positions": 1,
      "realizado_sin_convertir": [],
@@ -3350,7 +5033,7 @@
   },
   "/api/portfolio/historial?descargar=false": {
    "json": {
-    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: la app no lleva saldo en efectivo.",
+    "aviso": "Es el valor de las posiciones ABIERTAS en USD, no el de tu cuenta: el efectivo que anotas no entra en la curva, ni el de cada venta tampoco.",
     "base": "USD",
     "cierres": [],
     "desde": "2026-02-24",
@@ -5230,7 +6913,7 @@
         "id": "frescura_fundamentales"
        },
        {
-        "detalle": "finnhub y yfinance difieren un 5,6 %",
+        "detalle": "finnhub y yfinance difieren un 5,5 %",
         "estado": "ok",
         "factor": "Acuerdo entre proveedores",
         "id": "contraste_proveedores"
@@ -5242,7 +6925,7 @@
         "id": "historico"
        },
        {
-        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+        "detalle": "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
         "estado": "debil",
         "factor": "Sensibilidad de la valoración al WACC",
         "id": "sensibilidad_valoracion"
@@ -5280,7 +6963,7 @@
        "1 dato desconocido: puntuación",
        "último trimestre (2025-Q4) publicado hace 154 días",
        "2 ejercicios y 201 sesiones de precio",
-       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
+       "el crecimiento implícito va de 22,7 % a 46,3 % entre un WACC del 7 % y del 12 %",
        "sin dato (ninguna)"
       ],
       "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."
@@ -5793,7 +7476,7 @@
        "motivo": null,
        "obtenido_en": "2026-07-14T14:35:00+00:00",
        "sesiones": 201,
-       "ultimo_cierre": 98.53
+       "ultimo_cierre": 98.5328
       },
       "precio": {
        "antiguedad_segundos": null,
@@ -5850,7 +7533,7 @@
          "umbral": 0.18
         },
         "descripcion": "margen operativo < 18%",
-        "detalle": "Margen operativo = 0,210; el punto salta si cae por debajo de 0,180. Todavía no lo cruza.",
+        "detalle": "Margen operativo = 21,0 %; el punto salta si cae por debajo de 18,0 %. Todavía no lo cruza.",
         "id": 1,
         "kind": "metrica",
         "medible": true,
@@ -5859,6 +7542,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"
@@ -6442,7 +8126,7 @@
         "id": "historico"
        },
        {
-        "detalle": "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+        "detalle": "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
         "estado": "debil",
         "factor": "Sensibilidad de la valoración al WACC",
         "id": "sensibilidad_valoracion"
@@ -6480,7 +8164,7 @@
        "1 dato desconocido: puntuación",
        "finnhub y yfinance difieren un 11,5 %",
        "2 ejercicios y 260 sesiones de precio",
-       "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
+       "el crecimiento implícito va de 19,7 % a 42,5 % entre un WACC del 7 % y del 12 %",
        "sin dato (ninguna)"
       ],
       "regla": "crítico → BAJA; ≥3 débiles o desconocidos → BAJA; 1–2 → MEDIA; ninguno → ALTA. Un factor desconocido cuenta como débil."
@@ -6674,19 +8358,23 @@
        "guidance": null,
        "impacto_en_tesis": [
         {
+         "disparador_id": 1,
          "estado": "invalidado",
          "metrica": "operating_margin",
          "operador": "gte",
          "previo": 0.21,
          "punto": "margen operativo < 18%",
          "real": 0.11999999999999998,
+         "tesis_id": 1,
          "umbral": 0.18
         },
         {
+         "disparador_id": 2,
          "estado": "sin_resolver",
          "metrica": null,
          "motivo": "no se puede medir con los resultados del trimestre (p. ej. noticias o crecimiento plurianual)",
-         "punto": "recall"
+         "punto": "recall",
+         "tesis_id": 1
         }
        ],
        "sorpresa_ingresos": 0.033333
@@ -7097,7 +8785,7 @@
          "umbral": 0.18
         },
         "descripcion": "margen operativo < 18%",
-        "detalle": "Margen operativo = 0,210; el punto salta si cae por debajo de 0,180. Todavía no lo cruza.",
+        "detalle": "Margen operativo = 21,0 %; el punto salta si cae por debajo de 18,0 %. Todavía no lo cruza.",
         "id": 1,
         "kind": "metrica",
         "medible": true,
@@ -7106,6 +8794,7 @@
         "valor": 0.21
        },
        {
+        "aviso": "Esto BUSCA PALABRAS, no entiende. Da falsos positivos (la palabra puede referirse a otra empresa del titular) y se pierde lo que venga dicho de otra forma («revisión voluntaria» no contiene «recall»). Es una red de arrastre gruesa, no vigilancia.",
         "config": {
          "palabras": [
           "recall"
@@ -7221,6 +8910,861 @@
      "generado_por": "app",
      "reglas": "5c98dd9a4ec0"
     }
+   },
+   "status": 200
+  },
+  "/api/stocks/ACME/financials": {
+   "json": {
+    "as_of": "2026-09-12T14:35:00+00:00",
+    "growth": {
+     "eps_cagr": 0.09999999999999987,
+     "fcf_cagr": 0.11111111111111116,
+     "revenue_cagr": 0.10000000000000009,
+     "years": 1
+    },
+    "periods": [
+     {
+      "capex": 40.0,
+      "cash": 100.0,
+      "cfo": 220.0,
+      "end_date": "2024-12-31",
+      "eps_diluted": 1.5,
+      "filed_at": "2025-02-12",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "cash": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcash",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "cfo": {
+        "accn": "A-2024",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "eps_diluted": {
+        "accn": "A-2024",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "gross_profit": {
+        "accn": "A-2024",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "long_term_debt": {
+        "accn": "A-2024",
+        "etiqueta": "Taglong_term_debt",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "net_income": {
+        "accn": "A-2024",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "operating_income": {
+        "accn": "A-2024",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "revenue": {
+        "accn": "A-2024",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "shares_outstanding": {
+        "accn": "A-2024",
+        "etiqueta": "Tagshares_outstanding",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       },
+       "short_term_debt": {
+        "accn": "A-2024",
+        "etiqueta": "Tagshort_term_debt",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "inicio": "2024-01-01",
+        "presentado": "2025-02-12"
+       }
+      },
+      "gross_profit": 400.0,
+      "long_term_debt": 300.0,
+      "net_income": 150.0,
+      "operating_income": 200.0,
+      "revenue": 1000.0,
+      "shares_outstanding": 100.0,
+      "short_term_debt": 0.0
+     },
+     {
+      "capex": 50.0,
+      "cash": 120.0,
+      "cfo": 250.0,
+      "end_date": "2025-12-31",
+      "eps_diluted": 1.65,
+      "filed_at": "2026-02-10",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "cash": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcash",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "cfo": {
+        "accn": "A-2025",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "eps_diluted": {
+        "accn": "A-2025",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "gross_profit": {
+        "accn": "A-2025",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "long_term_debt": {
+        "accn": "A-2025",
+        "etiqueta": "Taglong_term_debt",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "net_income": {
+        "accn": "A-2025",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "operating_income": {
+        "accn": "A-2025",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "revenue": {
+        "accn": "A-2025",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "shares_outstanding": {
+        "accn": "A-2025",
+        "etiqueta": "Tagshares_outstanding",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       },
+       "short_term_debt": {
+        "accn": "A-2025",
+        "etiqueta": "Tagshort_term_debt",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "inicio": "2025-01-01",
+        "presentado": "2026-02-10"
+       }
+      },
+      "gross_profit": 440.0,
+      "long_term_debt": 300.0,
+      "net_income": 165.0,
+      "operating_income": 231.0,
+      "revenue": 1100.0,
+      "shares_outstanding": 100.0,
+      "short_term_debt": 0.0
+     }
+    ],
+    "quarters": [
+     {
+      "capex": 11.34,
+      "cfo": 55.44,
+      "end_date": "2024-03-31",
+      "eps_diluted": 0.42,
+      "filed_at": "2024-04-28",
+      "fiscal_period": "Q1",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-1",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-03-31",
+        "formulario": "10-Q",
+        "presentado": "2024-04-28"
+       }
+      },
+      "gross_profit": 100.80000000000001,
+      "net_income": 37.8,
+      "operating_income": 52.919999999999995,
+      "periodo": "2024-Q1",
+      "revenue": 252.0
+     },
+     {
+      "capex": 11.43,
+      "cfo": 55.88,
+      "end_date": "2024-06-30",
+      "eps_diluted": 0.42333333333333334,
+      "filed_at": "2024-07-28",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-06-30",
+        "formulario": "10-Q",
+        "presentado": "2024-07-28"
+       }
+      },
+      "gross_profit": 101.60000000000001,
+      "net_income": 38.1,
+      "operating_income": 53.339999999999996,
+      "periodo": "2024-Q2",
+      "revenue": 254.0
+     },
+     {
+      "capex": 11.52,
+      "cfo": 56.32,
+      "end_date": "2024-09-30",
+      "eps_diluted": 0.4266666666666667,
+      "filed_at": "2024-10-28",
+      "fiscal_period": "Q3",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "cfo": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "net_income": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "operating_income": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       },
+       "revenue": {
+        "accn": "Q-2024-3",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-09-30",
+        "formulario": "10-Q",
+        "presentado": "2024-10-28"
+       }
+      },
+      "gross_profit": 102.4,
+      "net_income": 38.4,
+      "operating_income": 53.76,
+      "periodo": "2024-Q3",
+      "revenue": 256.0
+     },
+     {
+      "capex": 11.61,
+      "cfo": 56.76,
+      "end_date": "2024-12-31",
+      "eps_diluted": 0.43,
+      "filed_at": "2025-02-10",
+      "fiscal_period": "Q4",
+      "fiscal_year": "2024",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagcapex",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "cfo": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagcfo",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "eps_diluted": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "gross_profit": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Taggross_profit",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "net_income": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagnet_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "operating_income": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       },
+       "revenue": {
+        "accn": "Q-2024-4",
+        "etiqueta": "Tagrevenue",
+        "fin": "2024-12-31",
+        "formulario": "10-K",
+        "presentado": "2025-02-10"
+       }
+      },
+      "gross_profit": 103.2,
+      "net_income": 38.699999999999996,
+      "operating_income": 54.18,
+      "periodo": "2024-Q4",
+      "revenue": 258.0
+     },
+     {
+      "capex": 12.465,
+      "cfo": 60.94,
+      "end_date": "2025-03-31",
+      "eps_diluted": 0.46166666666666667,
+      "filed_at": "2025-04-28",
+      "fiscal_period": "Q1",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-1",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-03-31",
+        "formulario": "10-Q",
+        "presentado": "2025-04-28"
+       }
+      },
+      "gross_profit": 110.80000000000001,
+      "net_income": 41.55,
+      "operating_income": 58.169999999999995,
+      "periodo": "2025-Q1",
+      "revenue": 277.0
+     },
+     {
+      "capex": 12.555,
+      "cfo": 61.38,
+      "end_date": "2025-06-30",
+      "eps_diluted": 0.465,
+      "filed_at": "2025-07-28",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-06-30",
+        "formulario": "10-Q",
+        "presentado": "2025-07-28"
+       }
+      },
+      "gross_profit": 111.60000000000001,
+      "net_income": 41.85,
+      "operating_income": 58.589999999999996,
+      "periodo": "2025-Q2",
+      "revenue": 279.0
+     },
+     {
+      "capex": 12.645,
+      "cfo": 61.82,
+      "end_date": "2025-09-30",
+      "eps_diluted": 0.4683333333333333,
+      "filed_at": "2025-10-28",
+      "fiscal_period": "Q3",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "cfo": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "net_income": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "operating_income": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       },
+       "revenue": {
+        "accn": "Q-2025-3",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-09-30",
+        "formulario": "10-Q",
+        "presentado": "2025-10-28"
+       }
+      },
+      "gross_profit": 112.4,
+      "net_income": 42.15,
+      "operating_income": 59.01,
+      "periodo": "2025-Q3",
+      "revenue": 281.0
+     },
+     {
+      "capex": 12.735,
+      "cfo": 62.26,
+      "end_date": "2025-12-31",
+      "eps_diluted": 0.4716666666666667,
+      "filed_at": "2026-02-10",
+      "fiscal_period": "Q4",
+      "fiscal_year": "2025",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagcapex",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "cfo": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagcfo",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "eps_diluted": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "gross_profit": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Taggross_profit",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "net_income": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagnet_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "operating_income": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       },
+       "revenue": {
+        "accn": "Q-2025-4",
+        "etiqueta": "Tagrevenue",
+        "fin": "2025-12-31",
+        "formulario": "10-K",
+        "presentado": "2026-02-10"
+       }
+      },
+      "gross_profit": 113.2,
+      "net_income": 42.449999999999996,
+      "operating_income": 59.43,
+      "periodo": "2025-Q4",
+      "revenue": 283.0
+     },
+     {
+      "capex": 15.0,
+      "cfo": 40.0,
+      "end_date": "2026-06-30",
+      "eps_diluted": 0.051,
+      "filed_at": "2026-07-30",
+      "fiscal_period": "Q2",
+      "fiscal_year": "2026",
+      "fuentes": {
+       "capex": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagcapex",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "cfo": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagcfo",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "eps_diluted": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tageps_diluted",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "gross_profit": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Taggross_profit",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "net_income": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagnet_income",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "operating_income": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagoperating_income",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       },
+       "revenue": {
+        "accn": "Q-2026-2",
+        "etiqueta": "Tagrevenue",
+        "fin": "2026-06-30",
+        "formulario": "10-Q",
+        "presentado": "2026-07-30"
+       }
+      },
+      "gross_profit": 124.0,
+      "net_income": 31.0,
+      "operating_income": 37.199999999999996,
+      "periodo": "2026-Q2",
+      "revenue": 310.0
+     }
+    ],
+    "ratios": [
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2024-12-31",
+      "eps_diluted": 1.5,
+      "fcf": 180.0,
+      "fcf_margin": 0.18,
+      "fiscal_year": "2024",
+      "gross_margin": 0.4,
+      "interest_coverage": null,
+      "net_income": 150.0,
+      "net_margin": 0.15,
+      "operating_margin": 0.2,
+      "revenue": 1000.0,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     },
+     {
+      "asset_turnover": null,
+      "current_ratio": null,
+      "debt_to_equity": null,
+      "end_date": "2025-12-31",
+      "eps_diluted": 1.65,
+      "fcf": 200.0,
+      "fcf_margin": 0.18181818181818182,
+      "fiscal_year": "2025",
+      "gross_margin": 0.4,
+      "interest_coverage": null,
+      "net_income": 165.0,
+      "net_margin": 0.15,
+      "operating_margin": 0.21,
+      "revenue": 1100.0,
+      "roa": null,
+      "roe": null,
+      "roic": null
+     }
+    ],
+    "source": "edgar",
+    "symbol": "ACME"
    },
    "status": 200
   },
@@ -11211,26 +13755,240 @@
    },
    "status": 200
   },
-  "/api/stocks/ACME/valuation/defaults": {
+  "/api/valuation/ACME": {
    "json": {
-    "as_of": "2026-09-12T14:35:00+00:00",
-    "base_fcf": 200.0,
-    "cached": false,
-    "current_price": 92.0,
-    "deuda_parcial": null,
-    "fiscal_year": "2025",
-    "historical_growth": {
-     "eps_cagr": 0.09999999999999987,
-     "fcf_cagr": 0.11111111111111116,
-     "revenue_cagr": 0.10000000000000009,
-     "years": 1
+    "comparables": {
+     "disponible": false,
+     "nota": "Sin lista de comparables para ACME."
     },
-    "net_debt": 180.0,
-    "nota_deuda": null,
-    "note": "Punto de partida calculado desde estados financieros reales; edita cada supuesto según tu propia tesis.",
-    "shares_outstanding": 100.0,
-    "source": "edgar",
-    "suggested_growth_capped": 0.11111111111111116,
+    "computed_by": "app",
+    "dcf_inverso": {
+     "contraste": {
+      "disponible": true,
+      "mejor_historico": 0.1111,
+      "nota": "En todo el rango de descuentos considerado, el precio exige crecer más (20 %–43 %) de lo que la empresa ha logrado nunca (11 %). No depende de qué WACC elijas: para que el precio sea correcto tiene que pasar algo que no ha pasado antes. Ese algo es la tesis, y conviene poder nombrarlo.",
+      "rango_implicito": {
+       "alto": 0.4251,
+       "bajo": 0.1965
+      },
+      "referencias": {
+       "FCF": 0.1111,
+       "beneficio por acción": 0.1,
+       "ingresos": 0.1
+      },
+      "wacc_de_cruce": null
+     },
+     "curva": {
+      "disponible": true,
+      "nota": "Según la tasa de descuento que uses (7 %–12 %), el precio de hoy descuenta un crecimiento del FCF de entre 19,7 % y 42,5 % anual durante 5 años. No es un dato de la empresa: es lo que implica el precio DADA tu tasa de descuento, y por eso viaja como rango y no como cifra.",
+      "puntos": [
+       {
+        "crecimiento_implicito": 0.1965,
+        "discount_rate": 0.07,
+        "motivo": null
+       },
+       {
+        "crecimiento_implicito": 0.2516,
+        "discount_rate": 0.08,
+        "motivo": null
+       },
+       {
+        "crecimiento_implicito": 0.3006,
+        "discount_rate": 0.09,
+        "motivo": null
+       },
+       {
+        "crecimiento_implicito": 0.3452,
+        "discount_rate": 0.1,
+        "motivo": null
+       },
+       {
+        "crecimiento_implicito": 0.3865,
+        "discount_rate": 0.11,
+        "motivo": null
+       },
+       {
+        "crecimiento_implicito": 0.4251,
+        "discount_rate": 0.12,
+        "motivo": null
+       }
+      ],
+      "rango": {
+       "alto": 0.4251,
+       "bajo": 0.1965
+      }
+     },
+     "disponible": true,
+     "margen": {
+      "crecimiento_de_ingresos": {
+       "supuesto": false,
+       "valor": 0.10000000000000009
+      },
+      "disponible": true,
+      "expansion_necesaria_pp": 21.21,
+      "margen_actual": 0.1818,
+      "margen_implicito": 0.394,
+      "nota": "Manteniendo el crecimiento de ingresos en 10,0 %, el precio de hoy exige un margen de FCF del 39,4 % frente al 18,2 % actual — una expansión de 21,2 puntos. Pregúntate de dónde saldría.",
+      "revenue_growth_supuesto": 0.10000000000000009
+     },
+     "market_cap": 9200.0,
+     "resumen": "Al precio de hoy, el mercado descuenta un crecimiento del FCF de 20 %–43 % anual según la tasa de descuento que uses. En todo el rango de descuentos considerado, el precio exige crecer más (20 %–43 %) de lo que la empresa ha logrado nunca (11 %). No depende de qué WACC elijas: para que el precio sea correcto tiene que pasar algo que no ha pasado antes. Ese algo es la tesis, y conviene poder nombrarlo. Por la otra vía, exigiría llevar el margen de FCF del 18 % al 39 %. El DCF inverso no dice si está cara o barata: dice qué hay que creerse para que el precio de hoy sea correcto. Esa parte la decides tú."
+    },
+    "disclaimer": "Aquí no hay ningún precio objetivo, y no por estilo: no existe en el código un campo donde quepa uno. Los escenarios dan rangos, los comparables dan un intervalo de predicción y el DCF inverso da una curva. Un DCF no dice cuánto vale una empresa; dice qué implican unos supuestos, y los supuestos son tuyos.",
+    "entradas": {
+     "base_fcf": 200.0,
+     "crecimiento_historico": {
+      "eps_cagr": 0.09999999999999987,
+      "fcf_cagr": 0.11111111111111116,
+      "revenue_cagr": 0.10000000000000009,
+      "years": 1
+     },
+     "deuda_parcial": null,
+     "eps": 1.65,
+     "fiscal_year": "2025",
+     "net_debt": 180.0,
+     "nota_deuda": null,
+     "precio_actual": 92.0,
+     "revenue": 1100.0,
+     "shares_outstanding": 100.0,
+     "source": "edgar",
+     "years": 5
+    },
+    "escenarios": {
+     "alcista": {
+      "procedencia": {
+       "crecimiento_supuesto": false,
+       "motivo": null
+      },
+      "rango": {
+       "alto": 91.9,
+       "amplitud_pct": 62.1,
+       "bajo": 50.5,
+       "banda": {
+        "crecimiento_pp": 2.0,
+        "descuento_pp": 1.0
+       },
+       "centro": 66.7,
+       "disponible": true,
+       "nota": "El rango abarca un 62 % del valor central: con esta sensibilidad el DCF no discrimina entre «cara» y «barata». Sirve para entender el negocio, no para decidir el precio. El 82 % del valor está en el valor terminal, o sea en lo que pasa después del horizonte proyectado. Esto no es una valoración de los próximos años: es una apuesta sobre la perpetuidad con unos años de detalle delante.",
+       "peso_terminal": 0.823
+      },
+      "supuestos": {
+       "discount_rate": 0.08,
+       "growth_rate": 0.15,
+       "terminal_growth": 0.03
+      }
+     },
+     "bajista": {
+      "procedencia": {
+       "crecimiento_supuesto": false,
+       "motivo": null
+      },
+      "rango": {
+       "alto": 27.5,
+       "amplitud_pct": 41.4,
+       "bajo": 18.3,
+       "banda": {
+        "crecimiento_pp": 2.0,
+        "descuento_pp": 1.0
+       },
+       "centro": 22.3,
+       "disponible": true,
+       "nota": "El rango abarca un 41 % del valor central. Es lo normal en un DCF; el número del medio no es más cierto que los extremos.",
+       "peso_terminal": 0.653
+      },
+      "supuestos": {
+       "discount_rate": 0.11,
+       "growth_rate": 0.0444,
+       "terminal_growth": 0.015
+      }
+     },
+     "base": {
+      "procedencia": {
+       "crecimiento_supuesto": false,
+       "motivo": null
+      },
+      "rango": {
+       "alto": 56.7,
+       "amplitud_pct": 51.7,
+       "bajo": 34.2,
+       "banda": {
+        "crecimiento_pp": 2.0,
+        "descuento_pp": 1.0
+       },
+       "centro": 43.5,
+       "disponible": true,
+       "nota": "El rango abarca un 52 % del valor central. Es lo normal en un DCF; el número del medio no es más cierto que los extremos. El 77 % del valor está en el valor terminal, o sea en lo que pasa después del horizonte proyectado. Esto no es una valoración de los próximos años: es una apuesta sobre la perpetuidad con unos años de detalle delante.",
+       "peso_terminal": 0.766
+      },
+      "supuestos": {
+       "discount_rate": 0.09,
+       "growth_rate": 0.1111,
+       "terminal_growth": 0.025
+      }
+     }
+    },
+    "nota_supuestos": "Los supuestos de partida salen del crecimiento histórico REAL de la empresa, acotado al 15 % — extrapolar a perpetuidad el mejor quinquenio es el error más común del DCF casero. Cámbialos: son un punto de arranque, no una opinión de la app.",
+    "rango_global": {
+     "alto": 91.9,
+     "bajo": 18.3,
+     "factor": 5.02,
+     "nota": "Del escenario más pesimista al más optimista hay un factor de 5,0×. Un rango así no sirve para decidir un precio de entrada; sirve para ver qué supuestos lo abren tanto — mira abajo cuál manda. Estrecharlo exige defender supuestos más ceñidos, no quedarse con el del medio.",
+     "posicion": "por encima",
+     "precio_actual": 92.0
+    },
+    "sensibilidad": {
+     "centro": 43.5,
+     "disponible": true,
+     "dominante": "discount_rate",
+     "nota": "El supuesto que más mueve el resultado es «Tasa de descuento / WACC (+/- 1 pp)»: su banda cambia el valor un 34 %. Es donde merece la pena discutir, y donde una tesis se sostiene o se cae — no en el segundo decimal del resultado.",
+     "supuestos": [
+      {
+       "asimetrico": false,
+       "etiqueta": "Tasa de descuento / WACC (+/- 1 pp)",
+       "perturbacion": 0.01,
+       "recorrido": 14.8,
+       "recorrido_pct": 34.0,
+       "supuesto": "discount_rate",
+       "valor_abajo": 52.1,
+       "valor_actual": 0.09,
+       "valor_arriba": 37.2
+      },
+      {
+       "asimetrico": false,
+       "etiqueta": "Flujo de caja de partida (+/- 10 %)",
+       "perturbacion": 20.0,
+       "recorrido": 9.06,
+       "recorrido_pct": 20.8,
+       "supuesto": "base_fcf",
+       "valor_abajo": 39.0,
+       "valor_actual": 200.0,
+       "valor_arriba": 48.0
+      },
+      {
+       "asimetrico": false,
+       "etiqueta": "Crecimiento a perpetuidad (+/- 0,5 pp)",
+       "perturbacion": 0.005,
+       "recorrido": 5.71,
+       "recorrido_pct": 13.1,
+       "supuesto": "terminal_growth",
+       "valor_abajo": 40.9,
+       "valor_actual": 0.025,
+       "valor_arriba": 46.6
+      },
+      {
+       "asimetrico": false,
+       "etiqueta": "Crecimiento del FCF (+/- 1 pp)",
+       "perturbacion": 0.01,
+       "recorrido": 3.7,
+       "recorrido_pct": 8.5,
+       "supuesto": "growth_rate",
+       "valor_abajo": 41.7,
+       "valor_actual": 0.1111,
+       "valor_arriba": 45.4
+      }
+     ]
+    },
     "symbol": "ACME"
    },
    "status": 200

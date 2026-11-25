@@ -9,8 +9,7 @@ import type {
   LecturaEvento,
   ReplayDecision,
   SaldosEfectivo,
-  DcfResponse,
-  EarningsEvent,
+  CalendarioMercado,
   EtfComparison,
   EtfData,
   EtfRecommendation,
@@ -67,19 +66,50 @@ import type {
   RiesgoDeCartera,
   SeñalesDeOpciones,
   RiskResponse,
-  ScenarioAssumptions,
   SectorEntry,
-  ValuationDefaults,
   YieldCurve,
+  CostePreguntaIA,
+  RespuestaPreguntaIA,
 } from './types'
+
+/** Un error de validación de FastAPI (un 422 cuyo `detail` es una lista): qué
+ *  campo (`loc`), qué límite (`ctx`) y lo que llegó (`input`). */
+export interface ErrorDeValidacion {
+  loc: (string | number)[]
+  type: string
+  msg: string
+  input?: unknown
+  ctx?: Record<string, unknown>
+}
 
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Los errores de validación, si el `detail` venía en lista: lo enviado no
+     *  cabe en el contrato. `null` si el backend explicó el error con su propio
+     *  texto (un dato que falta, un recurso que no existe). */
+    public validacion: ErrorDeValidacion[] | null = null,
+    /** En un 422 de un dato que falta, qué campo del cuerpo no trae el filing
+     *  (`net_debt`, `base_fcf`, `shares_outstanding`; cabecera `X-Dato-Que-Falta`
+     *  del módulo de valoración). Sin él, la ayuda del campo vacío de la deuda
+     *  decía «la del filing» junto al 422 que decía que no la trae (revisión 15,
+     *  H8). */
+    public datoQueFalta: string | null = null,
   ) {
     super(message)
   }
+}
+
+/** La cabecera con que el módulo de valoración dice qué dato no trae el filing. */
+export const CABECERA_DATO_QUE_FALTA = 'X-Dato-Que-Falta'
+
+/** Un 422 con texto propio del backend: el filing no trae un dato sin el que no
+ *  se puede calcular («escribe la deuda neta»). Un 422 de validación es otra
+ *  cosa, un error de lo enviado, y contarlo como dato que falta abría «Tus
+ *  entradas» del DCF como si faltara la deuda (revisión 14, H3). */
+export function faltaUnDato(e: unknown): e is ApiError {
+  return e instanceof ApiError && e.status === 422 && e.validacion === null
 }
 
 // Sin límite, una petición que se queda colgada deja la vista cargando para
@@ -120,54 +150,65 @@ async function fetchJson<T>(path: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
           'plano: espera un poco y vuelve a intentarlo.',
       )
     }
-    throw err
+    throw sinConexion(err)
   } finally {
     clearTimeout(timer)
   }
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      detail = textoDeError(body.detail) ?? detail
-    } catch {
-      // cuerpo no-JSON: nos quedamos con el mensaje genérico
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 
+/** Sin servidor que responda, `fetch` lanza un `TypeError` del navegador
+ *  («Failed to fetch»), y llegaba tal cual a frases como «No se pudo borrar la
+ *  tesis: Failed to fetch» (segunda revisión del 2.1). */
+function sinConexion(err: unknown): unknown {
+  if (err instanceof TypeError) {
+    return new ApiError(0, 'No se pudo conectar con la app: ¿está arrancado el servidor (./start.sh)?')
+  }
+  return err
+}
+
+/** `fetch` con el fallo de red dicho en español. */
+async function conectar(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch (err) {
+    throw sinConexion(err)
+  }
+}
+
+/** El error de una respuesta: el `detail` del backend como motivo o, si el
+ *  cuerpo no es JSON, el código HTTP. Antes, tres copias de lo mismo. */
+async function errorDe(resp: Response): Promise<ApiError> {
+  const generico = `Error HTTP ${resp.status}`
+  let detail: unknown
+  try {
+    detail = ((await resp.json()) as { detail?: unknown }).detail
+    // eslint-disable-next-line no-restricted-syntax -- un cuerpo que no es JSON no es otro fallo: el fallo es el código HTTP, y se lanza igual.
+  } catch {
+    return new ApiError(resp.status, generico)
+  }
+  return new ApiError(
+    resp.status,
+    textoDeError(detail) ?? generico,
+    Array.isArray(detail) ? (detail as ErrorDeValidacion[]) : null,
+    resp.headers.get(CABECERA_DATO_QUE_FALTA),
+  )
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const resp = await fetch(path, {
+  const resp = await conectar(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 
 async function deleteJson<T>(path: string): Promise<T> {
-  const resp = await fetch(path, { method: 'DELETE' })
-  if (!resp.ok) {
-    let detail = `Error HTTP ${resp.status}`
-    try {
-      const data = await resp.json()
-      detail = textoDeError(data.detail) ?? detail
-    } catch {
-      // sin cuerpo JSON
-    }
-    throw new ApiError(resp.status, detail)
-  }
+  const resp = await conectar(path, { method: 'DELETE' })
+  if (!resp.ok) throw await errorDe(resp)
   return resp.json() as Promise<T>
 }
 
@@ -178,8 +219,19 @@ export const api = {
       `/api/empresa/${encodeURIComponent(symbol)}/analisis${tipoImpositivo != null ? `?tipo_impositivo=${tipoImpositivo}` : ''}`,
       120_000,
     ),
+  /** El mismo análisis, SIN congelar instantánea: lo que la ficha enseña al
+   *  abrirse («Qué dice la app»). Abrir una ficha es leer, no escribir: con el
+   *  de arriba cada visita guardaría una instantánea inmutable. Congela solo
+   *  «Qué cambió», al abrirlo. */
+  leerAnalisisEmpresa: (symbol: string) =>
+    fetchJson<AnalisisEmpresaResponse>(`/api/empresa/${encodeURIComponent(symbol)}/analisis?congelar=false`, 120_000),
   historialEmpresa: (symbol: string) =>
-    fetchJson<{ symbol: string; decisiones: DecisionHistorica[]; reglas_version_actual: string }>(
+    fetchJson<{
+      symbol: string
+      decisiones: DecisionHistorica[]
+      thresholds: { favorable: number; desfavorable: number }
+      reglas_version_actual: string
+    }>(
       `/api/empresa/${encodeURIComponent(symbol)}/historial`,
     ),
   replay: (id: number) => fetchJson<ReplayDecision>(`/api/snapshots/${id}/replay`),
@@ -219,18 +271,6 @@ export const api = {
   // Fase 2
   financials: (symbol: string) => fetchJson<Financials>(`/api/stocks/${encodeURIComponent(symbol)}/financials`),
   health: (symbol: string) => fetchJson<Health>(`/api/stocks/${encodeURIComponent(symbol)}/health`),
-  valuationDefaults: (symbol: string) =>
-    fetchJson<ValuationDefaults>(`/api/stocks/${encodeURIComponent(symbol)}/valuation/defaults`),
-  dcf: (
-    symbol: string,
-    body: {
-      base_fcf: number
-      years: number
-      net_debt: number | null
-      shares_outstanding: number | null
-      scenarios: Record<string, ScenarioAssumptions>
-    },
-  ) => postJson<DcfResponse>(`/api/stocks/${encodeURIComponent(symbol)}/valuation/dcf`, body),
   peers: (symbol: string) => fetchJson<PeersResponse>(`/api/stocks/${encodeURIComponent(symbol)}/peers`),
   risk: (symbol: string) => fetchJson<RiskResponse>(`/api/stocks/${encodeURIComponent(symbol)}/risk`),
   filings: (symbol: string) => fetchJson<FilingsResponse>(`/api/stocks/${encodeURIComponent(symbol)}/filings`),
@@ -275,9 +315,19 @@ export const api = {
     postJson<AnalisisResponse>(`/api/earnings/${encodeURIComponent(symbol)}/analizar`, body),
   earningsHistorial: (symbol: string) =>
     fetchJson<EarningsHistorial>(`/api/earnings/${encodeURIComponent(symbol)}`),
+  // El único DCF (ítem 3.3): el módulo, la pestaña Valoración de la ficha y el
+  // informe. Las entradas que mandes sustituyen a las del filing; sin ellas, las
+  // del filing (`/api/stocks/{s}/valuation/{defaults,dcf}` son alias obsoletos).
+  // Los escenarios que no mandes los propone el backend con esas entradas.
   valorar: (
     symbol: string,
-    body: { escenarios?: Record<string, SupuestosEscenario>; years?: number } = {},
+    body: {
+      escenarios?: Record<string, SupuestosEscenario>
+      years?: number
+      base_fcf?: number
+      net_debt?: number
+      shares_outstanding?: number
+    } = {},
   ) => postJson<Valoracion>(`/api/valuation/${encodeURIComponent(symbol)}`, body),
   vigilancia: () => fetchJson<VigilanciaResponse>('/api/theses/vigilancia'),
   metricasVigilables: () =>
@@ -313,7 +363,7 @@ export const api = {
   riesgoDeCartera: (descargar: boolean) =>
     fetchJson<RiesgoDeCartera>(`/api/portfolio/riesgo?descargar=${descargar}`),
   addPosition: (body: { symbol: string; quantity: number; cost_basis: number }) =>
-    postJson<{ id: number; symbol: string }>('/api/portfolio/positions', body),
+    postJson<{ id: number; symbol: string; thesis_id?: number | null; stop_por_clase?: boolean }>('/api/portfolio/positions', body),
   /** Fija o SUBE el stop de una posición abierta. Bajarlo lo rechaza el servidor. */
   fijarStop: (id: number, stop: number) =>
     postJson<{ id: number; stop: number; anterior: number | null }>(
@@ -360,13 +410,18 @@ export const api = {
   // Motor de señales cuantitativas
   markets: () =>
     fetchJson<{ markets: MarketInfo[]; meta: UniversesMeta }>('/api/signals/markets'),
-  today: (market: string, refresh = false) =>
+  today: (market: string, refresh = false, budget?: number) =>
     fetchJson<TodayResponse>(
       `/api/signals/today?market=${encodeURIComponent(market)}${
         refresh ? '&refresh=true' : ''
-      }`,
+      }${budget === undefined ? '' : `&budget=${budget}`}`,
       SCAN_TIMEOUT_MS,
     ),
+  /** La lista guardada al momento, sin calcular nada: la vigente o, si caducó, la
+   *  última (`estado: 'viejo'`, con `antiguedad_segundos`). 404 si no hay ninguna.
+   *  Con el límite corto de siempre: no descarga nada, y si tarda es que algo va mal. */
+  todayGuardada: (market: string) =>
+    fetchJson<TodayResponse>(`/api/signals/today?market=${encodeURIComponent(market)}&vencida=aceptar`),
   universes: () =>
     fetchJson<{ universes: UniverseInfo[]; note: string }>('/api/signals/universes'),
   scanUniverse: (universe: string, topN: number) =>
@@ -396,5 +451,10 @@ export const api = {
   marketSectors: () => fetchJson<{ sectors: SectorEntry[]; note: string }>('/api/market/sectors'),
   yieldCurve: () => fetchJson<YieldCurve>('/api/market/yield-curve'),
   macro: () => fetchJson<{ indicators: MacroIndicator[] }>('/api/market/macro'),
-  calendar: () => fetchJson<{ events: EarningsEvent[] }>('/api/market/calendar'),
+  calendar: () => fetchJson<CalendarioMercado>('/api/market/calendar'),
+  // «Pregúntale a la IA»: el coste antes de enviar (sin llamar al modelo) y la pregunta.
+  costePreguntaIA: (body: { pregunta?: string; mercado?: string; simbolo?: string }) =>
+    postJson<CostePreguntaIA>('/api/ia/preguntar/coste', body),
+  preguntarIA: (body: { pregunta: string; mercado?: string; simbolo?: string }) =>
+    postJson<RespuestaPreguntaIA>('/api/ia/preguntar', body),
 }

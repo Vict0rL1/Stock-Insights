@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Histograma } from '../components/Sparkline'
 import { api } from '../api/client'
@@ -9,12 +9,16 @@ import type {
   ScanResponse,
   SignalExplanation,
   SignalResponse,
-  UniverseInfo,
 } from '../api/types'
+import { BloqueDatos } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtFecha, fmtNum, fmtPct } from '../lib/formato'
+import { fmtFecha, fmtFrente, fmtNum, fmtPct, plural } from '../lib/formato'
 import { useLlmStatus } from '../lib/llm'
+import { listaDeSimbolos } from '../lib/simbolos'
+import { useDato } from '../lib/useDato'
 import { BloqueIA, BotonIA, EtiquetaIA } from '../components/ia/ContenidoIA'
+import { MarcoTabla } from '../components/MarcoTabla'
+import { rutaEmpresa } from '../lib/rutas'
 
 const LABEL_STYLES: Record<string, string> = {
   'muy favorable': 'bg-emerald-100 text-emerald-800',
@@ -43,7 +47,13 @@ function ContributionBar({ value }: { value: number }) {
   )
 }
 
-function SignalCard({ signal }: { signal: QuantSignal }) {
+// La puntuación junto a su etiqueta, frente a las fronteras de esa etiqueta: con
+// dos decimales, 0,3496 salía «+0,35 neutral» y 0,3504 «+0,35 favorable»
+// (revisión 9).
+const puntuacion = (score: number | null, umbrales: number[] = []) =>
+  score === null ? '—' : fmtFrente(score, umbrales, { signo: true })
+
+function SignalCard({ signal, umbrales }: { signal: QuantSignal; umbrales?: number[] }) {
   const [explanation, setExplanation] = useState<SignalExplanation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,7 +80,7 @@ function SignalCard({ signal }: { signal: QuantSignal }) {
               <span className="text-xs font-medium text-slate-400">#{signal.rank}</span>
             )}
             <Link
-              to={`/ticker/${signal.symbol}`}
+              to={rutaEmpresa(signal.symbol)}
               className="font-semibold text-slate-800 hover:underline"
             >
               {signal.symbol}
@@ -87,7 +97,7 @@ function SignalCard({ signal }: { signal: QuantSignal }) {
 
         <div className="text-right">
           <div className="text-2xl font-semibold tabular-nums text-slate-900">
-            {signal.score !== null ? (signal.score > 0 ? '+' : '') + fmtNum(signal.score) : '—'}
+            {puntuacion(signal.score, umbrales)}
           </div>
           <div className="text-[10px] text-slate-400">
             z-score vs. universo · cobertura {fmtPct(signal.coverage, 0)}
@@ -104,7 +114,7 @@ function SignalCard({ signal }: { signal: QuantSignal }) {
                 {fmtPct(signal.probability, 0)}
               </span>
               <span className="text-xs text-slate-500">
-                IC 95 %: {fmtPct(signal.probability_ci[0], 0)} –{' '}
+                IC 95&nbsp;%: {fmtPct(signal.probability_ci[0], 0)} –{' '}
                 {fmtPct(signal.probability_ci[1], 0)} · n={signal.sample_size}
               </span>
             </div>
@@ -222,11 +232,11 @@ function BacktestPanel({ result }: { result: BacktestResponse }) {
       </div>
 
       {Object.keys(result.calibration).length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <MarcoTabla etiqueta="Calibración por rangos de puntuación" className="mt-4">
           <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                {['Rango de puntuación', 'n', 'Aciertos', 'Tasa', 'IC 95 %', 'Fiable'].map((h) => (
+                {['Rango de puntuación', 'n', 'Aciertos', 'Tasa', 'IC 95\u00a0%', 'Fiable'].map((h) => (
                   <th key={h} className="px-2 py-1 font-normal">
                     {h}
                   </th>
@@ -261,7 +271,7 @@ function BacktestPanel({ result }: { result: BacktestResponse }) {
                 })}
             </tbody>
           </table>
-        </div>
+        </MarcoTabla>
       )}
 
       <p className="mt-3 text-xs text-slate-500">{result.methodology}</p>
@@ -286,16 +296,15 @@ function UncalibratedBanner() {
 
 /** Modo automático: la app trae las candidatas y las ordena. */
 function ScanMode() {
-  const [universes, setUniverses] = useState<UniverseInfo[]>([])
+  // Un fallo al pedir los universos se dice, con «Reintentar». Antes hacía
+  // `setUniverses([])` y la lista se quedaba solo con «Mi watchlist», como si
+  // el servidor no tuviera ninguno (ítem 2.1).
+  const universos = useDato(() => api.universes().then((d) => d.universes), 'universos')
   const [selected, setSelected] = useState('megacaps')
   const [topN, setTopN] = useState(10)
   const [result, setResult] = useState<ScanResponse | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    api.universes().then((d) => setUniverses(d.universes), () => setUniverses([]))
-  }, [])
 
   const scan = async () => {
     setBusy(true)
@@ -310,39 +319,51 @@ function ScanMode() {
     }
   }
 
-  const active = universes.find((u) => u.key === selected)
+  const active = universos.datos?.find((u) => u.key === selected)
+
+  // La watchlist no depende de esa carga: se puede elegir aunque falle.
+  const botonWatchlist = (
+    <button
+      onClick={() => setSelected('watchlist')}
+      className={`rounded-lg border p-3 text-left ${
+        selected === 'watchlist'
+          ? 'border-slate-900 bg-slate-50'
+          : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <div className="text-sm font-medium text-slate-800">Mi watchlist</div>
+      <div className="text-xs text-slate-400">las que ya sigues</div>
+    </button>
+  )
 
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-slate-700">Elige un universo</h2>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {universes.map((u) => (
-            <button
-              key={u.key}
-              onClick={() => setSelected(u.key)}
-              className={`rounded-lg border p-3 text-left ${
-                selected === u.key
-                  ? 'border-slate-900 bg-slate-50'
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <div className="text-sm font-medium text-slate-800">{u.name}</div>
-              <div className="text-xs text-slate-400">{u.size} empresas</div>
-            </button>
-          ))}
-          <button
-            onClick={() => setSelected('watchlist')}
-            className={`rounded-lg border p-3 text-left ${
-              selected === 'watchlist'
-                ? 'border-slate-900 bg-slate-50'
-                : 'border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            <div className="text-sm font-medium text-slate-800">Mi watchlist</div>
-            <div className="text-xs text-slate-400">las que ya sigues</div>
-          </button>
-        </div>
+        <BloqueDatos carga={universos} que="los universos">
+          {(lista) => (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {lista.map((u) => (
+                <button
+                  key={u.key}
+                  onClick={() => setSelected(u.key)}
+                  className={`rounded-lg border p-3 text-left ${
+                    selected === u.key
+                      ? 'border-slate-900 bg-slate-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-slate-800">{u.name}</div>
+                  <div className="text-xs text-slate-400">{u.size} empresas</div>
+                </button>
+              ))}
+              {botonWatchlist}
+            </div>
+          )}
+        </BloqueDatos>
+        {universos.estado !== 'listo' && (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{botonWatchlist}</div>
+        )}
 
         {active && (
           <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
@@ -407,7 +428,7 @@ function ScanMode() {
 
           <ul className="space-y-3">
             {result.top.map((signal) => (
-              <SignalCard key={signal.symbol} signal={signal} />
+              <SignalCard key={signal.symbol} signal={signal} umbrales={result.label_thresholds} />
             ))}
           </ul>
 
@@ -423,7 +444,7 @@ function ScanMode() {
                 >
                   <span className="flex items-center gap-2">
                     <span className="w-6 text-xs text-slate-400">{row.rank ?? '—'}</span>
-                    <Link to={`/ticker/${row.symbol}`} className="hover:underline">
+                    <Link to={rutaEmpresa(row.symbol)} className="hover:underline">
                       {row.symbol}
                     </Link>
                   </span>
@@ -434,7 +455,7 @@ function ScanMode() {
                       {row.label}
                     </span>
                     <span className="w-12 text-right tabular-nums text-slate-600">
-                      {row.score !== null ? (row.score > 0 ? '+' : '') + fmtNum(row.score) : '—'}
+                      {puntuacion(row.score, result.label_thresholds)}
                     </span>
                   </span>
                 </li>
@@ -496,11 +517,13 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
 
   // Tres desenlaces, como `_confianza` en el backend: una cifra que falta no es
   // ni ganar ni perder. Antes `?? 0` pintaba en rojo, «no rentable», un
-  // backtest sin referencia de comprar a ciegas.
-  const { esperanza_pct: esperanza, ventaja_pct: ventaja } = result
-  const refutada = (esperanza != null && esperanza <= 0) || (ventaja != null && ventaja <= 0)
-  const rentable = !refutada && esperanza != null && ventaja != null
-  const tono = (v: number | null | undefined) => (v == null ? 'neutral' : v > 0 ? 'good' : 'bad')
+  // backtest sin referencia de comprar a ciegas. Y sin muestra fiable no hay
+  // conclusión: 12 operaciones con esperanza positiva salían en verde bajo un
+  // veredicto que decía «no sirve para concluir nada» (revisión de M2).
+  const { esperanza_pct: esperanza, ventaja_pct: ventaja, fiable } = result
+  const refutada = fiable && ((esperanza != null && esperanza <= 0) || (ventaja != null && ventaja <= 0))
+  const rentable = fiable && !refutada && esperanza != null && ventaja != null
+  const tono = (v: number | null | undefined) => (!fiable || v == null ? 'neutral' : v > 0 ? 'good' : 'bad')
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -556,20 +579,32 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
           value={fmtPct(result.tasa_acierto, 0)}
           hint={
             result.tasa_acierto_ic
-              ? `IC 95 %: ${fmtNum(result.tasa_acierto_ic[0] * 100, 0)}–${fmtPct(result.tasa_acierto_ic[1], 0)}`
+              ? `IC 95\u00a0%: ${fmtNum(result.tasa_acierto_ic[0] * 100, 0)}–${fmtPct(result.tasa_acierto_ic[1], 0)}`
               : undefined
           }
         />
+        {/* Sin operaciones de un lado no hay media de ese lado: llega `null` y
+            se pinta «—» sin color, no un «+0,00 %» verde (revisión de M2). */}
         <Stat
           label="Media ganadora"
           value={pct(result.media_ganadora_pct)}
-          tone="good"
+          tone={result.media_ganadora_pct == null ? 'neutral' : 'good'}
         />
-        <Stat label="Media perdedora" value={pct(result.media_perdedora_pct)} tone="bad" />
+        <Stat
+          label="Media perdedora"
+          value={pct(result.media_perdedora_pct)}
+          tone={result.media_perdedora_pct == null ? 'neutral' : 'bad'}
+        />
+        {/* Sin el dato, «—»: `?? 0` pintaba «0 seguidas», la mejor racha
+            posible, para un backtest que no la midió (ítem 2.1). */}
         <Stat
           label="Peor racha"
-          value={`${result.racha_perdedora ?? 0} seguidas`}
-          hint="¿aguantarías eso?"
+          value={
+            result.racha_perdedora === null || result.racha_perdedora === undefined
+              ? '—'
+              : `${result.racha_perdedora} ${plural(result.racha_perdedora, 'seguida', 'seguidas')}`
+          }
+          hint={result.racha_perdedora === null || result.racha_perdedora === undefined ? 'sin dato' : '¿aguantarías eso?'}
         />
       </div>
 
@@ -629,6 +664,9 @@ function RuleBacktestPanel({ result }: { result: RuleBacktestResponse }) {
   )
 }
 
+/** El tope del backend (`MAX_UNIVERSE` en `routers/signals.py`). */
+const MAX_UNIVERSO = 15
+
 function ManualMode() {
   const [universe, setUniverse] = useState('AAPL, MSFT, GOOGL, JNJ, KO, XOM, JPM, PG')
   const [useNews, setUseNews] = useState(false)
@@ -639,21 +677,19 @@ function ManualMode() {
   const [busy, setBusy] = useState<'score' | 'backtest' | 'rules' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const symbols = () =>
-    universe
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 15)
+  // Con `listaDeSimbolos`, como Screener y ETFs: un `.slice(0, 15)` dejaba fuera
+  // los que pasaban de quince sin decirlo, y un repetido ocupaba el sitio de
+  // otro distinto (revisión 13). Los que no caben se nombran antes de pulsar.
+  const { simbolos, descartados } = listaDeSimbolos(universe, MAX_UNIVERSO)
 
   const run = async (what: 'score' | 'backtest' | 'rules') => {
     setBusy(what)
     setError(null)
     try {
-      if (what === 'score') setResult(await api.scoreSignals(symbols(), useNews))
+      if (what === 'score') setResult(await api.scoreSignals(simbolos, useNews))
       else if (what === 'rules')
-        setRules(await api.runRuleBacktest(symbols(), 6, conDivisa))
-      else setBacktest(await api.runBacktest(symbols(), 12, 6))
+        setRules(await api.runRuleBacktest(simbolos, 6, conDivisa))
+      else setBacktest(await api.runBacktest(simbolos, 12, 6))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error')
     } finally {
@@ -665,7 +701,7 @@ function ManualMode() {
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <label className="mb-1 block text-xs font-medium text-slate-500">
-          Universo a puntuar (3–15 tickers, separados por coma)
+          Universo a puntuar (3–{MAX_UNIVERSO} tickers, separados por coma)
         </label>
         <textarea
           value={universe}
@@ -673,6 +709,13 @@ function ManualMode() {
           rows={2}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
         />
+        {descartados.length > 0 && (
+          <p role="status" className="mt-1 text-xs text-amber-800">
+            Solo caben {MAX_UNIVERSO} a la vez: {descartados.join(', ')}{' '}
+            {plural(descartados.length, 'queda', 'quedan')} fuera de la puntuación y de las validaciones. Quita
+            alguno para elegir cuáles entran.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <button
             onClick={() => run('score')}
@@ -731,7 +774,7 @@ function ManualMode() {
           </div>
           <ul className="space-y-3">
             {result.signals.map((signal) => (
-              <SignalCard key={signal.symbol} signal={signal} />
+              <SignalCard key={signal.symbol} signal={signal} umbrales={result.label_thresholds} />
             ))}
           </ul>
           <p className="text-xs text-slate-400">{result.note}</p>

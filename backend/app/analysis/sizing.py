@@ -39,7 +39,7 @@ from __future__ import annotations
 import math
 
 from app import datos
-from app.formato import fmt_fecha, fmt_num, fmt_pct, plural
+from app.formato import fmt_fecha, fmt_frente, fmt_num, fmt_pct, plural
 from app.registro import log
 
 # --- Límites. Todos aquí, con nombre, para poder discutirlos. ---
@@ -49,6 +49,10 @@ MAX_POR_SECTOR_PCT = 25.0
 MAX_POR_CLUSTER_PCT = 25.0      # lo que se mueve junto cuenta como uno
 UMBRAL_CORRELACION = 0.70       # a partir de aquí, dos posiciones son una
 OBJETIVO_VOL_ANUAL_PCT = 12.0   # volatilidad que se busca para la cartera
+# El principio del recorte que deja TODAS las ideas a cero por la volatilidad del
+# libro. El coste de oportunidad lo busca para explicar por qué una idea no cabe;
+# antes buscaba el texto «0 %» suelto, que se rompía con solo cambiar el espacio.
+RECORTE_SIN_HUECO_DE_RIESGO = "Ideas nuevas al 0\u00a0%"
 SESIONES_ANO = 252
 
 # Volatilidad que se SUPONE cuando no se pudo medir. Está por encima de la
@@ -205,6 +209,73 @@ def volatilidad_cartera(
 
 # --- El dimensionador ---------------------------------------------------------
 
+
+def _frase_base(base_cartera: str, detalle_base: str | None, cartera_vacia: bool = False,
+                parcial: bool = False, sin_posiciones: bool = False) -> str:
+    """La frase de BASE_CARTERA, con el detalle dentro: donde la frase lo marca
+    (`{detalle}`) o, si no, antes del punto final.
+
+    Con posiciones abiertas sin valorar (`parcial`) la frase no puede afirmar una
+    dirección: sin efectivo anotado decía «tu concentración real es menor y los
+    topes aprietan antes de lo debido… Puedes anotarlo» junto al aviso «el
+    tamaño es una cota superior», y anotado tampoco se sumaría (revisión 9). Sin
+    ninguna valorada, tampoco puede hablar de «las valoradas que pesan de más»
+    (revisión 8). Sin efectivo anotado no hay detalle que dar; anotado y sin tipo
+    de cambio, el detalle es el motivo del tipo y se queda (revisión 10), junto a
+    «no se pudo pasar a dólares»: al final, detrás de «el tamaño puede quedarse
+    corto o pasarse», parecía explicar eso (revisión 11).
+
+    Sin ninguna posición abierta (`sin_posiciones`), ni valorada ni sin valorar,
+    no hay «lo que ya tienes» que medir: con la cartera vacía y sin efectivo, la
+    nota hablaba del «valor de tus posiciones abiertas» y de «si guardas
+    liquidez», y el panel ponía «Liquidez 61,1 %» sin decir de qué capital
+    (revisión 12, visual)."""
+    if sin_posiciones and not parcial and base_cartera in _BASE_SIN_POSICIONES:
+        base_cartera = _BASE_SIN_POSICIONES[base_cartera]
+    if parcial or base_cartera == "invertido_parcial":
+        if cartera_vacia:
+            base_cartera, detalle_base = "parcial_sin_valoradas", None
+        elif base_cartera == "invertido":
+            base_cartera, detalle_base = "parcial_sin_efectivo", None
+        elif base_cartera == "invertido_sin_cambio":
+            # Anotado pero sin tipo: «aunque lo anotaras» se lo decía a quien ya lo
+            # había anotado, y se perdía el motivo del tipo de cambio que la
+            # revisión 3 había hecho llegar (revisión 10). El detalle se queda.
+            base_cartera = "parcial_sin_cambio"
+    frase = BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
+    if "{detalle}" in frase:
+        return frase.replace("{detalle}", f" {detalle_base}" if detalle_base else "")
+    return f"{frase[:-1]} {detalle_base}." if detalle_base else frase
+
+
+def efecto_cartera_parcial(n: int, hay_valoradas: bool, con_tamano: bool = True) -> str:
+    """Qué hacen al tamaño `n` posiciones abiertas sin valorar. Una sola frase
+    para Hoy y la ficha: Hoy seguía con «Tu concentración real es mayor» al lado
+    de la nota «puede quedarse corto o pasarse», y la ficha ya no lo decía
+    (revisión 8). Con valoradas, las que faltan aflojan los topes de su sector y
+    las valoradas, que pesan de más, aprietan los del resto (revisión 7). Sin
+    ninguna, los topes no ven nada de lo que ya tienes: solo pueden quedarse
+    flojos, y el tamaño es una cota superior. Sin nada que dimensionar
+    (`con_tamano` falso), sin hablar de un tamaño: Hoy sin candidatas decía «Hoy
+    no hay candidatas que dimensionar» y, al lado, «el tamaño puede quedarse
+    corto» (revisión 9)."""
+    no_cuenta = "no cuenta" if n == 1 else "no cuentan"
+    if not con_tamano:
+        return (f"{no_cuenta} en los topes por sector y correlación"
+                + (", y no hay ninguna posición valorada." if not hay_valoradas else "."))
+    if not hay_valoradas:
+        return (f"{no_cuenta} en los topes por sector y correlación, y no hay ninguna posición valorada: "
+                "los topes no ven nada de lo que ya tienes, así que el tamaño es una cota superior.")
+    return (f"{no_cuenta} en los topes por sector y correlación, y las valoradas pesan de más sobre una "
+            "cartera incompleta: el tamaño puede quedarse corto o pasarse.")
+
+
+def aviso_cartera_parcial(n: int, cuales: str, hay_valoradas: bool, con_tamano: bool = True) -> str:
+    """El aviso entero, el mismo en Hoy y en la ficha: cuántas, cuáles (`cuales`,
+    ya escrito, con su motivo) y qué hacen al tamaño."""
+    cuantas = plural(n, "posición abierta sin valorar", "posiciones abiertas sin valorar")
+    return f"{n} {cuantas} ({cuales}) {efecto_cartera_parcial(n, hay_valoradas, con_tamano)}"
+
 # Sobre qué se miden los pesos de lo que ya tienes, dicho en la nota del tamaño.
 BASE_CARTERA = {
     "capital": (
@@ -217,6 +288,74 @@ BASE_CARTERA = {
         "dólares): si guardas liquidez, tu concentración real es menor y los topes "
         "aprietan antes de lo debido. Puedes anotarlo en Cartera."
     ),
+    # Anotado pero sin tipo de cambio: no se le pide que lo anote (revisión 3);
+    # el detalle dice qué moneda y por qué.
+    "invertido_sin_cambio": (
+        "el peso de lo que ya tienes se mide sobre el valor de tus posiciones "
+        "abiertas: el efectivo está anotado, pero no se pudo pasar a dólares y no "
+        "se supone 1:1. Los topes aprietan antes de lo debido, que es el lado prudente."
+    ),
+    # Con posiciones que el barrido no valora, sumar todo el efectivo a media
+    # cartera inventaría liquidez (revisión de M3): se mide sin él y se dice.
+    "invertido_parcial": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar, sin sumar el efectivo anotado: hay posiciones "
+        "fuera del barrido, y sumar todo el efectivo a una parte de la cartera daría "
+        "una liquidez que no tienes. Ojo: los topes por sector y correlación no ven "
+        "las posiciones que faltan (eso los afloja en su sector) y las valoradas pesan "
+        "de más (eso los aprieta en el resto), así que el tamaño puede quedarse corto "
+        "o pasarse."
+    ),
+    # Con posiciones abiertas sin valorar y sin efectivo anotado: ni «aprietan
+    # antes de lo debido» ni «anótalo», que tampoco se sumaría (revisión 9).
+    # Anotado y sin tipo de cambio es `parcial_sin_cambio` (revisión 10).
+    "parcial_sin_efectivo": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar, sin efectivo que sumar (aunque lo anotaras, no "
+        "se sumaría a una parte de la cartera). Ojo: los topes por sector y "
+        "correlación no ven las posiciones que faltan (eso los afloja en su sector) "
+        "y las valoradas pesan de más (eso los aprieta en el resto), así que el "
+        "tamaño puede quedarse corto o pasarse."
+    ),
+    "parcial_sin_cambio": (
+        "el peso de lo que ya tienes se mide sobre el valor de las posiciones que "
+        "este barrido puede valorar: el efectivo está anotado, pero no se pudo pasar "
+        "a dólares{detalle}, y con posiciones sin valorar tampoco se sumaría. Ojo: los topes "
+        "por sector y correlación no ven las posiciones que faltan (eso los afloja en "
+        "su sector) y las valoradas pesan de más (eso los aprieta en el resto), así "
+        "que el tamaño puede quedarse corto o pasarse."
+    ),
+    "parcial_sin_valoradas": (
+        "el peso de lo que ya tienes no se puede medir: ninguna posición abierta se "
+        "pudo valorar, y el efectivo no se suma a una cartera que no se ve. Ojo: los "
+        "topes por sector y correlación no ven nada de lo que ya tienes, así que el "
+        "tamaño es una cota superior."
+    ),
+    # Sin ninguna posición abierta (`_BASE_SIN_POSICIONES`): no hay peso de lo
+    # que ya tienes, y sin efectivo conocido los pesos y la liquidez son
+    # porcentajes de un capital que la app no conoce (revisión 12, visual).
+    "vacia_sin_efectivo": (
+        "no tienes posiciones abiertas ni efectivo anotado, así que la app no conoce "
+        "tu capital: cada peso, y la liquidez que queda, es un porcentaje del dinero "
+        "que dediques a la cartera, no un importe. Puedes anotar el efectivo en Cartera."
+    ),
+    "vacia_sin_cambio": (
+        "no tienes posiciones abiertas y el efectivo está anotado, pero no se pudo "
+        "pasar a dólares{detalle}, así que la app no conoce tu "
+        "capital: cada peso, y la liquidez que queda, es un porcentaje del dinero que "
+        "dediques a la cartera, no un importe."
+    ),
+    "vacia_con_efectivo": (
+        "no tienes posiciones abiertas, así que tu capital es solo el efectivo{detalle}: "
+        "cada peso, y la liquidez que queda, es un porcentaje de ese efectivo."
+    ),
+}
+
+# La frase de cada base cuando no hay ninguna posición abierta.
+_BASE_SIN_POSICIONES = {
+    "invertido": "vacia_sin_efectivo",
+    "invertido_sin_cambio": "vacia_sin_cambio",
+    "capital": "vacia_con_efectivo",
 }
 
 
@@ -230,13 +369,23 @@ def dimensionar(
     max_sector_pct: float = MAX_POR_SECTOR_PCT,
     max_cluster_pct: float = MAX_POR_CLUSTER_PCT,
     base_cartera: str = "invertido",
+    detalle_base: str | None = None,
+    parcial: bool = False,
+    sin_posiciones: bool = False,
 ) -> dict:
     """Convierte ideas en pesos de cartera, aplicando todos los límites.
 
     `base_cartera` dice sobre qué se midieron los pesos de `cartera`: «capital»
     (posiciones más el efectivo anotado) o «invertido» (solo posiciones, sin
-    efectivo conocido). Solo cambia la nota, que antes afirmaba siempre que la
-    app no registra el efectivo, también después de la migración 0008.
+    efectivo conocido), o «invertido_parcial» (había efectivo, pero no se sumó
+    porque faltan posiciones por valorar). Solo cambia la nota, que antes
+    afirmaba siempre que la app no registra el efectivo, también después de la
+    migración 0008. `detalle_base` se añade a esa frase (qué efectivo y de cuándo).
+    `parcial`: hay posiciones abiertas que no se pudieron valorar y no están en
+    `cartera`; la frase lo tiene en cuenta (revisión 9). `sin_posiciones`: no hay
+    ninguna posición abierta, ni valorada ni sin valorar; `cartera` vacía no lo
+    dice, porque el coste de oportunidad quita de ella la propia candidata
+    (revisión 12, visual).
 
     `candidatas`: [{symbol, sector, peso_bruto_pct, vol_anual_pct}]. El peso
     bruto es el que sale del riesgo por operación — el que `decision.py` calcula
@@ -444,8 +593,10 @@ def dimensionar(
         if vol_solo_libro and vol_solo_libro * 100 >= objetivo_vol_pct:
             escala = 0.0
             recortes.append(
-                f"Ideas nuevas al 0 %: la cartera que YA tienes estima un "
-                f"{fmt_pct(vol_solo_libro)} de volatilidad, por encima del "
+                f"{RECORTE_SIN_HUECO_DE_RIESGO}: la cartera que YA tienes estima un "
+                # De su lado del objetivo: con 12,03 decía «un 12,0 % … por encima
+                # del objetivo (12 %)» (revisión 10).
+                f"{fmt_frente(vol_solo_libro, objetivo_vol_pct / 100, pct=True)} de volatilidad, por encima del "
                 f"objetivo ({fmt_pct(objetivo_vol_pct, en_puntos=True, ceros=False)}). No es que las ideas sean malas "
                 "— es que no cabe más riesgo. Bajar del objetivo pasa por soltar "
                 "algo de lo que ya tienes, y eso no lo decide el dimensionador."
@@ -466,7 +617,7 @@ def dimensionar(
             escala = bajo
             recortes.append(
                 f"Ideas nuevas escaladas al {fmt_pct(escala, 0)}: la volatilidad "
-                f"estimada de la cartera combinada ({fmt_pct(vol_llena)}) "
+                f"estimada de la cartera combinada ({fmt_frente(vol_llena, objetivo_vol_pct / 100, pct=True)}) "
                 f"superaba el objetivo ({fmt_pct(objetivo_vol_pct, en_puntos=True, ceros=False)})."
             )
         pesos = {s: w * escala for s, w in pesos.items()}
@@ -533,14 +684,15 @@ def dimensionar(
         "nota": (
             "El tamaño se decide sobre la cartera entera, no idea por idea: la "
             "misma empresa merece un peso distinto según qué más tengas. Los "
-            "topes cuentan lo que YA tienes — con un 20 % en tecnología, una "
-            "idea nueva del sector solo puede aspirar al 5 % que queda — y los "
+            "topes cuentan lo que YA tienes — con un 20\u00a0% en tecnología, una "
+            "idea nueva del sector solo puede aspirar al 5\u00a0% que queda — y los "
             "pesos que salen aquí son lo que se AÑADE, no el peso final. La "
             "volatilidad solo se escala hacia ABAJO: escalar hacia arriba es "
             "apalancarse, y esa decisión no la toma un algoritmo. Dos supuestos "
             "que conviene tener presentes: si la correlación entre dos "
             "posiciones no se pudo medir se asume 0,5 —es un supuesto, no un "
-            "dato—, y " + BASE_CARTERA.get(base_cartera, BASE_CARTERA["invertido"])
+            "dato—, y " + _frase_base(base_cartera, detalle_base, cartera_vacia=not cartera, parcial=parcial,
+                                     sin_posiciones=sin_posiciones)
         ),
     }
 
@@ -690,11 +842,16 @@ def peor_ventana(
         "peor_ventana_meses": meses,
         "peor_ventana_desde": desde_v.isoformat() if desde_v else None,
         "peor_ventana_hasta": hasta_v.isoformat() if hasta_v else None,
+        # Con la ventana con que mide: «no llega a 12 meses» sin decir de qué
+        # sesiones salía no dejaba ver que el Portafolio medía con un año y la
+        # Cartera con dos (revisión 12, visual).
         "peor_ventana_nota": (
             None
             if peor_v is not None
             else (
-                f"El histórico común no llega a {meses} meses, así que no hay "
+                f"El histórico común no llega a {meses} meses: son {fmt_num(len(valores), 0)} "
+                f"{plural(len(valores), 'sesión', 'sesiones')} ({fmt_fecha(orden[0])} → {fmt_fecha(orden[-1])}) "
+                f"y una ventana de {meses} meses pide más de {fmt_num(ventana, 0)}, así que no hay "
                 "ninguna ventana entera que medir. Se deja vacío en vez de "
                 "recortar el periodo y seguir rotulándolo igual."
             )

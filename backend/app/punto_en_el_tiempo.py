@@ -32,7 +32,7 @@ NO se conocía a las 14:35. Por eso:
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Iterable
 
 DISPONIBLE = "disponible"
@@ -90,8 +90,42 @@ def disponible_en(publicado, decision, obtenido_en=None) -> bool | None:
         return False
     prueba = marca(obtenido_en)
     if prueba is not None and prueba[1]:
-        return prueba[0] <= md
+        # Con el margen de descarga: la barra o el filing de hoy descargados
+        # DURANTE el análisis entraban si venían de la caché y no si se pedían
+        # en ese momento (revisión de 2f8d84b). A una reconstrucción del pasado
+        # no le cambia nada: su `obtenido_en` es días posterior.
+        return prueba[0] <= md + MARGEN_DE_DESCARGA
     return None
+
+
+# Lo que se descarga DURANTE un cálculo lleva la hora de la descarga, posterior
+# al `ahora` con que empezó (milisegundos, o lo que tarde el proveedor): no es
+# información futura. Sin margen, una cotización fresca de yfinance se tiraba
+# como «posterior al análisis» y se decidía con el cierre de ayer, «viejo»
+# (revisión de A5). A una reconstrucción del pasado no le cambia nada: lo
+# descargado hoy sigue siendo días posterior.
+MARGEN_DE_DESCARGA = timedelta(minutes=5)
+
+
+def descargado_a_tiempo(publicado, decision) -> bool | None:
+    """`disponible_en` para lo que se pide durante el propio cálculo y lleva por
+    fecha la de la descarga (la cotización, los fundamentales de los pares): con
+    una decisión con hora, cuenta lo fechado hasta `MARGEN_DE_DESCARGA` después.
+    Lo que se fecha por día ya lleva el margen en el desempate por `obtenido_en`.
+    El análisis, la congelación y el replay usan la misma regla."""
+    d = marca(decision)
+    if d is not None and d[1]:
+        decision = d[0] + MARGEN_DE_DESCARGA
+    return disponible_en(publicado, decision)
+
+
+def antiguedad_dias(publicado, decision) -> int | None:
+    """Días de calendario (UTC) de `publicado` a `decision`; None si no se pueden
+    fechar. Para decir «tipo de hace 12 días» sin restar fechas a mano."""
+    p, d = marca(publicado), marca(decision)
+    if p is None or d is None:
+        return None
+    return (_dia(d[0]) - _dia(p[0])).days
 
 
 def barra_disponible(ts, decision, obtenido_en=None) -> bool:

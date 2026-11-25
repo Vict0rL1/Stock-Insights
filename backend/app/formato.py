@@ -107,6 +107,113 @@ def fmt_dinero(valor, moneda: str | None, decimales: int = 2, *, signo: bool = F
     return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
 
 
+PRECIO_MAX_DECIMALES = 20  # el tope de Intl.NumberFormat en el gemelo
+
+
+def decimales_precio(valor: float) -> int:
+    """Los decimales con que se escribe (y se guarda) un precio por acción.
+
+    Desde 1, dos: el tick de las acciones que cotizan por encima del dólar. Por
+    debajo, los que den cuatro cifras significativas: con dos fijos, el stop de
+    0,004 de una acción de céntimos era 0,00 y un precio de 0,003 era 0, y el
+    stop no se perforaba nunca (auditoría del 19 oct). El exponente sale de la
+    representación más corta del número, la misma que `toExponential()` en el
+    gemelo: con `log10` los dos lados podían discrepar en la frontera."""
+    a = abs(valor)
+    if a >= 1 or a == 0:
+        return 2
+    exponente = Decimal(repr(a)).adjusted()
+    return min(PRECIO_MAX_DECIMALES, max(2, 3 - exponente))
+
+
+def fmt_precio(valor, moneda: str | None = None, *, signo: bool = False) -> str:
+    """Un precio por acción o un nivel: 150 → «150,00»; 0,004 → «0,004».
+
+    Al menos dos decimales y, por debajo de 1, hasta cuatro cifras
+    significativas sin ceros de más (`decimales_precio`)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    decimales = decimales_precio(valor)
+    d = _redondear(valor, decimales)
+    entera, _, fraccion = _es_es(d, decimales).partition(",")
+    cifra = _con_signo(d, f"{entera},{fraccion.rstrip('0').ljust(2, '0')}", signo)
+    return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
+
+
+def fmt_valor_redondo(valor, moneda: str | None = None) -> str:
+    """Un valor por acción ya redondeado a cifras significativas (el rango del
+    DCF): 147 → «147»; 1470 → «1.470»; 0,00347 → «0,00347». Sin los céntimos que
+    `fmt_precio` añadiría («147,00» finge una precisión que el método no tiene)
+    y sin perder los de una acción de céntimos (con cero decimales, «0»)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    cifra = fmt_num(valor, decimales_precio(valor), ceros=False)
+    return f"{cifra}{ESPACIO_DURO}{moneda}" if moneda else cifra
+
+
+def decimales_frente(valor: float, umbrales, pct: bool = False) -> int:
+    """Los decimales con que `valor` no cambia de lado frente a sus umbrales: cada
+    umbral escrito entero, el valor nunca escrito igual que un umbral distinto ni
+    como cero sin serlo. Se compara lo que de verdad se escribe (el redondeo del
+    formateador, no `round()`): con `round`, 0,995 «era» 0,99 y se escribía
+    «1,00» frente a «< 1» (revisión 6). Con los de siempre (uno en %, dos en
+    «veces») basta casi siempre."""
+    def escribir(v, d):
+        return fmt_pct(v, d, ceros=False) if pct else fmt_num(v, d, ceros=False)
+
+    base = 1 if pct else 2
+    for decimales in range(base, base + 7):
+        if any(escribir(u, decimales) != escribir(u, 9) for u in umbrales):
+            continue
+        if any(valor != u and escribir(valor, decimales) == escribir(u, decimales) for u in umbrales):
+            continue
+        if valor != 0 and escribir(valor, decimales) == escribir(0, decimales):
+            continue
+        return decimales
+    return base + 6
+
+
+def fmt_frente(valor, umbral, *, pct: bool = False, ceros: bool = True, signo: bool = False) -> str:
+    """Una cifra junto a su umbral, sin cambiar de lado al escribirla: 0,996
+    frente a «< 1» → «0,996», no «1,00»; 0,1796 frente a «≥ 18 %» → «17,96 %»
+    (revisión 6). Lejos del umbral, como siempre: 0,8 → «0,80»; 0,23 → «23,0 %».
+
+    `umbral` puede ser una lista: la misma cifra comparada con varios umbrales
+    se escribe frente a todos. Frente solo al suyo, la puntuación -0,3496 salía
+    «-0,35» en la regla de comprar (≥ +0,35) y «-0,3496» en la de evitar
+    (≤ -0,35), dos líneas más abajo (revisión 8)."""
+    valor = _cifra(valor)
+    lista = umbral if isinstance(umbral, (list, tuple)) else [umbral]
+    umbrales = [u for u in (_cifra(u) for u in lista) if u is not None]
+    if valor is None:
+        return GUION
+    if not umbrales:
+        return fmt_pct(valor, 1, signo=signo) if pct else fmt_num(valor, 2, signo=signo)
+    decimales = decimales_frente(valor, umbrales, pct)
+    con_ceros = ceros and decimales == (1 if pct else 2)
+    if pct:
+        return fmt_pct(valor, decimales, ceros=con_ceros, signo=signo)
+    return fmt_num(valor, decimales, ceros=con_ceros, signo=signo)
+
+
+def fmt_cifras(valor, cifras: int = 3) -> str:
+    """Un valor calculado con supuestos, con `cifras` cifras significativas y sin
+    decimales desde las centenas: 170,63 → «171»; 17,063 → «17,1»; 0,05328 →
+    «0,0533»; 1706,3 → «1.706». Para la matriz de sensibilidad del DCF, que
+    llega sin redondear: con dos decimales «170,63» fingía una precisión que el
+    método no tiene, y con cero una acción de 0,40 era «0» en todas las celdas
+    (revisión 5)."""
+    valor = _cifra(valor)
+    if valor is None:
+        return GUION
+    if valor == 0:
+        return fmt_num(0, 0)
+    exponente = Decimal(repr(abs(valor))).adjusted()
+    return fmt_num(valor, max(0, cifras - 1 - exponente), ceros=False)
+
+
 def _corto(valor: float, max_decimales: int) -> str:
     """Hasta `max_decimales`, sin ceros a la derecha: 400,0 → «400»; 1,25 → «1,25»."""
     return fmt_num(valor, max_decimales, ceros=False)

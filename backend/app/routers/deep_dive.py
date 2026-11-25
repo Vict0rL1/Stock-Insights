@@ -7,20 +7,21 @@ puedas leer el informe entero sin gastar nada en Claude.
 
 from __future__ import annotations
 
-from app import datos
-from app.formato import fmt_compacto, fmt_num, fmt_pct
-from app.routers.valuation import CRECIMIENTO_SUPUESTO
+from app.formato import fmt_compacto, fmt_fecha, fmt_frente, fmt_num, fmt_pct, fmt_precio
+from app.llm.signal_llm import FRONTERAS_ETIQUETA
 
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.analysis.deep_dive import assemble
+from app.analysis.deep_dive import VENTANA_RESULTADOS_DIAS, assemble, frente
+from app.analysis.health import ALTMAN_RIESGO, ALTMAN_SEGURA
 from app.analysis.factors import build_raw_factors, composite_score, family_scores, zscores
-from app.analysis.fundamentals import derive_ratio_series, growth_summary
+from app.analysis.fundamentals import derive_ratio_series, nota_deuda_parcial
 from app.analysis.signal import build_signal
 from app.analysis.valuation_history import valuation_vs_history
+from app.datos import numero as datos_numero
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import LlmOutput
@@ -33,6 +34,9 @@ from app.simbolos import SimboloRuta, validar_simbolo
 router = APIRouter(prefix="/api/deep-dive", tags=["deep-dive"])
 
 
+# «Qué vigilar», sin plazo: con «(6-18 meses)» la IA colocaba ahí unos
+# resultados a 24 días, lo mismo que el rótulo de la lista calculada (revisión
+# 12, visual).
 NARRATIVE_SYSTEM = """Eres un analista de renta variable escribiendo para un \
 estudiante de finanzas. Recibes un informe YA CALCULADO con cifras reales.
 
@@ -48,7 +52,7 @@ años de historia, factores ausentes).
   ## El negocio
   ## Lo que dicen los números
   ## Valoración
-  ## Qué vigilar (6-18 meses)
+  ## Qué vigilar
   ## Lectura final
 - En "Lectura final", sintetiza sin recomendar: di qué tendría que ser cierto \
 para que la tesis alcista funcione y qué la rompería.
@@ -69,6 +73,20 @@ def _safe(service: MarketDataService, data_type: str, **kwargs):
         return service.get(data_type, **kwargs)
     except (DataNotFoundError, AllProvidersFailedError):
         return None
+
+
+def _consultar(service: MarketDataService, data_type: str, **kwargs) -> tuple[dict | None, bool]:
+    """(respuesta, si la fuente no respondió). `_safe` junta «no lo tiene» con
+    «no respondió», y con el calendario caído la lista de catalizadores decía
+    «Resultados previstos en los próximos 120 días» sobre algo que nadie había
+    podido mirar (revisión 13). Que la fuente diga que no hay es una lista
+    vacía; que no conteste, «no se pudo comprobar»."""
+    try:
+        return service.get(data_type, **kwargs), False
+    except DataNotFoundError:
+        return None, False
+    except AllProvidersFailedError:
+        return None, True
 
 
 def _peer_signal(service: MarketDataService, symbol: str, metrics: dict) -> dict | None:
@@ -113,12 +131,25 @@ def deep_dive(
     """
     symbol = validar_simbolo(symbol)
 
-    financials = _safe(service, "financials", symbol=symbol)
+    # 404 solo si EDGAR no lo tiene; si no respondió, 502. Antes `_safe` se
+    # tragaba los dos y un EDGAR caído se leía como «no registrada en la SEC»,
+    # así que la ficha no podía tratar el 404 como ausencia (segunda revisión
+    # del 2.1).
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError as exc:
+        financials, motivo = None, str(exc)
+    except AllProvidersFailedError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudieron descargar los estados financieros de EDGAR: {exc}"
+        ) from exc
+    else:
+        motivo = "sin ejercicios anuales"
     if financials is None or not financials.get("periods"):
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Sin estados financieros para {symbol} en SEC EDGAR. El informe "
+                f"Sin estados financieros para {symbol} en SEC EDGAR ({motivo}). El informe "
                 "necesita histórico auditado; EDGAR solo cubre empresas "
                 "registradas en la SEC (no aplica a cotizadas extranjeras sin ADR)."
             ),
@@ -129,7 +160,8 @@ def deep_dive(
     profile = _safe(service, "profile", symbol=symbol) or {"symbol": symbol}
     quote = _safe(service, "quote", symbol=symbol)
     history = _safe(service, "price_history", symbol=symbol, interval="1day", outputsize=5000)
-    filings_payload = _safe(service, "filings", symbol=symbol) or {}
+    filings_payload, filings_caidos = _consultar(service, "filings", symbol=symbol)
+    filings_payload = filings_payload or {}
 
     valuation = valuation_vs_history(
         periods,
@@ -163,13 +195,14 @@ def deep_dive(
     )
 
     today = datetime.now(timezone.utc).date()
-    calendar = _safe(
+    calendar, calendario_caido = _consultar(
         service,
         "earnings_calendar",
         start=today.isoformat(),
-        end=(today + timedelta(days=120)).isoformat(),
+        end=(today + timedelta(days=VENTANA_RESULTADOS_DIAS)).isoformat(),
     )
-    earnings = [
+    # None, no []: «no se pudo consultar» no es «no hay ninguno».
+    earnings = None if calendario_caido else [
         e for e in (calendar or {}).get("events", []) if e.get("symbol") == symbol
     ]
 
@@ -182,69 +215,89 @@ def deep_dive(
         risk=risk,
         signal=signal,
         earnings=earnings,
-        filings=filings_payload.get("filings", []),
+        filings=None if filings_caidos else filings_payload.get("filings", []),
         events=[],
-        dcf=_dcf_defaults(periods, quote),
+        dcf=_dcf_defaults(periods, quote, financials.get("source", "edgar")),
     )
     report["generated_at"] = datetime.now(timezone.utc).isoformat()
     return report
 
 
-def _dcf_defaults(periods: list[dict], quote: dict | None) -> dict | None:
-    """Punto de partida del DCF con los datos del informe, para no obligar a
-    ir a otra pestaña a calcularlo."""
-    from app.analysis.fundamentals import free_cash_flow, total_debt
-    from app.analysis.valuation import scenario_set
+def _dcf_defaults(periods: list[dict], quote: dict | None, source: str) -> dict:
+    """El DCF del módulo Valoración con los datos del informe, para no obligar a
+    ir a otra pestaña a verlo.
 
-    latest = periods[-1]
-    fcf = free_cash_flow(latest)
-    shares = latest.get("shares_outstanding")
-    if fcf is None or fcf <= 0 or not shares:
-        return None
+    Era un tercer DCF con sus propios supuestos (WACC 12/10/9 %, crecimiento ±4
+    puntos), un valor puntual por escenario y una deuda sin «parcial» (M5). Ahora
+    son las MISMAS funciones que `POST /api/valuation/{s}` sin cuerpo: los mismos
+    rangos que la pestaña Valoración y que el módulo, y la misma forma de datos
+    (`escenarios`, `rango_global`, `entradas`) para pintarlos con el mismo
+    componente (`ResumenDcf`), que explica de dónde salen y enlaza al módulo.
 
-    growth = growth_summary(periods)
-    # Misma pareja de fallos que en `routers/valuation.py`: el `or` encadenado
-    # convertía la ausencia en un supuesto no declarado, y un crecimiento real
-    # de 0.0 en ese mismo supuesto por ser *falsy*.
-    medido = datos.numero(growth.get("fcf_cagr"))
-    if medido is None:
-        medido = datos.numero(growth.get("revenue_cagr"))
-    crecimiento_supuesto = medido is None
-    base_growth = min(CRECIMIENTO_SUPUESTO if crecimiento_supuesto else medido, 0.15)
+    Lo que no precarga lo dice: `{"disponible": False, "motivo": …}`.
+    """
+    from app.analysis.valuation import ANOS, cimientos, escenarios_con_rango, escenarios_por_defecto, rango_global
 
-    # Y la deuda: sin ella no hay valor por acción. `scenario_set` propaga el
-    # `indeterminado` de `dcf`, así que se le pasa None y la respuesta dice que
-    # falta, en vez de valorar la empresa como si no debiera nada.
-    debt = total_debt(latest)
-    net_debt = (
-        debt - (datos.numero(latest.get("cash")) or 0.0)
-        if datos.numero(debt) is not None
-        else None
+    c = cimientos(periods)
+    fcf, acciones = c["base_fcf"], datos_numero(c["shares_outstanding"])
+    # Sin FCF positivo o sin acciones, el informe no lo precarga (Victor decidió
+    # que se quede así); el módulo sí lo intenta y dice qué falta. Pero se dice:
+    # devolvía None y el informe omitía la sección entera, sin decir que faltaba
+    # ni por qué, mientras la pestaña Valoración de la misma ficha enseñaba tres
+    # rangos con el mismo filing (revisión 15, H7).
+    motivo = _sin_dcf_precargado(fcf, acciones, c["net_debt"], c["fiscal_year"])
+    if motivo:
+        return {"disponible": False, "motivo": motivo}
+    # Sin deuda neta, cada escenario sale «no disponible» con el motivo: nunca
+    # como si la empresa no debiera nada.
+    escenarios = escenarios_con_rango(
+        escenarios_por_defecto(c["crecimiento"]), fcf, c["net_debt"], acciones, ANOS,
     )
-
-    scenarios = scenario_set(
-        {
-            "bear": {"growth_rate": max(base_growth - 0.04, -0.02), "discount_rate": 0.12, "terminal_growth": 0.015},
-            "base": {"growth_rate": base_growth, "discount_rate": 0.10, "terminal_growth": 0.025},
-            "bull": {"growth_rate": base_growth + 0.04, "discount_rate": 0.09, "terminal_growth": 0.03},
-        },
-        base_fcf=fcf,
-        years=5,
-        net_debt=net_debt,
-        shares_outstanding=shares,
-    )
+    precio = (quote or {}).get("price")
     return {
-        "scenarios": scenarios,
-        "base_fcf": fcf,
-        "net_debt": net_debt,
-        "shares_outstanding": shares,
-        "current_price": (quote or {}).get("price"),
-        "note": (
-            "Supuestos de partida derivados del histórico, acotados al 15 % de "
-            "crecimiento. Edítalos en la pestaña Valoración: el resultado es muy "
-            "sensible a la tasa de descuento y al crecimiento terminal."
-        ),
+        "disponible": True,
+        "escenarios": escenarios,
+        "rango_global": rango_global(escenarios, precio, fcf),
+        "entradas": {
+            "base_fcf": fcf,
+            "net_debt": c["net_debt"],
+            "deuda_parcial": c["deuda_parcial"],
+            "nota_deuda": nota_deuda_parcial(c["deuda_parcial"]) if c["deuda_parcial"] else None,
+            "shares_outstanding": acciones,
+            "precio_actual": precio,
+            "fiscal_year": c["fiscal_year"],
+            "years": ANOS,
+            "source": source,
+        },
     }
+
+
+def _sin_dcf_precargado(fcf: float | None, acciones: float | None, deuda: float | None, ejercicio) -> str | None:
+    """Por qué el informe no precarga el DCF, o None si lo precarga. Lo que dice
+    del módulo tiene que ser verdad con este filing: sin acciones o sin deuda, el
+    módulo tampoco valora hasta que las escribas."""
+    if fcf is None:
+        return (
+            "El informe no precarga el DCF: no se pudo calcular el flujo de caja libre del último "
+            "ejercicio (faltan flujo operativo o capex en el filing). El análisis completo deja escribirlo."
+        )
+    if acciones is None or acciones <= 0:
+        return (
+            "El informe no precarga el DCF: el filing no trae las acciones en circulación, y sin ellas no "
+            "hay valor por acción. El análisis completo deja escribirlas."
+        )
+    if fcf <= 0:
+        cuando = f" en el ejercicio {ejercicio}" if ejercicio is not None else ""
+        modulo = (
+            "El análisis completo sí lo valora, con sus rangos, y deja escribir otro FCF de partida."
+            if deuda is not None
+            else "El análisis completo deja escribir otro FCF de partida y la deuda neta, que el filing no trae."
+        )
+        return (
+            f"El informe no precarga el DCF cuando el FCF de partida no es positivo (es {fmt_compacto(fcf)}"
+            f"{cuando}). {modulo}"
+        )
+    return None
 
 
 @router.post("/{symbol}/narrative")
@@ -318,35 +371,63 @@ def _narrative_prompt(symbol: str, report: dict) -> str:
     risks = "\n".join(
         f"- [{r['severity']}] {r['type']}: {r['evidence']}" for r in report.get("risks", [])
     )
+    # Lo que no se pudo mirar, con su nombre: la IA recibía «Ninguno relevante
+    # detectado» con la deuda/capital y la máxima caída sin calcular, y escribía
+    # un balance sin riesgos que nadie había comprobado (revisión 13). Un
+    # informe sin la lista (de antes de la revisión 12) no dice si faltó algo.
+    riesgos_sin = report.get("riesgos_sin_comprobar")
+    if riesgos_sin:
+        risks = (risks + "\n" if risks else "- Ninguno entre lo que se pudo comprobar\n") + (
+            f"- Sin comprobar por falta de datos (no es que no haya riesgo): {'; '.join(riesgos_sin)}"
+        )
+    elif not risks:
+        risks = "- Ninguno relevante detectado" if riesgos_sin is not None else (
+            "- Ninguno detectado (el informe no dice qué quedó sin comprobar)")
+    # Previsto o ya presentado: la IA recibía los dos bajo «catalizadores
+    # próximos» y un 10-Q del mes pasado pasaba por un catalizador por venir
+    # (revisión 12, visual).
+    def cuando(c: dict) -> str:
+        if not c.get("when"):
+            return "sin fecha"
+        verbo = "presentado" if c.get("source") == "edgar" else "previsto"
+        return f"{verbo} el {fmt_fecha(c['when'])}"
+
     catalysts = "\n".join(
-        f"- {c['type']} ({c.get('when') or 'sin fecha'}): {c.get('detail')}"
+        f"- {c['type']} ({cuando(c)}): {c.get('detail')}"
         for c in report.get("catalysts", [])[:6]
     )
+    # Con el calendario o los filings caídos llegaba «Ninguno identificado»: un
+    # fallo convertido en «ninguno» (revisión 13).
+    catalizadores_sin = report.get("catalysts_sin_comprobar") or []
+    if catalizadores_sin:
+        catalysts = (catalysts + "\n" if catalysts else "- Ninguno entre lo que se pudo consultar\n") + (
+            f"- No se pudo consultar (no se sabe qué traen): {'; '.join(catalizadores_sin)}"
+        )
 
     return f"""EMPRESA: {symbol} — {business.get('name') or 'sin nombre'}
 Sector: {business.get('sector') or 'desconocido'}
 Ingresos último ejercicio ({business.get('latest_fiscal_year')}): {fmt_compacto(business.get('latest_revenue'))}
 Años de histórico disponibles: {business.get('years_of_history')}
-Precio actual: {fmt_num(report.get('price'))}
+Precio actual: {fmt_precio(report.get('price'))}
 
 CRECIMIENTO
-CAGR ingresos {ventana}: {pct(growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
+CAGR ingresos {ventana}: {frente('revenue_cagr', growth.get('revenue_cagr'))} | 3A: {pct(growth.get('revenue_cagr_3y'))}
 CAGR BPA {ventana}: {pct(growth.get('eps_cagr'))} | CAGR FCF {ventana}: {pct(growth.get('fcf_cagr'))}
 Tendencia: {growth.get('acceleration') or 'sin determinar'}
 
 MÁRGENES
-Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {pct(margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
+Bruto {pct(margins.get('current', {}).get('gross_margin'))} | Operativo {frente('operating_margin', margins.get('current', {}).get('operating_margin'))} | Neto {pct(margins.get('current', {}).get('net_margin'))}
 Tendencia del margen operativo: {margins.get('trends', {}).get('operating_margin') or 'sin determinar'}
 
 DEUDA
-Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {fmt_num(debt.get('debt_to_equity'))}
-Cobertura de intereses: {fmt_num(debt.get('interest_coverage'), 1)}
-Altman Z: {fmt_num((debt.get('altman_z') or {}).get('score'))} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
+Deuda neta: {fmt_compacto(debt.get('net_debt'))} | Deuda/capital: {frente('debt_to_equity', debt.get('debt_to_equity'))}
+Cobertura de intereses: {frente('interest_coverage', debt.get('interest_coverage'))}
+Altman Z: {fmt_frente((debt.get('altman_z') or {}).get('score'), (debt.get('altman_z') or {}).get('umbrales') or [ALTMAN_RIESGO, ALTMAN_SEGURA])} (zona {(debt.get('altman_z') or {}).get('zone') or 'sin determinar'})
 Piotroski F: {_piotroski(debt.get('piotroski_f'))}
 
 CAJA
 FCF último ejercicio: {fmt_compacto(cash.get('current', {}).get('fcf'))}
-Conversión beneficio→caja: {pct(cash.get('current', {}).get('fcf_conversion'))}
+Conversión beneficio→caja: {frente('fcf_conversion', cash.get('current', {}).get('fcf_conversion'))}
 Intensidad de capex: {pct(cash.get('current', {}).get('capex_intensity'))}
 Tendencia del FCF: {cash.get('fcf_trend') or 'sin determinar'}
 
@@ -355,16 +436,18 @@ VALORACIÓN FRENTE A SU PROPIA HISTORIA ({valuation.get('years_covered')} años)
 Lectura: {valuation.get('reading')}
 
 SEÑAL CUANTITATIVA (frente a sus pares)
-{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_num((report.get('quant_signal') or {}).get('score'), signo=True)}
+{(report.get('quant_signal') or {}).get('label', 'no disponible')} · z-score {fmt_frente((report.get('quant_signal') or {}).get('score'), FRONTERAS_ETIQUETA, signo=True)}
 
 RIESGOS DETECTADOS EN LOS DATOS
-{risks or '- Ninguno relevante detectado'}
+{risks}
 
-CATALIZADORES PRÓXIMOS
+CATALIZADORES ({report.get('catalysts_note') or 'fechas sacadas de los datos'})
 {catalysts or '- Ninguno identificado'}
 
 VEREDICTO CALCULADO: postura {verdict.get('stance')}
 A favor: {'; '.join(verdict.get('positives', [])) or 'ninguno'}
 En contra: {'; '.join(verdict.get('negatives', [])) or 'ninguno'}
+Sin comprobar por falta de datos (no cuentan ni a favor ni en contra): {'; '.join(verdict.get('sin_comprobar') or []) or 'nada'}
+Alcance: {verdict.get('alcance') or 'sin indicar'}
 
 Escribe el informe."""

@@ -1,10 +1,14 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { EtfComparison, EtfRecommendation } from '../api/types'
-import { SourceBadge } from '../components/SourceBadge'
+import { EstadoDato } from '../components/EstadoDato'
 import { etiqueta } from '../lib/etiquetas'
-import { fmtCompacto, fmtPct } from '../lib/formato'
+import { fmtCompacto, fmtPct, plural } from '../lib/formato'
+import { listaDeSimbolos } from '../lib/simbolos'
+import { COLUMNA_FIJA } from '../lib/tablas'
+import { MarcoTabla } from '../components/MarcoTabla'
+import { rutaEmpresa } from '../lib/rutas'
 
 const ETF_ACTION_STYLES: Record<string, string> = {
   comprar: 'bg-emerald-600 text-white',
@@ -75,20 +79,37 @@ function OverlapBar({ value }: { value: number }) {
   )
 }
 
-export function EtfsPage() {
-  const [input, setInput] = useState('VOO, QQQ, VTI')
+/** Los que compara el lado a lado del backend (`compare_etfs`). */
+export const MAX_ETFS = 4
+
+/** `incrustada`: dentro de Explorar, con su título como subtítulo (h2) bajo el de la pantalla. */
+export function EtfsPage({ incrustada = false }: { incrustada?: boolean } = {}) {
+  // Vacío, con el ejemplo en el texto de ayuda: llegaba relleno con «VOO, QQQ,
+  // VTI», así que el límite de cuatro (que solo decía el texto de ayuda) no se
+  // veía nunca, y lo tecleado se pegaba detrás («VTIINDX») (revisión 12, visual).
+  // `?simbolos=SPY,QQQ` (desde Inicio): llega relleno y se compara solo, una vez.
+  const [params] = useSearchParams()
+  const pedidos = params.get('simbolos') ?? ''
+  const [input, setInput] = useState(pedidos)
   const [data, setData] = useState<EtfComparison | null>(null)
   const [reco, setReco] = useState<EtfRecommendation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { simbolos: symbols, descartados } = listaDeSimbolos(input, MAX_ETFS)
 
-  const compare = async (e: React.FormEvent) => {
+  const compare = (e: React.FormEvent) => {
     e.preventDefault()
-    const symbols = input
-      .split(',')
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 4)
+    void comparar(symbols)
+  }
+  const comparados = useRef<string | null>(null)
+  useEffect(() => {
+    const lista = listaDeSimbolos(pedidos, MAX_ETFS).simbolos
+    if (lista.length === 0 || comparados.current === pedidos) return
+    comparados.current = pedidos
+    void comparar(lista)
+  }, [pedidos])
+
+  async function comparar(symbols: string[]) {
     if (symbols.length === 0) return
     setBusy(true)
     setError(null)
@@ -110,21 +131,41 @@ export function EtfsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-800">ETFs</h1>
+      {incrustada ? (
+        <h2 className="text-lg font-semibold text-slate-800">ETFs</h2>
+      ) : (
+        <h1 className="text-lg font-semibold text-slate-800">ETFs</h1>
+      )}
 
-      <form onSubmit={compare} className="flex flex-wrap gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Hasta 4 ETFs separados por coma (VOO, QQQ, VTI)"
-          className="w-96 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
-        />
-        <button
-          disabled={busy}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
-          {busy ? 'Analizando…' : 'Analizar y recomendar'}
-        </button>
+      <form onSubmit={compare} className="space-y-1.5">
+        {/* El límite, a la vista también con el campo escrito: el texto de
+            ayuda desaparece en cuanto se teclea (revisión 12, visual). */}
+        <label htmlFor="etfs-lista" className="block text-xs font-medium text-slate-500">
+          ETFs a comparar <span className="font-normal text-slate-400">(hasta {MAX_ETFS}, separados por coma)</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            id="etfs-lista"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={`Hasta ${MAX_ETFS} ETFs separados por coma, por ejemplo: VOO, QQQ, VTI`}
+            className="w-96 max-w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
+          />
+          <button
+            disabled={busy || symbols.length === 0}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? 'Analizando…' : 'Analizar y recomendar'}
+          </button>
+        </div>
+        {/* Los que no caben se nombran antes de pulsar: un `.slice(0, 4)` los
+            quitaba sin avisar y la grabación enseñaba un ETF en vez de tres. */}
+        {descartados.length > 0 && (
+          <p role="status" className="text-xs text-amber-800">
+            Solo se comparan {MAX_ETFS} a la vez: {descartados.join(', ')}{' '}
+            {plural(descartados.length, 'queda', 'quedan')} fuera. Quita alguno para elegir cuáles entran.
+          </p>
+        )}
       </form>
 
       {error && (
@@ -143,40 +184,53 @@ export function EtfsPage() {
 
       {data && data.etfs.length > 0 && (
         <>
-          <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4">
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold text-slate-700">Comparador lado a lado</h2>
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                  <th className="py-1 pr-2 font-normal">Métrica</th>
-                  {data.etfs.map((etf) => (
-                    <th key={etf.symbol} className="px-2 py-1 text-right font-normal">
-                      {etf.symbol}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  ['Nombre', (e: (typeof data.etfs)[0]) => e.name ?? '—'],
-                  ['Categoría', (e: (typeof data.etfs)[0]) => e.category ?? '—'],
-                  ['Coste anual', (e: (typeof data.etfs)[0]) => fmtPct(e.expense_ratio, 2)],
-                  ['AUM', (e: (typeof data.etfs)[0]) => fmtCompacto(e.aum)],
-                  ['Rentabilidad por dividendo', (e: (typeof data.etfs)[0]) => fmtPct(e.dividend_yield)],
-                ].map(([label, get]) => (
-                  <tr key={label as string} className="border-b border-slate-100">
-                    <td className="py-1.5 pr-2 text-slate-500">{label as string}</td>
+            {/* A 390 px solo se veían el rótulo y el primer ETF, y nada decía que
+                hubiera más: el desplazamiento iba en la sección entera (ítem
+                2.12). Ahora va en la tabla, con el rótulo fijo y cada ETF con
+                un ancho mínimo, así que el segundo asoma. */}
+            <MarcoTabla etiqueta="Comparador de ETFs">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                    <th className={`${COLUMNA_FIJA} min-w-[8.5rem] py-1 pr-2 font-normal`}>Métrica</th>
                     {data.etfs.map((etf) => (
-                      <td key={etf.symbol} className="px-2 py-1.5 text-right text-slate-800">
-                        {(get as (e: typeof etf) => string)(etf)}
-                      </td>
+                      <th key={etf.symbol} className="min-w-[7.5rem] px-2 py-1 text-right font-normal">
+                        {etf.symbol}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="mt-2 flex justify-end">
-              {data.etfs[0] && <SourceBadge data={data.etfs[0]} />}
+                </thead>
+                <tbody>
+                  {[
+                    ['Nombre', (e: (typeof data.etfs)[0]) => e.name ?? '—'],
+                    ['Categoría', (e: (typeof data.etfs)[0]) => e.category ?? '—'],
+                    ['Coste anual', (e: (typeof data.etfs)[0]) => fmtPct(e.expense_ratio, 2)],
+                    ['AUM', (e: (typeof data.etfs)[0]) => fmtCompacto(e.aum)],
+                    ['Rentabilidad por dividendo', (e: (typeof data.etfs)[0]) => fmtPct(e.dividend_yield)],
+                  ].map(([label, get]) => (
+                    <tr key={label as string} className="border-b border-slate-100">
+                      <td className={`${COLUMNA_FIJA} py-1.5 pr-2 text-slate-500`}>{label as string}</td>
+                      {data.etfs.map((etf) => (
+                        <td key={etf.symbol} className="px-2 py-1.5 text-right text-slate-800">
+                          {(get as (e: typeof etf) => string)(etf)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </MarcoTabla>
+            {/* Cada ETF se pide por separado y puede llegar viejo por su
+                cuenta: una sola insignia, la del primero, daba por fresco un
+                segundo rescatado de la caché (revisión del 2.1). */}
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              {data.etfs.map((etf) => (
+                <span key={etf.symbol} className="flex items-center gap-1 text-xs text-slate-500">
+                  {etf.symbol}: <EstadoDato data={etf} />
+                </span>
+              ))}
             </div>
           </section>
 
@@ -238,7 +292,7 @@ export function EtfsPage() {
                   <ul className="space-y-1 text-sm">
                     {etf.top_holdings.map((h) => (
                       <li key={h.symbol} className="flex justify-between border-b border-slate-100 py-1">
-                        <Link to={`/ticker/${h.symbol}`} className="text-slate-700 hover:underline">
+                        <Link to={rutaEmpresa(h.symbol)} className="text-slate-700 hover:underline">
                           {h.symbol}
                           <span className="ml-2 text-xs text-slate-400">{h.name ?? ''}</span>
                         </Link>

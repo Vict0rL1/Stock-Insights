@@ -43,7 +43,7 @@ def _sin_comentarios(fuente: str) -> str:
 
 
 def test_el_glosario_prohibe_algo():
-    assert {"EPS", "FCF yield", "stop loss"} <= set(prohibidos())
+    assert {"EPS", "FCF yield", "stop loss", "free cash flow"} <= set(prohibidos())
 
 
 @pytest.fixture(scope="module")
@@ -76,3 +76,42 @@ def test_el_frontend_no_lo_escribe(termino):
             if p.search(linea):
                 malos.append(f"{f.relative_to(RAIZ)}: {linea.strip()[:100]}")
     assert not malos, f"«{termino}» está prohibido por docs/GLOSARIO.md:\n  " + "\n  ".join(malos[:10])
+
+
+# --- Las definiciones de la ficha (`frontend/src/lib/glosario.ts`) -------------
+#
+# Lo que la ficha explica al tocar un término nombra su fila de aquí por el
+# concepto: su término tiene que ser el de la tabla. Se mira desde aquí porque
+# este test ya lee el documento y el frontend; Vite no deja leer `docs/` desde
+# los tests del frontend.
+
+GLOSARIO_FICHA = FRONTEND / "lib" / "glosario.ts"
+
+
+def filas_del_glosario() -> dict[str, str]:
+    """Concepto → término, de la tabla de `docs/GLOSARIO.md`."""
+    salida = {}
+    for linea in GLOSARIO.read_text(encoding="utf-8").splitlines():
+        celdas = [c.strip() for c in linea.strip().strip("|").split("|")]
+        if len(celdas) == 4 and celdas[0] not in ("Concepto", "") and not set(celdas[0]) <= {"-"}:
+            salida[celdas[0]] = celdas[1]
+    return salida
+
+
+def entradas_de_la_ficha() -> list[tuple[str, str]]:
+    """(término, concepto) de cada entrada de `glosario.ts`."""
+    fuente = GLOSARIO_FICHA.read_text(encoding="utf-8")
+    return re.findall(r"termino:\s*'([^']+)',\s*concepto:\s*'([^']+)'", fuente)
+
+
+def test_la_ficha_explica_sus_terminos_con_las_palabras_del_glosario():
+    filas = filas_del_glosario()
+    entradas = entradas_de_la_ficha()
+    # Si cambia la forma del fichero, que no pase sin mirar nada.
+    assert len(entradas) >= 10, entradas
+    malos = [
+        f"«{t}» ({c}): " + (f"la tabla dice «{filas[c]}»" if c in filas else "no hay fila con ese concepto")
+        for t, c in entradas
+        if filas.get(c) != t
+    ]
+    assert not malos, "glosario.ts no sigue a docs/GLOSARIO.md:\n  " + "\n  ".join(malos)

@@ -46,8 +46,9 @@ from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import EarningsAnalysis
 from app.deps import get_llm, get_service
-from app.formato import fmt_num
 from app.llm.base import LLMProvider, LLMUnavailableError
+# La tarifa y la cuenta, compartidas con «Pregúntale a la IA» (`llm/coste.py`).
+from app.llm.coste import coste_estimado as _coste_estimado
 from app.llm.earnings_llm import (
     SYSTEM,
     AnalisisTrimestre,
@@ -69,16 +70,6 @@ router = APIRouter(prefix="/api/earnings", tags=["earnings"])
 # trimestre no tiene 10-Q: la comparación se rompería justo una vez al año.
 FORMULARIOS = ("10-Q", "10-K", "8-K")
 
-# Tarifa del API de Claude en USD por millón de tokens (entrada, salida), para
-# enseñar el coste ANTES de gastarlo. Antes era una sola, la de Opus 5, escrita
-# a mano aunque el modelo fuera otro. Un modelo que no está aquí no tiene
-# estimación: inventarle un precio sería peor que decir que no se sabe.
-TARIFAS_USD_POR_MTOK = {
-    "claude-sonnet-5-5": (2.0, 10.0),
-    "claude-opus-5-5": (4.0, 20.0),
-    "claude-opus-5": (5.0, 25.0),
-}
-
 
 class AnalizarRequest(BaseModel):
     accession_no: str | None = Field(
@@ -86,6 +77,27 @@ class AnalizarRequest(BaseModel):
     )
     comparar: bool = Field(True, description="Comparar con el trimestre anterior ya analizado")
 
+
+
+def _exigir_ia(llm: LLMProvider | None) -> LLMProvider:
+    """La IA, o un 503 que dice que falta, antes de descargar nada de EDGAR.
+
+    Sin `ANTHROPIC_API_KEY`, `get_llm` da None y «Ver qué costaría» respondía
+    «Error HTTP 500» (`None.contar_tokens`), igual que «Analizar» (revisión 12,
+    visual). El coste tampoco se puede dar sin ella: los tokens los cuenta el
+    API y la tarifa es la del modelo configurado. La lista de reportes y el
+    historial de los ya analizados no la necesitan y siguen funcionando.
+    """
+    if llm is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Capa de IA no configurada: añade ANTHROPIC_API_KEY en .env. Sin ella no se "
+                "analiza ningún reporte ni se estima su coste; la lista de reportes de la SEC "
+                "y los ya analizados se consultan igual."
+            ),
+        )
+    return llm
 
 
 def _filings_de_resultados(service: MarketDataService, symbol: str) -> list[dict]:
@@ -124,37 +136,6 @@ def _preparar(service: MarketDataService, symbol: str, filing: dict) -> dict:
             ),
         )
     return {"documento": doc, "secciones": secciones, "filing": filing}
-
-
-def _coste_estimado(entrada: int | None, modelo: str | None, salida: int = 4000, motivo: str | None = None) -> dict:
-    if entrada is None:
-        return {
-            "tokens_entrada": None,
-            "usd_estimado": None,
-            "nota": f"{motivo} El coste no se puede estimar de antemano." if motivo else
-                    "No se pudieron contar los tokens; el coste no se puede estimar de antemano.",
-        }
-    tarifa = TARIFAS_USD_POR_MTOK.get(modelo or "")
-    if tarifa is None:
-        return {
-            "tokens_entrada": entrada,
-            "usd_estimado": None,
-            "nota": (
-                f"~{fmt_num(entrada, 0)} tokens de entrada. No hay tarifa conocida para el modelo "
-                f"{modelo or 'configurado'}: el coste no se puede estimar de antemano."
-            ),
-        }
-    usd = entrada / 1e6 * tarifa[0] + salida / 1e6 * tarifa[1]
-    return {
-        "tokens_entrada": entrada,
-        "usd_estimado": round(usd, 4),
-        "nota": (
-            f"~{fmt_num(entrada, 0)} tokens de entrada. Estimación a la tarifa de {modelo} "
-            f"({fmt_num(tarifa[0], 2, ceros=False)} USD/M entrada, "
-            f"{fmt_num(tarifa[1], 2, ceros=False)} USD/M salida), "
-            f"asumiendo ~{fmt_num(salida, 0)} tokens de salida."
-        ),
-    }
 
 
 def _guardar(session: Session, **campos) -> EarningsAnalysis:
@@ -243,7 +224,7 @@ def estimar_coste(
     symbol: SimboloRuta,
     accession_no: str | None = None,
     service: MarketDataService = Depends(get_service),
-    llm: LLMProvider = Depends(get_llm),
+    llm: LLMProvider | None = Depends(get_llm),
 ):
     """Cuánto costaría analizar este reporte. Sin llamar al modelo.
 
@@ -252,6 +233,7 @@ def estimar_coste(
     corto y eso hay que saberlo antes, no en la factura.
     """
     symbol = validar_simbolo(symbol)
+    llm = _exigir_ia(llm)
     filings = _filings_de_resultados(service, symbol)
     filing = _elegir(filings, accession_no)
     preparado = _preparar(service, symbol, filing)
@@ -300,7 +282,7 @@ def analizar(
     request: AnalizarRequest = Body(default_factory=AnalizarRequest),
     session: Session = Depends(get_session),
     service: MarketDataService = Depends(get_service),
-    llm: LLMProvider = Depends(get_llm),
+    llm: LLMProvider | None = Depends(get_llm),
 ):
     """Extrae guidance, riesgos y temas de un reporte, y lo compara con el anterior.
 
@@ -309,6 +291,7 @@ def analizar(
     es auditable, porque sus entradas quedan guardadas.
     """
     symbol = validar_simbolo(symbol)
+    llm = _exigir_ia(llm)
     filings = _filings_de_resultados(service, symbol)
     filing = _elegir(filings, request.accession_no)
     preparado = _preparar(service, symbol, filing)

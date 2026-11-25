@@ -56,7 +56,7 @@ YIELD_TENORS = [
 ]
 
 MACRO_SERIES = [
-    ("UNRATE", "Desempleo EE. UU.", "pct"),
+    ("UNRATE", "Desempleo EE.\u00a0UU.", "pct"),  # sin partir la abreviatura (ítem 2.12)
     ("FEDFUNDS", "Tasa Fed (efectiva)", "pct"),
     ("CPIAUCSL", "Inflación (CPI, interanual)", "yoy"),
 ]
@@ -168,9 +168,19 @@ def _year_before(iso_date: str) -> str:
     return dt.replace(year=dt.year - 1).date().isoformat()
 
 
+# Cuántos eventos se sirven, los más próximos; `total` dice cuántos hay.
+MAX_EVENTOS_CALENDARIO = 120
+
+
 @router.get("/calendar")
 def earnings_calendar(service: MarketDataService = Depends(get_service)):
-    """Próximos resultados (14 días), cacheado 12 h."""
+    """Próximos resultados (14 días), cacheado 12 h.
+
+    Si el calendario falla, `events` es None y `error` dice por qué: con
+    `events: []` la pantalla pintaba «Ninguna empresa anuncia resultados en los
+    próximos 14 días», un fallo leído como «nada» (revisión 13). Y se recortaba
+    a 120 (y la pantalla a 40) sin decirlo: `total` es cuántos hay antes del
+    recorte, para escribir «40 de N, los más próximos»."""
     today = datetime.now(timezone.utc).date()
     try:
         payload = service.get(
@@ -178,11 +188,18 @@ def earnings_calendar(service: MarketDataService = Depends(get_service)):
             start=today.isoformat(),
             end=(today + timedelta(days=14)).isoformat(),
         )
-    except (DataNotFoundError, AllProvidersFailedError) as exc:
-        return {"events": [], "error": str(exc)}
+    except AllProvidersFailedError as exc:
+        # Sin el código del tipo de dato («para 'earnings_calendar'»): ahora la
+        # pantalla enseña el motivo.
+        motivo = "; ".join(f"{fuente}: {porque}" for fuente, porque in exc.reasons.items())
+        return {"events": None, "total": None, "error": f"ninguna fuente respondió ({motivo})"}
+    except DataNotFoundError as exc:
+        return {"events": None, "total": None, "error": str(exc)}
     events = sorted(payload["events"], key=lambda e: (e["date"] or "", e["symbol"] or ""))
     return {
-        "events": events[:120],
+        "events": events[:MAX_EVENTOS_CALENDARIO],
+        "total": len(events),
+        "error": None,
         "source": payload["source"],
         "as_of": payload["as_of"],
         "cached": payload.get("cached", False),

@@ -16,7 +16,45 @@ from app.registro import log
 
 import anthropic
 
-from app.llm.base import LLMProvider, LLMUnavailableError
+from app.llm.base import LLMProvider, LLMUnavailableError, ModeloDeclino
+
+
+def _uso(response, **extra) -> dict:
+    """Lo que gastó una respuesta, con la forma que lee `coste.coste_real`.
+
+    Con el respaldo del servidor (`fallbacks`), el `usage` de arriba es SOLO el
+    del intento que produjo la respuesta: si el modelo pedido declina a mitad y
+    contesta el de respaldo, lo del primero no aparecía y el coste enseñado era
+    el del último intento (con Opus 5.5 → Opus 5, 0,025 USD enseñados frente a
+    0,042 cobrados; revisión 14). Lo de cada intento va en `usage.iterations`:
+    los que declinaron como `message` y el que contestó como `fallback_message`,
+    cada uno con su modelo. Cuando hay uno de respaldo, se devuelven los intentos
+    (`intentos`) para que el coste sume cada uno a la tarifa de su modelo.
+
+    También cuando hay más de un intento y ninguno contestó: la cadena entera
+    declinó, el `usage` de arriba es solo el del último y los demás también se
+    pudieron cobrar (`coste.coste_declinado`, revisión 15, H6)."""
+    usage = getattr(response, "usage", None)
+    uso = {
+        "entrada": getattr(usage, "input_tokens", None),
+        "salida": getattr(usage, "output_tokens", None),
+        **extra,
+    }
+    iteraciones = [
+        it for it in getattr(usage, "iterations", None) or []
+        if getattr(it, "type", None) in ("message", "fallback_message")
+    ]
+    if len(iteraciones) > 1 or any(it.type == "fallback_message" for it in iteraciones):
+        uso["intentos"] = [
+            {
+                "tipo": it.type,
+                "modelo": getattr(it, "model", None),
+                "entrada": getattr(it, "input_tokens", None),
+                "salida": getattr(it, "output_tokens", None),
+            }
+            for it in iteraciones
+        ]
+    return uso
 
 
 class AnthropicProvider(LLMProvider):
@@ -55,15 +93,18 @@ class AnthropicProvider(LLMProvider):
             raise LLMUnavailableError("Sin conexión con el API de Claude") from exc
 
         # Los clasificadores pueden declinar (HTTP 200 + stop_reason refusal);
-        # comprobar SIEMPRE antes de leer content.
+        # comprobar SIEMPRE antes de leer content. Con `fallbacks`, un refusal
+        # final es que declinó la cadena entera, y lo que gastó viaja en el error.
         if response.stop_reason == "refusal":
-            raise LLMUnavailableError(
-                "El modelo declinó interpretar este contenido"
+            raise ModeloDeclino(
+                "El modelo declinó interpretar este contenido", _uso(response), getattr(response, "model", None)
             )
         text = next((b.text for b in response.content if b.type == "text"), "")
         if not text:
             raise LLMUnavailableError("Respuesta vacía del modelo")
-        return {"content": text, "model": response.model}
+        # Lo que gastó, con la misma forma que `extract`: «Pregúntale a la IA»
+        # enseña el coste de cada respuesta, no solo el estimado antes de enviar.
+        return {"content": text, "model": response.model, "usage": _uso(response)}
 
     def extract(self, system: str, prompt: str, schema: type) -> dict:
         """Extracción validada contra un esquema Pydantic.
@@ -113,7 +154,9 @@ class AnthropicProvider(LLMProvider):
             raise LLMUnavailableError("Sin conexión con el API de Claude") from exc
 
         if response.stop_reason == "refusal":
-            raise LLMUnavailableError("El modelo declinó analizar este documento")
+            raise ModeloDeclino(
+                "El modelo declinó analizar este documento", _uso(response), getattr(response, "model", None)
+            )
         if response.stop_reason == "max_tokens":
             # Con salida estructurada, quedarse sin tokens deja el objeto a
             # medias. Decirlo es mejor que servir un trimestre al que le faltan
@@ -126,15 +169,10 @@ class AnthropicProvider(LLMProvider):
         if parsed is None:
             raise LLMUnavailableError("El modelo no devolvió una estructura válida")
 
-        usage = response.usage
         return {
             "data": parsed.model_dump(),
             "model": response.model,
-            "usage": {
-                "entrada": getattr(usage, "input_tokens", None),
-                "salida": getattr(usage, "output_tokens", None),
-                "cache_lectura": getattr(usage, "cache_read_input_tokens", None),
-            },
+            "usage": _uso(response, cache_lectura=getattr(response.usage, "cache_read_input_tokens", None)),
         }
 
     def contar_tokens(self, system: str, prompt: str) -> int | None:

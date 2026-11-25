@@ -1,5 +1,5 @@
 /**
- * Cifras de la cartera (ítem 1.7). Parte de la respuesta REAL del backend para
+ * Cifras de Mi cartera › Posiciones (ítem 1.7; antes, del Portafolio). Parte de la respuesta REAL del backend para
  * la cartera de ACME (`empresa_completa.json`, todo en USD) y le añade una
  * posición en CAD para el caso de dos divisas, que el paquete no trae.
  *
@@ -11,8 +11,8 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import empresaCompleta from '../test/fixtures/empresa_completa.json'
-import { PortfolioPage } from './PortfolioPage'
+import empresaCompleta from '../../test/fixtures/empresa_completa.json'
+import { MiCarteraPage } from '../../pages/MiCarteraPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Cartera = {
@@ -21,9 +21,13 @@ type Cartera = {
   summary: Record<string, unknown>
 }
 
-vi.mock('../components/PriceChart', () => ({ PriceChart: () => null }))
+vi.mock('../PriceChart', () => ({ PriceChart: () => null }))
 
-const base = (empresaCompleta as { rutas: Rutas }).rutas
+// Las alertas de precio están en la misma pestaña y el paquete no las trae.
+const base: Rutas = {
+  ...(empresaCompleta as { rutas: Rutas }).rutas,
+  '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+}
 
 function conDosDivisas(): Rutas {
   const rutas: Rutas = structuredClone(base)
@@ -68,12 +72,15 @@ function servir(rutas: Rutas) {
 const fila = (simbolo: string) =>
   screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes(simbolo))
 
+const pintar = (pestana = 'posiciones') =>
+  render(<MemoryRouter initialEntries={[`/cartera?pestana=${pestana}`]}><MiCarteraPage /></MemoryRouter>)
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('cifras de la cartera', () => {
   it('con una sola divisa, importes sin código y agrupados en es-ES', async () => {
     servir(base)
-    render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
+    pintar()
     expect(await screen.findByText('Invertido')).toBeInTheDocument()
     const ko = fila('KO')!
     expect(ko.textContent).toContain('58,00')
@@ -83,7 +90,7 @@ describe('cifras de la cartera', () => {
 
   it('con dos divisas, cada importe dice la suya y los totales la base', async () => {
     servir(conDosDivisas())
-    render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
+    pintar()
     expect(await screen.findByText('Invertido')).toBeInTheDocument()
     const ry = fila('RY.TO')!
     expect(ry.textContent).toContain('120,00\u00a0CAD')
@@ -95,10 +102,36 @@ describe('cifras de la cartera', () => {
 
   it('con una sola divisa que no es la base, filas y totales dicen la suya', async () => {
     servir(soloCad())
-    render(<MemoryRouter><PortfolioPage /></MemoryRouter>)
+    pintar()
     expect(await screen.findByText('Invertido')).toBeInTheDocument()
     expect(fila('RY.TO')!.textContent).toContain('6.500,00\u00a0CAD')
     expect(screen.getByText('Invertido').parentElement?.textContent).toMatch(/\u00a0USD$/)
     expect(screen.getByText(/· todo convertido a USD/).textContent).toBe('1 divisa · todo convertido a USD')
   })
+
+  it('el riesgo abierto se escribe de su lado del tope y el margen no sale «0,0 %» (revisión 10)', async () => {
+    // Con 5,97 el número grande decía «6,0 %» sin rojo y «quedan 0,0 % de margen».
+    const rutas: Rutas = structuredClone(base)
+    const cartera = rutas['/api/portfolio'].json as Cartera & { risk_budget: Record<string, unknown> }
+    cartera.risk_budget = { ...cartera.risk_budget, riesgo_total_pct: 5.97, tope_pct: 6, margen_pct: 0.03, avisos: [] }
+    servir(rutas)
+    // El riesgo abierto está en la pestaña Riesgo.
+    pintar('riesgo')
+    expect(await screen.findByText('5,97 %')).toBeInTheDocument()
+    expect(screen.getByText(/quedan 0,03 % de margen/)).toBeInTheDocument()
+  })
+
+  it('un P&L que se escribe cero no sale en verde (revisión 13)', async () => {
+    // Con `value >= 0`, «0,00 (0,0 %)» se pintaba como una ganancia.
+    const rutas: Rutas = structuredClone(base)
+    const cartera = rutas['/api/portfolio'].json as Cartera
+    Object.assign(cartera.positions[0], { unrealized_pnl: 0.001, unrealized_pct: 0.00001 })
+    servir(rutas)
+    pintar()
+    expect(await screen.findByText('Invertido')).toBeInTheDocument()
+    const pnl = [...fila('KO')!.querySelectorAll('span.inline-flex')].find((s) => s.textContent === '0,00(0,0 %)')!
+    expect(pnl.className.split(/\s+/)).not.toContain('text-emerald-600')
+    expect(pnl.className.split(/\s+/)).toContain('text-slate-500')
+  })
 })
+

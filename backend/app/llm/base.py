@@ -13,9 +13,29 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from app.llm.coste import coste_declinado
+
 
 class LLMUnavailableError(Exception):
     """El proveedor no está configurado o rechazó la petición."""
+
+
+class ModeloDeclino(LLMUnavailableError):
+    """El modelo (y, con el respaldo del servidor, también el de respaldo)
+    declinó la petición: no hay respuesta, pero lo gastado se pudo cobrar.
+
+    Lleva el uso de cada intento (`uso`, con la forma de `anthropic_provider._uso`)
+    y el mensaje ya dice lo gastado (`coste.coste_declinado`): antes el uso se
+    tiraba con la respuesta y el 502 de «Pregúntale a la IA» decía solo «El
+    modelo declinó…», sin cifra ni «no se sabe» (revisión 15, H6). Quien la
+    atrapa como `LLMUnavailableError` enseña el mensaje y ya lo dice."""
+
+    def __init__(self, motivo: str, uso: dict | None, modelo: str | None):
+        self.motivo = motivo
+        self.uso = uso
+        self.modelo = modelo
+        self.coste = coste_declinado(uso, modelo)
+        super().__init__(f"{motivo}. {self.coste['nota']}")
 
 
 class LLMProvider(ABC):
@@ -27,7 +47,10 @@ class LLMProvider(ABC):
 
     @abstractmethod
     def interpret(self, system: str, prompt: str) -> dict:
-        """-> {content: str (markdown), model: str}"""
+        """-> {content: str (markdown), model: str, usage?: {entrada, salida}}
+
+        `usage` es opcional: un proveedor que no da el recuento de tokens no lo
+        trae, y quien enseña el coste dice entonces que no se conoce."""
         ...
 
     def extract(self, system: str, prompt: str, schema: type) -> dict:

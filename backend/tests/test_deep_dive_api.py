@@ -11,6 +11,7 @@ from app.db.engine import get_session
 from app.deps import get_llm, get_service
 from app.main import app
 from app.providers.base import DataNotFoundError, iso_utc
+from app.providers.router import AllProvidersFailedError
 
 
 def _periods(n=8):
@@ -51,6 +52,8 @@ class DeepDiveService:
         if data_type == "financials":
             if symbol == "NOSEC":
                 raise DataNotFoundError("edgar: no registrada en la SEC")
+            if symbol == "CAIDO":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
             return {**common, "symbol": symbol, "periods": _periods()}
         if data_type == "profile":
             return {
@@ -147,10 +150,117 @@ def test_veredicto_lleva_invalidadores_y_disclaimer(client):
 
 def test_dcf_precargado_con_escenarios(client):
     dcf = client.get("/api/deep-dive/AAPL").json()["dcf"]
-    assert dcf is not None
-    assert set(dcf["scenarios"]) == {"bear", "base", "bull"}
-    valores = [dcf["scenarios"][k]["value_per_share"] for k in ("bear", "base", "bull")]
-    assert valores[0] < valores[1] < valores[2]  # ordenados por construcción
+    assert dcf is not None and dcf["disponible"] is True
+    assert set(dcf["escenarios"]) == {"bajista", "base", "alcista"}
+    rangos = [dcf["escenarios"][k]["rango"] for k in ("bajista", "base", "alcista")]
+    assert all(r["disponible"] for r in rangos)
+    # Un rango por escenario, nunca un valor suelto (tres valores son tres precios objetivo).
+    assert all(r["bajo"] < r["centro"] < r["alto"] for r in rangos)
+    assert rangos[0]["centro"] < rangos[1]["centro"] < rangos[2]["centro"]
+
+
+def test_el_dcf_del_informe_es_el_del_modulo(client):
+    """Ítem 3.3: el informe se hacía su propio DCF (WACC 12/10/9 %, crecimiento ±4
+    puntos, un valor por escenario). Con las mismas cuentas tiene que dar los
+    mismos rangos que el módulo Valoración, que es lo que enseña la ficha."""
+    informe = client.get("/api/deep-dive/AAPL").json()["dcf"]
+    modulo = client.post("/api/valuation/AAPL").json()
+    assert informe["escenarios"] == modulo["escenarios"]
+    assert informe["rango_global"] == modulo["rango_global"]
+    for k in ("base_fcf", "net_debt", "shares_outstanding", "precio_actual", "fiscal_year", "years"):
+        assert informe["entradas"][k] == modulo["entradas"][k], k
+
+
+@pytest.mark.parametrize("quitar, parcial", [(("short_term_debt",), ["short_term_debt"]),
+                                             (("long_term_debt", "short_term_debt"), None)])
+def test_el_dcf_del_informe_lee_la_deuda_parcial_y_la_desconocida(session_factory, quitar, parcial):
+    """M5: el informe sumaba la deuda con `total_debt` y no decía que fuera
+    parcial. Sin deuda ninguna, ningún escenario sale con valor: no se valora como
+    si la empresa no debiera nada."""
+
+    class SinDeuda(DeepDiveService):
+        def get(self, data_type, **kwargs):
+            r = super().get(data_type, **kwargs)
+            if data_type == "financials":
+                r["periods"] = [{**p, **{k: None for k in quitar}} for p in r["periods"]]
+            return r
+
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_service] = SinDeuda
+    app.dependency_overrides[get_session] = sesion
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        dcf = TestClient(app).get("/api/deep-dive/AAPL").json()["dcf"]
+    finally:
+        app.dependency_overrides.clear()
+    assert dcf["entradas"]["deuda_parcial"] == parcial
+    if parcial:
+        assert "sobreestimado" in dcf["entradas"]["nota_deuda"]
+        assert all(e["rango"]["disponible"] for e in dcf["escenarios"].values())
+    else:
+        assert dcf["entradas"]["net_debt"] is None
+        assert not any(e["rango"]["disponible"] for e in dcf["escenarios"].values())
+        assert all(e["rango"]["faltan"] == ["deuda neta"] for e in dcf["escenarios"].values())
+        assert dcf["rango_global"] is None
+
+
+def _informe_con(session_factory, cambiar) -> dict:
+    """El informe de AAPL con los ejercicios cambiados por `cambiar(periodo)`."""
+
+    class Cambiado(DeepDiveService):
+        def get(self, data_type, **kwargs):
+            r = super().get(data_type, **kwargs)
+            if data_type == "financials":
+                r["periods"] = [{**p, **cambiar(p)} for p in r["periods"]]
+            return r
+
+    def sesion():
+        s = session_factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_service] = Cambiado
+    app.dependency_overrides[get_session] = sesion
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        c = TestClient(app)
+        return {"informe": c.get("/api/deep-dive/AAPL").json(), "modulo": c.post("/api/valuation/AAPL").json()}
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("cambiar, dice", [
+    # Capex mayor que el flujo operativo: FCF negativo.
+    (lambda p: {"capex": p["cfo"] * 2}, "no es positivo"),
+    (lambda p: {"capex": None}, "flujo de caja libre"),
+    (lambda p: {"shares_outstanding": None}, "acciones en circulación"),
+])
+def test_lo_que_el_informe_no_precarga_lo_dice_con_su_motivo(session_factory, cambiar, dice):
+    """Revisión 15, H7: con el FCF de partida negativo la pestaña Valoración de la
+    ficha enseña tres rangos y el informe omitía la sección entera, sin decir que
+    faltaba ni por qué (`_dcf_defaults` devolvía None). Victor decidió que el
+    informe no lo precargue; ahora lo dice."""
+    r = _informe_con(session_factory, cambiar)
+    dcf = r["informe"]["dcf"]
+    assert dcf is not None and dcf["disponible"] is False, dcf
+    assert dice in dcf["motivo"] and "análisis completo" in dcf["motivo"], dcf["motivo"]
+    assert "escenarios" not in dcf
+
+
+def test_con_fcf_negativo_el_modulo_si_valora_lo_que_el_informe_no_precarga(session_factory):
+    """Guarda de H7: el motivo dice que el análisis completo «sí lo valora», y es
+    verdad con el mismo filing."""
+    r = _informe_con(session_factory, lambda p: {"capex": p["cfo"] * 2})
+    assert all(e["rango"]["disponible"] for e in r["modulo"]["escenarios"].values())
+    assert "sí lo valora" in r["informe"]["dcf"]["motivo"]
 
 
 def test_crecimiento_y_margenes_coherentes_con_los_datos(client):
@@ -165,6 +275,15 @@ def test_empresa_fuera_de_la_sec_da_404_explicativo(client):
     resp = client.get("/api/deep-dive/NOSEC")
     assert resp.status_code == 404
     assert "EDGAR" in resp.json()["detail"]
+
+
+def test_edgar_caido_es_un_fallo_no_una_empresa_fuera_de_la_sec(client):
+    """Segunda revisión del 2.1: con EDGAR caído el informe decía «Sin estados
+    financieros… EDGAR solo cubre empresas registradas en la SEC» con un 404, y
+    la ficha no podía distinguirlo de una ausencia de verdad."""
+    resp = client.get("/api/deep-dive/CAIDO")
+    assert resp.status_code == 502
+    assert "No se pudieron descargar" in resp.json()["detail"]
 
 
 def test_narrativa_requiere_llm(client):

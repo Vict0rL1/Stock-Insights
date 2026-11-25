@@ -31,7 +31,7 @@ def overlap_weight(holdings_a: list[dict], holdings_b: list[dict]) -> dict:
             "pesos_desconocidos": [],
             "motivo": (
                 "No se ha podido leer la composición de al menos uno de los dos: el "
-                "solapamiento no se sabe. No es 0 %, es desconocido."
+                "solapamiento no se sabe. No es 0\u00a0%, es desconocido."
             ),
             "note": NOTA,
         }

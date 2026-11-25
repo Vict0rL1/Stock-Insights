@@ -139,6 +139,6 @@ def get_etf(symbol: SimboloRuta, service: MarketDataService = Depends(get_servic
     payload = _fetch_etf(service, validar_simbolo(symbol))
     payload["coverage_note"] = (
         "La fuente gratuita publica solo los mayores holdings; el desglose no "
-        "suma 100 % y no es la cartera completa."
+        "suma 100\u00a0% y no es la cartera completa."
     )
     return payload

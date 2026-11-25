@@ -4,24 +4,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 
-from app.analysis.fundamentals import (
-    derive_ratio_series,
-    deuda_total,
-    free_cash_flow,
-    growth_summary,
-    nota_deuda_parcial,
-)
+from app.analysis.fundamentals import derive_ratio_series, growth_summary, nota_deuda_parcial
 from app.analysis.health import health_snapshot
 from app.analysis import logos
 from app.analysis.indicators import macd, rsi, sma
-from app.analysis.risk import annualized_volatility, beta, daily_returns, max_drawdown
-from app.analysis.valuation import dcf, scenario_set, sensitivity_grid
+from app.analysis.risk import annualized_volatility, beta, daily_returns, max_drawdown, ventana
+from app.analysis.valuation import cimientos, scenario_set, sensitivity_grid
 from app.cache.cache import MarketDataService
 from app.config import settings
 from app.deps import get_service
+from app.formato import decimales_precio
 from app.providers.base import DataNotFoundError
 from app.providers.router import AllProvidersFailedError
 from app.schemas.market import (
@@ -61,6 +56,13 @@ def _fetch(service: MarketDataService, data_type: str, **kwargs) -> dict:
 
 def _nan_to_none(series: pd.Series) -> list[float | None]:
     return [None if pd.isna(v) else round(float(v), 4) for v in series]
+
+
+def _medias(series: pd.Series) -> list[float | None]:
+    """Una media móvil es un precio: con 4 decimales fijos, a 0,00004 salía 0,0
+    y a 0,00005 el doble del precio, pintadas junto a las velas (revisión de
+    A1). Al menos 4 decimales, como antes, y más si el precio los necesita."""
+    return [None if pd.isna(v) else round(float(v), max(4, decimales_precio(float(v)))) for v in series]
 
 
 @router.get("/{symbol}/quote", response_model=QuoteResponse)
@@ -161,9 +163,9 @@ def get_history(
     macd_df = macd(closes)
     payload["range"] = range
     payload["indicators"] = {
-        "sma20": _nan_to_none(sma(closes, 20)),
-        "sma50": _nan_to_none(sma(closes, 50)),
-        "sma200": _nan_to_none(sma(closes, 200)),
+        "sma20": _medias(sma(closes, 20)),
+        "sma50": _medias(sma(closes, 50)),
+        "sma200": _medias(sma(closes, 200)),
         "rsi14": _nan_to_none(rsi(closes, 14)),
         "macd": {
             "macd": _nan_to_none(macd_df["macd"]),
@@ -215,16 +217,42 @@ def get_health(symbol: SimboloRuta, service: MarketDataService = Depends(get_ser
     return snapshot
 
 
-@router.get("/{symbol}/valuation/defaults")
-def get_valuation_defaults(symbol: SimboloRuta, service: MarketDataService = Depends(get_service)):
-    """Valores de partida para el DCF, derivados de datos reales (EDGAR +
-    cotización cacheada). Son un punto de arranque editable, no una
-    recomendación."""
+# --- Alias obsoletos del DCF de la ficha (ítem 3.3) -----------------------------------
+#
+# La pestaña Valoración de la ficha usaba estos dos endpoints con supuestos propios
+# (WACC 11/10/9 %, crecimiento ±3 puntos escrito en el frontend, el sugerido
+# acotado a [0 %, 15 %], que subía a 0 % un crecimiento negativo medido) y un valor
+# puntual por escenario: tres precios objetivo. Ahora enseña un resumen de
+# `POST /api/valuation/{s}`, el único DCF de la app. Se quedan UNA versión con la
+# respuesta de siempre (el golden `dcf_ficha` la congela) para no romper a quien los
+# llame, y se retiran en la siguiente. La aritmética es la de
+# `app/analysis/valuation.py`; aquí solo queda el tope legado del crecimiento
+# sugerido y la negativa a calcular sin deuda neta. La comparación de supuestos de
+# las dos implementaciones está en el README, «Un solo DCF».
+SUCESOR_DCF = "/api/valuation/{symbol}"
+
+
+def _marcar_obsoleto(response: Response, symbol: str) -> None:
+    """Que se vea en la respuesta, no solo en la documentación: `Deprecation` y un
+    `Link` al sucesor. En OpenAPI van con `deprecated=True`."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Link"] = f'<{SUCESOR_DCF.format(symbol=symbol)}>; rel="successor-version"'
+
+
+@router.get("/{symbol}/valuation/defaults", deprecated=True)
+def get_valuation_defaults(
+    symbol: SimboloRuta, response: Response, service: MarketDataService = Depends(get_service)
+):
+    """OBSOLETO (ítem 3.3): usa `POST /api/valuation/{symbol}`, que propone los
+    escenarios desde el histórico y devuelve rangos. Se retira en la próxima versión.
+
+    Valores de partida del DCF de la ficha, derivados de datos reales (EDGAR +
+    cotización cacheada)."""
     symbol = validar_simbolo(symbol)
+    _marcar_obsoleto(response, symbol)
     financials = _fetch(service, "financials", symbol=symbol)
-    periods = financials["periods"]
-    latest = periods[-1]
-    growth = growth_summary(periods)
+    c = cimientos(financials["periods"])
+    growth = c["crecimiento"]
 
     price = None
     try:
@@ -232,32 +260,30 @@ def get_valuation_defaults(symbol: SimboloRuta, service: MarketDataService = Dep
     except (DataNotFoundError, AllProvidersFailedError):
         pass
 
-    fcf = free_cash_flow(latest)
-    deuda = deuda_total(latest)
-    debt = deuda["valor"]
     # `is None`, no `or`: un crecimiento medido de 0,0 es un dato (la empresa
-    # estancada) y con `or` se cambiaba por el de ingresos. Mismo fallo que se
-    # corrigió en `routers/valuation.py`.
+    # estancada) y con `or` se cambiaba por el de ingresos.
     suggested_growth = growth.get("fcf_cagr")
     if suggested_growth is None:
         suggested_growth = growth.get("revenue_cagr")
     if suggested_growth is not None:
-        # El pasado no se extrapola alegremente: se acota a [0 %, 15 %].
+        # El tope legado de este alias, [0 %, 15 %]. El módulo respeta un
+        # crecimiento negativo medido; este lo subía a 0 % (M5). Se conserva solo
+        # para no cambiar la respuesta durante la versión que le queda.
         suggested_growth = max(0.0, min(suggested_growth, 0.15))
     return {
         "symbol": symbol,
         "source": financials["source"],
         "as_of": financials["as_of"],
         "cached": financials.get("cached", False),
-        "base_fcf": fcf,
-        "net_debt": (debt - (latest.get("cash") or 0.0)) if debt is not None else None,
-        "deuda_parcial": deuda["falta"] if deuda["parcial"] else None,
-        "nota_deuda": nota_deuda_parcial(deuda["falta"]) if deuda["parcial"] else None,
-        "shares_outstanding": latest.get("shares_outstanding"),
+        "base_fcf": c["base_fcf"],
+        "net_debt": c["net_debt"],
+        "deuda_parcial": c["deuda_parcial"],
+        "nota_deuda": nota_deuda_parcial(c["deuda_parcial"]) if c["deuda_parcial"] else None,
+        "shares_outstanding": c["shares_outstanding"],
         "historical_growth": growth,
         "suggested_growth_capped": suggested_growth,
         "current_price": price,
-        "fiscal_year": latest.get("fiscal_year"),
+        "fiscal_year": c["fiscal_year"],
         "note": (
             "Punto de partida calculado desde estados financieros reales; "
             "edita cada supuesto según tu propia tesis."
@@ -265,18 +291,22 @@ def get_valuation_defaults(symbol: SimboloRuta, service: MarketDataService = Dep
     }
 
 
-@router.post("/{symbol}/valuation/dcf")
+@router.post("/{symbol}/valuation/dcf", deprecated=True)
 def post_dcf(
     symbol: SimboloRuta,
+    response: Response,
     request: DcfRequest = Body(...),
     service: MarketDataService = Depends(get_service),
 ):
-    """Ejecuta el DCF con TUS supuestos. Cálculo 100 % local: no gasta APIs.
+    """OBSOLETO (ítem 3.3): usa `POST /api/valuation/{symbol}` con tus `escenarios`
+    (y, si quieres, `base_fcf`, `net_debt`, `shares_outstanding`, `years`): devuelve
+    un rango por escenario en vez de un valor. Se retira en la próxima versión.
 
-    Devuelve escenarios bajista/base/alcista + matriz de sensibilidad, nunca
-    un único número.
+    DCF con TUS supuestos, un valor por escenario y la matriz WACC × crecimiento.
+    Cálculo 100 % local: no gasta APIs.
     """
     symbol = validar_simbolo(symbol)
+    _marcar_obsoleto(response, symbol)
     if request.net_debt is None or request.net_debt != request.net_debt:
         raise HTTPException(
             status_code=422,
@@ -379,6 +409,10 @@ def get_peers(symbol: SimboloRuta, service: MarketDataService = Depends(get_serv
     }
 
 
+# Un año de sesiones: la ventana de beta, volatilidad y drawdown.
+SESIONES_RIESGO = 252
+
+
 @router.get("/{symbol}/risk")
 def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_service)):
     """Beta vs. SPY, volatilidad anualizada y máximo drawdown (1 año).
@@ -386,17 +420,20 @@ def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_servi
     Reutiliza el histórico ya cacheado del gráfico: coste marginal cero.
     """
     symbol = validar_simbolo(symbol)
-    history = _fetch(service, "price_history", symbol=symbol, interval="1day", outputsize=252)
+    history = _fetch(service, "price_history", symbol=symbol, interval="1day", outputsize=SESIONES_RIESGO)
+    # Las últimas `SESIONES_RIESGO` aunque la fuente dé más: la ventana que se
+    # declara abajo es la que se mide.
+    barras = history["bars"][-SESIONES_RIESGO:]
     closes = pd.Series(
-        [b["close"] for b in history["bars"]],
-        index=[b["ts"][:10] for b in history["bars"]],
+        [b["close"] for b in barras],
+        index=[b["ts"][:10] for b in barras],
     )
     returns = daily_returns(closes)
 
     beta_value = None
     benchmark = "SPY"
     try:
-        bench = service.get("price_history", symbol=benchmark, interval="1day", outputsize=252)
+        bench = service.get("price_history", symbol=benchmark, interval="1day", outputsize=SESIONES_RIESGO)
         bench_closes = pd.Series(
             [b["close"] for b in bench["bars"]],
             index=[b["ts"][:10] for b in bench["bars"]],
@@ -407,7 +444,9 @@ def get_risk(symbol: SimboloRuta, service: MarketDataService = Depends(get_servi
 
     return {
         "symbol": symbol,
-        "window": "1Y (barras diarias)",
+        # La ventana medida, no un rótulo fijo: era «1Y (barras diarias)», en
+        # inglés y tuviera la serie lo que tuviera (revisión 12, visual).
+        "ventana": ventana(closes, SESIONES_RIESGO),
         "beta_vs_spy": beta_value,
         "annualized_volatility": annualized_volatility(returns),
         "max_drawdown": max_drawdown(closes),

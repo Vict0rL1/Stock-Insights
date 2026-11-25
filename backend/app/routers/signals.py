@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -28,7 +29,7 @@ from app.analysis.backtest import (
 from app.analysis import experiments
 from app.analysis.rule_backtest import rebalance_dates_mensuales, run_rule_backtest
 from app.analysis.shortlist import construir_lista_corta
-from app.analysis.sizing import dimensionar
+from app.analysis.sizing import RECORTE_SIN_HUECO_DE_RIESGO, aviso_cartera_parcial, dimensionar
 from app.analysis.factors import (
     DEFAULT_WEIGHTS,
     build_raw_factors,
@@ -38,6 +39,7 @@ from app.analysis.factors import (
 )
 from app.analysis.signal import (
     FAVORABLE_MIN,
+    LABEL_THRESHOLDS,
     UNFAVORABLE_MAX,
     build_signal,
     calibrate,
@@ -49,14 +51,17 @@ from app.analysis.markets import (
     MIN_SECTOR_SIZE,
     list_markets,
     load_market,
+    parametros_lista_diaria,
     universes_meta,
 )
 from app.analysis.universes import get_universe, list_universes
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
+from app.datos import Estado
 from app.db.models import Instrument, LlmOutput, Position, WatchlistItem
 from app.deps import get_llm, get_service
-from app.formato import fmt_num, fmt_pct, plural
+from app.formato import fmt_dinero, fmt_fecha, fmt_num, fmt_pct, plural
+from app.registro import log
 from app.llm.base import LLMProvider, LLMUnavailableError
 from app.llm.signal_llm import explain_signal, extract_events, sentiment_from_events
 from app.providers.base import DataNotFoundError
@@ -68,9 +73,14 @@ logger = logging.getLogger(__name__)
 
 MAX_UNIVERSE = 15  # tope de coste: cada símbolo cuesta llamadas de fundamentales
 
-# Fundamentales nuevos por petición de /today. Con Finnhub a 60/min, 120 deja
+# Fundamentales nuevos por petición de /today: cada empresa que necesita
+# descargar algo (el companyfacts de EDGAR o, si EDGAR no la tiene, los de
+# Finnhub) cuenta UNA vez; lo cacheado es gratis. Con Finnhub a 60/min, 120 deja
 # margen para que el resto de la app siga funcionando mientras se completa el
-# S&P 500 a lo largo de varias pasadas.
+# S&P 500 a lo largo de varias pasadas; y 120 companyfacts de varios MB (de 0,3
+# a 1 s cada uno) son una pasada de uno o dos minutos, por debajo de los 300/min
+# que la app se permite contra la SEC. La primera pasada de todas la pide más
+# corta el frontend (`useListaDiaria`, `PRIMERA_PASADA`).
 DEFAULT_FETCH_BUDGET = 120
 
 # Campos que la UI necesita sí o sí en la respuesta de /today. Sirven para
@@ -85,6 +95,10 @@ _PAYLOAD_KEYS = frozenset(
         "scored",
         "requested",
         "complete",
+        # Con qué cartera se calculó: sin ella no se puede decir si la lista
+        # cacheada está desfasada (revisión 13), así que lo guardado antes se
+        # recalcula una vez.
+        "huella_cartera",
     }
 )
 
@@ -133,6 +147,19 @@ def _validate(symbols: list[str]) -> list[str]:
     return out
 
 
+# Una empresa que NINGUNA fuente tiene (EDGAR contestó que no la tiene, o que sus
+# estados no dan ningún múltiplo, y Finnhub que no la tiene) se recuerda en la
+# caché lo mismo que vive lo que sí se descarga (`CACHE_TTL_SECONDS`, 24 h), como
+# `cache.RECORDAR_FALLO` con las cotizaciones. Sin recordarlo, como no se guarda
+# nada suyo, gastaba una unidad del presupuesto —y una llamada a Finnhub, y a
+# veces un companyfacts entero— en CADA pasada: con cinco así en el S&P 500, las
+# pasadas automáticas (40 + 4 × 120) se quedaban a 2 de cubrirlo (revisión 14).
+# Un fallo de las fuentes (caídas, sin cuota, sin clave) no es una respuesta y
+# no se recuerda: se reintenta en la pasada siguiente.
+SIN_FUNDAMENTALES = "sin_fundamentales"
+SIN_EN_NINGUNA_FUENTE = "sin fundamentales en ninguna fuente"
+
+
 def _safe_get(service: MarketDataService, data_type: str, **kwargs):
     try:
         return service.get(data_type, **kwargs)
@@ -145,7 +172,7 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
     cuota agotada», y el 502 lo presentaba como el motivo real (revisión F1).
     Se lee detrás de un recuento: «12 sin cuota en las fuentes de fundamentales»."""
     if isinstance(exc, DataNotFoundError):
-        return "sin fundamentales en ninguna fuente"
+        return SIN_EN_NINGUNA_FUENTE
     motivos = [m for m in getattr(exc, "reasons", {}).values() if not m.startswith(("no configurado", "no soporta"))]
     if not motivos:
         return "sin ninguna fuente de fundamentales configurada"
@@ -154,15 +181,41 @@ def _por_que_sin_fundamentales(exc: Exception) -> str:
     return "con las fuentes de fundamentales fallando"
 
 
+def _sin_datos_por_un_fallo(n: int) -> str:
+    """«22 sin datos por un fallo de las fuentes»: lo dicen la nota y `sin_congelar`."""
+    return f"{fmt_num(n, 0)} sin datos por un fallo de las fuentes"
+
+
+def _fallo_de_las_fuentes(exc: Exception) -> bool:
+    """Si `exc` es un FALLO de las fuentes (caídas, sin cuota, una respuesta
+    rota), no la respuesta «no la tengo».
+
+    La diferencia decide si la lista cubre el mercado (revisión 15, H1): lo que
+    ninguna fuente tiene no lo tendrá en la pasada siguiente y no impide
+    completarla; lo que una fuente no pudo dar quizá lo dé, y mientras tanto la
+    lista no es la del mercado entero. Antes las dos iban a `unavailable` y solo
+    `pending` contaba: con EDGAR dando 503 y Finnhub sin cuota para un sector
+    entero, la lista salía `complete` y se congelaba como la decisión del día
+    sin ese sector. Una cadena sin ninguna fuente configurada («no configurado»,
+    «no soporta») tampoco es un fallo: no hay a quién volver a preguntar."""
+    if not isinstance(exc, AllProvidersFailedError):
+        return False
+    return any(not m.startswith(("no configurado", "no soporta")) for m in exc.reasons.values())
+
+
 def _lista_corta_dimensionada(
     ranked: list[dict], posiciones: dict[str, dict] | None = None,
     efectivo_usd: float | None = None,
+    efectivo_detalle: list[dict] | None = None,
+    efectivo_motivo: str | None = None,
 ) -> dict:
     """La lista corta, con el tamaño decidido sobre el conjunto.
 
-    `efectivo_usd`: el efectivo anotado, ya en dólares, o None si no se conoce.
-    Con él, los pesos de lo que ya tienes son sobre el capital total, como en el
-    coste de oportunidad; sin él, sobre lo invertido, y la nota lo dice.
+    `efectivo_usd`: el efectivo anotado, ya en dólares, o None si no se conoce;
+    `efectivo_detalle`: de qué anotaciones sale (moneda, importe, fecha). Con él,
+    los pesos de lo que ya tienes son sobre el capital total, como en el coste
+    de oportunidad; sin él, sobre lo invertido. La respuesta dice qué base se
+    usó y con qué efectivo, y la instantánea lo congela.
 
     El peso que trae cada decisión es BRUTO: lo que su stop permitiría mirando
     esa empresa sola. Aquí se aplica lo que solo se puede saber viendo la
@@ -188,19 +241,51 @@ def _lista_corta_dimensionada(
         for s in corta["ideas"]
     ]
     candidatas = [c for c in candidatas if c["peso_bruto_pct"]]
-    cartera, aviso_cartera = _cartera_actual(ranked, posiciones or {}, efectivo_usd)
+    cartera, aviso_cartera, base = _cartera_actual(ranked, posiciones or {}, efectivo_usd, con_tamano=bool(candidatas))
+    from app.oportunidad import SIN_ANOTAR
+
+    sin_cambio = None
+    if base == "invertido" and efectivo_usd is None and efectivo_motivo and efectivo_motivo != SIN_ANOTAR:
+        # Anotado pero sin tipo de cambio: la nota decía «no hay efectivo anotado…
+        # Puedes anotarlo en Cartera» y se perdía el motivo (revisión 3).
+        # Sin su punto final: va entre paréntesis dentro de una frase (revisión 11).
+        base, sin_cambio = "invertido_sin_cambio", f"({efectivo_motivo.rstrip('.')})"
     interesan = {c["symbol"] for c in candidatas} | {p["symbol"] for p in cartera}
 
     corta["sizing"] = dimensionar(
         candidatas,
         retornos=_retornos_desde_spark(ranked, interesan),
         cartera=cartera,
-        base_cartera="capital" if efectivo_usd is not None else "invertido",
+        base_cartera=base,
+        detalle_base=_detalle_efectivo(efectivo_detalle) if base == "capital" else sin_cambio,
+        parcial=aviso_cartera is not None,
+        # Sin ninguna posición la nota no habla de «tus posiciones abiertas»
+        # (revisión 12, visual).
+        sin_posiciones=not posiciones,
+    )
+    corta["sizing"]["base_cartera"] = base
+    corta["sizing"]["efectivo"] = (
+        {"usd": efectivo_usd, "detalle": efectivo_detalle or []} if efectivo_usd is not None else None
     )
     if aviso_cartera:
         corta["sizing"]["aviso_cartera"] = aviso_cartera
     for idea in corta["ideas"]:
         idea["peso_final_pct"] = corta["sizing"]["pesos"].get(idea["symbol"])
+    # Ninguna idea nueva cabe, esté o no en la lista corta: la cartera que ya
+    # tienes supera SOLA el objetivo de volatilidad, y eso no depende de qué
+    # candidatas se dimensionen (el dimensionador lo dice con este recorte). Las
+    # que califican fuera de la lista corta no pasan por el dimensionador, y la
+    # tabla las pintaba «Comprar» en verde —118 filas— bajo una cabecera que
+    # decía «ninguna cabe hoy en tu cartera» (revisión 14, H12). Va fuera de
+    # `sizing` a propósito: es una lectura de su resultado, no un límite más.
+    # Solo se afirma con la cartera medida sobre el capital: sin efectivo anotado
+    # (`invertido`) o sin sumarlo (`invertido_parcial`, una posición sin valorar)
+    # el libro es el 100 %, y «Sin sitio… tendrías que vender algo antes» de TODAS
+    # salía de ese supuesto (con 99.000 USD anotados, el mismo libro dejaba un
+    # 9 % a cada una), mientras el coste de oportunidad lo llama INDETERMINADO
+    # (revisión 15, costuras H5). Entonces None: no se sabe.
+    sin_hueco = any(r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) for r in corta["sizing"].get("recortes") or [])
+    corta["sin_hueco_de_riesgo"] = sin_hueco if base == "capital" or not sin_hueco else None
     return corta
 
 
@@ -269,9 +354,28 @@ def _retornos_desde_spark(
     return salida
 
 
+def _detalle_efectivo(detalle: list[dict] | None) -> str | None:
+    """«(efectivo anotado: 10.000 USD, del 3 oct 2026)» para la nota del tamaño.
+
+    El efectivo afloja los topes; uno anotado hace un año los afloja igual. Sin
+    decidir aquí si eso es demasiado viejo (sería un umbral nuevo), al menos se
+    ve la cifra y su fecha (revisión de M3).
+    """
+    if not detalle:
+        return None
+    # Un tipo de cambio viejo se dice con su fecha (auditoría del 19 oct): la
+    # cifra en dólares depende de él tanto como del importe.
+    partes = [
+        f"{fmt_dinero(d.get('importe'), d.get('moneda'))}, del {fmt_fecha(d.get('as_of'))}"
+        + (f", al tipo de cambio del {fmt_fecha(d.get('tipo_fecha'))}" if d.get("tipo_fresco") is False else "")
+        for d in detalle
+    ]
+    return f"(efectivo anotado: {'; '.join(partes)})"
+
+
 def _cartera_actual(
-    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None
-) -> tuple[list[dict], str | None]:
+    ranked: list[dict], posiciones: dict[str, dict], efectivo_usd: float | None = None, *, con_tamano: bool = True
+) -> tuple[list[dict], str | None, str]:
     """Las posiciones abiertas, con peso y sector, para que los topes las cuenten.
 
     Con efectivo anotado (`efectivo_usd`, en dólares), el peso es sobre el
@@ -287,7 +391,7 @@ def _cartera_actual(
     peor que ninguno si no sabes que le falta la otra mitad.
     """
     if not posiciones:
-        return [], None
+        return [], None, "capital" if efectivo_usd is not None else "invertido"
 
     por_simbolo = {s["symbol"]: s for s in ranked}
     valoradas: list[dict] = []
@@ -309,19 +413,30 @@ def _cartera_actual(
         )
 
     total = sum(p["valor"] for p in valoradas)
-    capital = total + efectivo_usd if total and efectivo_usd is not None else total
+    # El efectivo solo se suma si toda la cartera está valorada. Con posiciones
+    # fuera del barrido (otro mercado, sin precio), sumar TODO el efectivo a
+    # MEDIA cartera inventa una liquidez que no existe y afloja los topes: el
+    # lado no prudente (revisión de M3). Entonces se mide sobre lo valorado, que
+    # sobreestima la concentración, y la nota lo dice.
+    if efectivo_usd is None:
+        base = "invertido"
+    elif sin_valorar:
+        base = "invertido_parcial"
+    else:
+        base = "capital"
+    capital = total + efectivo_usd if base == "capital" and efectivo_usd is not None else total
     aviso = None
     if sin_valorar:
+        # La misma frase que la ficha: aquí decía «Tu concentración real es mayor»
+        # al lado de la nota «el tamaño puede quedarse corto o pasarse», y sin
+        # ninguna valorada no hay nada que pese de más (revisión 8).
         muestra = ", ".join(sorted(sin_valorar)[:5])
-        aviso = (
-            f"{len(sin_valorar)} {plural(len(sin_valorar), 'posición abierta no entra', 'posiciones abiertas no entran')} "
-            f"en los topes por sector y correlación ({muestra}): este barrido no "
-            f"{plural(len(sin_valorar), 'la cubre o no tiene', 'las cubre o no tienen')} precio. "
-            "Tu concentración real es mayor que la que se ve "
-            "aquí."
+        aviso = aviso_cartera_parcial(
+            len(sin_valorar), f"{muestra}: fuera de este barrido o sin precio", hay_valoradas=bool(total),
+            con_tamano=con_tamano,
         )
     if not total:
-        return [], aviso
+        return [], aviso, base
 
     return [
         {
@@ -331,32 +446,70 @@ def _cartera_actual(
             "vol_anual_pct": p["vol_anual_pct"],
         }
         for p in valoradas
-    ], aviso
+    ], aviso, base
 
 
-def _efectivo_para_hoy(
-    session: Session, service: MarketDataService, posiciones: dict[str, dict]
-) -> float | None:
-    """El efectivo anotado en dólares, o None si no se conoce.
+def _efectivo_para_hoy(session: Session, service: MarketDataService) -> dict:
+    """El efectivo anotado, en dólares y con su detalle, o `usd: None`.
 
-    Solo hace falta con posiciones abiertas: sin cartera, el efectivo no cambia
-    ningún peso. Una moneda sin tipo de cambio deja el total desconocido (no se
-    supone 1:1) y Hoy mide entonces sobre lo invertido, diciéndolo.
+    Se lee siempre, también sin posiciones: si no, la nota decía «no hay efectivo
+    anotado» a quien lo tiene todo en efectivo (revisión de M3). Una moneda sin
+    tipo de cambio deja el total desconocido (no se supone 1:1). Y nada de esto
+    puede costar la lista: un fallo inesperado al leerlo se registra y Hoy mide
+    sobre lo invertido, diciéndolo.
     """
-    if not posiciones:
-        return None
     from app.oportunidad import efectivo_con_cambio
 
-    return efectivo_con_cambio(session, service, datetime.now(timezone.utc))["usd"]
+    try:
+        return efectivo_con_cambio(session, service, datetime.now(timezone.utc))
+    except Exception:  # noqa: BLE001 — sin efectivo, Hoy sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo leer el efectivo anotado")
+        return {"usd": None, "estado": "desconocido", "motivo": "no se pudo leer el efectivo anotado"}
 
 
-def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> dict | None:
-    """Último backtest de reglas VÁLIDO. Convierte «razonable» en «probada».
+def _frase_validacion(reglas: dict | None) -> str:
+    """Lo que el pie de Hoy dice de las reglas, con el mismo veredicto que cada
+    fila (`decision._confianza`). Antes decía siempre «aún no están validadas…
+    ejecuta el backtest» aunque las filas dijeran «calibrada» o «refutada»
+    (revisión de M2)."""
+    from app.analysis.decision import _confianza
+
+    conf = _confianza(reglas)
+    if conf == "calibrada":
+        return ("En el backtest de reglas superaron a comprar a ciegas; haber "
+                "funcionado antes no garantiza que funcionen ahora.")
+    if conf == "refutada":
+        return ("El backtest de reglas dice que perdían dinero o ganaban menos que "
+                "comprar a ciegas: lo que ves es lo que dictan las reglas, no una "
+                "recomendación.")
+    if reglas and not reglas.get("fiable"):
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el último backtest tiene muy pocas operaciones para "
+                "concluir nada.")
+    if reglas:
+        return ("Las reglas son razonables pero aún no están validadas contra "
+                "histórico: el backtest no tiene con qué compararlas (comprar a ciegas).")
+    return ("Las reglas son razonables pero aún no están validadas contra "
+            "histórico — ejecuta el backtest en Señales para saber si han funcionado.")
+
+
+def _stored_rule_backtest(
+    session: Session, hasta: datetime | None = None, clase: str = "accion"
+) -> dict | None:
+    """Último backtest de reglas VÁLIDO de esa clase de activo. Convierte
+    «razonable» en «probada» (o en «refutada»).
 
     Solo cuentan los que declaran su partición desarrollo/holdout. Los guardados
     antes del RC1 se calcularon sobre todas las fechas —holdout incluido— sin
     registrarlo, así que no pueden seguir validando decisiones: hasta que se
     ejecute un backtest nuevo, las reglas vuelven a figurar como no validadas.
+
+    Dos cosas más (revisión de M2): solo vale uno de la misma clase —un backtest
+    de cripto, solo momentum y stops de cripto, decidía si las reglas de
+    acciones estaban «calibradas»—, y entre ellos manda el último FIABLE: uno
+    corto lanzado después desde la interfaz (8 operaciones, «no sirve para
+    concluir nada») tapaba una refutación con 120 y quitaba el aviso rojo. Sin
+    ninguno fiable, el último (que deja las reglas sin calibrar).
     """
     import json
 
@@ -365,6 +518,7 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
         .where(LlmOutput.kind == "rule_backtest")
         .order_by(LlmOutput.created_at.desc())
     )
+    ultimo_no_fiable = None
     for record in session.execute(consulta).scalars():
         # Un análisis a una fecha pasada no puede apoyarse en un backtest
         # ejecutado después: su «calibrada» o «refutada» aún no se sabía.
@@ -374,9 +528,14 @@ def _stored_rule_backtest(session: Session, hasta: datetime | None = None) -> di
             contenido = json.loads(record.content_md)
         except json.JSONDecodeError:
             continue
-        if isinstance(contenido, dict) and contenido.get("particion"):
+        if not isinstance(contenido, dict) or not contenido.get("particion"):
+            continue
+        if contenido.get("clase", "accion") != clase:
+            continue
+        if contenido.get("fiable"):
             return contenido
-    return None
+        ultimo_no_fiable = ultimo_no_fiable or contenido
+    return ultimo_no_fiable
 
 
 def _proximos_resultados(service: MarketDataService, dias: int = 7) -> dict[str, str]:
@@ -464,7 +623,7 @@ class FetchBudget:
 
 def _metrics_desde_edgar(
     service: MarketDataService, symbol: str, precio: float | None
-) -> tuple[dict | None, str | None]:
+) -> tuple[dict | None, str | None, bool, AllProvidersFailedError | None]:
     """Métricas de valoración desde EDGAR en vez de Finnhub.
 
     Es la palanca de coste más grande de toda la app. `fundamentals` iba a
@@ -481,17 +640,33 @@ def _metrics_desde_edgar(
     rugoso que un dato de proveedor, y a cambio gratis, auditable y trazable
     hasta el filing. Para un z-score transversal —donde todas las empresas se
     miden con la misma vara— esa rugosidad no cambia el orden.
+
+    El tercer valor dice si EDGAR CONTESTÓ que no hay nada utilizable (no la
+    tiene, o sus estados no dan ningún múltiplo): solo entonces, si Finnhub
+    tampoco la tiene, se recuerda que ninguna fuente la tiene
+    (`SIN_FUNDAMENTALES`). EDGAR caído, o sin precio con que calcular, no es una
+    respuesta.
+
+    El cuarto, el fallo de EDGAR si lo hubo (`_fallo_de_las_fuentes`): con él,
+    que Finnhub no la tenga no dice que no exista —quizá EDGAR sí—, y la empresa
+    cuenta como fallida, no como «sin fundamentales en ninguna fuente»
+    (revisión 15, H1).
     """
     if not precio:
-        return None, None
-    financials = _safe_get(service, "financials", symbol=symbol)
+        return None, None, False, None
+    try:
+        financials = service.get("financials", symbol=symbol)
+    except DataNotFoundError:
+        return None, None, True, None
+    except AllProvidersFailedError as exc:
+        return None, None, False, exc if _fallo_de_las_fuentes(exc) else None
     if not financials or not financials.get("periods"):
-        return None, None
+        return None, None, True, None
     periodo = financials["periods"][-1]
     metrics = metrics_from_period(periodo, precio, periodo.get("shares_outstanding"))
     if not any(v is not None for v in metrics.values()):
-        return None, None
-    return metrics, financials.get("source", "edgar")
+        return None, None, True, None
+    return metrics, financials.get("source", "edgar"), False, None
 
 
 def _motivos_sin_puntuar(no_disponibles: list[dict], pendientes: list[str]) -> str:
@@ -558,6 +733,10 @@ def _score_symbols(
     context: dict[str, dict] = {}
     unavailable = []
     pending: list[str] = []
+    # Las que quedaron sin puntuar por un FALLO de las fuentes (también están en
+    # `unavailable`, con su motivo): no se recuerdan y se reintentan, y mientras
+    # quede alguna la lista no cubre el mercado (`_today`, revisión 15, H1).
+    fallidas: list[str] = []
     for symbol in symbols:
         # Cripto no tiene estados financieros que descargar: ni valor ni
         # calidad existen ahí. Se puntúa con lo único medible —momentum— y la
@@ -577,26 +756,60 @@ def _score_symbols(
         # si la empresa no está en la SEC se recurre al proveedor de pago, y
         # entonces sí consume presupuesto.
         precio = (price_map.get(symbol) or {}).get("last")
-        metrics_edgar, fuente_edgar = _metrics_desde_edgar(service, symbol, precio)
-        if metrics_edgar is not None:
-            raw_by_symbol[symbol] = build_raw_factors(
-                metrics_edgar, momentum_map.get(symbol), None
-            )
-            context[symbol] = {"source": fuente_edgar or "edgar"}
+        if service.cache.get(SIN_FUNDAMENTALES, {"symbol": symbol}) is not None:
+            unavailable.append({"symbol": symbol, "reason": SIN_EN_NINGUNA_FUENTE})
             continue
-
-        fundamentals = None
-        if budget is not None:
-            # Lo cacheado es gratis; solo lo nuevo consume presupuesto.
-            fundamentals = service.cache.get("fundamentals", {"symbol": symbol})
-            if fundamentals is None and not budget.spend():
+        # El presupuesto cuenta también el companyfacts de EDGAR: antes solo
+        # acotaba el respaldo de Finnhub, y la primera pasada descargaba los ~500
+        # de EDGAR de una vez, sin tope; un presupuesto menor no la acortaba en
+        # nada. Una empresa cuesta UNA unidad aunque EDGAR no la tenga y se pida
+        # a Finnhub, y nada si ya hay algo suyo en la caché.
+        #
+        # Cada caché por su lado: con solo los fundamentales de Finnhub guardados,
+        # la empresa salía gratis pero se volvía a pedir su companyfacts («EDGAR
+        # no la tiene» era la suposición, y basta un 503 de EDGAR para que Finnhub
+        # la tenga guardada): una descarga que nadie contaba, y con 40 de
+        # presupuesto se bajaban 80 (revisión 14). Ahora, con lo de Finnhub
+        # guardado y sin lo de EDGAR, se puntúa con lo de Finnhub sin volver a
+        # EDGAR hasta que caduque (24 h, lo mismo que vive lo de EDGAR).
+        edgar_guardado = service.cache.get("financials", {"symbol": symbol}) is not None
+        fundamentals = service.cache.get("fundamentals", {"symbol": symbol})
+        pagada = False
+        if budget is not None and precio and not edgar_guardado and fundamentals is None:
+            if not budget.spend():
                 pending.append(symbol)
                 continue
+            pagada = True
+        edgar_sin_nada, edgar_fallo = False, None
+        if edgar_guardado or fundamentals is None:
+            metrics_edgar, fuente_edgar, edgar_sin_nada, edgar_fallo = _metrics_desde_edgar(service, symbol, precio)
+            if metrics_edgar is not None:
+                raw_by_symbol[symbol] = build_raw_factors(
+                    metrics_edgar, momentum_map.get(symbol), None
+                )
+                context[symbol] = {"source": fuente_edgar or "edgar"}
+                continue
+
         if fundamentals is None:
+            # Lo cacheado es gratis; solo lo nuevo consume presupuesto.
+            if budget is not None and not pagada and not budget.spend():
+                pending.append(symbol)
+                continue
             try:
                 fundamentals = service.get("fundamentals", symbol=symbol)
             except (DataNotFoundError, AllProvidersFailedError) as exc:
-                unavailable.append({"symbol": symbol, "reason": _por_que_sin_fundamentales(exc)})
+                if isinstance(exc, DataNotFoundError) and edgar_sin_nada:
+                    service.cache.set(SIN_FUNDAMENTALES, {"symbol": symbol}, {
+                        "symbol": symbol, "motivo": SIN_EN_NINGUNA_FUENTE, "finnhub": str(exc)[:200],
+                    })
+                # El fallo de esta fuente o, si esta contestó que no la tiene, el
+                # de EDGAR: con EDGAR dando 503, «Finnhub no la tiene» se leía
+                # «sin fundamentales en ninguna fuente» y la lista se daba por
+                # completa sin ella (revisión 15, H1).
+                fallo = exc if _fallo_de_las_fuentes(exc) else edgar_fallo
+                unavailable.append({"symbol": symbol, "reason": _por_que_sin_fundamentales(fallo or exc)})
+                if fallo is not None:
+                    fallidas.append(symbol)
                 continue
         raw_by_symbol[symbol] = build_raw_factors(
             dict(fundamentals["metrics"]), momentum_map.get(symbol), None
@@ -614,6 +827,7 @@ def _score_symbols(
             "calibration": calibration,
             "scored": 0,
             "pending": pending,
+            "fallidas": fallidas,
         }
 
     # 3) z-scores sobre el conjunto puntuado, y ranking.
@@ -651,6 +865,7 @@ def _score_symbols(
         "calibration": calibration,
         "scored": len(raw_by_symbol),
         "pending": pending,
+        "fallidas": fallidas,
     }
 
 
@@ -785,6 +1000,10 @@ def score_universe(
 
     return {
         "signals": rank_universe(signals),
+        # Las fronteras de la etiqueta («favorable», «neutral»…): con ellas se
+        # escribe la puntuación sin dejarla en una (0,3496 salía «+0,35 neutral» y
+        # 0,3504 «+0,35 favorable»; revisión 9).
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "unavailable": unavailable,
         "calibrated": calibration is not None,
         "weights": DEFAULT_WEIGHTS,
@@ -890,6 +1109,7 @@ def scan_universe(
             {"symbol": s["symbol"], "score": s["score"], "label": s["label"], "rank": s.get("rank")}
             for s in ranked
         ],
+        "label_thresholds": [t for t, _ in LABEL_THRESHOLDS],
         "scored": len(raw_by_symbol),
         "requested": len(symbols),
         "unavailable": unavailable,
@@ -927,6 +1147,14 @@ def today(
         le=600,
         description="Máximo de fundamentales NUEVOS a descargar en esta petición",
     ),
+    vencida: Literal["aceptar"] | None = Query(
+        None,
+        description=(
+            "«aceptar»: si no hay lista vigente, sirve al momento la última guardada aunque "
+            "haya caducado (`estado: viejo` y su `antiguedad_segundos`), sin recalcular ni "
+            "congelar instantáneas; 404 si no hay ninguna"
+        ),
+    ),
     service: MarketDataService = Depends(get_service),
     session: Session = Depends(get_session),
 ):
@@ -937,8 +1165,20 @@ def today(
     envoltorio traduce cualquier excepción a un `detail` legible y deja la
     traza completa en el log del backend.
     """
+    if vencida is not None and refresh:
+        # Una pide la copia guardada al momento y la otra recalcular: servir una
+        # de las dos en silencio dejaría esperando minutos a quien pidió rapidez,
+        # o con una lista vieja a quien pidió la de ahora.
+        raise HTTPException(
+            status_code=422,
+            detail="«vencida=aceptar» pide la lista guardada y «refresh» pide recalcularla: no se pueden pedir las dos.",
+        )
     try:
-        return _today(market, refresh, budget, service, session)
+        payload = (
+            _lista_guardada(market, service)
+            if vencida is not None
+            else _today(market, refresh, budget, service, session)
+        )
     except HTTPException:
         raise  # 404/502 ya llevan su explicación
     except Exception as exc:  # noqa: BLE001 — se reporta, no se traga
@@ -951,6 +1191,129 @@ def today(
                 "(/tmp/bolsa-backend.log)."
             ),
         ) from exc
+    # Fuera de `_today` y de su caché: el stop de tus posiciones se repasa en
+    # cada petición, también el de las que no están en este mercado, y también
+    # cuando se sirve la copia caducada (`vencida`): la lista es de entonces, el
+    # repaso es de ahora.
+    # La huella se queda en la caché, no en la respuesta: la pantalla lee lo que
+    # cambió (`lista_desfasada`), no las cantidades y costes de cuando se puntuó.
+    # Una copia, no un `pop`: con una caché que guarda la referencia, quitarla
+    # aquí dejaba la lista guardada sin huella y la siguiente petición la
+    # recalculaba entera.
+    # Con la copia caducada, el cierre de cada señal viaja VIEJO
+    # (`senales_para_el_stop`): decía «valido», el de cuando se calculó, y con
+    # yfinance caído un cierre de hace 6 días por encima del stop daba «por
+    # encima» y «nada urgente», STALE → PASS (revisión 14).
+    # Las del mercado que una lista parcial aún no ha puntuado van `pendiente`:
+    # Explorar las pintaba «Fuera de EE. UU. — S&P 500» (revisión 15, costuras H2).
+    from app.contexto_cartera import pendientes_de_la_lista, senales_para_el_stop
+
+    respuesta = {k: v for k, v in payload.items() if k != "huella_cartera"}
+    respuesta["cartera"] = _repaso_de_stops(
+        session, service, senales_para_el_stop(payload, payload.get("estado")), pendientes_de_la_lista(payload)
+    )
+    respuesta["lista_desfasada"] = _lista_desfasada(session, payload.get("huella_cartera"))
+    return respuesta
+
+
+def _mercado(market: str) -> dict:
+    try:
+        return load_market(market)
+    except KeyError:
+        raise HTTPException(
+            status_code=404, detail=f"Mercado desconocido: {market}"
+        ) from None
+
+
+def _lista_vigente(service: MarketDataService, cache_params: dict) -> dict | None:
+    """La lista guardada y vigente, o None.
+
+    Una respuesta guardada por una versión anterior de la app puede no tener
+    los campos que la UI espera, y servirla dejaba la pantalla en blanco. Se
+    valida la forma en vez de confiar solo en subir "v": así olvidarse de
+    subirla no vuelve a romper nada."""
+    cached = service.cache.get("daily_picks", cache_params)
+    if cached is not None and _PAYLOAD_KEYS <= cached.keys():
+        return cached
+    return None
+
+
+def _lista_guardada(market: str, service: MarketDataService) -> dict:
+    """La lista vigente o, si caducó, la última guardada, sin calcular nada
+    (`vencida=aceptar`).
+
+    Sin lista vigente (6 h), Hoy se quedaba en «Puntuando el universo…» los
+    minutos que tarda una pasada (docs/PLAN_NAVEGACION.md, «La primera carga, sin
+    bloquear»). La copia caducada —hasta el margen de rescate de la caché, una
+    semana— se sirve al momento MARCADA, `estado: viejo` con su
+    `antiguedad_segundos`, y la pantalla pide la normal detrás.
+
+    No congela instantáneas ni toca la caché: una lista servida es la decisión de
+    cuando se calculó, que ya se congeló entonces, y congelarla ahora la fecharía
+    como de hoy (igual que una servida vigente). Una copia con la forma de otra
+    versión no se sirve: la normal la recalcula.
+    """
+    datos_mercado = _mercado(market)
+    cache_params = parametros_lista_diaria(market)
+    vigente = _lista_vigente(service, cache_params)
+    if vigente is not None:
+        return vigente
+    leer_vencida = getattr(service.cache, "get_vencido", None)
+    copia = leer_vencida("daily_picks", cache_params) if leer_vencida is not None else None
+    if copia is None or not _PAYLOAD_KEYS <= copia.keys():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No hay ninguna lista de {datos_mercado['name']} guardada, ni vigente ni de "
+                "la última semana: hay que calcularla (la misma petición sin «vencida»)."
+            ),
+        )
+    # Un dict nuevo, no la copia marcada en su sitio: con una caché que guarda la
+    # referencia, la lista guardada se quedaría «vieja». Sin antigüedad conocida
+    # viaja None, no 0: no saberla no es «de ahora».
+    return {**copia, "estado": Estado.VIEJO.value, "antiguedad_segundos": copia.get("antiguedad_segundos")}
+
+
+def _lista_desfasada(session: Session, antes: dict | None) -> dict | None:
+    """Si la lista se calculó con otra cartera, qué cambió desde entonces.
+
+    La lista se cachea 6 h con la cartera de cuando se puntuó (decisión abierta,
+    M3: aquí no se recalcula), y el repaso de stops es de ahora. Sin decirlo, una
+    posición abierta después no salía en «Mi cartera» ni en «Fuera de la lista»,
+    la pantalla afirmaba «Ninguna de tus posiciones está en EE. UU. — S&P 500» y
+    la nota del tamaño, «no tienes posiciones abiertas», junto a un repaso con
+    dos (revisión 13). None si es la misma; si no se puede comparar, se dice: no
+    saberlo no es «la misma»."""
+    from app.contexto_cartera import cambios_de_cartera, huella_de_cartera
+
+    try:
+        if antes is not None:
+            return cambios_de_cartera(antes, huella_de_cartera(session))
+    except Exception:  # noqa: BLE001 — la lista sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo comparar la cartera de la lista con la de ahora")
+    return {"abiertas": [], "cerradas": [], "cambiadas": [], "efectivo": False,
+            "error": "No se pudo comprobar si esta lista se calculó con tu cartera de ahora "
+                     "(el motivo está en el log del backend)."}
+
+
+def _repaso_de_stops(
+    session: Session, service: MarketDataService, senales: list[dict], pendientes: set[str] | None = None
+) -> dict:
+    """El stop de cada posición abierta (`contexto_cartera.stops_de_la_cartera`).
+
+    Un fallo aquí no cuesta la lista, pero tampoco se calla: sin repaso, la
+    pantalla no puede decir «nada urgente» (revisión 12, visual)."""
+    from app.contexto_cartera import stops_de_la_cartera
+
+    try:
+        return stops_de_la_cartera(session, service, senales, pendientes=pendientes)
+    except Exception:  # noqa: BLE001 — la lista sigue y lo dice
+        log("riesgo").exception("Hoy: no se pudo repasar el stop de la cartera")
+        return {
+            "abiertas": None, "en_lista": None, "posiciones": [],
+            "error": "No se pudo repasar el stop de tus posiciones: ninguna se ha comprobado "
+                     "(el motivo está en el log del backend).",
+        }
 
 
 def _today(
@@ -970,37 +1333,41 @@ def _today(
     dan 60 llamadas/min, así que cada petición descarga como mucho `budget`
     fundamentales nuevos (los ya cacheados salen gratis) y deja el resto en
     `pending`. Repetir con `refresh=true` sigue por donde iba hasta completar.
+    Lo que las fuentes no pudieron dar (`fallidas`: caídas, sin cuota) tampoco
+    cuenta como cubierto: se reintenta en la pasada siguiente.
     """
-    try:
-        market_data = load_market(market)
-    except KeyError:
-        raise HTTPException(
-            status_code=404, detail=f"Mercado desconocido: {market}"
-        ) from None
+    market_data = _mercado(market)
 
-    cache_params = {"v": 6, "market": market}
+    cache_params = parametros_lista_diaria(market)
     if not refresh:
-        cached = service.cache.get("daily_picks", cache_params)
-        # Una respuesta guardada por una versión anterior de la app puede no
-        # tener los campos que la UI espera, y servirla dejaba la pantalla en
-        # blanco. Se valida la forma en vez de confiar solo en subir "v": así
-        # olvidarse de subirla no vuelve a romper nada.
-        if cached is not None and _PAYLOAD_KEYS <= cached.keys():
+        cached = _lista_vigente(service, cache_params)
+        if cached is not None:
             return cached
 
     # Lo que ya tienes cambia la pregunta: sobre una posición abierta no se
     # decide si comprar, sino si sostenerla o soltarla.
     # Los LOTES se agregan por símbolo: antes un dict se quedaba con el último
     # y el coste y el stop de los demás desaparecían. El stop que viaja es el
-    # más protector de los fijados al abrir, no uno recalculado con la
-    # volatilidad de hoy.
-    from app.contexto_cartera import posiciones_para_decidir
+    # más protector de sus lotes: el fijado al abrir o, en un lote sin stop
+    # guardado junto a otros, el recalculado desde su coste, el mismo que mira el
+    # repaso (revisión 15, costuras H1).
+    from app.contexto_cartera import huella_de_cartera, posiciones_para_decidir
 
-    posiciones = posiciones_para_decidir(session)
+    posiciones = posiciones_para_decidir(session, service=service)
+    # Con qué cartera se calcula: viaja en la caché y `today()` la compara con
+    # la de ahora (`_lista_desfasada`). Como el efectivo, no puede costar la lista.
+    try:
+        huella = huella_de_cartera(session)
+    except Exception:  # noqa: BLE001 — sin huella, Hoy dice que no puede comparar
+        log("riesgo").exception("Hoy: no se pudo tomar la huella de la cartera")
+        huella = None
+    # El efectivo anotado (migración 0008) entra en los pesos de lo que ya
+    # tienes, igual que en el coste de oportunidad (M3).
+    efectivo = _efectivo_para_hoy(session, service)
 
     # Si hay un backtest de reglas guardado, cada decisión puede decir si su
     # sistema está probado, refutado o solo es razonable.
-    reglas = _stored_rule_backtest(session)
+    reglas = _stored_rule_backtest(session, clase=market_data.get("asset_class", "accion"))
     # Una sola llamada cacheada 12 h cubre el mercado entero.
     resultados = _proximos_resultados(service)
 
@@ -1008,6 +1375,7 @@ def _today(
     ranked: list[dict] = []
     unavailable: list[dict] = []
     pending: list[str] = []
+    fallidas: list[str] = []
     sectors_meta: list[dict] = []
     momentum_source = None
     calibrated = False
@@ -1051,6 +1419,7 @@ def _today(
 
         unavailable.extend(scoring["unavailable"])
         pending.extend(scoring["pending"])
+        fallidas.extend(scoring["fallidas"])
         momentum_source = momentum_source or scoring["momentum_source"]
         calibrated = calibrated or scoring["calibration"] is not None
         sectors_meta.append(
@@ -1060,6 +1429,7 @@ def _today(
                 "requested": len(symbols),
                 "scored": scoring["scored"],
                 "pending": len(scoring["pending"]),
+                "fallidas": len(scoring["fallidas"]),
                 "usable": usable,
             }
         )
@@ -1076,7 +1446,14 @@ def _today(
 
     n_favorables = sum(1 for s in ranked if s["score"] >= FAVORABLE_MIN)
     n_desfavorables = sum(1 for s in ranked if s["score"] <= UNFAVORABLE_MAX)
-    complete = not pending
+    # Cubre el mercado si no queda nada por descargar NI nada que las fuentes no
+    # pudieron dar: lo que ninguna fuente tiene no lo impide, un fallo sí
+    # (`_fallo_de_las_fuentes`). Antes solo contaba `pending`, y una lista con un
+    # sector entero caído (EDGAR con 503, Finnhub sin cuota) salía completa y se
+    # congelaba como la decisión del día: inmutable, y «evitar» salía de 442
+    # empresas en vez de 502 (revisión 15, H1). Con la fuente aún caída, la
+    # pantalla encadena como mucho `MAX_PASADAS_AUTO` pasadas y luego lo dice.
+    complete = not pending and not fallidas
 
     payload = {
         "as_of": datetime.now(timezone.utc).isoformat(),
@@ -1095,7 +1472,10 @@ def _today(
         # 98 candidatas no son 98 oportunidades. La lista corta ordena por
         # convicción y recorta a unas pocas: es la diferencia entre un filtro
         # y una recomendación.
-        "shortlist": _lista_corta_dimensionada(ranked, posiciones, _efectivo_para_hoy(session, service, posiciones)),
+        "shortlist": _lista_corta_dimensionada(
+            ranked, posiciones, efectivo["usd"], efectivo.get("detalle"),
+            efectivo_motivo=efectivo.get("motivo"),
+        ),
         "counts": {
             "favorables": n_favorables,
             "neutrales": len(ranked) - n_favorables - n_desfavorables,
@@ -1106,34 +1486,38 @@ def _today(
         "scored": len(ranked),
         "requested": requested,
         "pending": len(pending),
+        # Las que las fuentes no pudieron dar en esta pasada (caídas, sin cuota):
+        # se reintentan, y con alguna la lista no está completa.
+        "fallidas": len(fallidas),
         "complete": complete,
         "fetched_now": fetch_budget.spent,
         "unavailable": unavailable,
         "calibrated": calibrated,
         "momentum_source": momentum_source,
         "data_meta": universes_meta(),
+        "huella_cartera": huella,
         "note": (
             f"Puntuadas {len(ranked)} empresas de {requested} en "
             f"{sum(1 for s in sectors_meta if s['usable'])} sectores. Cada empresa "
             "se compara con las de su propio sector, no con el mercado entero."
         )
         + (
-            ""
-            if complete
-            else (
-                f" Faltan {len(pending)} por puntuar: los tiers gratuitos limitan "
-                "cuántos fundamentales se pueden descargar de una vez. Pulsa "
-                "«Seguir completando» para continuar."
-            )
+            f" Faltan {len(pending)} por puntuar: los tiers gratuitos limitan "
+            "cuántos fundamentales se pueden descargar de una vez. Pulsa "
+            "«Seguir completando» para continuar."
+            if pending else ""
+        )
+        + (
+            f" {_sin_datos_por_un_fallo(len(fallidas))}: se reintentan en la pasada siguiente "
+            "(«Seguir completando»)."
+            if fallidas else ""
         ),
         "disclaimer": (
             "Cada acción sale de reglas mecánicas escritas, no de una "
             "predicción: 'Comprar' significa que la empresa puntúa mejor que "
             "sus comparables de sector y que el precio acompaña, no que vaya a "
-            "subir. Las reglas son razonables pero aún no están validadas "
-            "contra histórico — ejecuta el backtest en Señales para saber si "
-            "han funcionado. El tamaño sugerido asume arriesgar un 1 % de tu "
-            "cartera por operación; ajústalo a tu situación."
+            "subir. " + _frase_validacion(reglas) + " El tamaño sugerido asume "
+            "arriesgar un 1\u00a0% de tu cartera por operación; ajústalo a tu situación."
         ),
     }
 
@@ -1141,9 +1525,37 @@ def _today(
     # respuesta servida desde caché es una decisión tomada cuando se calculó, y
     # congelarla al servirla la fecharía como de hoy. `congelar_lista_diaria` no
     # lanza; si falla, la lista se sirve igual y el fallo viaja en la respuesta.
-    payload["instantaneas"] = snapshots.congelar_lista_diaria(
-        session, payload, f"hoy:{market}", datetime.now(timezone.utc)
-    )
+    #
+    # Y solo una lista que CUBRE el mercado (`complete`: nada pendiente ni nada
+    # que una fuente caída no pudo dar; las que ninguna fuente tiene no
+    # bloquean, revisión 15, H1). La primera pasada del día es parcial
+    # (40 o 120 de 502, `useListaDiaria`): el segundo sector se puntuaba contra
+    # una parte de sí mismo, las «ideas» y lo que dice «evitar» eran lo mejor y
+    # lo peor de 40, no de 502, y como la primera instantánea del día gana y es
+    # inmutable, ninguna pasada posterior podía corregirlo: el forward testing
+    # medía cada día lo que dijo una lista a medias (revisión 14). Un día sin
+    # lista completa se queda sin instantánea, y la respuesta dice por qué: un
+    # hueco en el registro es mejor que una decisión tomada sobre una parte.
+    if complete:
+        payload["instantaneas"] = {
+            **snapshots.congelar_lista_diaria(session, payload, f"hoy:{market}", datetime.now(timezone.utc)),
+            "sin_congelar": None,
+        }
+    else:
+        # Lo que falta, contado por su causa: con solo las fallidas, «0 pendientes»
+        # no decía por qué no se congelaba (revisión 15, H1).
+        faltan = [
+            f"{fmt_num(len(pending), 0)} {plural(len(pending), 'pendiente', 'pendientes')}" if pending else None,
+            f"{_sin_datos_por_un_fallo(len(fallidas))}, que se reintentan" if fallidas else None,
+        ]
+        payload["instantaneas"] = {
+            "guardadas": 0, "ya_existian": 0, "error": None,
+            "sin_congelar": (
+                f"Lista parcial ({fmt_num(len(ranked), 0)} de {fmt_num(requested, 0)} empresas, "
+                f"{'; '.join(f for f in faltan if f)}): "
+                "la decisión del día se congela con la primera lista que cubra el mercado entero."
+            ),
+        }
     # Después de congelar —las instantáneas guardan la traza entera—, la
     # respuesta se aligera: la traza viaja donde se actúa, no en la cola.
     _aligerar_trazas(payload)
@@ -1267,7 +1679,8 @@ def run_rules_backtest(
 
     `/backtest` valida el **modelo de factores**: si la puntuación ordena mejor
     que la mediana. Este endpoint valida el **sistema que se ejecuta**: entrar
-    solo por encima de la media de 200 sesiones, con stop por volatilidad,
+    solo en o por encima de la media de 200 sesiones + 2 % (la banda del motor),
+    con stop por volatilidad,
     objetivo al doble y salida por lo que llegue antes — neto de costes.
 
     Son preguntas distintas y una puede salir bien con la otra mal.

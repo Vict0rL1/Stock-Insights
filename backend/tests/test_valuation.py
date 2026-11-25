@@ -67,6 +67,15 @@ def test_sensibilidad_marca_combinaciones_invalidas():
     assert grid["rows"][-1]["values"][0] is not None  # r=6 % > 3 % → válido
 
 
+def test_sin_acciones_la_matriz_por_accion_no_se_llena_con_el_valor_total():
+    """M4 (ítem 3.3): `value_per_share or equity_value` metía el valor total de la
+    empresa, en millones, en una matriz rotulada «valor/acción»."""
+    grid = sensitivity_grid(100e6, 0.05, 0.10, 0.02, net_debt=0.0, shares_outstanding=None)
+    assert all(v is None for row in grid["rows"] for v in row["values"])
+    con = sensitivity_grid(100e6, 0.05, 0.10, 0.02, net_debt=0.0, shares_outstanding=1e6)
+    assert all(v is not None and v < 1e4 for row in con["rows"] for v in row["values"])
+
+
 def test_sensibilidad_monotona_en_wacc():
     # A mayor tasa de descuento, menor valor: si esto falla, el DCF está roto.
     grid = sensitivity_grid(100, 0.05, 0.10, 0.02, shares_outstanding=1.0)

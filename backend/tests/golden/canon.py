@@ -38,7 +38,7 @@ PROSA = frozenset({
     "metodo", "formula", "leyenda", "fuente_texto", "nota_supuestos", "nota_geografia", "probability_note",
     "market_description", "market_name", "headline", "url", "source_url", "controles_texto",
     "nota_deuda", "interpretacion", "conclusion", "lectura_humana", "descripcion_regla",
-    "aviso_general", "aviso_cobertura", "peor_ventana_nota",
+    "aviso_general", "aviso_cobertura", "peor_ventana_nota", "aviso_orden",
 })
 
 # Claves que a veces llevan un código (que se guarda, como siempre) y a veces

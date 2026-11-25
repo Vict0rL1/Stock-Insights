@@ -22,7 +22,9 @@ from app.analysis.thesis_watch import (
     METRICAS,
     OPERADORES,
     coherencia,
+    copia_vieja,
     instantanea,
+    unidad_de,
     vigilar,
 )
 from app.analysis.track_record import (
@@ -335,9 +337,14 @@ def _datos_para_vigilar(
         pass
     if con_noticias:
         try:
-            datos["noticias"] = (
-                service.get("news", symbol=symbol, days=DIAS_NOTICIAS).get("items") or []
-            )
+            payload = service.get("news", symbol=symbol, days=DIAS_NOTICIAS)
+            datos["noticias"] = payload.get("items") or []
+            # Una copia vieja de la caché no cubre la ventana: se dice, para que
+            # «ningún titular» no cuente como comprobado (revisión de M1).
+            if payload.get("estado") == "viejo":
+                datos["noticias_incompletas"] = copia_vieja(
+                    payload.get("antiguedad_segundos"), datetime.now(timezone.utc)
+                )
         except (DataNotFoundError, AllProvidersFailedError):
             pass
     return datos
@@ -360,9 +367,11 @@ def _serializar_disparador(t: ThesisTrigger) -> dict:
 def metricas_vigilables():
     """Qué se puede vigilar. Solo lo que sale de estados financieros."""
     return {
-        "metricas": [{"clave": k, "etiqueta": v[0], "alto_mejor": v[1]}
+        # `unidad`: «pct» se escribe en % y se guarda como fracción; «veces», tal
+        # cual (un ratio corriente de 1,2 es 1,2, no un 1,2 %).
+        "metricas": [{"clave": k, "etiqueta": v[0], "alto_mejor": v[1], "unidad": unidad_de(k)}
                      for k, v in METRICAS.items()],
-        "crecimientos": [{"clave": k, "etiqueta": v} for k, v in CRECIMIENTOS.items()],
+        "crecimientos": [{"clave": k, "etiqueta": v, "unidad": unidad_de(k)} for k, v in CRECIMIENTOS.items()],
         "operadores": [{"clave": k, "etiqueta": v[0]} for k, v in OPERADORES.items()],
         "nota": (
             "No se vigilan múltiplos ni precios: vigilar el P/E sería vigilar la "
@@ -397,6 +406,10 @@ def add_trigger(
             raise HTTPException(status_code=422, detail=f"Operador inválido: {config.get('op')}")
         if not isinstance(config.get("umbral"), (int, float)):
             raise HTTPException(status_code=422, detail="Falta el umbral numérico.")
+        # La unidad en que está el umbral, guardada con el punto: los de antes no
+        # la llevan y se leen de las dos formas, porque el formulario viejo
+        # dividía también los ratios entre 100 (`thesis_watch._comprobar_umbral`).
+        config = {**config, "unidad": unidad_de(config["metrica"])}
     elif not [p for p in (config.get("palabras") or []) if str(p).strip()]:
         raise HTTPException(
             status_code=422,

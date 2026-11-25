@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from app.analysis.valuation import dcf
-from app.routers.valuation import _escenarios_por_defecto, CRECIMIENTO_MAXIMO
+from app.analysis.valuation import CRECIMIENTO_MAXIMO, escenarios_por_defecto
 
 BASE = dict(
     base_fcf=1_000_000_000,
@@ -86,40 +86,52 @@ def test_un_crecimiento_real_de_cero_no_se_convierte_en_el_supuesto():
 
     Una empresa que no crece no puede valorarse como si creciera.
     """
-    esc = _escenarios_por_defecto({"fcf_cagr": 0.0, "revenue_cagr": 0.0})
+    esc = escenarios_por_defecto({"fcf_cagr": 0.0, "revenue_cagr": 0.0})
     assert esc["base"]["growth_rate"] == 0.0
     assert esc["base"]["supuesto"] is False
 
 
 def test_sin_crecimiento_conocido_el_supuesto_se_declara():
-    esc = _escenarios_por_defecto({})
+    esc = escenarios_por_defecto({})
     assert esc["base"]["supuesto"] is True
     assert esc["base"]["motivo"]
     assert "supuesto" in esc["base"]["motivo"].lower()
 
 
 def test_con_crecimiento_conocido_no_hay_supuesto():
-    esc = _escenarios_por_defecto({"fcf_cagr": 0.08})
+    esc = escenarios_por_defecto({"fcf_cagr": 0.08})
     assert esc["base"]["supuesto"] is False
     assert esc["base"]["motivo"] is None
 
 
 def test_un_crecimiento_nan_no_pasa_por_dato():
-    esc = _escenarios_por_defecto({"fcf_cagr": float("nan")})
+    esc = escenarios_por_defecto({"fcf_cagr": float("nan")})
     assert esc["base"]["supuesto"] is True
 
 
 def test_el_tope_de_crecimiento_sigue_aplicandose():
     """Extrapolar el mejor quinquenio a perpetuidad es el error caro del DCF."""
-    esc = _escenarios_por_defecto({"fcf_cagr": 0.80})
+    esc = escenarios_por_defecto({"fcf_cagr": 0.80})
     assert esc["alcista"]["growth_rate"] <= CRECIMIENTO_MAXIMO
 
 
 def test_un_crecimiento_negativo_no_se_convierte_en_positivo():
     """Una empresa en contracción es un dato, no un error que corregir."""
-    esc = _escenarios_por_defecto({"fcf_cagr": -0.05})
+    esc = escenarios_por_defecto({"fcf_cagr": -0.05})
     assert esc["base"]["growth_rate"] <= 0.0
     assert esc["base"]["supuesto"] is False
+
+
+@pytest.mark.parametrize("medido", [-0.05, -0.20, 0.0, 0.04, 0.12, 0.80])
+def test_con_crecimiento_negativo_bajista_y_alcista_no_se_invierten(medido):
+    """M5 (ítem 3.3): los factores 0,4 / 1,5 multiplicados tal cual por un −5 %
+    daban un bajista del −2 % y un alcista del −7,5 %: el «bajista» crecía más que
+    el «alcista». El bajista es el que más encoge."""
+    esc = escenarios_por_defecto({"fcf_cagr": medido})
+    g = [esc[n]["growth_rate"] for n in ("bajista", "base", "alcista")]
+    assert g[0] <= g[1] <= g[2], g
+    if medido < 0:
+        assert g == [pytest.approx(medido * 1.5), pytest.approx(medido), pytest.approx(medido * 0.4)]
 
 
 # --- A nivel de ENDPOINT: que la corrección llegue de verdad -------------

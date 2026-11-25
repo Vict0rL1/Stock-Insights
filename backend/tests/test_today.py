@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -683,3 +686,553 @@ def test_el_motivo_sin_fundamentales_es_el_que_dio_el_router():
     assert _por_que_sin_fundamentales(cuota) == "sin cuota en las fuentes de fundamentales"
     assert _por_que_sin_fundamentales(caida) == "con las fuentes de fundamentales fallando"
     assert _por_que_sin_fundamentales(nada) == "sin ninguna fuente de fundamentales configurada"
+
+
+def test_hoy_repasa_el_stop_de_toda_la_cartera_y_no_desde_la_cache(client, session_factory):
+    """Revisión 12, visual: con STOP fuera del S&P 500 (stop en 110, cotizando a
+    104), Hoy decía «Para vender 0 · nada urgente» y «1 en cartera» con tres
+    posiciones abiertas: solo miraba las del mercado barrido. Ahora repasa el
+    stop de todas, con la regla del motor, y lo que no puede comprobar lo dice."""
+    from tests.fixtures import extremos as ex
+
+    c, service = client
+    original = service.get
+    cotizaciones = {"STOP": 104.0, "ROZA": 110.0}  # CHIP: sin cotización en ninguna fuente
+
+    def con_cotizaciones(data_type, **kw):
+        if data_type == "quote" and kw.get("symbol") in cotizaciones:
+            return {"symbol": kw["symbol"], "price": cotizaciones[kw["symbol"]], "currency": "USD",
+                    "as_of": iso_utc(), "estado": "valido"}
+        return original(data_type, **kw)
+
+    service.get = con_cotizaciones
+    with session_factory() as s:
+        ex._posicion(s, ex._instrumento(s, "KO", "Consumer Staples"), 300, 58.0, 50.0)
+        ex._posicion(s, ex._instrumento(s, "STOP", "Technology"), 50, 90.0, 110.0)
+        ex._posicion(s, ex._instrumento(s, "CHIP", "Technology"), 200, 20.0, 18.0)
+        s.commit()
+
+    data = _completar(c)
+    cartera = data["cartera"]
+    assert cartera["abiertas"] == 3 and cartera["en_lista"] == 1
+    assert [p["symbol"] for p in cartera["posiciones"]] == ["STOP", "CHIP", "KO"]  # lo urgente arriba
+    stop, chip, ko = cartera["posiciones"]
+    assert (stop["estado"], stop["en_lista"], stop["precio"], stop["stop"], stop["moneda"], stop["motivo"]) == (
+        "perforado", False, 104.0, 110.0, "USD", None)
+    assert chip["estado"] == "sin_comprobar" and chip["motivo"].startswith("sin precio")
+    senal_ko = next(x for x in data["signals"] if x["symbol"] == "KO")
+    assert ko["en_lista"] and ko["precio"] == senal_ko["price"]["last"] and ko["estado"] == "por_encima"
+
+    # En el stop exacto también está perforado («en o por debajo», como el motor).
+    # Y se repasa en cada petición: la lista sale de la caché, la cartera no.
+    with session_factory() as s:
+        ex._posicion(s, ex._instrumento(s, "ROZA", "Technology"), 10, 100.0, 110.0)
+        s.commit()
+    otra = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    assert otra["cached"] is not False
+    roza = next(p for p in otra["cartera"]["posiciones"] if p["symbol"] == "ROZA")
+    assert roza["estado"] == "perforado" and otra["cartera"]["abiertas"] == 4
+
+
+def test_un_fallo_al_repasar_los_stops_no_cuesta_la_lista_ni_se_calla(client, monkeypatch):
+    from app import contexto_cartera
+
+    def revienta(*a, **k):
+        raise RuntimeError("caído")
+
+    monkeypatch.setattr(contexto_cartera, "stops_de_la_cartera", revienta)
+    c, _ = client
+    data = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    assert data["signals"]
+    assert data["cartera"]["abiertas"] is None and "ninguna se ha comprobado" in data["cartera"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# La primera carga, sin bloquear (`vencida=aceptar`, docs/PLAN_NAVEGACION.md)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def con_reloj(session_factory):
+    """El doble de siempre con la caché DE VERDAD y un reloj que se adelanta a mano:
+    la lista caduca a las 6 h y `get_vencido` la rescata durante una semana."""
+    from app.cache.cache import CacheStore
+
+    reloj = {"t": datetime(2026, 11, 23, 15, 0, tzinfo=timezone.utc)}
+    service = MarketService()
+    service.cache = CacheStore(session_factory, now=lambda: reloj["t"])
+
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    with TestClient(app) as c:
+        yield c, service, reloj
+    app.dependency_overrides.clear()
+
+
+GUARDADA = "/api/signals/today?market=canada&vencida=aceptar"
+
+
+def test_sin_lista_vigente_la_guardada_se_sirve_al_momento_con_su_edad(con_reloj):
+    """Sin lista vigente (6 h), Hoy se quedaba en «Puntuando el universo…» los
+    minutos de una pasada. Ahora la copia caducada sale al momento, marcada como
+    vieja y con su antigüedad, sin recalcular nada; la normal la sustituye después."""
+    c, service, reloj = con_reloj
+    calculada = _completar(c, market="canada")
+    descargas = service.bulk_calls
+    reloj["t"] += timedelta(hours=9)
+
+    r = c.get(GUARDADA)
+    assert r.status_code == 200
+    vieja = r.json()
+    assert vieja["estado"] == "viejo" and vieja["antiguedad_segundos"] == 9 * 3600
+    assert vieja["cached"] is True and vieja["as_of"] == calculada["as_of"]
+    assert [s["symbol"] for s in vieja["signals"]] == [s["symbol"] for s in calculada["signals"]]
+    assert service.bulk_calls == descargas, "servir la copia no puede volver a puntuar"
+    # El repaso de stops y la comparación con la cartera siguen siendo de ahora.
+    assert vieja["cartera"]["abiertas"] == 0 and vieja["lista_desfasada"] is None
+    assert "huella_cartera" not in vieja
+
+    # La normal, después, sí recalcula, y no viene marcada.
+    nueva = c.get("/api/signals/today?market=canada").json()
+    assert "estado" not in nueva and nueva["cached"] is False
+    assert service.bulk_calls > descargas
+
+
+def test_la_lista_guardada_no_congela_instantaneas(con_reloj, monkeypatch):
+    """Una lista servida es la decisión de cuando se calculó, y ya se congeló
+    entonces: congelarla al servirla la fecharía como de hoy."""
+    from app.routers import signals as S
+
+    c, _, reloj = con_reloj
+    _completar(c, market="canada")
+    congeladas = []
+    monkeypatch.setattr(S.snapshots, "congelar_lista_diaria", lambda *a, **k: congeladas.append(a) or {"error": None})
+    reloj["t"] += timedelta(hours=9)
+    assert c.get(GUARDADA).json()["estado"] == "viejo"
+    assert congeladas == []
+
+
+def test_sin_ninguna_lista_guardada_da_404_y_lo_dice(con_reloj):
+    """Sin copia no hay nada que enseñar al momento: la pantalla espera a la normal
+    (y la pide con un presupuesto corto). Más de una semana es «ninguna»."""
+    c, service, reloj = con_reloj
+    r = c.get(GUARDADA)
+    assert r.status_code == 404
+    assert "No hay ninguna lista de Canadá" in r.json()["detail"]
+    assert service.bulk_calls == 0, "pedir la guardada no puede ponerse a puntuar"
+
+    _completar(c, market="canada")
+    reloj["t"] += timedelta(days=8)
+    assert c.get(GUARDADA).status_code == 404
+    assert c.get("/api/signals/today?market=marte&vencida=aceptar").json()["detail"] == "Mercado desconocido: marte"
+
+
+def test_con_lista_vigente_la_guardada_es_la_de_siempre(con_reloj):
+    c, service, _ = con_reloj
+    calculada = _completar(c, market="canada")
+    descargas = service.bulk_calls
+    guardada = c.get(GUARDADA).json()
+    assert "estado" not in guardada and "antiguedad_segundos" not in guardada
+    assert guardada["cached"] is True and guardada["as_of"] == calculada["as_of"]
+    assert service.bulk_calls == descargas
+    # Solo vale «aceptar», y no se combina con recalcular: una de las dos se
+    # perdería en silencio.
+    assert c.get("/api/signals/today?market=canada&vencida=si").status_code == 422
+    r = c.get("/api/signals/today?market=canada&vencida=aceptar&refresh=true")
+    assert r.status_code == 422 and "no se pueden pedir las dos" in r.json()["detail"]
+
+
+def test_servir_la_guardada_no_marca_la_copia_de_la_cache(client):
+    """Con una caché que devuelve su propia referencia (como la falsa de
+    `tests/fakes_empresa.py`), marcar la copia en su sitio la dejaba «vieja»
+    para siempre."""
+    c, service = client
+
+    class PorReferencia(FakeCache):
+        def get_vencido(self, data_type, params):
+            return self.vencidas.get(f"{data_type}|{self._key(params)}")
+
+    cache = PorReferencia()
+    cache.store, cache.vencidas = service.cache.store, {}
+    service.cache = cache
+    c.get("/api/signals/today?market=canada&budget=600")
+    clave = next(k for k in cache.store if k.startswith("daily_picks|"))
+    guardada = {**cache.store.pop(clave), "cached": True, "antiguedad_segundos": 3600}
+    cache.vencidas[clave] = guardada
+
+    servida = c.get(GUARDADA).json()
+    assert servida["estado"] == "viejo" and servida["antiguedad_segundos"] == 3600
+    assert "estado" not in guardada and "cartera" not in guardada
+
+
+def test_el_presupuesto_cuenta_tambien_las_descargas_de_edgar(session_factory):
+    """El presupuesto solo acotaba el respaldo de Finnhub: la primera pasada
+    descargaba los ~500 companyfacts de EDGAR de una vez y tardaba minutos, así
+    que pedirla con un presupuesto menor no la acortaba en nada. Ahora cada
+    empresa que descarga algo cuenta una vez, y lo ya guardado sigue gratis."""
+
+    class EdgarQueGuarda(MarketService):
+        def __init__(self):
+            super().__init__()
+            self.financial_calls = 0
+
+        def get(self, data_type, **kwargs):
+            if data_type == "financials":
+                # Como el servicio real: lo guardado sale de la caché sin descargar.
+                guardado = self.cache.get("financials", {"symbol": kwargs["symbol"]})
+                if guardado is not None:
+                    return guardado
+                self.financial_calls += 1
+                payload = {"source": "edgar", "as_of": iso_utc(), "periods": [{
+                    "end_date": "2024-12-31", "eps_diluted": 5.0, "equity": 1000.0, "revenue": 8000.0,
+                    "net_income": 500.0, "operating_income": 900.0, "interest_expense": 40.0,
+                    "shares_outstanding": 100.0, "cfo": 800.0, "capex": -150.0}]}
+                # Como el servicio real: lo descargado queda en la caché 24 h.
+                self.cache.set("financials", {"symbol": kwargs["symbol"]}, payload)
+                return payload
+            return super().get(data_type, **kwargs)
+
+    service = EdgarQueGuarda()
+
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    try:
+        with TestClient(app) as c:
+            primera = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            assert service.financial_calls == 40 and primera["fetched_now"] == 40
+            assert primera["pending"] > 0 and primera["complete"] is False
+            segunda = c.get("/api/signals/today?market=us_sp500&budget=40&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    # Las 40 de la primera salen de la caché: la segunda descarga otras 40.
+    assert service.financial_calls == 80 and segunda["scored"] > primera["scored"]
+    assert service.fundamental_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# Revisión 14: la primera pasada corta, el presupuesto y lo que no existe
+# ---------------------------------------------------------------------------
+
+
+class _EdgarQueGuarda(MarketService):
+    """EDGAR que guarda lo descargado (como el servicio real) y cuenta cada
+    companyfacts que de verdad baja. Los estados varían por empresa para que el
+    z-score dependa de con quién se compara."""
+
+    def __init__(self):
+        super().__init__()
+        self.financial_calls = 0
+
+    def get(self, data_type, **kwargs):
+        if data_type == "financials":
+            simbolo = kwargs["symbol"]
+            guardado = self.cache.get("financials", {"symbol": simbolo})
+            if guardado is not None:
+                return guardado
+            self.financial_calls += 1
+            seed = sum(ord(ch) * (i + 1) for i, ch in enumerate(simbolo))
+            payload = {"source": "edgar", "as_of": iso_utc(), "periods": [{
+                "end_date": "2024-12-31", "eps_diluted": 1.0 + seed % 9, "equity": 500.0 + seed % 700,
+                "revenue": 8000.0, "net_income": 100.0 + seed % 600, "operating_income": 200.0 + seed % 900,
+                "interest_expense": 40.0, "shares_outstanding": 100.0, "cfo": 300.0 + seed % 800,
+                "capex": -150.0}]}
+            self.cache.set("financials", {"symbol": simbolo}, payload)
+            return payload
+        return super().get(data_type, **kwargs)
+
+
+def _cliente_con(service, session_factory) -> TestClient:
+    def override_session():
+        session = session_factory()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_service] = lambda: service
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_llm] = lambda: None
+    return TestClient(app)
+
+
+@pytest.mark.parametrize("consulta", ["&budget=40", ""], ids=["primera_pasada_40", "normal_120"])
+def test_solo_se_congela_la_lista_que_cubre_el_mercado(session_factory, consulta):
+    """La primera pasada del día es corta (`PRIMERA_PASADA = 40`, o la normal de
+    120 detrás de la copia caducada) y el presupuesto cuenta EDGAR: congelaba
+    como «la decisión del día», inmutable y la primera gana, lo que decía una
+    lista de 40 de 502, con el segundo sector puntuado contra una parte de sí
+    mismo. F y GM quedaban como «evitar» con una puntuación que la lista
+    completa no da. Ahora solo congela la lista completa, y lo congelado es lo
+    que dice ella."""
+    from app.db.models import DecisionSnapshot
+
+    try:
+        with _cliente_con(_EdgarQueGuarda(), session_factory) as c:
+            primera = c.get(f"/api/signals/today?market=us_sp500{consulta}").json()
+            assert primera["complete"] is False
+            with session_factory() as s:
+                assert s.query(DecisionSnapshot).count() == 0
+            inst = primera["instantaneas"]
+            assert inst["guardadas"] == 0 and inst["error"] is None
+            assert "Lista parcial" in inst["sin_congelar"] and "cubra el mercado entero" in inst["sin_congelar"]
+
+            completa = primera
+            for _ in range(6):
+                if completa["complete"]:
+                    break
+                completa = c.get("/api/signals/today?market=us_sp500&budget=600&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert completa["complete"] is True
+    assert completa["instantaneas"]["sin_congelar"] is None and completa["instantaneas"]["guardadas"] > 0
+
+    accion = {x["symbol"]: x["decision"]["action"] for x in completa["signals"]}
+    puntuacion = {x["symbol"]: x["score"] for x in completa["signals"]}
+    corta = completa["shortlist"]
+    esperadas = {(x["symbol"], "comprar") for x in corta["ideas"]} | {(x["symbol"], "evitar") for x in corta["evitar"]}
+    with session_factory() as s:
+        congeladas = s.query(DecisionSnapshot).all()
+        assert {(x.symbol, x.accion) for x in congeladas} == esperadas
+        for x in congeladas:
+            assert accion[x.symbol] == x.accion and x.score == pytest.approx(puntuacion[x.symbol])
+            assert x.contexto["mercado"]["completo"] is True
+
+
+def test_con_finnhub_guardado_no_vuelve_a_bajar_edgar_sin_contarlo(session_factory):
+    """La empresa con los fundamentales de Finnhub guardados salía gratis
+    («EDGAR no la tiene»), pero se volvía a pedir su companyfacts: si EDGAR solo
+    había fallado un rato, esa descarga no la contaba nadie. Con 40 de
+    presupuesto se bajaban 80."""
+    from app.providers.router import AllProvidersFailedError
+
+    service = _EdgarQueGuarda()
+    original = service.get
+    edgar = {"caido": True}
+
+    def get(data_type, **kw):
+        if data_type == "financials" and edgar["caido"]:
+            raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            # EDGAR cae en la primera pasada: las 40 van a Finnhub y se guardan.
+            primera = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            edgar["caido"] = False
+            antes = service.financial_calls
+            segunda = c.get("/api/signals/today?market=us_sp500&budget=40&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert primera["fetched_now"] == 40 and service.fundamental_calls == 40
+    # Las 40 de Finnhub salen gratis y con su fuente; las 40 nuevas, de EDGAR.
+    assert service.financial_calls - antes == segunda["fetched_now"] == 40
+    fuentes = Counter(x["context"]["source"] for x in segunda["signals"])
+    assert fuentes["fake"] == 40 and fuentes["edgar"] > 0
+    assert service.fundamental_calls == 40
+
+
+def test_lo_que_ninguna_fuente_tiene_no_gasta_presupuesto_en_cada_pasada(session_factory):
+    """«40 + 4 × 120 = 520 ≥ 502»: el margen son 18 unidades, y una empresa que
+    ni EDGAR ni Finnhub tienen no guarda nada, así que gastaba una unidad (y una
+    llamada a Finnhub) en CADA pasada. Con cinco así, las pasadas automáticas no
+    cubrían el S&P 500. Ahora el «no existe» se recuerda 24 h."""
+    from app.routers.signals import SIN_FUNDAMENTALES
+
+    primeras = [x["symbol"] for x in next(iter(load_market("us_sp500")["sectors"].values()))][:5]
+    service = _EdgarQueGuarda()
+    original = service.get
+    pedidas: Counter = Counter()
+
+    def get(data_type, **kw):
+        if data_type in ("financials", "fundamentals") and kw.get("symbol") in primeras:
+            pedidas[data_type] += 1
+            raise DataNotFoundError(f"{kw['symbol']}: ni EDGAR ni Finnhub")
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            # Lo que pide `useListaDiaria` sin lista guardada: la primera corta y 4 pasadas.
+            d = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+            for _ in range(4):
+                d = c.get("/api/signals/today?market=us_sp500&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert d["complete"] is True, f"tras las 5 pasadas: {d['scored']} puntuadas, {d['pending']} pendientes"
+    # Se preguntó una vez a cada fuente, no una por pasada, y se dice por qué faltan.
+    assert pedidas == {"financials": 5, "fundamentals": 5}
+    assert all(service.cache.get(SIN_FUNDAMENTALES, {"symbol": s}) is not None for s in primeras)
+    motivos = {x["symbol"]: x["reason"] for x in d["unavailable"]}
+    assert all(motivos[s] == "sin fundamentales en ninguna fuente" for s in primeras)
+
+
+def test_un_fallo_de_las_fuentes_no_se_recuerda_como_que_no_existe(session_factory):
+    """Lo que se recuerda es la RESPUESTA «no la tengo» de las dos fuentes: con
+    EDGAR caído (sin cuota, un 503), la empresa se vuelve a intentar en la
+    pasada siguiente. Recordarlo 24 h la dejaría fuera el día entero."""
+    from app.providers.router import AllProvidersFailedError
+    from app.routers.signals import SIN_FUNDAMENTALES
+
+    service = _EdgarQueGuarda()
+    original = service.get
+
+    def get(data_type, **kw):
+        if kw.get("symbol") == "AAPL":
+            if data_type == "financials":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+            if data_type == "fundamentals":
+                raise DataNotFoundError("finnhub: sin datos de AAPL")
+        return original(data_type, **kw)
+
+    service.get = get
+    try:
+        with _cliente_con(service, session_factory) as c:
+            d = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert any(x["symbol"] == "AAPL" for x in d["unavailable"])
+    assert service.cache.get(SIN_FUNDAMENTALES, {"symbol": "AAPL"}) is None
+    # Y sin AAPL la lista no cubre el mercado: con EDGAR caído, que Finnhub no la
+    # tenga no dice que no exista. Se congelaba igual, y se decía «sin
+    # fundamentales en ninguna fuente» (revisión 15, H1).
+    from app.db.models import DecisionSnapshot
+
+    motivo = next(x["reason"] for x in d["unavailable"] if x["symbol"] == "AAPL")
+    assert motivo == "con las fuentes de fundamentales fallando"
+    assert d["complete"] is False and d["pending"] == 0 and d["fallidas"] == 1
+    assert "1 sin datos por un fallo de las fuentes" in d["instantaneas"]["sin_congelar"]
+    with session_factory() as s:
+        assert s.query(DecisionSnapshot).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Revisión 15: una lista con las fuentes caídas no es la del mercado entero
+# ---------------------------------------------------------------------------
+
+
+def _servicio_con_caidas(caidas: set[str]) -> _EdgarQueGuarda:
+    """EDGAR con un 503 y Finnhub/yfinance sin cuota para `caidas`: un FALLO de
+    las fuentes (AllProvidersFailedError), no la respuesta «no la tengo»."""
+    from app.providers.router import AllProvidersFailedError
+
+    service = _EdgarQueGuarda()
+    original = service.get
+
+    def get(data_type, **kw):
+        if kw.get("symbol") in caidas:
+            if data_type == "financials":
+                raise AllProvidersFailedError("financials", {"edgar": "HTTP 503"})
+            if data_type == "fundamentals":
+                raise AllProvidersFailedError(
+                    "fundamentals",
+                    {"finnhub": "límite de llamadas agotado en esta ventana", "yfinance": "HTTP 429"},
+                )
+        return original(data_type, **kw)
+
+    service.get = get
+    return service
+
+
+def test_un_sector_con_las_fuentes_caidas_no_cuenta_como_mercado_cubierto(session_factory):
+    """Un fallo de las fuentes iba a `unavailable`, como «ninguna fuente la
+    tiene», y solo `pending` impedía completar: con un sector entero (22
+    empresas) sin EDGAR ni Finnhub, la lista salía `complete` con 480 de 502 y se
+    congelaba como la decisión del día, inmutable y sin ese sector, con
+    `sin_congelar` en None. Ahora esas empresas son `fallidas`: no se recuerdan,
+    se reintentan, la lista no está completa y la respuesta dice por qué no se
+    congela."""
+    from app.db.models import DecisionSnapshot
+
+    nombre, empresas = next(iter(load_market("us_sp500")["sectors"].items()))
+    caidas = {c["symbol"] for c in empresas}
+    try:
+        with _cliente_con(_servicio_con_caidas(caidas), session_factory) as c:
+            d = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert d["complete"] is False and d["pending"] == 0
+    assert d["fallidas"] == len(caidas) and d["scored"] == d["requested"] - len(caidas)
+    sector = next(x for x in d["sectors"] if x["key"] == nombre)
+    assert sector["fallidas"] == len(caidas) and sector["usable"] is False
+    assert {x["reason"] for x in d["unavailable"] if x["symbol"] in caidas} == {
+        "con las fuentes de fundamentales fallando"}
+    inst = d["instantaneas"]
+    assert inst["guardadas"] == 0 and inst["error"] is None
+    assert f"{len(caidas)} sin datos por un fallo de las fuentes, que se reintentan" in inst["sin_congelar"]
+    assert "Faltan 0" not in d["note"] and "fallo de las fuentes" in d["note"]
+    with session_factory() as s:
+        assert s.query(DecisionSnapshot).count() == 0
+
+
+def test_lo_congelado_es_lo_que_dice_la_lista_cuando_vuelven_las_fuentes(session_factory):
+    """El daño: con Health Care (60 empresas) caído en la pasada que completaba,
+    «evitar» salía de las 442 restantes y se congelaba FE; al volver las fuentes
+    el mismo día, la lista entera dice A y no FE, pero FE ya era inmutable («la
+    primera gana») y el forward testing medía un «evitar» que la lista completa
+    no da. Ahora se congela la primera lista que de verdad cubre el mercado."""
+    from app.db.models import DecisionSnapshot
+
+    empresas = next(v for v in load_market("us_sp500")["sectors"].values() if any(c["symbol"] == "A" for c in v))
+    caidas = {c["symbol"] for c in empresas}
+    try:
+        with _cliente_con(_servicio_con_caidas(caidas), session_factory) as c:
+            caida = c.get("/api/signals/today?market=us_sp500&budget=600").json()
+            caidas.clear()  # vuelven las fuentes, el mismo día
+            vuelta = c.get("/api/signals/today?market=us_sp500&budget=600&refresh=true").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert caida["complete"] is False and vuelta["complete"] is True and vuelta["fallidas"] == 0
+    corta = vuelta["shortlist"]
+    esperadas = sorted([(x["symbol"], "comprar") for x in corta["ideas"]]
+                       + [(x["symbol"], "evitar") for x in corta["evitar"]])
+    with session_factory() as s:
+        assert sorted((x.symbol, x.accion) for x in s.query(DecisionSnapshot).all()) == esperadas
+    assert ("A", "evitar") in esperadas
+
+
+def test_que_es_un_fallo_de_las_fuentes_y_que_no():
+    """«No la tengo» y «no hay ninguna fuente configurada» no se arreglan
+    reintentando: no impiden completar la lista. Caídas y sin cuota, sí."""
+    from app.providers.router import AllProvidersFailedError
+    from app.routers.signals import _fallo_de_las_fuentes
+
+    sin_clave = "no configurado (falta API key o credencial en .env)"
+    assert not _fallo_de_las_fuentes(DataNotFoundError("finnhub: sin fundamentales para X"))
+    assert not _fallo_de_las_fuentes(AllProvidersFailedError("fundamentals", {
+        "finnhub": sin_clave, "yfinance": "no soporta este tipo de dato"}))
+    assert _fallo_de_las_fuentes(AllProvidersFailedError("financials", {"edgar": "HTTP 503"}))
+    assert _fallo_de_las_fuentes(AllProvidersFailedError("fundamentals", {
+        "finnhub": sin_clave, "yfinance": "límite de llamadas agotado en esta ventana"}))
+
+
+def test_la_vigencia_de_la_lista_es_la_misma_en_el_frontend():
+    """`useListaDiaria` marca vieja la lista que tiene en memoria al pasar su
+    vigencia (`VIGENCIA_LISTA_HORAS`). Si no fuera la de la caché del backend, la
+    pantalla presentaría como de ahora una lista que el backend ya no sirve como
+    vigente, o al revés."""
+    import re
+    from pathlib import Path
+
+    from app.config import CACHE_TTL_SECONDS
+
+    hook = Path(__file__).resolve().parents[2] / "frontend/src/hooks/useListaDiaria.ts"
+    horas = re.search(r"export const VIGENCIA_LISTA_HORAS = (\d+)\b", hook.read_text(encoding="utf-8"))
+    assert horas is not None, "VIGENCIA_LISTA_HORAS ya no está en useListaDiaria.ts"
+    assert int(horas.group(1)) * 3600 == CACHE_TTL_SECONDS["daily_picks"]

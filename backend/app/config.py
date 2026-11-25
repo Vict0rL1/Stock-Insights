@@ -17,6 +17,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_DIR.parent
 
 
+HOSTS_DE_ESTA_MAQUINA = ("localhost", "127.0.0.1", "[::1]")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", BACKEND_DIR / ".env"),
@@ -40,6 +43,15 @@ class Settings(BaseSettings):
     database_path: str = str(BACKEND_DIR / "data" / "app.db")
 
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Los nombres con que se puede llamar al backend (cabecera `Host`), sin
+    # puerto. Escuchar solo en 127.0.0.1 no basta: una web cualquiera puede
+    # hacer que su dominio resuelva a 127.0.0.1 (DNS rebinding) y llamar a la
+    # API con `Host: su-dominio`, y el backend la atendía (auditoría del 19 oct).
+    # En .env, como lista JSON, los nombres que se AÑADEN a los de esta máquina
+    # (`HOSTS_DE_ESTA_MAQUINA` se unen siempre: el proxy de Vite llama como
+    # `localhost:8000`, y con ALLOWED_HOSTS='["mi-mac.local"]' toda la interfaz
+    # recibía un 400; revisión de A6).
+    allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]"]
 
 
 # TTL de caché en segundos, por tipo de dato. El caché es parte del diseño
@@ -60,6 +72,11 @@ CACHE_TTL_SECONDS: dict[str, int] = {
     "profile": 24 * 3600,        # perfil de la empresa: 24 h
     "fundamentals": 24 * 3600,   # fundamentales TTM: 24 h
     "financials": 24 * 3600,     # estados financieros EDGAR: 24 h
+    # «Ninguna fuente tiene fundamentales de esta empresa» (EDGAR y Finnhub lo
+    # dijeron): lo mismo que vive lo que sí se descarga. Sin esta entrada, la
+    # caché le daría el TTL por defecto (5 min) y la lista diaria la volvería a
+    # pagar en cada pasada (`signals.SIN_FUNDAMENTALES`).
+    "sin_fundamentales": 24 * 3600,
     "filings": 24 * 3600,        # lista de filings EDGAR: 24 h
     # Un filing presentado NO cambia nunca: la SEC no reescribe documentos,
     # publica enmiendas con su propio número de acceso. Cachearlo 30 días es

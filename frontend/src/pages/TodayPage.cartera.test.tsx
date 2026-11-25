@@ -1,0 +1,363 @@
+/**
+ * Revisión 12, visual: Hoy solo miraba las posiciones del mercado barrido. Con
+ * STOP fuera del S&P 500 (stop en 110, cotizando a 104) decía «Para vender 0 ·
+ * nada urgente», «1 en cartera» con tres abiertas y «1 posiciones abiertas».
+ * Parte de la respuesta REAL de Hoy (`hoy_completo.json`) y le pone el repaso
+ * de stops que ahora sirve el backend (`cartera`), construido aquí.
+ */
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import hoyCompleto from '../test/fixtures/hoy_completo.json'
+import type { ListaDesfasada, StopDePosicion, StopsDeCartera, TodayResponse } from '../api/types'
+import { ideasSinSitio, TodayPage, miCartera, recortesDe, recuentos, textoDeIdeas, tonoDeVariacion } from './TodayPage'
+
+type Rutas = Record<string, { status: number; json: unknown }>
+type Hoy = {
+  cartera?: StopsDeCartera
+  lista_desfasada?: ListaDesfasada | null
+  signals: { symbol: string; decision: { action: string; label: string; owned: boolean } }[]
+  shortlist: { ideas: { symbol: string; price: { change_pct: number | null }; peso_final_pct: number | null; decision: { levels: { peso_bruto_pct: number | null } } }[]; sizing: { recortes: string[] } }
+}
+
+afterEach(() => vi.unstubAllGlobals())
+
+const posicion = (p: Partial<StopDePosicion> & { symbol: string }): StopDePosicion => ({
+  en_lista: false,
+  precio: 100,
+  precio_estado: 'valido',
+  moneda: 'USD',
+  stop: 90,
+  stop_fijado_al_abrir: true,
+  stop_por_clase: false,
+  estado: 'por_encima',
+  motivo: null,
+  ...p,
+})
+
+/** La respuesta real, con cada pasada de Hoy cambiada por `cambiar`. */
+function servir(cambiar: (hoy: Hoy) => void) {
+  const rutas: Rutas = structuredClone((hoyCompleto as unknown as { rutas: Rutas }).rutas)
+  for (const [url, r] of Object.entries(rutas)) if (url.startsWith('/api/signals/today')) cambiar(r.json as Hoy)
+  vi.stubGlobal('fetch', vi.fn(async (e: RequestInfo | URL) => {
+    const url = typeof e === 'string' ? e : e instanceof URL ? e.pathname + e.search : e.url
+    const r = rutas[url]
+    return new Response(JSON.stringify(r ? r.json : {}), { status: r ? r.status : 404 })
+  }))
+  return render(<MemoryRouter><TodayPage /></MemoryRouter>)
+}
+
+const tarjeta = (rotulo: string) => screen.getByText(rotulo, { selector: 'div' }).parentElement!
+/** El aviso de una posición en un panel: el elemento de la lista con su enlace. */
+const avisoDe = (symbol: string, dentro: HTMLElement = document.body) =>
+  within(dentro).getByRole('link', { name: symbol }).closest('li')!
+const D = '\u00a0'
+
+const TRES: StopsDeCartera = {
+  abiertas: 3,
+  en_lista: 1,
+  posiciones: [
+    posicion({ symbol: 'STOP', precio: 104, stop: 110, estado: 'perforado' }),
+    posicion({ symbol: 'SHOP.TO', precio: null, precio_estado: 'desconocido', moneda: 'CAD', stop: 100, estado: 'sin_comprobar', motivo: 'sin precio (ninguna fuente dio su cotización)' }),
+    posicion({ symbol: 'KO', en_lista: true, precio: 60, stop: 50 }),
+  ],
+}
+
+describe('Hoy repasa el stop de toda la cartera', () => {
+  it('un stop perforado fuera de la lista es urgente, y los recuentos cuentan las tres', async () => {
+    const { container } = servir((hoy) => { hoy.cartera = TRES })
+    const paraVender = (await screen.findByRole('heading', { name: 'Para vender: 1 posición' })).parentElement!
+    const stop = avisoDe('STOP', paraVender)
+    expect(within(stop).getByText('Vender')).toBeInTheDocument()
+    expect(stop.textContent).toContain(
+      `Cotiza a 104,00${D}USD, por debajo de tu límite de pérdida (stop) de 110,00${D}USD. Tu regla dice vender.`,
+    )
+    expect(stop.textContent).toContain('No está en EE. UU. — S&P 500: la lista no la puntúa, pero su stop se mira igual.')
+    const sinComprobar = screen.getByRole('heading', { name: 'Sin comprobar: 1 posición' }).parentElement!
+    const shop = avisoDe('SHOP.TO', sinComprobar)
+    expect(within(shop).getByText('Revisar')).toBeInTheDocument()
+    expect(shop.textContent).toContain('No hay precio de hoy: el límite de pérdida (stop) no se ha podido comprobar.')
+    expect(shop.textContent).toContain('Míralo en tu broker.')
+
+    const vender = tarjeta('Para vender')
+    expect(vender.textContent).toContain('1')
+    expect(vender.textContent).toContain('en tu cartera')
+    expect(container.textContent).not.toContain('nada urgente')
+    expect(tarjeta('En cartera').textContent).toBe('En cartera3posiciones abiertas · 2 fuera de esta lista')
+    expect(screen.getByRole('heading', { name: 'Hoy' }).nextElementSibling!.textContent).toContain('1 para vender')
+    expect(screen.getByRole('heading', { name: 'Hoy' }).nextElementSibling!.textContent).toContain('3 en cartera')
+
+    // La pestaña cuenta las tres y enseña las de fuera, con su stop.
+    fireEvent.click(screen.getByRole('button', { name: 'Mi cartera (3)' }))
+    // Cada una con su aviso: vender, revisar; nunca un «por encima» sin precio.
+    const fuera = screen.getByRole('heading', { name: 'Fuera de EE. UU. — S&P 500' }).parentElement!
+    expect(within(avisoDe('STOP', fuera)).getByText('Vender')).toBeInTheDocument()
+    expect(within(avisoDe('SHOP.TO', fuera)).getByText('Revisar')).toBeInTheDocument()
+    expect(fuera.textContent).not.toContain('KO')
+    // KO está en la lista y la lista no la decide como tuya (esta respuesta no
+    // la trae como posición): sale aparte, con su stop, y la pantalla no afirma
+    // «Ninguna de tus posiciones está en EE. UU. — S&P 500» (revisión 13).
+    const sinDecision = screen.getByRole('heading', { name: 'Sin decisión de la lista de EE. UU. — S&P 500' }).parentElement!
+    expect(within(avisoDe('KO', sinDecision)).getByText('Mantener')).toBeInTheDocument()
+    expect(avisoDe('KO', sinDecision).textContent).toContain(
+      `Cotiza a 60,00${D}USD, por encima de tu límite de pérdida (stop) de 50,00${D}USD. De momento, nada que vender.`,
+    )
+    expect(screen.queryByText(/Ninguna de tus posiciones está en/)).toBeNull()
+  })
+
+  it('un stop sin comprobar no es «nada urgente», y una posición va en singular', async () => {
+    servir((hoy) => {
+      hoy.cartera = { abiertas: 1, en_lista: 0, posiciones: [posicion({ symbol: 'CHIP', precio: null, estado: 'sin_comprobar', motivo: 'sin precio (ninguna fuente dio su cotización)' })] }
+    })
+    await screen.findByRole('heading', { name: 'Sin comprobar: 1 posición' })
+    expect(tarjeta('Para vender').textContent).toBe('Para vender01 sin comprobar')
+    expect(tarjeta('En cartera').textContent).toBe('En cartera1posición abierta · 1 fuera de esta lista')
+  })
+
+  it('sin repaso en la respuesta no se afirma nada urgente ni se cuenta la cartera entera', async () => {
+    servir((hoy) => { delete hoy.cartera })
+    await screen.findByText('Para vender')
+    expect(tarjeta('Para vender').textContent).toBe('Para vender0cartera sin repasar')
+    expect(tarjeta('En cartera').textContent).toBe('En cartera0posiciones abiertas en esta lista')
+  })
+
+  it('con todo repasado y nada perforado, sí es «nada urgente»', async () => {
+    servir((hoy) => { hoy.cartera = { abiertas: 1, en_lista: 0, posiciones: [posicion({ symbol: 'STOP' })] } })
+    await screen.findByText('Para vender')
+    expect(tarjeta('Para vender').textContent).toBe('Para vender0nada urgente')
+    expect(screen.queryByText(/Stop perforado en/)).toBeNull()
+  })
+
+  it('una venta de la lista por puntuación sale en el panel: el recuento cuadra con los avisos', async () => {
+    // El recuento juntaba las ventas de la lista con los stops perforados y el
+    // panel rojo solo enseñaba los stops: «Para vender 1» sin decir cuál.
+    servir((hoy) => {
+      const tpl = hoy.signals.find((s) => s.symbol === 'TPL')!
+      Object.assign(tpl.decision, {
+        action: 'vender', label: 'Vender', owned: true, reasons: ['La puntuación cayó a -0,52.'],
+        reglas: [{ id: 'puntuacion_desfavorable', regla: 'Puntuación ≤ -0,35', resultado: 'cumple', efecto: 'vender', papel: 'decide', datos: { valor: -0.52, umbral: -0.35 } }],
+      })
+      hoy.cartera = { abiertas: 2, en_lista: 1, posiciones: [posicion({ symbol: 'TPL', en_lista: true, precio: 60, stop: 50 }), posicion({ symbol: 'KO', precio: 60, stop: 50 })] }
+    })
+    const panel = (await screen.findByRole('heading', { name: 'Para vender: 1 posición' })).parentElement!
+    expect(avisoDe('TPL', panel).textContent).toContain(
+      'Su puntuación frente a sus comparables cayó a -0,52, en o por debajo de -0,35: la razón para tenerla ya no se sostiene. Tu regla dice vender.',
+    )
+    expect(tarjeta('Para vender').textContent).toBe('Para vender1en tu cartera')
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(1)
+    expect(panel.textContent).not.toContain('KO')
+  })
+
+  it('la fila de una posición dice lo mismo que el panel: con el stop perforado ahora, «Vender», no «Mantener»', async () => {
+    // La lista (de hace horas) decía «Mantener»; el repaso, de ahora, la da por
+    // perforada. La fila enseñaba el chip de la lista bajo un panel que decía vender.
+    servir((hoy) => {
+      const tpl = hoy.signals.find((s) => s.symbol === 'TPL')!
+      Object.assign(tpl.decision, { action: 'mantener', label: 'Mantener', owned: true })
+      hoy.cartera = { abiertas: 1, en_lista: 1, posiciones: [posicion({ symbol: 'TPL', en_lista: true, precio: 40, stop: 50, estado: 'perforado' })] }
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Mi cartera (1)' }))
+    const fila = screen.getByText('TPL', { selector: 'span' }).closest('button')!
+    expect(within(fila).getByText('Vender')).toBeInTheDocument()
+    expect(within(fila).queryByText('Mantener')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Para vender: 1 posición' })).toBeInTheDocument()
+  })
+
+  it('una venta de la lista cacheada no cuenta si la posición ya está cerrada', () => {
+    // La lista vive hasta 6 h en caché; el repaso es de ahora.
+    const venta = { symbol: 'VIEJA', decision: { action: 'vender', owned: true } }
+    const data = { signals: [venta], cartera: { abiertas: 0, en_lista: 0, posiciones: [] } } as unknown as TodayResponse
+    expect(recuentos(data).vender).toBe(0)
+    expect(recuentos({ ...data, cartera: undefined }).vender).toBe(1)
+  })
+})
+
+describe('las tarjetas de ideas', () => {
+  it('una variación de 0,00 % no se pinta como una subida', async () => {
+    // Por símbolo, no la primera: Hoy enseña la lista guardada y después la de
+    // ahora y sus pasadas, y no todas ordenan igual las ideas.
+    servir((hoy) => { hoy.shortlist.ideas.find((i) => i.symbol === 'HSY')!.price.change_pct = 0 })
+    const ceros = await screen.findAllByText(/^[+-]?0,00\s%$/)
+    expect(ceros.length).toBeGreaterThan(0)
+    for (const cero of ceros) expect(cero.className).not.toMatch(/emerald|red/)
+    expect(tonoDeVariacion(0.001, '+0,00\u00a0%', 'sube', 'baja')).toBe('text-slate-400')
+    expect(tonoDeVariacion(0.5, '+0,50\u00a0%', 'sube', 'baja')).toBe('sube')
+    expect(tonoDeVariacion(-0.5, '-0,50\u00a0%', 'sube', 'baja')).toBe('baja')
+  })
+
+  it('una idea recortada dice por qué en su propia tarjeta', async () => {
+    const global = 'Ideas nuevas al 0\u00a0%: la cartera que YA tienes estima un 22,2\u00a0% de volatilidad.'
+    let recortada = ''
+    servir((hoy) => {
+      const idea = hoy.shortlist.ideas.find((i) => i.symbol === 'HSY')!
+      recortada = idea.symbol
+      idea.decision.levels.peso_bruto_pct = 6.1
+      idea.peso_final_pct = 0
+      hoy.shortlist.sizing.recortes = [...hoy.shortlist.sizing.recortes, global]
+    })
+    const cifra = await screen.findByText(/recortado desde 6,1/)
+    const card = cifra.closest('li')!
+    expect(card.textContent).toContain(recortada)
+    expect(card.textContent).toContain(global)
+    // Con el peso en 0 no dice «Comprar»: dice que no cabe y qué haría falta, y
+    // el detalle de los topes va plegado en «Por qué este tamaño».
+    expect(within(card).getByText('Sin sitio')).toBeInTheDocument()
+    expect(within(card).queryByText('Comprar')).toBeNull()
+    expect(within(card).getByText('Buena idea, pero hoy no cabe en tu cartera.')).toBeInTheDocument()
+    expect(within(card).getByText('Para hacerle sitio tendrías que vender algo antes.')).toBeInTheDocument()
+    const porQue = within(card).getByText('Por qué este tamaño').closest('details')!
+    expect(porQue.open).toBe(false)
+    expect(porQue.textContent).toContain(global)
+    // Su fila en la lista dice lo mismo que su tarjeta.
+    fireEvent.click(screen.getByRole('button', { name: /^Todas \(/ }))
+    const fila = screen.getAllByText(recortada, { selector: 'span' }).map((el) => el.closest('button')).find(Boolean)!
+    expect(within(fila).getByText('Sin sitio')).toBeInTheDocument()
+  })
+
+  it('cada recorte va a las ideas que nombra; el que no nombra a ninguna, a todas', () => {
+    const recortes = [
+      'DXCM: 10,9 % → 10,0 % (tope por posición).',
+      '«Consumer Staples»: sin margen para ideas nuevas (tope por sector). Afecta a HSY.',
+      '«grupo FTV+KO»: sin margen (tope por correlación). Afecta a FTV.',
+      'Ideas nuevas al 0 %: la cartera que YA tienes estima un 22,2 % de volatilidad.',
+    ]
+    const ideas = ['DXCM', 'HSY', 'FTV', 'KOF']
+    expect(recortesDe('HSY', recortes, ideas)).toEqual([recortes[1], recortes[3]])
+    expect(recortesDe('FTV', recortes, ideas)).toEqual([recortes[2], recortes[3]])
+    // «KO» del grupo no es «KOF».
+    expect(recortesDe('KOF', recortes, ideas)).toEqual([recortes[3]])
+  })
+})
+
+describe('revisión 13: el repaso dice con qué precio y qué stop, y Mi cartera sale de él', () => {
+  const haceMin = (min: number) => new Date(Date.now() - min * 60000).toISOString()
+
+  it('el precio de un stop perforado dice de dónde y de cuándo es', async () => {
+    // Hoy usaba el último cierre de la lista (hasta 12 h) como si fuera de ahora.
+    servir((hoy) => {
+      hoy.cartera = {
+        abiertas: 2,
+        en_lista: 1,
+        posiciones: [
+          posicion({ symbol: 'STOP', precio: 104, stop: 110, estado: 'perforado', precio_fuente: 'cotizacion', precio_proveedor: 'finnhub', precio_fecha: haceMin(3) }),
+          // La perfora el cierre de la lista, la cotización de ahora no: fail-safe, y se dice.
+          posicion({
+            symbol: 'KO', en_lista: true, precio: 115, stop: 116, estado: 'perforado',
+            precio_fuente: 'cierre_de_la_lista', precio_proveedor: 'yfinance', precio_fecha: haceMin(300),
+            precios: [
+              { precio: 117, fuente: 'cotizacion', estado: 'valido', proveedor: 'finnhub', fecha: haceMin(1) },
+              { precio: 115, fuente: 'cierre_de_la_lista', estado: 'valido', proveedor: 'yfinance', fecha: haceMin(300) },
+            ],
+          }),
+        ],
+      }
+    })
+    await screen.findByRole('heading', { name: 'Para vender: 2 posiciones' })
+    const stop = avisoDe('STOP')
+    expect(stop.textContent).toContain(`Cotiza a 104,00${D}USD, por debajo de tu límite de pérdida (stop) de 110,00${D}USD.`)
+    expect(stop.textContent).toContain('Precio: cotización de finnhub, hace 3 min.')
+    const ko = avisoDe('KO')
+    expect(ko.textContent).toContain(`Cotiza a 115,00${D}USD, por debajo de tu límite de pérdida (stop) de 116,00${D}USD.`)
+    expect(ko.textContent).toContain('Precio: último cierre de la lista de yfinance, hace 5 h.')
+    expect(ko.textContent).toContain(`La cotización de ahora (117,00${D}USD) está por encima: compruébalo en tu broker.`)
+    // «No está en…» solo de la que no está en la lista (STOP), no de KO.
+    expect(stop.textContent).toContain('No está en EE. UU. — S&P 500')
+    expect(ko.textContent).not.toContain('No está en')
+    // La fecha entera, en la hora del mercado, al pasar el ratón.
+    expect(screen.getByText('Precio: cotización de finnhub, hace 3 min.').getAttribute('title')).toMatch(/^cotización de finnhub del .+\u00a0ET$/)
+  })
+
+  it('con varios lotes dice qué stop es y cuántos se recalculan desde su coste', async () => {
+    // Un lote viejo sin stop y coste 130 estaba perforado a 104 en el Portafolio;
+    // Hoy decía «por encima» con el stop 70 del otro lote.
+    const { container } = servir((hoy) => {
+      hoy.cartera = {
+        abiertas: 1,
+        en_lista: 0,
+        posiciones: [posicion({
+          symbol: 'STOP', precio: 104, stop: 108.55, estado: 'perforado', stop_fijado_al_abrir: false, stop_por_clase: true,
+          lotes: 2, lotes_recalculados: 1, lotes_por_clase: 1, lotes_sin_stop: 0,
+        })],
+      }
+    })
+    await screen.findByRole('heading', { name: 'Para vender: 1 posición' })
+    expect(container.textContent).toContain(`por debajo de tu límite de pérdida (stop) de 108,55${D}USD. Tu regla dice vender.`)
+    expect(avisoDe('STOP').textContent).toContain('Es el más alto de los de sus 2 lotes, y es el punto medio de su clase, no uno medido.')
+  })
+
+  it('una lista calculada con otra cartera se avisa, y Mi cartera sale del repaso', async () => {
+    // La lista cacheada se puntuó con LVS abierta y sin MSCI; ahora es al revés.
+    servir((hoy) => {
+      for (const s of hoy.signals) {
+        if (s.symbol === 'TPL' || s.symbol === 'LVS') s.decision = { ...s.decision, action: 'mantener', label: 'Mantener', owned: true }
+      }
+      hoy.cartera = {
+        abiertas: 2,
+        en_lista: 2,
+        posiciones: [posicion({ symbol: 'MSCI', en_lista: true }), posicion({ symbol: 'TPL', en_lista: true })],
+      }
+      hoy.lista_desfasada = { abiertas: ['MSCI'], cerradas: ['LVS'], cambiadas: [], efectivo: false }
+    })
+    const aviso = (await screen.findByText(/con otra cartera/)).parentElement!
+    expect(aviso.textContent).toContain('Después abriste MSCI; cerraste LVS.')
+    expect(aviso.textContent).toContain('Pulsa «Actualizar» para recalcularla.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mi cartera (2)' }))
+    // La fila de la lista, solo para lo abierto ahora: LVS ya no.
+    expect(screen.getByText('TPL', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.queryByText('LVS')).toBeNull()
+    // MSCI, abierta después de puntuar, en su propio grupo con su stop.
+    const sinDecision = screen.getByRole('heading', { name: 'Sin decisión de la lista de EE. UU. — S&P 500' }).parentElement!
+    expect(sinDecision.textContent).toContain('MSCI')
+    expect(sinDecision.textContent).not.toContain('TPL')
+    expect(screen.queryByText(/Ninguna de tus posiciones está en/)).toBeNull()
+  })
+
+  it('sin filas de la lista no afirma «Ninguna está en X» si alguna lo está', () => {
+    const data = {
+      signals: [{ symbol: 'CASY', decision: { action: 'comprar', owned: false } }],
+      cartera: { abiertas: 1, en_lista: 1, posiciones: [posicion({ symbol: 'CASY', en_lista: true })] },
+    } as unknown as TodayResponse
+    const c = miCartera(data)
+    expect(c.filas).toEqual([])
+    expect(c.sinDecision.map((p) => p.symbol)).toEqual(['CASY'])
+    expect(c.fuera).toEqual([])
+  })
+
+  it('con la lista parcial, una posición del mercado aún sin puntuar no sale «Fuera de» (revisión 15, costuras H2)', async () => {
+    // Lo que sirve el backend con la primera pasada del día: JPM (Financials) sin
+    // puntuar, `pendiente`. Salía «Fuera de EE. UU. — S&P 500 · La lista no las
+    // puntúa ni decide sobre ellas» de una empresa del S&P 500.
+    servir((hoy) => {
+      hoy.cartera = { abiertas: 1, en_lista: 0, posiciones: [posicion({ symbol: 'JPM', en_lista: false, pendiente: true })] }
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /Mi cartera \(1\)/ }, { timeout: 3000 }))
+    expect(screen.queryByRole('heading', { name: /^Fuera de/ })).toBeNull()
+    const pendientes = screen.getByRole('heading', { name: 'Aún sin puntuar en EE. UU. — S&P 500' }).parentElement!
+    expect(pendientes.textContent).toContain('JPM')
+    expect(pendientes.textContent).toContain('la lista va a medias y todavía no las ha puntuado')
+    expect(tarjeta('En cartera').textContent).toContain('1 aún sin puntuar')
+    expect(tarjeta('En cartera').textContent).not.toContain('fuera de esta lista')
+  })
+})
+
+describe('cuántas ideas de compra caben hoy', () => {
+  // Con las cinco ideas en «Sin sitio», la cabecera decía «5 ideas de compra» sin más.
+  it('lo dice cuando ninguna o solo algunas caben en la cartera', () => {
+    expect(textoDeIdeas(5, 5)).toBe('5 ideas de compra (ninguna cabe hoy en tu cartera)')
+    expect(textoDeIdeas(5, 2)).toBe('5 ideas de compra (2 sin sitio en tu cartera)')
+    expect(textoDeIdeas(1, 0)).toBe('1 idea de compra')
+    expect(textoDeIdeas(0, 0)).toBe('0 ideas de compra')
+  })
+
+  it('cuenta como sin sitio las ideas cuyo tamaño final es 0 por los topes', () => {
+    const rutas = (hoyCompleto as unknown as { rutas: Record<string, { json: unknown }> }).rutas
+    const hoy = structuredClone(rutas['/api/signals/today?market=us_sp500'].json) as TodayResponse
+    const n = hoy.shortlist.ideas.length
+    expect(ideasSinSitio(hoy.shortlist)).toBe(
+      hoy.shortlist.ideas.filter((i) => i.peso_final_pct === 0 && (i.decision.levels?.peso_bruto_pct ?? 0) > 0).length,
+    )
+    expect(ideasSinSitio(null)).toBe(0)
+    expect(n).toBeGreaterThan(0)
+  })
+})

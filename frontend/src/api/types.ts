@@ -6,8 +6,9 @@ export interface Sourced {
   as_of: string
   cached: boolean
   fetched_at: string | null
-  /** `viejo` = todas las fuentes fallaron y se sirve la última copia. */
-  estado?: 'valido' | 'viejo'
+  /** Los cuatro estados de `app/datos.py`. `viejo` = todas las fuentes fallaron
+   *  y se sirve la última copia; `desconocido` y `error` los pinta `EstadoDato`. */
+  estado?: 'valido' | 'viejo' | 'desconocido' | 'error'
   /** Por qué es viejo, si lo es. */
   aviso?: string | null
   antiguedad_segundos?: number | null
@@ -133,6 +134,8 @@ export interface Financials extends Sourced {
 export interface AltmanZ {
   score: number | null
   zone: string | null
+  /** Las fronteras de las zonas (riesgo, segura): con ellas se escribe la cifra de su lado. */
+  umbrales?: number[]
   components: Record<string, number | null>
   note: string
 }
@@ -160,45 +163,6 @@ export interface Health extends Sourced {
   market_cap_used: number | null
 }
 
-export interface ValuationDefaults extends Sourced {
-  symbol: string
-  base_fcf: number | null
-  net_debt: number | null
-  /** Partidas de deuda que el filing no trae y cuentan como cero (null: ninguna). */
-  deuda_parcial?: string[] | null
-  nota_deuda?: string | null
-  shares_outstanding: number | null
-  historical_growth: Financials['growth']
-  suggested_growth_capped: number | null
-  current_price: number | null
-  fiscal_year?: string
-  note: string
-}
-
-export interface ScenarioAssumptions {
-  growth_rate: number
-  discount_rate: number
-  terminal_growth: number
-}
-
-export interface DcfScenarioResult {
-  assumptions: Record<string, number | null>
-  value_per_share: number | null
-  equity_value: number
-  terminal_weight: number | null
-}
-
-export interface DcfResponse {
-  symbol: string
-  scenarios: Record<string, DcfScenarioResult>
-  sensitivity: {
-    growth_rates: number[]
-    rows: { discount_rate: number; values: (number | null)[] }[]
-  } | null
-  current_price: number | null
-  computed_by: string
-}
-
 export interface PeersResponse extends Sourced {
   symbol: string
   peers: { symbol: string; metrics: Record<string, number | null>; source: string }[]
@@ -207,9 +171,20 @@ export interface PeersResponse extends Sourced {
   note: string
 }
 
+/** La ventana medida de beta, volatilidad y drawdown: era «1Y (barras
+ *  diarias)», fijo y en inglés, tuviera la serie lo que tuviera (revisión 12,
+ *  visual). `parcial`: menos sesiones que las `pedidas` (un año, 252). */
+export interface VentanaRiesgo {
+  sesiones: number
+  pedidas: number
+  desde: string | null
+  hasta: string | null
+  parcial: boolean
+}
+
 export interface RiskResponse extends Sourced {
   symbol: string
-  window: string
+  ventana: VentanaRiesgo
   beta_vs_spy: number | null
   annualized_volatility: number | null
   max_drawdown: { max_drawdown: number; peak: string; trough: string } | null
@@ -341,12 +316,18 @@ export interface ScreenCheck {
   op: 'gte' | 'lte'
   value: number
   actual: number | null
+  /** Solo true si se comprobó y cumple: un dato ausente nunca aprueba. */
   passed: boolean
+  /** «sin_dato» no es un suspenso: falta el dato (revisión 12, visual). */
+  estado: 'pasa' | 'no_pasa' | 'sin_dato'
 }
 
 export interface ScreenRow {
   symbol: string
   passes: boolean
+  /** «no_pasa» si suspende algún filtro con dato; «sin_comprobar» si no
+   *  suspende ninguno pero le falta el dato de alguno. */
+  estado: 'pasa' | 'no_pasa' | 'sin_comprobar'
   checks: ScreenCheck[]
   metrics: Record<string, number | null>
   source: string
@@ -357,6 +338,8 @@ export interface ScreenResult {
   results: ScreenRow[]
   unavailable: { symbol: string; reason: string }[]
   passed: number
+  no_pasan: number
+  sin_comprobar: number
   evaluated: number
   note: string
 }
@@ -399,6 +382,23 @@ export interface PortfolioPosition {
   stop?: number | null
   /** true = fijado al abrir; false = recalculado (posición anterior al RC1). */
   stop_fijado_al_abrir?: boolean
+  /** Recalculado sin histórico: el punto medio de su clase, no un stop medido. */
+  stop_por_clase?: boolean
+  /** Con la regla del motor (precio en o por debajo del stop). null = sin
+   *  precio o sin stop: no se sabe. */
+  stop_perforado?: boolean | null
+  /** El precio que perfora el stop de este lote cuando no es el de la fila: el
+   *  último cierre de la lista con la cotización por encima (fail-safe, los
+   *  mismos precios que el repaso de su símbolo). */
+  stop_perforado_por?: PrecioDelStop | null
+  /** El estado del stop de ESTE lote con la misma regla que el repaso de su
+   *  símbolo (`contexto_cartera.estado_del_stop`): la fila y la línea de Mi
+   *  cartera salen del mismo cálculo. Ausente en una respuesta anterior. */
+  stop_estado?: StopDePosicion['estado']
+  /** Por qué no se pudo comprobar, si `stop_estado` es `sin_comprobar`. */
+  stop_motivo?: string | null
+  /** El precio que decide `stop_estado` (puede ser el último cierre de la lista). */
+  stop_precio?: PrecioDelStop | null
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -410,7 +410,7 @@ export interface DivisasDeCartera {
   base: string
   mezcla_de_divisas: boolean
   monedas: Record<string, number>
-  sin_convertir: { symbol?: string; moneda?: string; motivo: string }[]
+  sin_convertir: { id?: number | null; symbol?: string; moneda?: string | null; motivo: string }[]
   tipos_usados: Record<string, { por_usd: number; fecha: string | null; serie: string }>
   /** Ganancia (+) o pérdida (−) en la base causada solo por el tipo de cambio desde la compra. */
   efecto_divisa_base?: number | null
@@ -424,8 +424,18 @@ export interface ClosedPosition {
   symbol: string
   quantity: number
   cost_basis: number
+  /** En la moneda de la posición (`currency`), no en la base. */
   realized_pnl: number | null
+  opened_at: string
   closed_at: string
+  /** La API la manda desde el RC1; el tipo no la tenía y el P&L realizado salía sin
+   *  código con dos divisas (ítem 2.1). `null` = desconocida, no se supone dólar. */
+  currency: string | null
+  /** El realizado convertido a la base, si se pudo convertir. */
+  realized_pnl_base?: number | null
+  /** Por qué no se puede convertir aunque se sepa la moneda (en céntimos, GBX):
+   *  antes salía «moneda desconocida» (revisión de A3). */
+  sin_convertir?: string | null
 }
 
 export interface Allocation {
@@ -451,10 +461,38 @@ export interface Estres {
   cobertura?: string
   años_cubiertos?: number
   aviso_cobertura?: string
+  /** Fracción del dinero que entra en el estrés (0–1); el resto no tiene histórico. */
+  cobertura_peso?: number | null
+  /** Las posiciones que se quedan fuera, por nombre. */
+  sin_historico?: string[]
+  aviso_sin_historico?: string | null
+}
+
+/** El estado de cada posición POR SÍMBOLO, el mismo que Explorar: el repaso del
+ *  stop (`contexto_cartera.stops_de_la_cartera`) con la lista guardada del
+ *  mercado de Inicio, y las filas de esa lista de lo que sigue abierto. Se lee
+ *  con `avisosDeCartera(repaso.senales, repaso)` (`cartera/atencion.ts`). */
+export interface RepasoDeCartera extends StopsDeCartera {
+  senales: DailySignal[]
+  /** De qué lista salen el cierre de reserva y las decisiones; `null` = no había
+   *  ninguna guardada: solo la cotización, sin la decisión de la lista. */
+  lista: {
+    mercado: string
+    as_of: string | null
+    estado: 'valido' | 'viejo'
+    antiguedad_segundos: number | null
+    /** `false` = parcial (una pasada a medias): las posiciones del mercado aún sin
+     *  puntuar van `pendiente`. Ausente o `null`: no se sabe. */
+    completa?: boolean | null
+    puntuadas?: number | null
+    pedidas?: number | null
+  } | null
 }
 
 export interface Portfolio {
   divisas?: DivisasDeCartera
+  /** Ausente (respuesta antigua) es como un `error`: no se sabe nada de ningún stop. */
+  repaso?: RepasoDeCartera
   risk_budget: RiskBudget
   estres: Estres
   positions: PortfolioPosition[]
@@ -596,6 +634,8 @@ export interface QuantSignal {
 
 export interface SignalResponse {
   signals: QuantSignal[]
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   unavailable: { symbol: string; reason: string }[]
   calibrated: boolean
   weights: Record<string, number>
@@ -614,6 +654,8 @@ export interface UniverseInfo {
 
 export interface ScanResponse {
   universe_key: string
+  /** Las fronteras de la etiqueta (muy favorable, favorable, neutral, desfavorable). */
+  label_thresholds?: number[]
   universe_name: string
   universe_description: string
   top: QuantSignal[]
@@ -750,6 +792,8 @@ export interface DailySectorMeta {
   requested: number
   scored: number
   pending: number
+  /** Las del sector que las fuentes no pudieron dar en esta pasada. Ausente en una respuesta antigua. */
+  fallidas?: number
   usable: boolean
 }
 
@@ -803,12 +847,20 @@ export interface Sizing {
   controles?: ControlDeRiesgo[]
   todos_los_limites_aplicados?: boolean
   nota: string
+  /** Sobre qué se midieron los pesos de lo que ya tienes: `capital` (posiciones
+   *  más el efectivo anotado) o, sin efectivo o sin sumarlo, sobre lo invertido
+   *  (`invertido`, `invertido_parcial`, `invertido_sin_cambio`): entonces un 0 %
+   *  es una conclusión del supuesto, no del dato. Ausente: no se sabe. */
+  base_cartera?: string
 }
 
 export interface ControlDeRiesgo {
   limite: 'posición' | 'sector' | 'correlación' | 'volatilidad'
   aplicado: boolean
   motivo: string | null
+  /** Solo el de correlación. 0: una sola idea y nada en cartera, no hay nada que comprobar. */
+  parejas_medidas?: number
+  parejas_posibles?: number
 }
 
 export interface Shortlist {
@@ -819,6 +871,13 @@ export interface Shortlist {
   candidatas: number
   descartadas_por_sector: number
   nota: string
+  /** La cartera que ya tienes supera sola el objetivo de volatilidad: no cabe
+   *  NINGUNA idea nueva, esté o no en la lista corta («Ideas nuevas al 0 %» del
+   *  dimensionador). Solo con la cartera medida sobre el capital
+   *  (`sizing.base_cartera: capital`); sin efectivo anotado, o sin sumarlo, es
+   *  `null`: «no cabe» sería una conclusión del supuesto de estar invertido al
+   *  100 %. Ausente en una respuesta anterior: no se sabe. */
+  sin_hueco_de_riesgo?: boolean | null
 }
 
 export interface TodayResponse {
@@ -840,6 +899,11 @@ export interface TodayResponse {
   requested: number
   /** Cuántas quedan por descargar: los tiers gratuitos limitan cada pasada. */
   pending: number
+  /** Cuántas quedaron sin datos por un FALLO de las fuentes (caídas, sin cuota),
+   *  no porque ninguna las tenga: se reintentan, y con alguna la lista no está
+   *  completa (revisión 15, H1). Ausente en una respuesta antigua: no es «ninguna». */
+  fallidas?: number
+  /** Nada pendiente ni fallido: la lista cubre el mercado. */
   complete: boolean
   fetched_now: number
   data_meta: UniversesMeta | Record<string, never>
@@ -850,6 +914,104 @@ export interface TodayResponse {
   disclaimer: string
   cached?: boolean
   fetched_at?: string
+  /** El stop de CADA posición abierta, también de las que no están en este
+   *  mercado. Se repasa en cada petición, fuera de la caché de la lista. Sin
+   *  él (respuesta antigua) no se sabe y no se dice «nada urgente». */
+  cartera?: StopsDeCartera
+  /** La lista se cachea 6 h con la cartera de cuando se puntuó; el repaso es de
+   *  ahora. null = calculada con la cartera de ahora; si no, qué cambió desde
+   *  entonces (o `error` si no se pudo comparar). Ausente en una respuesta
+   *  antigua. */
+  lista_desfasada?: ListaDesfasada | null
+  /** Solo en la copia caducada que se sirve al momento (`vencida=aceptar`):
+   *  `viejo`. La lista es de cuando se calculó; el repaso (`cartera`), de ahora. */
+  estado?: 'viejo'
+  /** Con `estado: viejo`, cuántos segundos tiene la copia; null = no se sabe. */
+  antiguedad_segundos?: number | null
+  /** Si esta lista dejó registrada la decisión del día (`signals._today`). Ausente
+   *  en una respuesta antigua. */
+  instantaneas?: InstantaneasDeLista
+}
+
+/** Lo que se congeló de la lista al calcularla (`snapshots.congelar_lista_diaria`).
+ *  Solo la primera lista que cubre el mercado congela; las demás dicen por qué no. */
+export interface InstantaneasDeLista {
+  guardadas: number
+  ya_existian: number
+  /** La congelación falló (el detalle está en el log del backend): el día queda sin foto. */
+  error: string | null
+  /** Por qué no se congeló (lista parcial: pendientes o fallidas); null si se congeló. */
+  sin_congelar: string | null
+}
+
+/** Qué cambió en la cartera desde que se calculó la lista (`contexto_cartera.cambios_de_cartera`). */
+export interface ListaDesfasada {
+  /** Abiertas después de calcularla: su decisión no es de posición. */
+  abiertas: string[]
+  /** Cerradas después: su decisión de posición ya no vale. */
+  cerradas: string[]
+  /** Con otra cantidad, coste medio, stop o número de lotes. */
+  cambiadas: string[]
+  /** El efectivo anotado cambió: el tamaño de las ideas es de antes. */
+  efectivo: boolean
+  /** No se pudo comparar: no se sabe si es la misma cartera. */
+  error?: string
+}
+
+/** Repaso del stop de la cartera (`contexto_cartera.stops_de_la_cartera`). */
+export interface StopsDeCartera {
+  /** null = no se pudo repasar (`error`). */
+  abiertas: number | null
+  /** Cuántas están en la lista de este mercado (las que decide el motor aquí). */
+  en_lista: number | null
+  posiciones: StopDePosicion[]
+  error?: string
+}
+
+/** Un precio con que se miró el stop: la cotización (60 s, la del Portafolio)
+ *  o, como reserva, el último cierre de la lista. */
+export interface PrecioDelStop {
+  precio: number
+  fuente: 'cotizacion' | 'cierre_de_la_lista'
+  estado: 'valido' | 'viejo'
+  /** El proveedor (finnhub, yfinance…), si lo dijo. */
+  proveedor: string | null
+  /** De cuándo es el precio, con zona. */
+  fecha: string | null
+}
+
+export interface StopDePosicion {
+  symbol: string
+  en_lista: boolean
+  /** Del mercado de la lista, pero una lista parcial aún no la ha puntuado: no
+   *  es «de fuera». Ausente en una respuesta anterior. */
+  pendiente?: boolean
+  /** El precio que decide el estado: el que perfora el stop o, si ninguno, el
+   *  primero válido de `precios`. */
+  precio: number | null
+  precio_estado: 'valido' | 'viejo' | 'desconocido'
+  precio_fuente?: PrecioDelStop['fuente'] | null
+  precio_proveedor?: string | null
+  precio_fecha?: string | null
+  /** Todos los precios que se miraron, el más reciente primero. */
+  precios?: PrecioDelStop[]
+  moneda: string | null
+  /** El más alto de los de sus lotes (`portfolio.stop_del_lote`, el del Portafolio). */
+  stop: number | null
+  stop_fijado_al_abrir: boolean
+  stop_por_clase: boolean
+  lotes?: number
+  /** Lotes sin stop guardado: el suyo se recalcula desde su coste. */
+  lotes_recalculados?: number
+  /** De esos, los que sin histórico usan el punto medio de su clase. */
+  lotes_por_clase?: number
+  /** Lotes sin stop ni coste con que calcularlo. */
+  lotes_sin_stop?: number
+  /** Fail-safe: perforado si lo perfora cualquiera de los precios; por encima
+   *  solo con un precio válido y todos los lotes con stop. */
+  estado: 'perforado' | 'por_encima' | 'sin_comprobar'
+  /** Por qué no se pudo comprobar (sin precio, un lote sin stop, solo un precio viejo). */
+  motivo: string | null
 }
 
 export interface CalibrationBucket {
@@ -892,6 +1054,19 @@ export interface EarningsEvent {
   eps_actual: number | null
   revenue_estimate: number | null
   revenue_actual: number | null
+}
+
+/** `GET /api/market/calendar`. Con el calendario caído, `events` y `total` son
+ *  null y `error` dice por qué: antes llegaba `events: []` y la pantalla decía
+ *  «Ninguna empresa anuncia resultados» (revisión 13). `total`: cuántos hay en
+ *  los 14 días, antes de recortar a los 120 más próximos que se sirven. */
+export interface CalendarioMercado {
+  events: EarningsEvent[] | null
+  total?: number | null
+  error?: string | null
+  source?: string
+  as_of?: string
+  cached?: boolean
 }
 
 // ---- Informe de analista (deep dive) ----
@@ -939,6 +1114,10 @@ export interface Verdict {
   stance: string
   positives: string[]
   negatives: string[]
+  /** Lo que la lectura mira y no pudo comprobar por falta del dato (revisión 12). */
+  sin_comprobar?: string[]
+  /** De qué sale la lectura y qué no entra en ella (revisión 12). */
+  alcance?: string
   quant_label: string | null
   quant_score: number | null
   summary: string
@@ -977,6 +1156,8 @@ export interface DeepDiveReport {
     current: { gross_margin: number | null; operating_margin: number | null; net_margin: number | null }
     trends: Record<string, string | null>
     reading: string
+    /** El ejercicio de `current`: los márgenes del informe son anuales (revisión 12). */
+    ejercicio?: string | null
   }
   debt: {
     net_debt: number | null
@@ -1007,25 +1188,40 @@ export interface DeepDiveReport {
     reading: string
   }
   valuation: ValuationHistory
-  dcf: {
-    scenarios: Record<string, DcfScenarioResult>
-    base_fcf: number
-    net_debt: number
-    shares_outstanding: number
-    current_price: number | null
-    note: string
-  } | null
+  /** El DCF del módulo Valoración con los datos del informe (ítem 3.3): mismas
+   *  funciones, mismos rangos. Sin FCF positivo o sin acciones no se precarga, y
+   *  se dice por qué (revisión 15, H7). */
+  dcf: DcfDelInforme | null
   quant_signal: QuantSignal | null
   risk_metrics: {
     annualized_volatility: number | null
     max_drawdown: { max_drawdown: number; peak: string; trough: string } | null
   } | null
   risks: DeepDiveRisk[]
+  /** Umbrales de riesgo que no se pudieron mirar por falta del dato (revisión 12). */
+  riesgos_sin_comprobar?: string[]
   catalysts: DeepDiveCatalyst[]
+  /** Qué hay en la lista de catalizadores: su ventana y su origen (revisión 12). */
+  catalysts_note?: string
+  /** Fuentes de la lista que no respondieron («calendario de resultados»,
+   *  «documentos presentados ante la SEC»): con alguna, una lista vacía no es
+   *  «ninguno» (revisión 13). */
+  catalysts_sin_comprobar?: string[]
   verdict: Verdict
+  /** Las fronteras con que el informe escribe cada cifra (revisión 11); falta en
+   *  informes de antes. */
+  umbrales?: Partial<Record<UmbralInforme, number[]>>
   data_sources: { financials: string; quote: string | null; as_of: string }
   computed_by: string
 }
+
+export type UmbralInforme =
+  | 'revenue_cagr'
+  | 'operating_margin'
+  | 'debt_to_equity'
+  | 'interest_coverage'
+  | 'fcf_conversion'
+  | 'max_drawdown'
 
 export interface DeepDiveNarrative {
   generated_by: 'llm'
@@ -1058,8 +1254,9 @@ export interface RuleBacktestResponse {
   tasa_acierto?: number
   tasa_acierto_ic?: [number, number]
   esperanza_pct?: number
-  media_ganadora_pct?: number
-  media_perdedora_pct?: number
+  /** `null` si no hubo operaciones de ese lado: ausente, no un 0. */
+  media_ganadora_pct?: number | null
+  media_perdedora_pct?: number | null
   factor_beneficio?: number | null
   peor_operacion_pct?: number
   mejor_operacion_pct?: number
@@ -1424,7 +1621,9 @@ export interface RangoValor {
 
 export interface EscenarioValoracion {
   supuestos: SupuestosEscenario
-  /** De dónde sale el crecimiento: del histórico real o de un supuesto. */
+  /** De dónde sale el crecimiento: del histórico real o de un supuesto. `motivo`
+   *  dice por qué no es el medido por su factor: el 3 % supuesto, o el suelo del
+   *  −50 % (que no es un supuesto: `crecimiento_supuesto` falso). */
   procedencia?: { crecimiento_supuesto: boolean; motivo: string | null }
   rango: RangoValor
 }
@@ -1541,8 +1740,35 @@ export interface Valoracion {
   dcf_inverso: DcfInverso
   comparables: Comparables
   nota_supuestos: string
+  /** Solo si los centros no van de menos a más (bajista ≤ base ≤ alcista): pasa
+   *  con escenarios tuyos pensados para un FCF del otro signo. Lo propuesto
+   *  siempre va en orden (revisión 15, H1). */
+  aviso_orden?: string
   disclaimer: string
   computed_by: string
+}
+
+/** El `dcf` del informe completo: el resumen, o por qué no se precarga (con el
+ *  FCF de partida no positivo o sin acciones; el módulo sí lo valora). */
+export type DcfDelInforme = (ResumenValoracion & { disponible: true }) | { disponible: false; motivo: string }
+
+/** Lo que pinta el resumen del DCF (`ResumenDcf`, ítem 3.3): la parte de
+ *  `Valoracion` que trae también el `dcf` del informe completo. Una sola forma
+ *  para las dos vistas; aquí la deuda neta puede faltar (el informe no da 422). */
+export interface ResumenValoracion {
+  escenarios: Record<string, EscenarioValoracion>
+  rango_global: RangoGlobal | null
+  entradas: {
+    base_fcf: number
+    net_debt: number | null
+    deuda_parcial?: string[] | null
+    nota_deuda?: string | null
+    shares_outstanding: number | null
+    precio_actual: number | null
+    fiscal_year: number | string | null
+    years: number
+    source: string
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1604,9 +1830,12 @@ export interface VigilanciaResponse {
   aviso_sin_disparadores: string | null
 }
 
+/** «pct»: se escribe en % y se guarda como fracción; «veces»: un ratio, tal cual. */
+export type UnidadMetrica = 'pct' | 'veces'
+
 export interface MetricasVigilables {
-  metricas: { clave: string; etiqueta: string; alto_mejor: boolean }[]
-  crecimientos: { clave: string; etiqueta: string }[]
+  metricas: { clave: string; etiqueta: string; alto_mejor: boolean; unidad?: UnidadMetrica }[]
+  crecimientos: { clave: string; etiqueta: string; unidad?: UnidadMetrica }[]
   operadores: { clave: string; etiqueta: string }[]
   nota: string
 }
@@ -1627,7 +1856,7 @@ export interface DecisionRegistrada {
   contexto: {
     precio: number | null
     tesis: { id: number; titulo: string; creada: string } | null
-    disparadores_saltando: { descripcion: string; detalle?: string }[]
+    disparadores_saltando: { descripcion: string; detalle?: string; aviso?: string }[]
     /** Desde el 9-oct-2026; las decisiones anteriores no lo traen. */
     disparadores_sin_comprobar?: { descripcion: string; motivo?: string | null }[]
     disparadores_totales: number
@@ -1761,6 +1990,9 @@ export interface CrisisEstresada {
 export interface RiesgoDeCartera {
   disponible: boolean
   nota?: string
+  /** Ninguna posición abierta: no hay histórico que descargar. Sin precio no
+   *  viene, y reintentar sí tiene sentido. */
+  sin_posiciones?: boolean
   posiciones?: PosicionDeCartera[]
   sin_precio?: string[]
   /** Posiciones con precio pero sin moneda o tipo de cambio: fuera de los pesos. */
@@ -2063,6 +2295,9 @@ export interface RiesgoEnCartera {
   volatilidad_cartera_despues?: number
   motivo?: string
   nota?: string
+  /** Con posiciones sin precio o sin histórico: el riesgo se mide solo sobre las
+   *  que tienen las dos cosas, y esto nombra las que faltan con su motivo. */
+  aviso?: string
 }
 
 export interface EvidenciaCalidad {
@@ -2110,14 +2345,36 @@ export interface AnalisisEmpresa {
     ejercicio?: string
     publicado?: string
     metricas: Record<string, MetricaDerivada & Linaje>
-    trimestre?: { periodo: string | null; publicado: string | null } | null
+    /** El último trimestre presentado, con su linaje: las cifras clave de la ficha. */
+    trimestre?: {
+      periodo: string | null
+      publicado: string | null
+      periodo_fin?: string | null
+      revenue?: Linaje
+      revenue_yoy?: MetricaDerivada
+      operating_margin?: MetricaDerivada
+    } | null
+    fuente?: string
     motivo?: string
   }
   valoracion: {
     estado: string
+    /** Sin estados financieros, por qué no hay valoración. */
+    motivo?: string
     pe?: MetricaDerivada
     fcf_yield?: MetricaDerivada
-    dcf_inverso?: { estado: string; crecimiento_implicito?: number | null; rango?: { bajo: number; alto: number } | null; motivo?: string | null; nota?: string }
+    dcf_inverso?: {
+      estado: string
+      crecimiento_implicito?: number | null
+      rango?: { bajo: number; alto: number } | null
+      /** Descuento y crecimiento terminal en fracción; `anos`, los de la proyección. */
+      supuestos?: { descuento: number; terminal: number; anos: number }
+      /** Por qué no hay crecimiento implícito (también si solo falta el punto del 9 %). */
+      motivo?: string | null
+      nota?: string
+      /** Las partidas de deuda que el filing no trae y cuentan como cero. */
+      deuda_parcial?: string[] | null
+    }
   }
   tesis: {
     estado: string
@@ -2135,7 +2392,18 @@ export interface AnalisisEmpresa {
   confianza: ConfianzaEvidencia
   riesgo: RiesgoEnCartera
   calidad: CalidadBeneficios
-  expectativas: { estado: string; ultimo?: { evento: EventoCatalizador; clasificacion: string; a_favor: string[]; en_contra: string[]; guidance: string | null } | null; proximo?: { evento: EventoCatalizador; expectativas: number } | null }
+  expectativas: {
+    estado: string
+    ultimo?: {
+      evento: EventoCatalizador
+      clasificacion: string
+      a_favor: string[]
+      en_contra: string[]
+      guidance: string | null
+      impacto_en_tesis?: ImpactoEnTesis[]
+    } | null
+    proximo?: { evento: EventoCatalizador; expectativas: number } | null
+  }
   coste_oportunidad: CosteOportunidad
   faltan: { dato: string; seccion: string; motivo: string | null }[]
   generado_por: string
@@ -2162,15 +2430,24 @@ export interface ReglaQueCambio {
   ahora: { resultado: string; papel: string; valor?: number; umbral?: number } | null
 }
 
+export interface PuntoDeTesis {
+  punto: string
+  origen?: string
+  tesis_id?: number | null
+  disparador_id?: number | null
+}
+
 export interface CambiosAnalisis {
   primer_analisis?: boolean
   nota?: string
   categorias?: Record<string, CambioMetrica[]>
+  /** Cada punto, con `disparador_id` y `tesis_id` (revisión 13); los que vienen
+   *  de los resultados del trimestre, además, `origen: 'resultados'`. */
   tesis?: {
-    confirmados: { punto: string; detalle?: string }[]
-    deteriorados: { punto: string; detalle?: string }[]
-    invalidaciones: { punto: string; detalle?: string }[]
-    nuevos_riesgos: { punto: string; motivo?: string }[]
+    confirmados: (PuntoDeTesis & { detalle?: string })[]
+    deteriorados: (PuntoDeTesis & { detalle?: string })[]
+    invalidaciones: (PuntoDeTesis & { detalle?: string })[]
+    nuevos_riesgos: (PuntoDeTesis & { motivo?: string })[]
     estado: { antes: string | null; ahora: string | null }
   }
   decision?: {
@@ -2180,6 +2457,9 @@ export interface CambiosAnalisis {
     reglas_que_cambiaron: ReglaQueCambio[]
     papeles_que_cambiaron: { regla: string; texto: string; antes: string; ahora: string }[]
     explicacion: string[]
+    /** Los de cada traza: con ellos se escribe cada lado de la explicación y de la fila de la puntuación. */
+    umbrales_puntuacion_antes?: number[]
+    umbrales_puntuacion_ahora?: number[]
   }
   materiales?: number
   irrelevantes?: number
@@ -2191,7 +2471,13 @@ export interface AnalisisEmpresaResponse {
   cambios: CambiosAnalisis
   analisis: AnalisisEmpresa
   instantanea: { id: number; nueva: boolean; origen: string; creado_en: string } | null
+  /** Por qué no se congeló aunque se pidiera (ninguna fuente conoce el símbolo). */
+  sin_congelar?: string | null
   anterior: { id: number; creado_en: string; accion: string } | null
+  /** El repaso del stop de esta posición, el de Inicio, Mi cartera y Explorar
+   *  (el stop de CADA lote), fuera de `analisis`: es de ahora y no se congela.
+   *  Sin posición abierta, `posiciones` vacío. Ausente en una respuesta anterior. */
+  repaso?: RepasoDeCartera
 }
 
 export interface DecisionHistorica {
@@ -2205,6 +2491,8 @@ export interface DecisionHistorica {
   score: number | null
   reglas_version: string
   replay: boolean
+  /** Los de su propia traza (con posición, solo el de vender); vacío si no la guardó. */
+  umbrales_puntuacion?: number[]
 }
 
 export interface ReplayDecision {
@@ -2260,6 +2548,27 @@ export interface ComparacionMetrica {
   sorpresa?: number
   tipo_sorpresa?: string
   motivo?: string
+  /** La expectativa estimó otro trimestre que el del real: se enseña, pero sin
+   *  lectura (`desconocido`), sin voto y fuera de la calibración. */
+  periodo_distinto?: { estimado_fin: string; real_fin: string; real_periodo: string | null; motivo: string }
+}
+
+/** Un punto de la tesis frente al trimestre. `tesis_id` y `disparador_id` (el
+ *  `id` de `tesis.disparadores` del análisis) dicen de qué tesis y de qué punto
+ *  es: la vigilancia anual y el trimestre cruzan el mismo punto, y las reglas se
+ *  capturan de todas las tesis del símbolo (revisión 13). Faltan en lecturas
+ *  congeladas antes. */
+export interface ImpactoEnTesis {
+  punto: string
+  estado: string
+  metrica?: string | null
+  real?: number | null
+  umbral?: number | null
+  operador?: string | null
+  previo?: number | null
+  motivo?: string
+  tesis_id?: number | null
+  disparador_id?: number | null
 }
 
 export interface LecturaEvento {
@@ -2273,8 +2582,10 @@ export interface LecturaEvento {
   en_contra: string[]
   parcial: boolean
   sin_resultado: string[]
+  /** Métricas con real cuya única expectativa era de otro trimestre. */
+  no_comparables?: string[]
   regla_clasificacion: string
-  impacto_en_tesis: { punto: string; estado: string; real?: number | null; umbral?: number | null; motivo?: string }[]
+  impacto_en_tesis: ImpactoEnTesis[]
   expectativas_por_fuente: Record<string, { metrica: string; fuente: string; valor: number | null; bajo: number | null; alto: number | null; operador: string | null; registrado_en: string; detalle: Record<string, unknown> | null }[]>
 }
 
@@ -2282,6 +2593,10 @@ export interface CalibracionExpectativas {
   por_fuente: Record<string, { total: { n: number; error_medio_abs?: number; sesgo?: number; cerca_pct?: number; suficiente?: boolean }; mejor_prevista: string | null; empresas_menos_previsibles: string[] }>
   pares: number
   nota: string
+  /** Qué miden «Error medio» y «Cerca», con las tolerancias de las métricas que hay. */
+  definiciones?: string
+  /** Pares fuera porque la expectativa estimó otro trimestre que el del real. */
+  excluidos_otro_trimestre?: number
 }
 
 export interface ContribucionPosicion {
@@ -2317,9 +2632,55 @@ export interface ContribucionAlRiesgo {
   hasta?: string
   nota?: string
   indice_beta?: string | null
+  /** Ninguna posición abierta: no hay histórico que descargar. */
+  sin_posiciones?: boolean
 }
 
 export interface SaldosEfectivo {
   saldos: { moneda: string; importe: number; as_of: string; nota: string | null }[]
   nota: string | null
+}
+
+// --- «Pregúntale a la IA» (`POST /api/ia/preguntar`) ---------------------------
+
+/** Un bloque de lo ya calculado que se le pasa a la IA, con su fuente y su fecha. */
+export interface DatoContextoIA {
+  /** Interna: lista, cartera, mercado, ficha o criterios_etf. No se enseña. */
+  clave: string
+  titulo: string
+  fuente: string
+  /** ISO con zona; null en lo que no es un dato fechado (los umbrales de la app). */
+  fecha: string | null
+  estado: 'valido' | 'viejo'
+  antiguedad_segundos: number | null
+  nota: string | null
+}
+
+/** Lo que la app no tenía calculado: la IA no lo vio, y se le dijo que falta. */
+export interface DatoAusenteIA {
+  clave: string
+  titulo: string
+  motivo: string
+}
+
+/** `POST /api/ia/preguntar/coste`: lo que costaría y qué se le pasaría, sin llamar al modelo. */
+export interface CostePreguntaIA {
+  coste: CosteEstimado['coste']
+  datos_usados: DatoContextoIA[]
+  datos_ausentes: DatoAusenteIA[]
+  max_caracteres: number
+}
+
+export interface RespuestaPreguntaIA {
+  generado_por: 'ia'
+  pregunta: string
+  content_md: string
+  model: string
+  /** De una pregunta idéntica con los mismos datos: no se volvió a llamar al modelo. */
+  cached: boolean
+  creado_en: string | null
+  coste: { tokens_entrada: number | null; tokens_salida: number | null; usd: number | null; nota: string }
+  datos_usados: DatoContextoIA[]
+  datos_ausentes: DatoAusenteIA[]
+  aviso: string
 }

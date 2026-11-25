@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from app.analysis.markets import parametros_lista_diaria
 from tests.fakes_empresa import trimestre
 from tests.fixtures import extremos as ex
 from tests.golden import motor
@@ -85,7 +86,7 @@ def _que_cambio_y_replay(salida: list) -> None:
         # Entre medias: baja el precio, desaparece la puntuación y sale un
         # trimestre con el margen por debajo del umbral de la tesis.
         sv.quotes[symbol]["price"] = 92.0
-        sv.cache.set("daily_picks", {"v": 6, "market": "us_sp500"}, {"signals": [], "as_of": ex.AHORA.isoformat()})
+        sv.cache.set("daily_picks", parametros_lista_diaria("us_sp500"), {"signals": [], "as_of": ex.AHORA.isoformat()})
         sv.financials[symbol]["quarters"].append(
             trimestre(2026, 2, "2026-07-30", revenue=300.0, operating_income=300.0 * 0.12, gross_profit=120.0,
                          net_income=30.0, eps_diluted=0.05, cfo=40.0, capex=15.0))

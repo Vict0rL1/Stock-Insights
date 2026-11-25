@@ -1,15 +1,27 @@
 """Valoración por DCF con supuestos explícitos y análisis de sensibilidad.
 
 Principio rector de la app aplicado al código: el DCF nunca devuelve "el
-precio objetivo"; devuelve un valor por escenario con TODOS los supuestos de
-entrada visibles, más una matriz de sensibilidad que enseña cuánto se mueve
-el resultado al tocar cada supuesto. La falsa precisión es el enemigo.
+precio objetivo"; devuelve un RANGO por escenario con TODOS los supuestos de
+entrada visibles, y dice qué supuesto mueve más el resultado. La falsa
+precisión es el enemigo.
+
+Es el ÚNICO DCF de la app (ítem 3.3). Había tres, cada uno con sus supuestos:
+el módulo Valoración, la pestaña Valoración de la ficha (supuestos escritos en
+el frontend) y el «precargado» del informe completo. Ahora los tres leen de aquí
+(`cimientos`, `escenarios_por_defecto`, `escenarios_con_rango`, `rango_global`)
+y por eso dan los mismos rangos. La comparación de supuestos está en el README,
+«Un solo DCF». `scenario_set` y `sensitivity_grid` solo los usa ya el alias
+obsoleto `POST /api/stocks/{s}/valuation/dcf`, que se retira en la versión
+siguiente.
 """
 
 from __future__ import annotations
 
+import math
+
 from app import datos
-from app.formato import fmt_pct
+from app.analysis.fundamentals import deuda_total, free_cash_flow, growth_summary
+from app.formato import fmt_num, fmt_pct, fmt_valor_redondo
 
 
 def dcf(
@@ -145,7 +157,11 @@ def sensitivity_grid(
             result = dcf(
                 base_fcf, g, r, terminal_growth, years, net_debt, shares_outstanding
             )
-            cells.append(result["value_per_share"] or result["equity_value"])
+            # Solo valor por acción. Con `value_per_share or equity_value`, sin
+            # acciones la matriz «valor/acción» se llenaba con el valor total de
+            # la empresa, en miles de millones (M4, hermano de P0-9); y un 0,0
+            # por acción, *falsy*, también saltaba al total.
+            cells.append(result["value_per_share"])
         rows.append({"discount_rate": r, "values": cells})
     return {"growth_rates": growths, "rows": rows}
 
@@ -202,6 +218,15 @@ def scenario_set(
 BANDA_CRECIMIENTO = 0.02   # ±2 puntos porcentuales
 BANDA_DESCUENTO = 0.01     # ±1 punto porcentual
 CIFRAS_SIGNIFICATIVAS = 3
+
+# Con un FCF de partida de cero no hay flujos que crecer ni que descontar: el
+# valor por acción es la deuda neta repartida entre las acciones, con el signo
+# cambiado, en todas las combinaciones (revisión 15, H6).
+NOTA_SIN_FLUJOS_RANGO = (
+    "Con un FCF de partida de cero el rango es un solo punto: no hay flujos que crecer ni que "
+    "descontar, así que ningún supuesto de crecimiento ni de descuento lo mueve. Lo que queda es la "
+    "deuda neta repartida entre las acciones (resta; una caja neta sumaría)."
+)
 
 
 def redondear(valor: float | None, cifras: int = CIFRAS_SIGNIFICATIVAS) -> float | None:
@@ -284,7 +309,10 @@ def rango_de_valor(
     )
     valor_centro = centro["value_per_share"]
     bajo, alto = min(combinaciones), max(combinaciones)
-    amplitud = (alto - bajo) / valor_centro if valor_centro else None
+    # Sobre el tamaño del centro, no sobre su signo: con un FCF negativo el centro
+    # es negativo, y un rango del 43 % salía «Rango estrecho (-43 % del centro)»
+    # (revisión 14, H1).
+    amplitud = (alto - bajo) / abs(valor_centro) if valor_centro else None
 
     return {
         "disponible": True,
@@ -299,7 +327,11 @@ def rango_de_valor(
         "peso_terminal": (
             round(centro["terminal_weight"], 3) if centro["terminal_weight"] else None
         ),
-        "nota": _leer_amplitud(amplitud, centro["terminal_weight"]),
+        # Con un FCF de partida de cero todas las esquinas valen lo mismo, y la
+        # nota de la amplitud decía «Rango estrecho (0 % del centro), lo que suele
+        # significar que el peso del valor terminal es bajo o que la banda de
+        # supuestos es corta»: una causa que no es la (revisión 15, H6).
+        "nota": NOTA_SIN_FLUJOS_RANGO if base_fcf == 0 else _leer_amplitud(amplitud, centro["terminal_weight"]),
     }
 
 
@@ -347,7 +379,7 @@ PERTURBACIONES = {
     "growth_rate": (0.01, "Crecimiento del FCF (+/- 1 pp)"),
     "discount_rate": (0.01, "Tasa de descuento / WACC (+/- 1 pp)"),
     "terminal_growth": (0.005, "Crecimiento a perpetuidad (+/- 0,5 pp)"),
-    "base_fcf": (None, "Flujo de caja de partida (+/- 10 %)"),
+    "base_fcf": (None, "Flujo de caja de partida (+/- 10\u00a0%)"),
 }
 
 
@@ -386,15 +418,29 @@ def sensibilidad_ordenada(
             s["base_fcf"], s["growth_rate"], s["discount_rate"], s["terminal_growth"],
             years, net_debt, shares_outstanding,
         )
-        return r["value_per_share"] or r["equity_value"]
+        # Por acción o nada, como la matriz de arriba (M4): el `or equity_value`
+        # mezclaba unidades sin acciones y con un 0,0 por acción.
+        return r["value_per_share"]
 
     centro = valorar()
-    if centro is None or centro == 0:
+    if centro is None:
         return {"disponible": False, "nota": "Los supuestos centrales no producen un valor."}
+    # Un centro de cero SÍ es un valor (FCF 0 y deuda neta 0), y se decía que los
+    # supuestos «no producen un valor» (revisión 15, H6). Con un FCF de cero los
+    # recorridos son cero y se miden abajo; con otro FCF, un centro de cero justo
+    # deja sin base el porcentaje de cada recorrido, y eso es lo que se dice.
+    if centro == 0 and base_fcf != 0:
+        return {
+            "disponible": False,
+            "centro": 0,
+            "nota": "El valor central sale cero justo, y lo que mueve cada supuesto no se puede medir en porcentaje de cero.",
+        }
 
     filas = []
     for clave, (delta, etiqueta) in PERTURBACIONES.items():
-        paso = delta if delta is not None else supuestos[clave] * 0.10
+        # Sobre el tamaño, no el signo (revisión 14, H1): con un FCF de partida
+        # negativo el paso salía negativo y «abajo» era un FCF mayor.
+        paso = delta if delta is not None else abs(supuestos[clave]) * 0.10
         if paso == 0:
             continue
         abajo = valorar(**{clave: supuestos[clave] - paso})
@@ -412,7 +458,11 @@ def sensibilidad_ordenada(
                 "valor_abajo": redondear(abajo),
                 "valor_arriba": redondear(arriba),
                 "recorrido": redondear(recorrido),
-                "recorrido_pct": round(recorrido / centro * 100, 1),
+                # Sobre el tamaño del centro: con un centro negativo (FCF
+                # negativo) salían porcentajes negativos y el orden de abajo se
+                # invertía, así que «el que más mueve» era el que menos. Un
+                # recorrido nulo es un 0 % también con el centro en cero.
+                "recorrido_pct": round(recorrido / abs(centro) * 100, 1) if recorrido else 0.0,
                 # La asimetría importa: si bajar el crecimiento un punto quita
                 # 30 $ y subirlo solo añade 18 $, el riesgo no es simétrico y el
                 # escenario central está más cerca del techo que del suelo.
@@ -425,18 +475,390 @@ def sensibilidad_ordenada(
         )
 
     filas.sort(key=lambda f: -f["recorrido_pct"])
-    dominante = filas[0] if filas else None
+    # El que más mueve tiene que mover algo. Con un FCF de partida de cero todos
+    # los recorridos son cero, y se nombraba igual al primero de la lista: «El
+    # supuesto que más mueve el resultado es «Crecimiento del FCF (+/- 1 pp)»: su
+    # banda cambia el valor un 0 %. Es donde merece la pena discutir» (revisión
+    # 15, H6).
+    dominante = filas[0] if filas and filas[0]["recorrido"] else None
+    if dominante:
+        nota = (
+            f"El supuesto que más mueve el resultado es «{dominante['etiqueta']}»: "
+            f"su banda cambia el valor un {fmt_pct(dominante['recorrido_pct'], 0, en_puntos=True)}. "
+            "Es donde merece la pena discutir, y donde una tesis se sostiene o se "
+            "cae — no en el segundo decimal del resultado."
+        )
+    elif not filas:
+        nota = "No se pudo medir la sensibilidad de ningún supuesto."
+    elif base_fcf == 0:
+        nota = (
+            "Con un FCF de partida de cero, ningún supuesto de crecimiento ni de descuento mueve el "
+            "valor: no hay flujos que crecer ni que descontar, y lo que queda es la deuda neta repartida "
+            "entre las acciones. Lo que decide el resultado aquí es el FCF de partida."
+        )
+    else:
+        nota = "Ninguno de estos supuestos mueve el valor con estas entradas."
     return {
         "disponible": True,
         "centro": redondear(centro),
         "supuestos": filas,
         "dominante": dominante["supuesto"] if dominante else None,
-        "nota": (
-            f"El supuesto que más mueve el resultado es «{dominante['etiqueta']}»: "
-            f"su banda cambia el valor un {fmt_pct(dominante['recorrido_pct'], 0, en_puntos=True)}. "
-            "Es donde merece la pena discutir, y donde una tesis se sostiene o se "
-            "cae — no en el segundo decimal del resultado."
-            if dominante
-            else "No se pudo medir la sensibilidad de ningún supuesto."
-        ),
+        "nota": nota,
     }
+
+
+# ---------------------------------------------------------------------------
+# El DCF de la app: cimientos, supuestos de partida, escenarios y rango global
+# ---------------------------------------------------------------------------
+#
+# Antes vivía en `routers/valuation.py`, y el informe completo importaba de un
+# router el supuesto del 3 % para hacerse su propio DCF con otros WACC. Aquí lo
+# leen el módulo Valoración, el resumen de la ficha y el informe (ítem 3.3).
+
+# Supuestos de partida de cada escenario. Son un PUNTO DE ARRANQUE editable, no
+# una opinión de la app: el crecimiento sale del histórico de la propia empresa y
+# los WACC son el rango habitual para una cotizada grande. Todo esto viaja en la
+# respuesta para que se pueda discutir y cambiar.
+FACTOR_CRECIMIENTO = {"bajista": 0.4, "base": 1.0, "alcista": 1.5}
+DESCUENTO = {"bajista": 0.11, "base": 0.09, "alcista": 0.08}
+TERMINAL = {"bajista": 0.015, "base": 0.025, "alcista": 0.030}
+# Lo que se supone cuando no hay crecimiento histórico utilizable. Viaja
+# SIEMPRE declarado como supuesto: es el parámetro que más mueve un DCF.
+CRECIMIENTO_SUPUESTO = 0.03
+CRECIMIENTO_MAXIMO = 0.15  # el pasado no se extrapola alegremente
+# Lo mínimo que se propone, y lo mínimo que admite «Recalcular» (el validador
+# del módulo lee esta misma constante). Sin suelo, un FCF que cae a la mitad en
+# un año (−50 % medido) proponía un bajista del −75 % que el propio módulo
+# rechazaba con un 422 al recalcular sin tocar nada; y por debajo de −100 % el
+# FCF cambia de signo cada año, y una empresa con caja y sin deuda salía con un
+# rango negativo (revisión 14, H3).
+CRECIMIENTO_MINIMO = -0.5
+ANOS = 5
+ESCENARIOS = ("bajista", "base", "alcista")
+
+
+def cimientos(periodos: list[dict]) -> dict:
+    """Las entradas del DCF que salen del último ejercicio, con lo que falta dicho.
+
+    Una sola versión para el módulo y el informe: el informe sumaba la deuda con
+    `total_debt` y no decía que fuera parcial (M5).
+    """
+    ultimo = periodos[-1]
+    deuda_d = deuda_total(ultimo)
+    deuda = deuda_d["valor"]
+    return {
+        "base_fcf": free_cash_flow(ultimo),
+        # Deuda desconocida viaja como None, NUNCA como 0.0: con cero, una
+        # empresa sobre la que no sabemos la deuda se valoraba como si no debiera
+        # nada (+95 % en el caso de la auditoría). La caja ausente sí se toma
+        # como cero, porque ese error va en dirección prudente: sube la deuda
+        # neta y BAJA el valor.
+        "net_debt": (deuda - (datos.numero(ultimo.get("cash")) or 0.0)) if deuda is not None else None,
+        # Con una sola pata de deuda, la otra cuenta como cero: se dice.
+        "deuda_parcial": deuda_d["falta"] if deuda_d["parcial"] else None,
+        "shares_outstanding": ultimo.get("shares_outstanding"),
+        "revenue": ultimo.get("revenue"),
+        "eps": ultimo.get("eps_diluted"),
+        "crecimiento": growth_summary(periodos),
+        "fiscal_year": ultimo.get("fiscal_year"),
+    }
+
+
+def escenarios_por_defecto(crecimiento: dict, base_fcf: float | None = None) -> dict[str, dict]:
+    """Propone bajista/base/alcista desde el crecimiento histórico real.
+
+    Se acota al 15 %: extrapolar a perpetuidad el mejor quinquenio de una empresa
+    es el error más común del DCF casero, y el que más caro sale.
+
+    Con un FCF de partida negativo (`base_fcf < 0`), el bajista y el alcista se
+    intercambian enteros: el bajista es siempre el más bajo.
+    """
+    # Dos fallos vivían en el `or` encadenado que había aquí.
+    #
+    # Uno: un crecimiento ausente se convertía en un 3 % que nunca se declaraba
+    # como supuesto, así que en pantalla no había forma de distinguir «crece al
+    # 3 % según sus cuentas» de «no sabemos cuánto crece y hemos puesto un 3 %».
+    #
+    # Dos, y más sutil: `0.0` es *falsy*, así que una empresa con crecimiento
+    # real de cero caía también en el 3 %. Justo la empresa estancada —el caso
+    # en que el DCF más se equivoca— se valoraba como si creciera.
+    medido = datos.numero(crecimiento.get("fcf_cagr"))
+    if medido is None:
+        medido = datos.numero(crecimiento.get("revenue_cagr"))
+    supuesto = medido is None
+    historico = CRECIMIENTO_SUPUESTO if supuesto else medido
+
+    # El suelo en 0 se mantiene solo para el escenario base hacia arriba: un
+    # crecimiento negativo medido SÍ se respeta, porque una empresa en
+    # contracción es un dato, no un error que haya que corregir.
+    base = min(historico, CRECIMIENTO_MAXIMO)
+    # Con un crecimiento negativo los factores van al revés: el bajista es el
+    # que MÁS encoge. Aplicados tal cual, un −5 % medido daba un bajista del
+    # −2 % y un alcista del −7,5 %: los nombres invertidos (M5).
+    factores = (
+        FACTOR_CRECIMIENTO if base >= 0
+        else {**FACTOR_CRECIMIENTO, "bajista": FACTOR_CRECIMIENTO["alcista"],
+              "alcista": FACTOR_CRECIMIENTO["bajista"]}
+    )
+    motivo = (
+        f"No hay crecimiento histórico utilizable (ni FCF ni ingresos): se SUPONE "
+        f"un {fmt_pct(CRECIMIENTO_SUPUESTO, 0)} anual. Es un supuesto, no un dato "
+        "de la empresa, y mueve el valor más que casi ningún otro."
+        if supuesto
+        else None
+    )
+    salida = {}
+    for nombre in ESCENARIOS:
+        propuesto = base * factores[nombre]
+        # El suelo se declara en `procedencia` del escenario que lo toca: el
+        # crecimiento que se ve ya no es el medido por su factor, y eso se dice.
+        acotado = propuesto < CRECIMIENTO_MINIMO
+        salida[nombre] = {
+            "growth_rate": round(min(max(propuesto, CRECIMIENTO_MINIMO), CRECIMIENTO_MAXIMO), 4),
+            "discount_rate": DESCUENTO[nombre],
+            "terminal_growth": TERMINAL[nombre],
+            "supuesto": supuesto,
+            "motivo": (
+                f"Con el crecimiento medido ({fmt_pct(historico)} anual) este escenario "
+                f"propondría un {fmt_pct(propuesto)}: se acota al {fmt_pct(CRECIMIENTO_MINIMO, 0)}, "
+                "lo mínimo que admite el cálculo. Una caída así, sostenida, suele decir más "
+                "del FCF de partida (un año malo) que del negocio."
+                if acotado
+                else motivo
+            ),
+        }
+    # Con un FCF negativo, crecer es quemar más caja, y un descuento menor y una
+    # perpetuidad mayor agrandan esa quema: los supuestos del alcista daban el
+    # valor MÁS BAJO, y la ficha rotulaba «Si va bien» el rango de abajo
+    # (centros −28,7 / −48,3 / −73,5). Victor decidió (24 nov) que el bajista sea
+    # siempre el más bajo, como con el crecimiento negativo (M5): se intercambian
+    # los supuestos completos (revisión 14, H1).
+    if base_fcf is not None and base_fcf < 0:
+        salida["bajista"], salida["alcista"] = salida["alcista"], salida["bajista"]
+    return salida
+
+
+def supuestos_con_procedencia(
+    crecimiento: dict, recibidos: dict[str, dict] | None = None, base_fcf: float | None = None
+) -> dict[str, dict]:
+    """Los supuestos con que se valora, cada uno con la procedencia de su crecimiento.
+
+    Sin `recibidos`, los que propone la app. Con ellos mandan los recibidos (es
+    tu tesis, no la suya), pero un crecimiento que la app SUPUSO a falta de
+    histórico sigue siendo un supuesto aunque vuelva en el cuerpo: «Recalcular
+    con mis supuestos» reenviaba los propuestos, y en cuanto se escribía la deuda
+    neta en «Tus entradas» el 3 % dejaba de decirse y volvía a tener cara de
+    dato (revisión 14, H7). Lo mismo con el suelo del −50 %: si el escenario
+    vuelve con el crecimiento acotado, se sigue diciendo por qué.
+
+    Los escenarios que no llegan los propone la app con las entradas de ESTA
+    llamada. «Recalcular con mis supuestos» reenviaba los tres de la respuesta
+    anterior, y con un FCF escrito de otro signo que el del filing se valoraban
+    los propuestos para el otro signo: el bajista salía por encima del alcista
+    (centros 63,5 / 38,3 / 18,7). Ahora el módulo manda solo los que tocaste, y
+    los demás se proponen con el FCF nuevo (revisión 15, H1).
+
+    Cada escenario lleva `propuesto`: si sus tres supuestos son los que la app
+    propone para estas entradas. Lo lee la nota del intercambio (revisión 15,
+    H2); no viaja en la respuesta (`escenarios_con_rango` lo deja fuera).
+    """
+    propuestos = escenarios_por_defecto(crecimiento, base_fcf)
+    recibidos = recibidos or {}
+    salida = {}
+    for nombre in [*propuestos, *(n for n in recibidos if n not in propuestos)]:
+        p, s = propuestos.get(nombre), recibidos.get(nombre)
+        if s is None:
+            salida[nombre] = {**p, "propuesto": True}
+            continue
+        mismo = p is not None and _igual(s["growth_rate"], p["growth_rate"])
+        salida[nombre] = {
+            **s,
+            "supuesto": bool(mismo and p["supuesto"]),
+            "motivo": p["motivo"] if mismo else None,
+            "propuesto": p is not None and all(_igual(s[k], p[k]) for k in PARAMETROS),
+        }
+    return salida
+
+
+PARAMETROS = ("growth_rate", "discount_rate", "terminal_growth")
+
+
+def _igual(a: float, b: float) -> bool:
+    return math.isclose(a, b, rel_tol=0.0, abs_tol=1e-9)
+
+
+def escenarios_con_rango(
+    supuestos: dict[str, dict],
+    base_fcf: float,
+    net_debt: float | None,
+    acciones: float | None,
+    years: int = ANOS,
+) -> dict[str, dict]:
+    """Cada escenario con su RANGO (`rango_de_valor`), no un valor puntual.
+
+    El caso «descuento por debajo del terminal» lo resuelve `rango_de_valor`, y
+    aquí no se repite: había un guardián duplicado con su propio texto, más
+    pobre, que además ganaba por llegar antes. Dos sitios explicando lo mismo
+    con palabras distintas es como acaban diciendo cosas distintas.
+    """
+    # `supuesto`/`motivo` describen DE DÓNDE sale el crecimiento, no son
+    # parámetros del DCF. Viajan al lado, en `procedencia`, para que la pantalla
+    # pueda distinguir «crece al 3 % según sus cuentas» de «no sabemos cuánto
+    # crece y hemos puesto un 3 %» — que es la diferencia que importa.
+    # `propuesto` es del router (la nota del intercambio) y no viaja.
+    meta = ("supuesto", "motivo", "propuesto")
+    return {
+        nombre: {
+            "supuestos": {k: v for k, v in s.items() if k not in meta},
+            "procedencia": {
+                "crecimiento_supuesto": bool(s.get("supuesto")),
+                "motivo": s.get("motivo"),
+            },
+            "rango": rango_de_valor(
+                base_fcf, s["growth_rate"], s["discount_rate"], s["terminal_growth"],
+                years, net_debt, acciones,
+            ),
+        }
+        for nombre, s in supuestos.items()
+    }
+
+
+def rango_global(
+    escenarios: dict[str, dict], precio: float | None, base_fcf: float | None = None
+) -> dict | None:
+    """De lo más bajo de lo más pesimista a lo más alto de lo más optimista.
+
+    Es el número que se enseña primero, y es un intervalo. `base_fcf` elige la
+    causa que da la nota cuando el rango no pasa de cero.
+    """
+    todos = [
+        e["rango"] for e in escenarios.values()
+        if e["rango"].get("disponible") and e["rango"].get("bajo") is not None
+    ]
+    if not todos:
+        return None
+    global_ = {
+        "bajo": redondear(min(r["bajo"] for r in todos)),
+        "alto": redondear(max(r["alto"] for r in todos)),
+        "precio_actual": precio,
+    }
+    # La anchura del rango global es tan informativa como el rango. Tres
+    # escenarios que van de 133 a 577 no dicen «vale entre 133 y 577»: dicen
+    # que con estos supuestos el método no distingue, y eso hay que leerlo
+    # antes que los números, no después.
+    #
+    # Solo con el rango por encima de cero: con un extremo negativo (un FCF de
+    # partida negativo, que el módulo valora con rangos negativos) el cociente
+    # no mide nada, y salía «factor 0,3×» con todo el rango negativo y «-4,9×»
+    # cruzando el cero (revisión 14, H1).
+    bajo, alto = global_["bajo"], global_["alto"]
+    factor = alto / bajo if bajo > 0 else None
+    global_["factor"] = round(factor, 2) if factor is not None else None
+    if factor is None and bajo == alto == 0:
+        # Un cero no está «por debajo de cero» ni quema nada: con FCF 0 y deuda
+        # neta 0 se leía «Todo el rango está por debajo de cero (de 0 a 0): […] la
+        # empresa quema más de lo que vale lo que tiene» (revisión 15, H5).
+        global_["nota"] = (
+            "Todo el rango es cero: con estos supuestos los flujos proyectados valen justo lo que la "
+            "deuda neta, que es lo que pasa con un FCF de partida de cero y sin deuda. Un cero no es un "
+            "precio, y ningún supuesto de crecimiento ni de descuento lo mueve."
+        )
+    elif factor is None and alto <= 0:
+        global_["nota"] = (
+            f"{'Todo el rango está por debajo de cero' if alto < 0 else 'Ningún punto del rango pasa de cero'} "
+            f"(de {fmt_valor_redondo(bajo)} a {fmt_valor_redondo(alto)}): {_causa_bajo_cero(base_fcf)}"
+        )
+    elif factor is None:
+        global_["nota"] = (
+            f"El rango cruza el cero (de {fmt_valor_redondo(bajo)} a "
+            f"{fmt_valor_redondo(alto)}): según los supuestos, la empresa vale algo o "
+            "destruye valor. Con un extremo negativo no hay un factor entre los dos que "
+            "leer; mira abajo qué supuesto lo mueve."
+        )
+    elif factor >= 2:
+        global_["nota"] = (
+            f"Del escenario más pesimista al más optimista hay un factor de "
+            f"{fmt_num(factor, 1)}×. Un rango así no sirve para decidir un precio de "
+            "entrada; sirve para ver qué supuestos lo abren tanto — mira abajo "
+            "cuál manda. Estrecharlo exige defender supuestos más ceñidos, no "
+            "quedarse con el del medio."
+        )
+    else:
+        global_["nota"] = (
+            f"El rango va de {fmt_valor_redondo(bajo)} a {fmt_valor_redondo(alto)} (factor "
+            f"{fmt_num(factor, 1)}×). Ningún punto de dentro es más cierto que otro."
+        )
+    if precio:
+        global_["posicion"] = (
+            "dentro" if global_["bajo"] <= precio <= global_["alto"]
+            else "por encima" if precio > global_["alto"]
+            else "por debajo"
+        )
+    return global_
+
+
+def _causa_bajo_cero(base_fcf: float | None) -> str:
+    """Por qué el valor por acción no pasa de cero, según el FCF de partida.
+
+    La nota culpaba siempre al FCF («la empresa quema más de lo que vale lo que
+    tiene, casi siempre por un FCF de partida negativo»), también con un FCF de
+    +200 y 5.000 de deuda neta: la causa ahí es la deuda (revisión 15, H5). Lo
+    que vale siempre es la aritmética: el valor de empresa no llega a la deuda
+    neta; el signo del FCF dice por qué.
+    """
+    if base_fcf is not None and base_fcf < 0:
+        return (
+            "con el FCF de partida negativo la empresa quema caja, y lo que quema en la proyección "
+            "pesa más que lo que tiene. Un valor por acción negativo no es un precio: dice que, tal "
+            "como está, el negocio destruye valor."
+        )
+    if base_fcf is not None and base_fcf > 0:
+        return (
+            "la empresa genera caja, pero con estos supuestos lo que valen sus flujos no cubre la deuda "
+            "neta. Un valor por acción negativo no es un precio: dice que, tal como está, lo que debe "
+            "pesa más que lo que genera."
+        )
+    if base_fcf == 0:
+        return (
+            "con un FCF de partida de cero los flujos no valen nada y solo queda la deuda neta, que "
+            "resta. Un valor por acción negativo no es un precio: dice que ningún flujo compensa lo "
+            "que debe."
+        )
+    return (
+        "con estos supuestos el valor de empresa que dan los flujos proyectados no llega a la deuda "
+        "neta. Un valor por acción negativo no es un precio: dice que, tal como está, lo que se "
+        "proyecta no compensa lo que se debe."
+    )
+
+
+def aviso_de_orden(escenarios: dict[str, dict], base_fcf: float) -> str | None:
+    """Un aviso si los centros no van de menos a más (bajista ≤ base ≤ alcista).
+
+    Lo que propone la app siempre va en orden (revisión 14, H1), pero los
+    escenarios que escribes mandan: si los tocaste con un FCF de un signo y
+    luego escribes otro FCF de partida del signo contrario, siguen siendo los
+    tuyos y el «bajista» (rojo) puede salir por encima del «alcista» (verde)
+    sin que nada lo diga (revisión 15, H1). No se corrige: se avisa.
+    """
+    centros = [
+        (nombre, escenarios[nombre]["rango"]["centro"])
+        for nombre in ESCENARIOS
+        if nombre in escenarios and escenarios[nombre]["rango"].get("disponible")
+        and escenarios[nombre]["rango"].get("centro") is not None
+    ]
+    if all(a[1] <= b[1] for a, b in zip(centros, centros[1:])):
+        return None
+    cifras = ", ".join(f"{nombre} {fmt_valor_redondo(centro)}" for nombre, centro in centros)
+    porque = (
+        "Con el FCF de partida negativo, crecer es quemar más caja: más crecimiento y perpetuidad y "
+        "menos descuento bajan el valor, así que unos supuestos pensados para un FCF positivo salen al revés."
+        if base_fcf < 0
+        else "Con el FCF de partida positivo, más crecimiento y perpetuidad y menos descuento suben el "
+        "valor, así que unos supuestos pensados para un FCF negativo (los que la app propone "
+        "intercambiados) salen al revés."
+    )
+    return (
+        f"Con estos supuestos los escenarios no van de menos a más (centros: {cifras}): el nombre de "
+        f"cada uno ya no dice cuál es el peor. {porque} Sin tus escenarios, la app los propone en orden "
+        "para este FCF."
+    )

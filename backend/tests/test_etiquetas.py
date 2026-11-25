@@ -21,6 +21,7 @@ import re
 
 import pytest
 
+from app import contexto_cartera
 from app import etiquetas as et
 from app.analysis import calidad_beneficios as cb
 from app.analysis import cambios, confianza, coste_de_oportunidad as co, decision, signal
@@ -47,11 +48,15 @@ INTERNAS = {
     "serie": "identificador de la serie de FRED: es la fuente, como un ticker",
     "asset_class": "clase de activo; decide los topes del stop, no se enseña",
     "confidence": "elige qué explicación de la confianza se escribe; no se enseña",
+    "base_cartera": "sobre qué se midieron los pesos; la pantalla enseña la nota del tamaño, que lo dice",
     "descripcion": "texto del usuario (punto de su tesis)",
     "punto": "texto del usuario (punto de su tesis)",
     "palabras": "palabras clave que escribió el usuario",
     "contexto": "texto del usuario en el paquete de casos",
     "nombre": "texto del usuario en el paquete de casos",
+    # El repaso de stops de `/api/portfolio` (revisión 14) los trae, como el de Hoy.
+    "proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
+    "precio_proveedor": "el proveedor de un precio (finnhub, yfinance), como `source`: un nombre propio, tal cual",
 }
 
 # Claves cuyos códigos sí se enseñan: cada uno necesita etiqueta.
@@ -64,7 +69,9 @@ MOSTRADAS = {
     "familia", "faltan", "fuente_tipo", "incompletas", "kind", "label", "lectura", "limite",
     "mejor_prevista", "metrica", "registrados", "sin_resultado", "nivel", "papel", "resultado",
     "requiere", "seccion", "tendencia", "tesis", "tipo", "tipo_sorpresa", "valoracion", "posicion",
-    "precio_estado", "campo", "unidad", "origen",
+    "precio_estado", "precio_fuente", "campo", "unidad", "origen",
+    # El estado del stop de cada lote, con la regla del repaso (revisión 15, cartera H1).
+    "stop_estado",
     # Diccionarios cuyas CLAVES son el nombre de cada fila (ver `CLAVES_COMO_NOMBRE`).
     "evidencias/entradas{}",
 }
@@ -111,6 +118,12 @@ def test_cada_enum_del_backend_tiene_etiqueta():
         "eventos de noticias que clasifica la IA": set(EVENT_WEIGHTS),
         "sectores de un ETF": SECTORES_ETF_YFINANCE,
         "acciones que anota la persona en su diario": set(ACCIONES_REGISTRADAS),
+        # «intacta → sin_comprobar» salía en crudo en «Qué cambió» (revisión de M1).
+        "estados de la tesis": set(co.ATRACTIVO_TESIS) | set(co.PRIORIDAD_TESIS),
+        # El chip del repaso de stops de Hoy (revisión 12, visual).
+        "estados del stop de una posición": set(contexto_cartera._ORDEN_DEL_STOP),
+        # De dónde sale el precio con que se mira ese stop (revisión 13).
+        "fuentes del precio del stop": set(contexto_cartera.FUENTES_DEL_PRECIO),
     }
     sin = {nombre: sorted(c for c in codigos if not _etiquetado(c)) for nombre, codigos in enums.items()}
     assert not {k: v for k, v in sin.items() if v}, sin

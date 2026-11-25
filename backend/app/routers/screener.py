@@ -25,7 +25,13 @@ from app.analysis.multifactor import (
     rankear,
     resumen_historico,
 )
-from app.analysis.screener import DEFAULT_PRESETS, evaluate_filters
+from app.analysis.screener import (
+    DEFAULT_PRESETS,
+    NO_PASA,
+    PASA,
+    SIN_COMPROBAR,
+    evaluate_filters,
+)
 from app.cache.cache import MarketDataService
 from app.db.engine import get_session
 from app.db.models import ScreenerPreset
@@ -126,6 +132,7 @@ def run_screen(
             {
                 "symbol": symbol,
                 "passes": result["passes"],
+                "estado": result["estado"],
                 "checks": result["checks"],
                 "metrics": fundamentals["metrics"],
                 "source": fundamentals["source"],
@@ -133,16 +140,23 @@ def run_screen(
             }
         )
 
-    rows.sort(key=lambda r: (not r["passes"], r["symbol"]))
+    # Las que no se pudieron comprobar, entre las que pasan y las que suspenden:
+    # les falta un dato, no les sobra un defecto.
+    orden = {PASA: 0, SIN_COMPROBAR: 1, NO_PASA: 2}
+    rows.sort(key=lambda r: (orden[r["estado"]], r["symbol"]))
     return {
         "results": rows,
         "unavailable": unavailable,
-        "passed": sum(1 for r in rows if r["passes"]),
+        "passed": sum(1 for r in rows if r["estado"] == PASA),
+        # Aparte: «0 de 8 pasan» no decía cuántas suspenden y cuántas no se
+        # pudieron comprobar (revisión 12, visual).
+        "no_pasan": sum(1 for r in rows if r["estado"] == NO_PASA),
+        "sin_comprobar": sum(1 for r in rows if r["estado"] == SIN_COMPROBAR),
         "evaluated": len(rows),
         "note": (
             "El screener evalúa el universo que le das, no todo el mercado: los "
             "tiers gratuitos no permiten barridos masivos. Un dato ausente nunca "
-            "aprueba su filtro."
+            "aprueba su filtro, ni lo suspende: la empresa queda sin comprobar."
         ),
     }
 
