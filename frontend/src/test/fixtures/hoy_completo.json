@@ -2310,6 +2310,7 @@
       }
      ],
      "nota": "30 empresas cumplen las condiciones de compra; aquí están las 5 de mayor convicción, con un máximo de 2 por sector. Las demás siguen en «Comprar»: no se han descartado, se han ordenado.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "base_cartera": "invertido",
       "cartera_actual": {},
@@ -7042,6 +7043,7 @@
       }
      ],
      "nota": "57 empresas cumplen las condiciones de compra; aquí están las 5 de mayor convicción, con un máximo de 2 por sector. Las demás siguen en «Comprar»: no se han descartado, se han ordenado.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "base_cartera": "invertido",
       "cartera_actual": {},
@@ -11778,6 +11780,7 @@
       }
      ],
      "nota": "30 empresas cumplen las condiciones de compra; aquí están las 5 de mayor convicción, con un máximo de 2 por sector. Las demás siguen en «Comprar»: no se han descartado, se han ordenado.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "base_cartera": "invertido",
       "cartera_actual": {},

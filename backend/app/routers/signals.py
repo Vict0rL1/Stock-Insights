@@ -29,7 +29,7 @@ from app.analysis.backtest import (
 from app.analysis import experiments
 from app.analysis.rule_backtest import rebalance_dates_mensuales, run_rule_backtest
 from app.analysis.shortlist import construir_lista_corta
-from app.analysis.sizing import aviso_cartera_parcial, dimensionar
+from app.analysis.sizing import RECORTE_SIN_HUECO_DE_RIESGO, aviso_cartera_parcial, dimensionar
 from app.analysis.factors import (
     DEFAULT_WEIGHTS,
     build_raw_factors,
@@ -236,6 +236,16 @@ def _lista_corta_dimensionada(
         corta["sizing"]["aviso_cartera"] = aviso_cartera
     for idea in corta["ideas"]:
         idea["peso_final_pct"] = corta["sizing"]["pesos"].get(idea["symbol"])
+    # Ninguna idea nueva cabe, esté o no en la lista corta: la cartera que ya
+    # tienes supera SOLA el objetivo de volatilidad, y eso no depende de qué
+    # candidatas se dimensionen (el dimensionador lo dice con este recorte). Las
+    # que califican fuera de la lista corta no pasan por el dimensionador, y la
+    # tabla las pintaba «Comprar» en verde —118 filas— bajo una cabecera que
+    # decía «ninguna cabe hoy en tu cartera» (revisión 15, H12). Va fuera de
+    # `sizing` a propósito: es una lectura de su resultado, no un límite más.
+    corta["sin_hueco_de_riesgo"] = any(
+        r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) for r in corta["sizing"].get("recortes") or []
+    )
     return corta
 
 

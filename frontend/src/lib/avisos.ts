@@ -22,7 +22,8 @@
  *   (`owned`), la pregunta es sostener o soltar.
  * - `tamano`: solo si la idea pasó por el dimensionador (lista corta): su peso
  *   final (`peso_final_pct`, `null` = sin tamaño final) y los recortes que la
- *   tocan (`recortesDe`). Ausente = no se dimensionó.
+ *   tocan (`recortesDe`); o, fuera de ella, si no cabe ninguna idea nueva
+ *   (`sinHueco`). Ausente = no se dimensionó (`tamanoDeLaLista`).
  * - `stop`: el repaso del stop de la posición (`TodayResponse.cartera`). Es de
  *   ahora y manda sobre la decisión de la lista, que puede ser de hace 6 h.
  * - `precio` y `moneda`: el precio de hoy de la lista y la moneda de los
@@ -91,6 +92,9 @@ export interface TamanoDeLaIdea {
   pesoFinalPct: number | null | undefined
   /** Los recortes del tamaño que la tocan, en el orden del dimensionador (`recortesDe`). */
   recortes: string[]
+  /** La cartera que ya tienes no deja sitio a NINGUNA idea nueva, esté o no en la
+   *  lista corta (`Shortlist.sin_hueco_de_riesgo`). Ausente = no se sabe o sí hay. */
+  sinHueco?: boolean
 }
 
 export interface DatosDelAviso {
@@ -227,14 +231,22 @@ export function recortesDe(symbol: string, recortes: string[], ideas: string[]):
 }
 
 /** El tamaño de una empresa de la lista corta, si lo es: para que su fila en la
- *  tabla diga lo mismo que su tarjeta («Sin sitio», no «Comprar»). */
+ *  tabla diga lo mismo que su tarjeta («Sin sitio», no «Comprar»). Fuera de la
+ *  lista corta no hay tamaño, salvo que no quepa ninguna idea nueva
+ *  (`sin_hueco_de_riesgo`): entonces tampoco cabe ella, y se dice con el recorte
+ *  que vale para todas. Con «Ideas nuevas al 0 %», las 118 que califican fuera
+ *  de la lista corta decían «Comprar» en verde bajo «ninguna cabe hoy en tu
+ *  cartera» (revisión 15, H12). */
 export function tamanoDeLaLista(symbol: string, shortlist: Shortlist | null | undefined): TamanoDeLaIdea | undefined {
-  const ideas = shortlist?.ideas ?? []
+  if (!shortlist) return undefined
+  const ideas = shortlist.ideas ?? []
   const idea = ideas.find((i) => i.symbol === symbol)
-  if (!shortlist || !idea) return undefined
+  const sinHueco = shortlist.sin_hueco_de_riesgo === true
+  if (!idea && !sinHueco) return undefined
   return {
-    pesoFinalPct: idea.peso_final_pct,
+    pesoFinalPct: idea ? idea.peso_final_pct : null,
     recortes: recortesDe(symbol, shortlist.sizing?.recortes ?? [], ideas.map((i) => i.symbol)),
+    ...(sinHueco ? { sinHueco } : {}),
   }
 }
 
@@ -257,6 +269,20 @@ export function contextoDeLaFila(
   }
 }
 
+/** El aviso de una empresa de la lista —su fila, su tarjeta de idea, el
+ *  recuento de las que no caben— con todo lo que sabe la respuesta
+ *  (`contextoDeLaFila`): su stop si la tienes, que es de ahora, y su tamaño si
+ *  está en la lista corta. La tarjeta de una idea comprada después de calcular
+ *  la lista decía «Comprar … Tamaño sugerido: 7,8 % de tu cartera» y su fila,
+ *  «Mantener» (revisión 15, H1): quien pinte una empresa de la lista pide aquí
+ *  su aviso, y todas dicen lo mismo. */
+export function avisoDeLaFila(
+  signal: Pick<DailySignal, 'symbol' | 'decision' | 'price'>,
+  data: Pick<TodayResponse, 'cartera' | 'shortlist'> | null | undefined,
+): Aviso {
+  return avisoDe({ decision: signal.decision, ...contextoDeLaFila(signal.symbol, data), precio: signal.price?.last })
+}
+
 /** Qué stop es el que se enseña cuando no es el fijado al abrir de un solo lote:
  *  el más alto de varios lotes, recalculado desde el coste o el punto medio de
  *  su clase. Hoy enseñaba el más alto de los FIJADOS y callaba el lote sin stop
@@ -270,7 +296,7 @@ export function notasDelStop(p: StopDePosicion): string[] {
   const deQue = p.stop_por_clase
     ? 'es el punto medio de su clase, no uno medido'
     : !p.stop_fijado_al_abrir
-      ? 'no se fijó al abrir: se recalcula desde el coste, como en el Portafolio'
+      ? 'no se fijó al abrir: se recalcula desde el coste, como en Mi cartera'
       : null
   if (lotes > 1) {
     notas.push(`Es el más alto de los de sus ${lotes} lotes${deQue ? `, y ${deQue}` : ''}.`)
@@ -401,6 +427,26 @@ function pasosDeMantener(decision: Decision, moneda: string | null | undefined):
   return reducir && numero(reducir.umbral) ? [`Si cierra a ${fmtPrecio(reducir.umbral, moneda)} o menos, tu regla dice reducir.`] : []
 }
 
+/** Por qué el stop de una posición sin repaso no se ha podido comprobar, o
+ *  `null` si se comprobó: con la traza, la regla `stop_perforado` evaluada con un
+ *  precio que no es viejo; sin traza (una respuesta antigua), el precio de la
+ *  lista por encima del stop. Una regla que falta o no se pudo evaluar no cuenta
+ *  como cumplida: es «no se sabe». */
+function stopSinComprobar(decision: Decision, precio: number | null | undefined, stop: number | null | undefined): string | null {
+  if (conPrecioViejo(decision)) return `El ${LIMITE} no se ha podido comprobar: solo hay un precio viejo (todas las fuentes fallaron).`
+  const reglas = decision.reglas ?? []
+  const delStop = reglas.find((r) => r.id === 'stop_perforado')
+  if (delStop?.resultado === 'desconocido') {
+    // El motor la deja sin evaluar cuando no hay stop: ni fijado al abrir ni un coste con que calcularlo.
+    return `El ${LIMITE} no se ha podido comprobar: la posición no tiene stop ni coste con que calcularlo.`
+  }
+  if (delStop) return null
+  if (reglas.length > 0) return `El ${LIMITE} no se ha podido comprobar.`
+  if (!numero(precio)) return `No hay precio de hoy: el ${LIMITE} no se ha podido comprobar.`
+  if (!numero(stop)) return `El ${LIMITE} no se ha podido comprobar: la lista no trae el stop de la posición.`
+  return precio > stop ? null : `El ${LIMITE} no se ha podido comprobar.`
+}
+
 /** Una posición sin repaso del stop: lo que diga la lista. */
 function avisoDeLaLista(decision: Decision, precio: number | null | undefined, moneda: string | null | undefined): Aviso {
   const stop = decision.levels?.stop
@@ -438,13 +484,21 @@ function avisoDeLaLista(decision: Decision, precio: number | null | undefined, m
   }
 
   if (decision.action === 'mantener') {
+    // Lo que no se pudo comprobar no es «Mantener», tampoco sin el repaso: con él,
+    // un precio viejo o un stop desconocido son «Revisar» (`avisoDePosicion`); sin
+    // él —el repaso falló, o la ficha, que no lo tiene— salían «Mantener» con una
+    // nota (revisión 15, H13).
+    const porque = stopSinComprobar(decision, precio, stop)
+    if (porque !== null) {
+      return aviso('sin_comprobar', porque, [AL_BROKER, 'Con lo que sí pudo mirar, tu regla dice mantener.'], cifrasDelStop(precio, stop, moneda, 'gris'))
+    }
     const frase =
       numero(precio) && numero(stop) && precio > stop
         ? `Cotiza a ${precioFrente(precio, stop, moneda)}, por encima de tu ${LIMITE} de ${fmtPrecio(stop, moneda)}. Tu regla dice mantener.`
         : numero(stop)
           ? `Tu regla dice mantener. Si cae a ${fmtPrecio(stop, moneda)}, vende: es tu ${LIMITE}.`
           : 'Tu regla dice mantener.'
-    return aviso('mantener', frase, [...pasosDeMantener(decision, moneda), precioViejo], numero(stop) ? cifrasDelStop(precio, stop, moneda, 'rojo') : [])
+    return aviso('mantener', frase, pasosDeMantener(decision, moneda), numero(stop) ? cifrasDelStop(precio, stop, moneda, 'rojo') : [])
   }
 
   // Una posición sin datos para decidir: su stop tampoco se ha comprobado.
@@ -468,9 +522,28 @@ function avisoDeCompra(decision: Decision, tamano: TamanoDeLaIdea | undefined, m
   }
   if (nv && numero(nv.stop)) cifras.push({ rotulo: 'Vender si baja a', valor: fmtPrecio(nv.stop, moneda), tono: 'rojo' })
 
+  // «No cabe», con el paso del dimensionador que la deja fuera: el FINAL que la
+  // toca. El primero podía ser un «10,9 % → 10,0 % (tope por posición)» que no
+  // explica ningún cero (DXCM e ITW en la demostración).
+  const sinSitio = () => {
+    const motivo = tamano?.recortes.length ? resumenDelRecorte(tamano.recortes[tamano.recortes.length - 1]) : null
+    return aviso(
+      'comprar_sin_sitio',
+      'Buena idea, pero hoy no cabe en tu cartera.',
+      [refutada, motivo ?? 'Los topes de tu cartera la dejan en 0 %.', 'Para hacerle sitio tendrías que vender algo antes.'],
+      cifras,
+    )
+  }
+
   // Sin peso final, el bruto no se enseña como si lo fuera: es lo que permitiría
   // el stop mirando la empresa sola, antes de los topes de la cartera (ítem 2.1).
   if (peso === null || peso === undefined) {
+    if (tamano?.sinHueco) {
+      // Sin dimensionar (fuera de la lista corta), pero no cabe ninguna idea nueva:
+      // ella tampoco. Su tamaño no se calculó, y no se escribe como un cero.
+      cifras.push({ rotulo: 'Cuánto de tu cartera', valor: '—', nota: 'sin calcular: hoy no cabe ninguna idea nueva' })
+      return sinSitio()
+    }
     const deBruto = numero(bruto) ? `; antes de los topes, ${fmtPct(bruto, 1, { enPuntos: true })}` : ''
     cifras.push({ rotulo: 'Cuánto de tu cartera', valor: '—', nota: `sin calcular${deBruto}` })
     return aviso(
@@ -494,18 +567,7 @@ function avisoDeCompra(decision: Decision, tamano: TamanoDeLaIdea | undefined, m
     valor: escrito,
     nota: recortado ? `recortado desde ${fmtPct(bruto, 1, { enPuntos: true })}` : undefined,
   })
-  if (peso === 0) {
-    // El paso FINAL del dimensionador que la toca es el que la deja en 0: el
-    // primero podía ser un «10,9 % → 10,0 % (tope por posición)» que no explica
-    // ningún cero (DXCM e ITW en la demostración).
-    const motivo = tamano?.recortes.length ? resumenDelRecorte(tamano.recortes[tamano.recortes.length - 1]) : null
-    return aviso(
-      'comprar_sin_sitio',
-      'Buena idea, pero hoy no cabe en tu cartera.',
-      [refutada, motivo ?? 'Los topes de tu cartera la dejan en 0 %.', 'Para hacerle sitio tendrías que vender algo antes.'],
-      cifras,
-    )
-  }
+  if (peso === 0) return sinSitio()
   return aviso('comprar', zona + salida, [refutada, `Tamaño sugerido: ${escrito} de tu cartera.`], cifras)
 }
 

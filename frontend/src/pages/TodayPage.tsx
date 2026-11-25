@@ -19,13 +19,12 @@ import type {
 } from '../api/types'
 import {
   avisoDe,
+  avisoDeLaFila,
   avisosDeCartera,
   carteraRepasada,
-  contextoDeLaFila,
   notasDelStop,
   recortesDe,
-  tamanoDeLaLista,
-  type DatosDelAviso,
+  type Aviso,
 } from '../lib/avisos'
 import { etiqueta } from '../lib/etiquetas'
 import {
@@ -44,7 +43,18 @@ import { useDato } from '../lib/useDato'
 import { useListaDiaria } from '../hooks/useListaDiaria'
 import { RUTAS, rutaEmpresa } from '../lib/rutas'
 
-type View = 'ideas' | 'comprar' | 'vigilar' | 'cartera' | 'todas'
+// Los filtros por señal del plan (`docs/PLAN_NAVEGACION.md`): ideas, las que
+// califican, vigilar, evitar, tu cartera y todas.
+type View = 'ideas' | 'comprar' | 'vigilar' | 'evitar' | 'cartera' | 'todas'
+
+/** Objetivo táctil de 44 px en el móvil, sin cambiar la densidad desde `sm`
+ *  (revisión 15, H15: a 390 px las vistas medían 28 px, los sectores 24 y
+ *  «Ver el análisis completo →», 16). */
+const TACTIL = 'min-h-11 sm:min-h-0'
+/** Lo mismo para el `summary` de un `details` con `py-3` en el móvil: con relleno,
+ *  no con `flex`, que le quitaría el triángulo de plegado; el margen negativo se
+ *  come el relleno del `details`, que así no crece. */
+const SUMARIO_TACTIL = '-my-3 py-3.5 sm:my-0 sm:py-0'
 
 /** El compuesto vive de facto en [-2, 2]; se mapea a 0-100 % para la barra. */
 function scoreToPct(score: number): number {
@@ -151,13 +161,16 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
       </ul>
 
       <DecisionExplicada decision={decision} />
+      {/* El enlace abre el Resumen de la ficha, que es donde están: «(pestaña
+          «Qué cambió»)» mandaba a una pestaña que ya no existe (es una sección de
+          Novedades, y no tiene la traza; revisión 15, H11). */}
       {decision.traza_en_ficha && symbol && (
         <p className="text-[11px] text-slate-500">
           El porqué regla a regla y qué cambiaría esta decisión están en la{' '}
           <Link to={rutaEmpresa(symbol)} className="font-medium underline">
             ficha de {symbol}
-          </Link>{' '}
-          (pestaña «Qué cambió»).
+          </Link>
+          , en su Resumen («Lo que comprueba la app»).
         </p>
       )}
 
@@ -295,6 +308,7 @@ function DecisionPlan({ decision, symbol }: { decision: Decision; symbol?: strin
 type Recuentos = {
   comprar: number
   vigilar: number
+  evitar: number
   /** Las abiertas; sin repaso, solo las que están en la lista. */
   cartera: number
   /** Las abiertas que la lista de este mercado no puntúa. */
@@ -321,6 +335,7 @@ export function recuentos(data: TodayResponse | null): Recuentos {
   return {
     comprar: s.filter((x) => x.decision.action === 'comprar').length,
     vigilar: s.filter((x) => x.decision.action === 'vigilar').length,
+    evitar: s.filter((x) => x.decision.action === 'evitar').length,
     cartera: repasada ? (repaso.abiertas ?? 0) : s.filter((x) => x.decision.owned).length,
     fuera: posiciones.filter((p) => !p.en_lista).length,
     vender: avisos.filter((a) => a.aviso.tipo === 'vender').length,
@@ -331,12 +346,15 @@ export function recuentos(data: TodayResponse | null): Recuentos {
 
 /** Las ideas de la lista corta que hoy no caben en la cartera (aviso «Sin
  *  sitio»: cumplen las reglas de compra, pero los topes dejan su tamaño en 0).
- *  La cabecera decía «5 ideas de compra» con las cinco en «Sin sitio» debajo. */
-export function ideasSinSitio(shortlist: TodayResponse['shortlist'] | null | undefined): number {
+ *  La cabecera decía «5 ideas de compra» con las cinco en «Sin sitio» debajo.
+ *  Con el repaso (`cartera`), el mismo aviso que su tarjeta: una idea que ya
+ *  tienes no es una idea sin sitio (revisión 15, H1). */
+export function ideasSinSitio(
+  shortlist: TodayResponse['shortlist'] | null | undefined,
+  cartera?: TodayResponse['cartera'],
+): number {
   if (!shortlist) return 0
-  return shortlist.ideas.filter(
-    (i) => avisoDe({ decision: i.decision, tamano: tamanoDeLaLista(i.symbol, shortlist) }).tipo === 'comprar_sin_sitio',
-  ).length
+  return shortlist.ideas.filter((i) => avisoDeLaFila(i, { shortlist, cartera }).tipo === 'comprar_sin_sitio').length
 }
 
 /** «5 ideas de compra (ninguna cabe hoy en tu cartera)», «(2 sin sitio en tu cartera)». */
@@ -409,7 +427,7 @@ function SummaryStrip({
   // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
   // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
   const ideas = data.shortlist ? data.shortlist.ideas.length : null
-  const sinSitio = ideasSinSitio(data.shortlist)
+  const sinSitio = ideasSinSitio(data.shortlist, data.cartera)
   const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
     label: string
@@ -518,10 +536,16 @@ function SummaryStrip({
  *  responde es "¿por qué esta y no otra?", no "¿quién califica?". */
 function IdeaCard({
   signal,
+  aviso,
   motivosDelRecorte,
   onOpen,
 }: {
   signal: DailySignal & { conviction: Conviction; peso_final_pct?: number | null }
+  /** El de su fila (`avisoDeLaFila`): con su stop si ya la tienes. La tarjeta
+   *  pasaba solo el tamaño, y una idea comprada después de calcular la lista
+   *  decía «Comprar … Tamaño sugerido: 7,8 %» mientras su fila decía «Mantener»
+   *  (revisión 15, H1). */
+  aviso: Aviso
   /** Los recortes del tamaño que la tocan (`recortesDe`). */
   motivosDelRecorte: string[]
   onOpen: () => void
@@ -529,8 +553,11 @@ function IdeaCard({
   const { conviction: c, decision, price } = signal
   const niveles = decision.levels
   const variacion = price ? fmtPct(price.change_pct, 2, { signo: true, enPuntos: true }) : ''
-  const aviso = avisoDe({ decision, tamano: { pesoFinalPct: signal.peso_final_pct, recortes: motivosDelRecorte } })
+  // El porqué del tamaño, solo mientras es una idea de compra: de una que ya
+  // tienes, el aviso habla de su stop y el tamaño de la lista no es el suyo.
+  const deCompra = aviso.tipo === 'comprar' || aviso.tipo === 'comprar_sin_sitio' || aviso.tipo === 'comprar_sin_tamano'
   const recortado =
+    deCompra &&
     signal.peso_final_pct !== null &&
     signal.peso_final_pct !== undefined &&
     niveles !== null &&
@@ -583,8 +610,8 @@ function IdeaCard({
           como un error (revisión 12, visual). Plegado: en párrafos sueltos
           tapaba el aviso. */}
       {recortado && (
-        <details className="mt-2 rounded-lg border border-slate-200 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-medium text-slate-700">Por qué este tamaño</summary>
+        <details className="mt-2 rounded-lg border border-slate-200 px-3 py-3 sm:py-2">
+          <summary className={`cursor-pointer text-xs font-medium text-slate-700 ${SUMARIO_TACTIL}`}>Por qué este tamaño</summary>
           <div className="mt-1.5 text-[11px] leading-snug text-slate-600">
             {motivosDelRecorte.length > 0 ? (
               <ul className="space-y-1">
@@ -593,7 +620,7 @@ function IdeaCard({
                 ))}
               </ul>
             ) : (
-              <p>El motivo del recorte, en «Cómo se repartió el tamaño», más abajo.</p>
+              <p>El motivo del recorte, en «Cómo se repartió el tamaño», más abajo (plegado).</p>
             )}
           </div>
         </details>
@@ -602,7 +629,7 @@ function IdeaCard({
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           onClick={onOpen}
-          className="text-xs font-medium text-sky-700 hover:underline"
+          className={`text-xs font-medium text-sky-700 hover:underline ${TACTIL}`}
         >
           Ver el análisis completo →
         </button>
@@ -622,11 +649,14 @@ function AvoidList({
   signals: (DailySignal & { conviction: Conviction })[]
 }) {
   if (signals.length === 0) return null
+  // Plegada, como prometía el plan (`docs/PLAN_NAVEGACION.md`): desplegada
+  // empujaba la lista hacia abajo (revisión 15, H10). El recuento, a la vista.
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-800">
-        Lo que NO comprar ahora
-      </h3>
+    <details className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <summary className={`cursor-pointer ${SUMARIO_TACTIL}`}>
+        <h3 className="inline text-sm font-semibold text-slate-800">Lo que NO comprar ahora</h3>{' '}
+        <span className="text-xs text-slate-500">({signals.length})</span>
+      </summary>
       <p className="mt-1 text-xs text-slate-500">
         Las peor situadas frente a sus comparables de sector. No significa que
         vayan a caer: significa que hay mejores sitios donde poner el dinero.
@@ -648,7 +678,7 @@ function AvoidList({
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   )
 }
 
@@ -684,12 +714,21 @@ function SizingPanel({ sizing }: { sizing: Sizing }) {
   // igual y salía «undefined %» (V3); ahora se dice. El panel sigue saliendo si
   // hay un aviso de la cartera o un límite sin comprobar.
   const sinCandidatas = Object.keys(sizing.pesos).length === 0
+  // Plegado, como prometía el plan (revisión 15, H10), salvo que haya algo que
+  // avisar: un límite sin comprobar o una cartera sin valorar no se esconden
+  // detrás de un clic, y el resumen lo dice aunque se pliegue.
+  const avisos = sinAplicar.length + (sizing.aviso_cartera ? 1 : 0)
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-800">
-        Cómo se repartió el tamaño
-      </h3>
+    <details open={avisos > 0} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <summary className={`cursor-pointer ${SUMARIO_TACTIL}`}>
+        <h3 className="inline text-sm font-semibold text-slate-800">Cómo se repartió el tamaño</h3>
+        {sinAplicar.length > 0 && (
+          <span className="ml-2 text-xs font-medium text-red-700">
+            {sinAplicar.length === 1 ? 'un límite sin comprobar' : `${sinAplicar.length} límites sin comprobar`}
+          </span>
+        )}
+      </summary>
 
       {sinCandidatas ? (
         <p className="mt-2 text-sm text-slate-500">Hoy no hay candidatas que dimensionar.</p>
@@ -762,7 +801,7 @@ function SizingPanel({ sizing }: { sizing: Sizing }) {
 
       {/* Sin candidatas, la nota del backend repite el estado vacío de arriba. */}
       {!sinCandidatas && <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{sizing.nota}</p>}
-    </section>
+    </details>
   )
 }
 
@@ -844,20 +883,20 @@ function SignalRow({
   umbrales,
   expanded,
   onToggle,
-  stop,
-  tamano,
+  aviso,
 }: {
   signal: DailySignal
   /** Los de la puntuación: con dos decimales, 0,3496 era «+0,35 · Sin acción» (revisión 8). */
   umbrales: number[]
   expanded: boolean
   onToggle: () => void
-} & Pick<DatosDelAviso, 'stop' | 'tamano'>) {
+  /** `avisoDeLaFila`: con su stop si la tienes (el repaso es de ahora) y con su
+   *  tamaño si está en la lista corta. La fila decía «Comprar» de una idea que su
+   *  tarjeta da por «Sin sitio», y «Mantener» con el stop perforado en el panel
+   *  de arriba; la tarjeta y la fila piden ahora el mismo aviso. */
+  aviso: Aviso
+}) {
   const positive = signal.score >= 0
-  // Con su stop si la tienes (el repaso es de ahora) y con su tamaño si está en
-  // la lista corta: la fila decía «Comprar» de una idea que su tarjeta da por
-  // «Sin sitio», y «Mantener» con el stop perforado en el panel de arriba.
-  const aviso = avisoDe({ decision: signal.decision, stop, tamano, precio: signal.price?.last })
   return (
     <li className="border-b border-slate-100 last:border-0">
       <button
@@ -1008,7 +1047,7 @@ function SignalRow({
           )}
           <Link
             to={rutaEmpresa(signal.symbol)}
-            className="inline-block text-xs font-medium text-sky-700 hover:underline"
+            className={`inline-flex items-center text-xs font-medium text-sky-700 hover:underline ${TACTIL}`}
           >
             Ver el análisis completo de {signal.symbol} →
           </Link>
@@ -1050,7 +1089,7 @@ function RepasoDeStops({
             aviso={aviso}
             tamano="compacto"
             titulo={
-              <Link to={rutaEmpresa(symbol)} className="text-sm font-semibold text-slate-900 underline">
+              <Link to={rutaEmpresa(symbol)} className={`inline-flex items-center text-sm font-semibold text-slate-900 underline ${TACTIL}`}>
                 {symbol}
               </Link>
             }
@@ -1136,7 +1175,7 @@ function SoloSuStop({
               aviso={avisoDe({ stop: p })}
               tamano="compacto"
               titulo={
-                <Link to={rutaEmpresa(p.symbol)} className="text-sm font-medium text-slate-900 hover:underline">
+                <Link to={rutaEmpresa(p.symbol)} className={`inline-flex items-center text-sm font-medium text-slate-900 hover:underline ${TACTIL}`}>
                   {p.symbol}
                 </Link>
               }
@@ -1212,6 +1251,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
     // comprar y qué vender, no quién puntúa alto.
     if (view === 'comprar') base = base.filter((s) => s.decision.action === 'comprar')
     else if (view === 'vigilar') base = base.filter((s) => s.decision.action === 'vigilar')
+    else if (view === 'evitar') base = base.filter((s) => s.decision.action === 'evitar')
     else if (view === 'cartera') base = cartera.filas
     if (sector !== null) base = base.filter((s) => s.context.sector_key === sector)
     const q = query.trim().toUpperCase()
@@ -1253,7 +1293,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
             {data
               ? [
                   data.shortlist
-                    ? textoDeIdeas(data.shortlist.ideas.length, ideasSinSitio(data.shortlist))
+                    ? textoDeIdeas(data.shortlist.ideas.length, ideasSinSitio(data.shortlist, data.cartera))
                     : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
                   acciones.sinComprobar > 0 ? `${acciones.sinComprobar} sin comprobar` : null,
@@ -1275,7 +1315,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
           <button
             onClick={lista.actualizar}
             disabled={busy}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 font-medium text-slate-600 transition-colors hover:bg-white disabled:opacity-50"
+            className={`rounded-lg border border-slate-200 px-2.5 py-1 font-medium text-slate-600 transition-colors hover:bg-white disabled:opacity-50 ${TACTIL}`}
           >
             {busy ? 'Puntuando…' : 'Actualizar'}
           </button>
@@ -1327,7 +1367,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                   key={m.key}
                   onClick={() => setMarket(m.key)}
                   title={`${m.companies} empresas · ${m.sectors} sectores`}
-                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${TACTIL} ${
                     market === m.key
                       ? 'bg-slate-900 text-white'
                       : 'text-slate-500 hover:text-slate-900'
@@ -1365,6 +1405,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                     ['ideas', `Mejores ideas (${data.shortlist ? data.shortlist.ideas.length : 'sin lista'})`],
                     ['comprar', `Todas las que califican (${acciones.comprar})`],
                     ['vigilar', `Vigilar (${acciones.vigilar})`],
+                    ['evitar', `Evitar (${acciones.evitar})`],
                     ['cartera', `Mi cartera (${acciones.cartera})`],
                     ['todas', `Todas (${data.scored})`],
                   ] as [View, string][]
@@ -1372,7 +1413,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                   <button
                     key={key}
                     onClick={() => setView(key)}
-                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${TACTIL} ${
                       view === key
                         ? 'bg-slate-900 text-white'
                         : 'text-slate-500 hover:text-slate-900'
@@ -1388,14 +1429,14 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar ticker o empresa…"
                 aria-label="Buscar ticker o empresa"
-                className="w-56 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none"
+                className={`w-56 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none ${TACTIL}`}
               />
             </div>
 
             <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => setSector(null)}
-                className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
+                className={`rounded-full px-2.5 py-1 text-xs transition-colors ${TACTIL} ${
                   sector === null
                     ? 'bg-slate-200 text-slate-900'
                     : 'text-slate-500 hover:bg-slate-100'
@@ -1409,7 +1450,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                   <button
                     key={s.key}
                     onClick={() => setSector(sector === s.key ? null : s.key)}
-                    className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
+                    className={`rounded-full px-2.5 py-1 text-xs transition-colors ${TACTIL} ${
                       sector === s.key
                         ? 'bg-slate-200 text-slate-900'
                         : 'text-slate-500 hover:bg-slate-100'
@@ -1440,6 +1481,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                     <IdeaCard
                       key={s.symbol}
                       signal={s}
+                      aviso={avisoDeLaFila(s, data)}
                       motivosDelRecorte={recortesDe(
                         s.symbol,
                         data.shortlist.sizing.recortes,
@@ -1480,14 +1522,15 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                     <p>
                       «{query.trim()}» no está en {data.market_name}.
                     </p>
+                    {/* Mandaba a «Acciones», que ya no está en el menú (revisión 15,
+                        H11): el enlace siempre fue a su ficha, y así se dice. */}
                     <p className="mt-1 text-xs">
-                      Puede estar en otro mercado, o fuera del universo. Búscala
-                      directamente en{' '}
+                      Puede estar en otro mercado, o fuera del universo. Abre la{' '}
                       <Link
                         to={rutaEmpresa(query.trim().toUpperCase())}
-                        className="font-medium text-sky-700 hover:underline"
+                        className={`inline-flex items-center font-medium text-sky-700 hover:underline ${TACTIL}`}
                       >
-                        Acciones
+                        ficha de {query.trim().toUpperCase()}
                       </Link>
                       : ahí se analiza cualquier ticker, esté o no en la lista.
                     </p>
@@ -1513,7 +1556,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                     {acciones.vigilar > 0 && (
                       <button
                         onClick={() => setView('vigilar')}
-                        className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                        className={`mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 ${TACTIL}`}
                       >
                         Ver las {acciones.vigilar} en vigilancia →
                       </button>
@@ -1546,7 +1589,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                       onToggle={() =>
                         setExpanded(expanded === signal.symbol ? null : signal.symbol)
                       }
-                      {...contextoDeLaFila(signal.symbol, data)}
+                      aviso={avisoDeLaFila(signal, data)}
                     />
                   ))}
                 </ul>
@@ -1561,7 +1604,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
               {encontradoFuera !== null && (
                 <button
                   onClick={() => setView('todas')}
-                  className="mr-2 font-medium text-sky-700 hover:underline"
+                  className={`mr-2 font-medium text-sky-700 hover:underline ${TACTIL}`}
                 >
                   {encontradoFuera} {plural(encontradoFuera, 'coincidencia', 'coincidencias')} más en otras vistas — ver todas
                 </button>

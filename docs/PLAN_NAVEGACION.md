@@ -162,8 +162,13 @@ Cada idea y cada posición dice UNA cosa que hacer (`frontend/src/lib/avisos.ts`
 cartera»), esperar, evitar, vender, reducir, mantener o sin comprobar (verbo «Revisar»). Verbo
 grande con icono y color (nunca solo color), una frase y las cifras para actuar. Las frases salen
 solo de lo que ya decide el motor (acción, niveles, traza, `cambiaria`, peso final, recortes y
-repaso del stop): ninguna regla ni umbral nuevo. Sin precio nunca es «mantener». «Para vender»
-cuenta los mismos avisos que el panel, por construcción.
+repaso del stop): ninguna regla ni umbral nuevo. Sin precio nunca es «mantener»; tampoco, con
+repaso o sin él, con un precio viejo o con la regla del stop sin evaluar: es «Revisar». «Para
+vender» cuenta los mismos avisos que el panel, por construcción. Una empresa de la lista pide su
+aviso a `avisoDeLaFila` (su fila, su tarjeta de idea, el recuento «sin sitio»): con su stop si ya
+la tienes y su tamaño si está en la lista corta. Con `shortlist.sin_hueco_de_riesgo` (la cartera
+que ya tienes supera sola el objetivo de volatilidad), las que califican fuera de la lista corta
+tampoco caben: «Sin sitio», no «Comprar» (revisión 15).
 
 ## Cómo quedó
 
@@ -176,6 +181,11 @@ cuenta los mismos avisos que el panel, por construcción.
 | Un solo DCF (3.3) | `c5a9806` | Comparación de supuestos en el README, «Un solo DCF» |
 | Pregúntale a la IA | `da31da5` | `POST /api/ia/preguntar` y `/coste` |
 | Ficha en cuatro pestañas | `0fe65c2` | Pestañas viejas → nuevas en `lib/pestanasFicha.ts`; «Qué dice la app» con el mismo aviso que Inicio |
+
+Explorar › Acciones (revisión 15): filtros Mejores ideas, Todas las que califican, Vigilar,
+Evitar, Mi cartera y Todas; «Cómo se repartió el tamaño» y «Lo que NO comprar», plegados (el
+del tamaño se abre solo si hay un límite sin comprobar o una cartera sin valorar, y su resumen
+lo dice). Controles de 44 px a 390 px.
 
 Diferencia con el plan: Inicio no tiene «las 3 mejores ideas en ETFs» porque la app no tiene un
 universo de ETFs que puntuar; la pestaña ETFs explica qué es un ETF y lleva al comparador con los

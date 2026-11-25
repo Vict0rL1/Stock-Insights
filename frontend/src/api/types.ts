@@ -829,6 +829,10 @@ export interface Shortlist {
   candidatas: number
   descartadas_por_sector: number
   nota: string
+  /** La cartera que ya tienes supera sola el objetivo de volatilidad: no cabe
+   *  NINGUNA idea nueva, esté o no en la lista corta («Ideas nuevas al 0 %» del
+   *  dimensionador). Ausente en una respuesta anterior: no se sabe. */
+  sin_hueco_de_riesgo?: boolean
 }
 
 export interface TodayResponse {

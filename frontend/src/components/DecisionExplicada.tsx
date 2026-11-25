@@ -143,14 +143,16 @@ export function QueLaCambiaria({ cambiaria }: { cambiaria: AlternativaDecision[]
   )
 }
 
-/** «¿Por qué esta decisión?» y «¿Qué la cambiaría?», plegados por defecto. */
+/** «¿Por qué esta decisión?» y «¿Qué la cambiaría?», plegados por defecto. Cada
+ *  `summary`, de 44 px en el móvil sin que su recuadro crezca: medía 16 en las
+ *  filas de Explorar (revisión 15, H15). */
 export function DecisionExplicada({ decision, abierta = false }: { decision: Decision; abierta?: boolean }) {
   if (!decision.reglas?.length && !decision.cambiaria?.length) return null
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {decision.reglas?.length ? (
         <details open={abierta} className="rounded-lg border border-slate-200 bg-white p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-700">
+          <summary className="-my-3 cursor-pointer py-3.5 text-xs font-semibold text-slate-700 sm:my-0 sm:py-0">
             ¿Por qué esta decisión?
           </summary>
           <div className="mt-2">
@@ -164,7 +166,7 @@ export function DecisionExplicada({ decision, abierta = false }: { decision: Dec
       ) : null}
       {decision.cambiaria?.length ? (
         <details open={abierta} className="rounded-lg border border-slate-200 bg-white p-3">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-700">
+          <summary className="-my-3 cursor-pointer py-3.5 text-xs font-semibold text-slate-700 sm:my-0 sm:py-0">
             ¿Qué la cambiaría?
           </summary>
           <div className="mt-2">

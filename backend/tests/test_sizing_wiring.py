@@ -158,6 +158,26 @@ def test_sin_posiciones_abiertas_la_lista_corta_no_cambia_de_forma():
     assert all(i["peso_final_pct"] is not None for i in r["ideas"])
 
 
+def test_la_lista_corta_dice_si_ninguna_idea_nueva_cabe():
+    """Revisión 15, H12: con la cartera que ya tienes por encima del objetivo de
+    volatilidad, el dimensionador deja las ideas al 0 % («Ideas nuevas al 0 %»),
+    pero las que califican fuera de la lista corta no pasan por él, y la tabla las
+    pintaba «Comprar» en verde bajo «ninguna cabe hoy». La respuesta lo dice con
+    una bandera, que vale para todas, no con una frase que haya que leer."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, f"Sec{i}") for i in range(4)]
+    señales.append(señal("VIEJA", -0.9, "Otro", last=100.0, vol=3.0))
+
+    llena = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}})
+    assert llena.get("sin_hueco_de_riesgo") is True
+    assert all(i["peso_final_pct"] == 0 for i in llena["ideas"])
+    # Sin cartera hay hueco: la bandera no se enciende por tener recortes.
+    libre = _lista_corta_dimensionada(señales, {})
+    assert libre.get("sin_hueco_de_riesgo") is False
+    assert any(i["peso_final_pct"] for i in libre["ideas"])
+    # Sin candidatas que dimensionar tampoco se afirma que no quepan.
+    assert _lista_corta_dimensionada([], {}).get("sin_hueco_de_riesgo") is False
+
+
 def test_sin_posiciones_la_nota_no_habla_de_lo_que_ya_tienes():
     """Revisión 12, visual: con la cartera vacía y sin efectivo, la nota decía que
     «el peso de lo que ya tienes se mide sobre el valor de tus posiciones

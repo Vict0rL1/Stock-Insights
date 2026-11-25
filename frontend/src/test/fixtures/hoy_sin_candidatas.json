@@ -1248,6 +1248,7 @@
      ],
      "ideas": [],
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación.",
       "base_cartera": "invertido",
@@ -3763,6 +3764,7 @@
      ],
      "ideas": [],
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación.",
       "base_cartera": "invertido",
@@ -6281,6 +6283,7 @@
      ],
      "ideas": [],
      "nota": "Hoy ninguna empresa cumple las condiciones de compra. No actuar también es una decisión.",
+     "sin_hueco_de_riesgo": false,
      "sizing": {
       "aviso_cartera": "1 posición abierta sin valorar (CHIP: fuera de este barrido o sin precio) no cuenta en los topes por sector y correlación.",
       "base_cartera": "invertido",

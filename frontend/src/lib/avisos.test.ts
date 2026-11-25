@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import type { AlternativaDecision, DailySignal, Decision, DecisionLevels, ReglaTraza, Shortlist, StopDePosicion, StopsDeCartera } from '../api/types'
 import {
   avisoDe,
+  avisoDeLaFila,
   avisosDeCartera,
   contextoDeLaFila,
   resumenDelRecorte,
@@ -170,6 +171,21 @@ describe('comprar sin tamaño', () => {
     expect(a.tipo).toBe('comprar_sin_tamano')
     expect(a.pasos).toEqual(['Tamaño sin calcular para tu cartera.'])
     expect(a.cifras[2]).toEqual({ rotulo: 'Cuánto de tu cartera', valor: '—', nota: 'sin calcular' })
+  })
+
+  it('sin dimensionar pero sin hueco para ninguna idea nueva: «Sin sitio», con el motivo, y sin escribir un cero', () => {
+    // Revisión 15, H12: con «Ideas nuevas al 0 %», la cabecera decía «ninguna cabe
+    // hoy» y las que califican fuera de la lista corta, «Comprar» en verde.
+    const a = avisoDe({ decision: comprar(), tamano: { pesoFinalPct: null, recortes: [RECORTES_DXCM[1]], sinHueco: true } })
+    expect(a.tipo).toBe('comprar_sin_sitio')
+    expect(a.verbo).toBe('Sin sitio')
+    expect(a.tono).toBe('ambar')
+    expect(a.frase).toBe('Buena idea, pero hoy no cabe en tu cartera.')
+    expect(a.pasos).toEqual([
+      `Ideas nuevas al 0${D}%: la cartera que YA tienes estima un 22,2${D}% de volatilidad, por encima del objetivo (12${D}%).`,
+      'Para hacerle sitio tendrías que vender algo antes.',
+    ])
+    expect(a.cifras[2]).toEqual({ rotulo: 'Cuánto de tu cartera', valor: '—', nota: 'sin calcular: hoy no cabe ninguna idea nueva' })
   })
 })
 
@@ -364,6 +380,59 @@ describe('sin comprobar: lo que no se pudo mirar no está en orden', () => {
     expect(a.pasos).toEqual(['Míralo en tu broker.', 'La lista dice además «Reducir»: la tendencia se giró en contra.'])
   })
 
+  it('sin repaso, un precio viejo no es «Mantener»: lo mismo que con el repaso', () => {
+    // Revisión 15, H13: con el repaso era «Revisar»; sin él (falló, o la ficha,
+    // que no lo tiene), «Mantener» con una nota.
+    const lista = decision({
+      action: 'mantener',
+      owned: true,
+      levels: { ...NIVELES, stop: 90 },
+      reglas: [
+        { ...regla('stop_perforado', 100, 90, 'evaluada'), resultado: 'no_cumple' },
+        { ...regla('precio_viejo', 300, 0, 'informa'), datos: { minutos: 300 } },
+      ],
+    })
+    const conRepaso = avisoDe({ decision: lista, stop: posicion({ precio: 100, precio_estado: 'viejo', motivo: 'solo un precio viejo' }) })
+    const sinRepaso = avisoDe({ decision: lista, precio: 100, moneda: 'USD' })
+    expect([conRepaso.tipo, sinRepaso.tipo]).toEqual(['sin_comprobar', 'sin_comprobar'])
+    // La ficha («Qué dice la app») pasa solo la decisión: tampoco «Mantener».
+    expect(avisoDe({ decision: lista }).verbo).toBe('Revisar')
+    expect(sinRepaso.verbo).toBe('Revisar')
+    expect(sinRepaso.frase).toBe('El límite de pérdida (stop) no se ha podido comprobar: solo hay un precio viejo (todas las fuentes fallaron).')
+    expect(sinRepaso.pasos).toEqual(['Míralo en tu broker.', 'Con lo que sí pudo mirar, tu regla dice mantener.'])
+    expect(sinRepaso.cifras).toEqual([
+      { rotulo: 'Precio', valor: `100,00${D}USD` },
+      { rotulo: 'Límite de pérdida (stop)', valor: `90,00${D}USD`, tono: 'gris' },
+    ])
+  })
+
+  it('sin repaso, un stop que el motor no pudo evaluar (sin stop ni coste) no es «Mantener»', () => {
+    const lista = decision({
+      action: 'mantener',
+      owned: true,
+      reglas: [
+        { ...regla('puntuacion_desfavorable', 0.5, -0.35, 'evaluada'), resultado: 'no_cumple' },
+        { ...regla('stop_perforado', 100, 0, 'evaluada'), resultado: 'desconocido', datos: { valor: 100, umbral: null } },
+      ],
+    })
+    const a = avisoDe({ decision: lista, precio: 100 })
+    expect(a.tipo).toBe('sin_comprobar')
+    expect(a.frase).toBe('El límite de pérdida (stop) no se ha podido comprobar: la posición no tiene stop ni coste con que calcularlo.')
+    // Con la regla evaluada, sí es «Mantener», aunque no se sepa el precio (la ficha no lo pasa).
+    const evaluada = decision({ ...lista, levels: { ...NIVELES, stop: 90 }, reglas: [{ ...regla('stop_perforado', 100, 90, 'evaluada'), resultado: 'no_cumple' }] })
+    expect(avisoDe({ decision: evaluada }).tipo).toBe('mantener')
+    expect(avisoDe({ decision: evaluada }).frase).toBe('Tu regla dice mantener. Si cae a 90,00, vende: es tu límite de pérdida (stop).')
+  })
+
+  it('sin traza (respuesta antigua), «Mantener» solo con el precio por encima del stop', () => {
+    const lista = decision({ action: 'mantener', owned: true, levels: { ...NIVELES, stop: 90 } })
+    expect(avisoDe({ decision: lista, precio: 100 }).tipo).toBe('mantener')
+    expect(avisoDe({ decision: lista }).frase).toBe('No hay precio de hoy: el límite de pérdida (stop) no se ha podido comprobar.')
+    expect(avisoDe({ decision: decision({ action: 'mantener', owned: true }), precio: 100 }).frase).toBe(
+      'El límite de pérdida (stop) no se ha podido comprobar: la lista no trae el stop de la posición.',
+    )
+  })
+
   it('una posición sin datos en la lista y sin repaso: sin comprobar, no «sin datos»', () => {
     const a = avisoDe({ decision: decision({ action: 'sin_datos', owned: true, reasons: ['Falta el precio.'] }) })
     expect(a.tipo).toBe('sin_comprobar')
@@ -458,6 +527,23 @@ describe('el contexto de una fila de la lista', () => {
     expect(tamanoDeLaLista('HSY', shortlist)).toEqual({ pesoFinalPct: 4, recortes: [RECORTES_DXCM[1]] })
     expect(tamanoDeLaLista('OTRA', shortlist)).toBeUndefined()
     expect(tamanoDeLaLista('DXCM', undefined)).toBeUndefined()
+  })
+
+  it('fuera de la lista corta, sin tamaño; salvo que no quepa ninguna idea nueva', () => {
+    const sinHueco = { ...shortlist, sin_hueco_de_riesgo: true } as Shortlist
+    expect(tamanoDeLaLista('OTRA', sinHueco)).toEqual({ pesoFinalPct: null, recortes: [RECORTES_DXCM[1]], sinHueco: true })
+    expect(tamanoDeLaLista('DXCM', sinHueco)).toEqual({ pesoFinalPct: 0, recortes: RECORTES_DXCM, sinHueco: true })
+    expect(tamanoDeLaLista('OTRA', { ...shortlist, sin_hueco_de_riesgo: false } as Shortlist)).toBeUndefined()
+  })
+
+  it('el aviso de la fila es el de su tarjeta: una idea que ya tienes habla de su stop', () => {
+    // Revisión 15, H1: la tarjeta pasaba solo el tamaño y decía «Comprar … Tamaño
+    // sugerido» de una idea comprada después de calcular la lista.
+    const hsy = { symbol: 'HSY', decision: comprar(), price: { last: 144 } } as unknown as DailySignal
+    expect(avisoDeLaFila(hsy, { cartera: undefined, shortlist }).tipo).toBe('comprar')
+    const repaso = { abiertas: 1, en_lista: 1, posiciones: [posicion({ symbol: 'HSY', precio: 144, stop: 125 })] }
+    expect(avisoDeLaFila(hsy, { cartera: repaso, shortlist }).tipo).toBe('mantener')
+    expect(avisoDeLaFila(hsy, null).tipo).toBe('comprar_sin_tamano')
   })
 
   it('su stop, solo con un repaso que se pudo hacer', () => {

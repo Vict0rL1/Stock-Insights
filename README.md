@@ -833,7 +833,10 @@ abiertas **ocupan presupuesto** en los cuatro límites:
   y mirando solo las candidatas entre sí era invisible.
 - El objetivo de volatilidad se mide sobre la cartera combinada. Si la que ya
   tienes se pasa sola, las ideas nuevas salen al 0 % y se dice por qué: no es
-  que sean malas, es que no cabe más riesgo.
+  que sean malas, es que no cabe más riesgo. Eso vale también para las que
+  califican fuera de la lista corta, que no pasan por el dimensionador: la
+  respuesta lo dice con `shortlist.sin_hueco_de_riesgo` (`true` solo con ese
+  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 15).
 
 Las posiciones abiertas **no se redimensionan** aquí — qué hacer con lo que ya
 tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los
