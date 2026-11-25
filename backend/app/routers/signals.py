@@ -278,9 +278,14 @@ def _lista_corta_dimensionada(
     # tabla las pintaba «Comprar» en verde —118 filas— bajo una cabecera que
     # decía «ninguna cabe hoy en tu cartera» (revisión 14, H12). Va fuera de
     # `sizing` a propósito: es una lectura de su resultado, no un límite más.
-    corta["sin_hueco_de_riesgo"] = any(
-        r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) for r in corta["sizing"].get("recortes") or []
-    )
+    # Solo se afirma con la cartera medida sobre el capital: sin efectivo anotado
+    # (`invertido`) o sin sumarlo (`invertido_parcial`, una posición sin valorar)
+    # el libro es el 100 %, y «Sin sitio… tendrías que vender algo antes» de TODAS
+    # salía de ese supuesto (con 99.000 USD anotados, el mismo libro dejaba un
+    # 9 % a cada una), mientras el coste de oportunidad lo llama INDETERMINADO
+    # (revisión 15, costuras H5). Entonces None: no se sabe.
+    sin_hueco = any(r.startswith(RECORTE_SIN_HUECO_DE_RIESGO) for r in corta["sizing"].get("recortes") or [])
+    corta["sin_hueco_de_riesgo"] = sin_hueco if base == "capital" or not sin_hueco else None
     return corta
 
 
@@ -1199,11 +1204,13 @@ def today(
     # (`senales_para_el_stop`): decía «valido», el de cuando se calculó, y con
     # yfinance caído un cierre de hace 6 días por encima del stop daba «por
     # encima» y «nada urgente», STALE → PASS (revisión 14).
-    from app.contexto_cartera import senales_para_el_stop
+    # Las del mercado que una lista parcial aún no ha puntuado van `pendiente`:
+    # Explorar las pintaba «Fuera de EE. UU. — S&P 500» (revisión 15, costuras H2).
+    from app.contexto_cartera import pendientes_de_la_lista, senales_para_el_stop
 
     respuesta = {k: v for k, v in payload.items() if k != "huella_cartera"}
     respuesta["cartera"] = _repaso_de_stops(
-        session, service, senales_para_el_stop(payload, payload.get("estado"))
+        session, service, senales_para_el_stop(payload, payload.get("estado")), pendientes_de_la_lista(payload)
     )
     respuesta["lista_desfasada"] = _lista_desfasada(session, payload.get("huella_cartera"))
     return respuesta
@@ -1289,7 +1296,9 @@ def _lista_desfasada(session: Session, antes: dict | None) -> dict | None:
                      "(el motivo está en el log del backend)."}
 
 
-def _repaso_de_stops(session: Session, service: MarketDataService, senales: list[dict]) -> dict:
+def _repaso_de_stops(
+    session: Session, service: MarketDataService, senales: list[dict], pendientes: set[str] | None = None
+) -> dict:
     """El stop de cada posición abierta (`contexto_cartera.stops_de_la_cartera`).
 
     Un fallo aquí no cuesta la lista, pero tampoco se calla: sin repaso, la
@@ -1297,7 +1306,7 @@ def _repaso_de_stops(session: Session, service: MarketDataService, senales: list
     from app.contexto_cartera import stops_de_la_cartera
 
     try:
-        return stops_de_la_cartera(session, service, senales)
+        return stops_de_la_cartera(session, service, senales, pendientes=pendientes)
     except Exception:  # noqa: BLE001 — la lista sigue y lo dice
         log("riesgo").exception("Hoy: no se pudo repasar el stop de la cartera")
         return {
@@ -1339,11 +1348,12 @@ def _today(
     # decide si comprar, sino si sostenerla o soltarla.
     # Los LOTES se agregan por símbolo: antes un dict se quedaba con el último
     # y el coste y el stop de los demás desaparecían. El stop que viaja es el
-    # más protector de los fijados al abrir, no uno recalculado con la
-    # volatilidad de hoy.
+    # más protector de sus lotes: el fijado al abrir o, en un lote sin stop
+    # guardado junto a otros, el recalculado desde su coste, el mismo que mira el
+    # repaso (revisión 15, costuras H1).
     from app.contexto_cartera import huella_de_cartera, posiciones_para_decidir
 
-    posiciones = posiciones_para_decidir(session)
+    posiciones = posiciones_para_decidir(session, service=service)
     # Con qué cartera se calcula: viaja en la caché y `today()` la compara con
     # la de ahora (`_lista_desfasada`). Como el efectivo, no puede costar la lista.
     try:

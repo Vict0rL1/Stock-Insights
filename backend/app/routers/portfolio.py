@@ -915,16 +915,35 @@ def _con_estado_del_stop(posiciones: list[dict], repaso: dict) -> None:
     118, la lista cerrada a 117 y la cotización a 120 era «Vender» en Explorar y
     una fila «en orden» aquí (revisión 14). `stop_perforado_por`: el precio que lo
     perfora cuando no es el de la fila, para escribirlo junto a ella.
+
+    Y con la MISMA regla (`contexto_cartera.estado_del_stop`, aplicada a este lote):
+    `stop_estado`, `stop_motivo` y `stop_precio` (el precio que decide ese estado).
+    La línea de Mi cartera contaba con el repaso y la fila con su propia cuenta:
+    con la cotización vieja y el cierre de la lista por encima, la línea decía
+    «ninguna necesita atención» y la fila del mismo lote, «sin comprobar»
+    (revisión 15, cartera H1). Solo cuentan los precios de cuando el lote ya
+    existía (`precios_del_lote`): un cierre de antes de comprar perforaba el stop
+    de un lote abierto hace una hora (revisión 15, cartera H4).
     """
+    from app.contexto_cartera import estado_del_stop
+
+    ahora = datetime.now(timezone.utc)
     precios = {p["symbol"]: p.get("precios") or [] for p in repaso.get("posiciones") or []}
     for p in posiciones:
+        e = estado_del_stop(precios.get(p["symbol"], []), [{
+            "stop": p.get("stop"), "stop_fijado_al_abrir": bool(p.get("stop_fijado_al_abrir")),
+            "abierto_en": p.get("opened_at")}], ahora)
+        p["stop_estado"], p["stop_motivo"], p["stop_precio"] = e["estado"], e["motivo"], e["elegido"]
+        # El primero que lo perfora; la cotización (la de la fila) va delante.
+        por = e["elegido"] if e["estado"] == "perforado" else None
         propio = stop_perforado(p.get("price"), p.get("stop"))
-        por = next((x for x in precios.get(p["symbol"], []) if stop_perforado(x["precio"], p.get("stop"))), None)
-        p["stop_perforado"] = True if por is not None else propio
-        p["stop_perforado_por"] = por if por is not None and not propio else None
+        p["stop_perforado"] = True if por is not None else None if propio is None else False
+        p["stop_perforado_por"] = por if por is not None and por["fuente"] != "cotizacion" else None
 
 
-def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) -> dict:
+def _repaso_con_la_lista_guardada(
+    session: Session, service: MarketDataService, simbolos: set[str] | None = None
+) -> dict:
     """El estado de CADA posición por símbolo, de la misma fuente que Explorar.
 
     Mi cartera e Inicio contaban con `stop_perforado` por lote y solo la
@@ -943,9 +962,16 @@ def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) 
     él elegido. Sin lista guardada, `lista: None`: solo la cotización, y la
     pantalla dice que no se ha mirado la decisión de la lista. Un fallo no se
     calla ni cuesta la cartera: `error`, como en Hoy (`_repaso_de_stops`).
+
+    `lista` dice también si la lista es parcial (`completa`, `puntuadas` de
+    `pedidas`) y cada posición del mercado aún sin puntuar va `pendiente`: con
+    la primera pasada del día (40 de 502), Inicio afirmaba «la regla no manda
+    vender ni reducir ninguna» de posiciones que la regla no había mirado y
+    nada en la respuesta permitía saberlo (revisión 15, costuras H2).
+    `simbolos`: solo esas posiciones (la ficha de una empresa).
     """
     from app.analysis.markets import DEFAULT_MARKET
-    from app.contexto_cartera import senales_para_el_stop, stops_de_la_cartera
+    from app.contexto_cartera import pendientes_de_la_lista, senales_para_el_stop, stops_de_la_cartera
     from app.registro import log
     from app.routers.signals import _lista_guardada
 
@@ -956,7 +982,8 @@ def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) 
             lista = None  # ninguna guardada esta semana: un 404, no un fallo
         estado = (lista or {}).get("estado") or datos.Estado.VALIDO.value
         senales = senales_para_el_stop(lista, estado)
-        repaso = stops_de_la_cartera(session, service, senales)
+        repaso = stops_de_la_cartera(session, service, senales, pendientes=pendientes_de_la_lista(lista),
+                                     simbolos=simbolos)
     except Exception:  # noqa: BLE001 — la cartera sigue y lo dice
         log("riesgo").exception("Cartera: no se pudo repasar el stop de las posiciones")
         return {
@@ -973,6 +1000,10 @@ def _repaso_con_la_lista_guardada(session: Session, service: MarketDataService) 
             "as_of": lista.get("as_of"),
             "estado": estado,
             "antiguedad_segundos": lista.get("antiguedad_segundos") if estado == datos.Estado.VIEJO.value else None,
+            # Sin el campo (una lista guardada sin él), None: no se sabe, no «completa».
+            "completa": lista.get("complete"),
+            "puntuadas": lista.get("scored"),
+            "pedidas": lista.get("requested"),
         },
     }
 

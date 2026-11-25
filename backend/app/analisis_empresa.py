@@ -575,14 +575,15 @@ def seccion_senal(service, symbol: str, con_pares: bool, ahora: datetime) -> dic
     }
 
 
-def _posicion(session: Session, instrument: Instrument | None, ahora: datetime) -> dict | None:
+def _posicion(session: Session, instrument: Instrument | None, ahora: datetime, service=None) -> dict | None:
     """La posición abierta en `ahora`, con los lotes agregados por la misma regla
-    que la lista diaria (el stop más protector de los fijados)."""
+    que la lista diaria (el stop más protector de sus lotes: en vivo, también el
+    recalculado de los que no tienen stop guardado, como el repaso)."""
     from app.contexto_cartera import posiciones_para_decidir
 
     if instrument is None:
         return None
-    return posiciones_para_decidir(session, ahora).get(instrument.symbol)
+    return posiciones_para_decidir(session, ahora, service).get(instrument.symbol)
 
 
 def _resultados_proximos(service, symbol: str, ahora: datetime) -> str | None:
@@ -737,7 +738,7 @@ def analizar(
         noticias_incompletas=noticias_tesis["incompletas"] if noticias_tesis else None,
     )
     senal = seccion_senal(service, symbol, con_pares, ahora)
-    posicion = _posicion(session, instrument, ahora)
+    posicion = _posicion(session, instrument, ahora, service)
     resultados_en = _resultados_proximos(service, symbol, ahora)
 
     clase = "cripto" if symbol.endswith("-USD") else "accion"

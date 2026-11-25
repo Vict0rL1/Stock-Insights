@@ -2017,6 +2017,13 @@
      "nueva": true,
      "origen": "analisis:14:35:00"
     },
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
     "sin_congelar": null
    },
    "status": 200
@@ -3512,6 +3519,13 @@
      }
     },
     "instantanea": null,
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
     "sin_congelar": null
    },
    "status": 200
@@ -4857,10 +4871,19 @@
        67.57
       ],
       "stop": 50.0,
+      "stop_estado": "por_encima",
       "stop_fijado_al_abrir": true,
+      "stop_motivo": null,
       "stop_perforado": false,
       "stop_perforado_por": null,
       "stop_por_clase": false,
+      "stop_precio": {
+       "estado": "valido",
+       "fecha": "2026-09-12T14:35:00+00:00",
+       "fuente": "cotizacion",
+       "precio": 60.0,
+       "proveedor": "finnhub"
+      },
       "symbol": "KO",
       "unrealized_pct": 0.034482758620689655,
       "unrealized_pnl": 600.0
@@ -4880,6 +4903,7 @@
        "lotes_sin_stop": 0,
        "moneda": "USD",
        "motivo": null,
+       "pendiente": false,
        "precio": 60.0,
        "precio_estado": "valido",
        "precio_fecha": "2026-09-12T14:35:00+00:00",

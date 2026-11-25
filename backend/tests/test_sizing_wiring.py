@@ -167,7 +167,9 @@ def test_la_lista_corta_dice_si_ninguna_idea_nueva_cabe():
     señales = [señal(f"T{i}", 1.2 - i * 0.01, f"Sec{i}") for i in range(4)]
     señales.append(señal("VIEJA", -0.9, "Otro", last=100.0, vol=3.0))
 
-    llena = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}})
+    # Con el efectivo anotado (cero), la cartera se mide sobre el capital: es un dato.
+    llena = _lista_corta_dimensionada(señales, {"VIEJA": {"quantity": 10}}, efectivo_usd=0.0)
+    assert llena["sizing"]["base_cartera"] == "capital"
     assert llena.get("sin_hueco_de_riesgo") is True
     assert all(i["peso_final_pct"] == 0 for i in llena["ideas"])
     # Sin cartera hay hueco: la bandera no se enciende por tener recortes.
@@ -348,3 +350,38 @@ def test_con_efectivo_sin_tipo_y_posiciones_sin_valorar_la_nota_conserva_el_moti
     )["sizing"]
     assert "aunque lo anotaras" not in s["nota"]
     assert "efectivo en EUR sin tipo de cambio" in s["nota"] and "puede quedarse corto o pasarse" in s["nota"]
+
+
+def _ya_tienes(symbol: str) -> dict:
+    """La fila de la lista de una posición: 10 acciones a 100, vol diaria 1,5 % (~24 % anual)."""
+    s = señal(symbol, -0.2, "Consumer Staples", last=100.0, vol=1.5)
+    s["decision"] = {"action": "mantener", "owned": True, "levels": None}
+    return s
+
+
+def test_sin_efectivo_anotado_no_se_afirma_que_ninguna_idea_quepa():
+    """Revisión 15, costuras H5: con una posición y ningún efectivo anotado, la
+    cartera se mide invertida al 100 % y el recorte «Ideas nuevas al 0 %»
+    encendía la bandera: «Sin sitio… tendrías que vender algo antes» de TODAS
+    las que califican. Con 99.000 USD anotados, el mismo libro deja un 9 % a cada
+    una, y el coste de oportunidad llama a lo mismo INDETERMINADO. Sin el capital,
+    la bandera es None: no se sabe."""
+    señales = [señal(f"T{i}", 1.2 - i * 0.01, f"Sec{i}") for i in range(4)] + [_ya_tienes("KO")]
+    sin_efectivo = _lista_corta_dimensionada(señales, {"KO": {"quantity": 10}})
+    assert sin_efectivo["sizing"]["base_cartera"] == "invertido"
+    assert any(r.startswith("Ideas nuevas al 0") for r in sin_efectivo["sizing"]["recortes"])
+    assert sin_efectivo["sin_hueco_de_riesgo"] is None
+    con_efectivo = _lista_corta_dimensionada(señales, {"KO": {"quantity": 10}}, efectivo_usd=99_000.0)
+    assert con_efectivo["sin_hueco_de_riesgo"] is False
+
+
+def test_con_una_posicion_sin_puntuar_tampoco():
+    """Con efectivo anotado y una posición que la pasada aún no ha puntuado, el
+    efectivo no se suma (`invertido_parcial`) y la bandera decía «ninguna cabe»
+    en las primeras pasadas; la lista completa, mismo libro y mismo efectivo, no."""
+    posiciones = {"KO": {"quantity": 10}, "PEP": {"quantity": 10}}
+    base = [señal(f"T{i}", 1.2 - i * 0.01, f"Sec{i}") for i in range(4)] + [_ya_tienes("KO")]
+    parcial = _lista_corta_dimensionada(base, posiciones, efectivo_usd=98_000.0)
+    completa = _lista_corta_dimensionada(base + [_ya_tienes("PEP")], posiciones, efectivo_usd=98_000.0)
+    assert parcial["sizing"]["base_cartera"] == "invertido_parcial"
+    assert (parcial["sin_hueco_de_riesgo"], completa["sin_hueco_de_riesgo"]) == (None, False)

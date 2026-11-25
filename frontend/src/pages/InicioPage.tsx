@@ -6,6 +6,7 @@ import type {
   IndexEntry,
   Portfolio,
   PriceAlert,
+  RepasoDeCartera,
   SectorEntry,
   TodayResponse,
   VigilanciaResponse,
@@ -13,10 +14,10 @@ import type {
 import { AvisoDeAccion, TONOS } from '../components/AvisoDeAccion'
 import { BloqueDatos, ErrorDeCarga } from '../components/EstadoDato'
 import { ProgresoAnalisis } from '../components/ProgresoAnalisis'
-import { atencionDeCartera, deLaLista, type AtencionDeCartera } from '../components/cartera/atencion'
+import { alcanceDeLaRegla, atencionDeCartera, decidida, deLaLista, porQueSoloSuStop, type AtencionDeCartera } from '../components/cartera/atencion'
 import { PreguntaIA } from '../components/ia/PreguntaIA'
 import { useListaDiaria, type ListaDiaria } from '../hooks/useListaDiaria'
-import { avisoDeLaFila, type AvisoDePosicion } from '../lib/avisos'
+import { avisoDeLaFila, carteraRepasada, type AvisoDePosicion } from '../lib/avisos'
 import { etiqueta } from '../lib/etiquetas'
 import { fmtDinero, fmtFecha, fmtNum, fmtPct, fmtPrecio, plural, signoLeido } from '../lib/formato'
 import { RUTAS, rutaCartera, rutaEmpresa, rutaExplorar } from '../lib/rutas'
@@ -302,15 +303,34 @@ function Atenciones({
         </p>
       )}
       {a.repasada && a.avisos.some(deLaLista) && <NotaDeLaLista lista={a.lista} deLaLista />}
-      {todoMirado && lista.length === 0 && a.abiertas > 0 && (
-        <p className="text-sm text-slate-600">
-          {a.lista === null
-            ? 'Ningún límite de pérdida perforado. Sin la lista del día guardada no se ha mirado si la regla manda vender o reducir alguna.'
-            : 'Nada urgente: todas tus posiciones siguen por encima de su límite de pérdida y la regla no manda vender ni reducir ninguna.'}
-        </p>
-      )}
+      {todoMirado && lista.length === 0 && a.abiertas > 0 && <p className="text-sm text-slate-600">{nadaUrgente(a)}</p>}
     </div>
   )
+}
+
+/** Lo que se dice cuando nada necesita atención, sin afirmar de la regla lo que
+ *  no ha mirado: «la regla no manda vender ni reducir ninguna» solo de las que
+ *  la lista decide como posición, y con la lista caducada, de cuándo es esa
+ *  regla. Lo decía de SHOP.TO (fuera de la lista), de una posición abierta
+ *  después de calcularla, de las aún sin puntuar en una lista parcial y con la
+ *  lista de hace 5 días como si fuera de hoy (revisión 15, cartera H2 y
+ *  costuras H2). */
+export function nadaUrgente(a: Extract<AtencionDeCartera, { repasada: true }>): string {
+  if (a.lista === null) {
+    return 'Ningún límite de pérdida perforado. Sin la lista del día guardada no se ha mirado si la regla manda vender o reducir alguna.'
+  }
+  const { decididas, soloSuStop, vieja } = alcanceDeLaRegla(a)
+  const deCuando = vieja ? ` (según ${vieja}: Explorar la recalcula)` : ''
+  if (soloSuStop === null) {
+    return `Nada urgente: todas tus posiciones siguen por encima de su límite de pérdida y la regla no manda vender ni reducir ninguna${deCuando}.`
+  }
+  const regla =
+    decididas === 0
+      ? ' La regla de la lista no ha decidido sobre ninguna.'
+      : decididas === 1
+        ? ` La regla no manda vender ni reducir la única que decide la lista${deCuando}.`
+        : ` La regla no manda vender ni reducir ninguna de las ${fmtNum(decididas, 0)} que decide la lista${deCuando}.`
+  return `Ningún límite de pérdida perforado: todas tus posiciones siguen por encima.${regla} ${soloSuStop}`
 }
 
 const simbolosDe = (filas: { symbol: string }[]) => [...new Set(filas.map((f) => f.symbol))]
@@ -323,13 +343,18 @@ export function valorDeLaCartera(c: Portfolio): string {
   const base = c.divisas?.base
   if (!base) return ''
   const total = c.summary.total_market_value
-  if (total === null || total === undefined) return ' · valor desconocido: ninguna tiene precio de hoy'
   const sinPrecio = simbolosDe(c.positions.filter((p) => p.price === null))
   const sinConvertir = simbolosDe(c.positions.filter((p) => p.price !== null && p.market_value_base === null))
   const fuera = [
     sinPrecio.length > 0 && `${sinPrecio.join(', ')} (sin precio)`,
     sinConvertir.length > 0 && `${sinConvertir.join(', ')} (sin convertir)`,
   ].filter((x): x is string => typeof x === 'string')
+  if (total === null || total === undefined) {
+    // RY.TO con precio y sin tipo de cambio decía «ninguna tiene precio de hoy»:
+    // tiene precio, lo que falta es convertirlo (revisión 15, cartera H3).
+    if (sinConvertir.length === 0) return ' · valor desconocido: ninguna tiene precio de hoy'
+    return ` · valor desconocido: ${fuera.join(' ni ')}`
+  }
   const viejos = c.summary.precios_viejos ?? []
   return (
     ` · valor ${fmtDinero(total, base)}` +
@@ -377,7 +402,17 @@ function TuCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }) {
                 ? a.posiciones.map((x) => (
                     <li key={x.symbol} className="flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-3">
                       {enlace(x.symbol)}
-                      <AvisoDeAccion aviso={x.aviso} tamano="compacto" conFrase={false} />
+                      <span className="flex flex-wrap items-center justify-end gap-x-2 text-right">
+                        {/* «Mantener» de una que la regla no ha mirado se leía como «tu
+                            regla dice mantener»: de ella solo se ha mirado el stop
+                            (revisión 15, cartera H2). */}
+                        {!decidida(x) && x.aviso.tipo === 'mantener' && (
+                          <span className="text-xs text-slate-500" title={porQueSoloSuStop(x, a.lista)}>
+                            solo su límite de pérdida
+                          </span>
+                        )}
+                        <AvisoDeAccion aviso={x.aviso} tamano="compacto" conFrase={false} />
+                      </span>
                     </li>
                   ))
                 : a.simbolos.map((symbol) => (
@@ -477,11 +512,17 @@ type Idea = NonNullable<TodayResponse['shortlist']>['ideas'][number]
  *  Con el aviso de su fila (`avisoDeLaFila`: su tamaño y, si ya la tienes, el
  *  repaso de su stop): comprada DESPUÉS de calcular la lista, la tarjeta
  *  seguía diciendo «Comprar… Tamaño sugerido: 7,8 %», un tamaño calculado sin
- *  esa posición (revisión 14). Con el repaso, es una posición: su stop manda. */
-function TarjetaIdea({ idea, datos }: { idea: Idea; datos: TodayResponse }) {
+ *  esa posición (revisión 14). Con el repaso, es una posición: su stop manda.
+ *
+ *  El repaso, el de «Tu cartera» en esta misma página (`/api/portfolio`, pedido
+ *  en cada montaje) cuando ha llegado: el que viaja con la lista compartida
+ *  puede ser de antes de anotar la compra (la lista de hace menos de un minuto no
+ *  se vuelve a pedir, y la de ahora tarda), y la tarjeta decía «Comprar… 7,8 %»
+ *  de HSY con «Tu cartera» diciendo «Mantener» (revisión 15, costuras H3). */
+function TarjetaIdea({ idea, datos, repaso }: { idea: Idea; datos: TodayResponse; repaso: RepasoDeCartera | undefined }) {
   const variacion = idea.price ? fmtPct(idea.price.change_pct, 2, { signo: true, enPuntos: true }) : ''
   const tono = { '1': 'text-emerald-600', '0': 'text-slate-500', '-1': 'text-red-600' }[signoLeido(variacion)]
-  const aviso = avisoDeLaFila(idea, datos)
+  const aviso = avisoDeLaFila(idea, { shortlist: datos.shortlist, cartera: carteraRepasada(repaso) ? repaso : datos.cartera })
   return (
     <li className="flex flex-col gap-3 rounded-xl bg-slate-100 p-4">
       <div className="flex items-start justify-between gap-2">
@@ -531,7 +572,7 @@ function SinIdeas({ datos }: { datos: TodayResponse }) {
   return <p className="text-sm text-slate-600">Hoy ninguna empresa cumple todas las condiciones de compra. No comprar también es una decisión.</p>
 }
 
-function IdeasAcciones({ lista }: { lista: ListaDiaria }) {
+function IdeasAcciones({ lista, repaso }: { lista: ListaDiaria; repaso: RepasoDeCartera | undefined }) {
   // La misma lista que Explorar, compartida (`useListaDiaria`): abrir Inicio y
   // luego Explorar no repite la puntuación. Con una lista guardada de horas
   // atrás se enseña al momento con su antigüedad y la nueva la sustituye.
@@ -558,7 +599,7 @@ function IdeasAcciones({ lista }: { lista: ListaDiaria }) {
       ) : (
         <ul className="grid gap-3 lg:grid-cols-3">
           {ideas.map((i) => (
-            <TarjetaIdea key={i.symbol} idea={i} datos={d} />
+            <TarjetaIdea key={i.symbol} idea={i} datos={d} repaso={repaso} />
           ))}
         </ul>
       )}
@@ -626,7 +667,7 @@ function IdeasEtfs() {
   )
 }
 
-function Ideas({ lista }: { lista: ListaDiaria }) {
+function Ideas({ lista, repaso }: { lista: ListaDiaria; repaso: RepasoDeCartera | undefined }) {
   const [tipo, setTipo] = useState<'acciones' | 'etfs'>('acciones')
   return (
     <section aria-labelledby="ideas-t" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -653,7 +694,7 @@ function Ideas({ lista }: { lista: ListaDiaria }) {
           ))}
         </div>
       </div>
-      {tipo === 'acciones' ? <IdeasAcciones lista={lista} /> : <IdeasEtfs />}
+      {tipo === 'acciones' ? <IdeasAcciones lista={lista} repaso={repaso} /> : <IdeasEtfs />}
     </section>
   )
 }
@@ -769,7 +810,7 @@ export function InicioPage() {
 
       <Atenciones cartera={cartera} alertas={alertas} tesis={tesis} />
 
-      <Ideas lista={lista} />
+      <Ideas lista={lista} repaso={cartera.estado === 'listo' ? cartera.datos.repaso : undefined} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Tarjeta titulo="Tu cartera" id="cartera-t" enlace={{ to: rutaCartera(), texto: 'Ver mi cartera' }}>

@@ -10,7 +10,9 @@ Pesos y series en dólares, una sola vez, con las reglas de la cartera:
 
 - varios lotes del mismo símbolo = una posición (también en `/api/portfolio/riesgo`
   y, para decidir, en `posiciones_para_decidir`: cantidad sumada, coste medio
-  ponderado y el stop más protector de los fijados);
+  ponderado y el stop más protector de los fijados; en vivo, con varios lotes y
+  alguno sin stop guardado, el más protector de todos, con el recalculado desde el
+  coste de ese lote, como el repaso: revisión 15, costuras H1);
 - sin precio → sin peso, fuera y nombrada (no vale cero); en vivo nunca se
   rellena con el último cierre de la caché, igual que en `/api/portfolio`;
 - sin moneda o sin tipo de cambio → fuera y nombrada (no se supone dólar);
@@ -77,8 +79,9 @@ era cierta:
   ESE lote, marcado `stop_por_clase` si es el punto medio de su clase); el símbolo
   está perforado si lo está cualquiera de sus lotes, y se sirve el stop más alto
   con `lotes`, `lotes_recalculados`, `lotes_por_clase` y `lotes_sin_stop`. Con el
-  stop agregado (`agregar_lotes`, que sigue siendo el del motor), un lote sin stop y
-  coste 130 perforado a 104 en el Portafolio salía «por encima» con el 70 del otro;
+  stop agregado (`agregar_lotes`, el del motor), un lote sin stop y coste 130
+  perforado a 104 en el Portafolio salía «por encima» con el 70 del otro (desde la
+  revisión 15 el motor también lo cuenta, ver abajo);
 - el precio es la cotización (`_cotizacion`, 60 s) de todas, con el último cierre
   de la lista como reserva: perforado si lo perfora cualquiera de los precios que
   haya; `por_encima` solo con un precio válido y todos los lotes con stop; un
@@ -96,6 +99,60 @@ era cierta:
   (`cambios_de_cartera`: abiertas, cerradas y cambiadas desde entonces, y si
   cambió el efectivo; `null` si es la misma; `error` si no se pudo comparar). La
   caché de 6 h no cambia (M3).
+
+**Revisión 15: una regla para el símbolo y para cada lote, y nada que la regla no
+haya mirado.** El estado sale de `contexto_cartera.estado_del_stop`, la misma
+función para el repaso de cada símbolo (todos sus lotes) y para la fila de cada lote
+de `/api/portfolio`:
+
+- con una **cotización**, aunque sea vieja, solo ella puede dar `por_encima`: el
+  último cierre de la lista (de hace horas, `valido` con el reloj de la lista) daba
+  «por encima» con la cotización rescatada de hace 20 min, e Inicio decía «Nada
+  urgente» con la fila del mismo lote «sin comprobar» (cartera H1). Perforar sí
+  puede. **Sin ninguna cotización**, el cierre de la lista sigue dando `por_encima`
+  (revisión 13; cambiarlo a «solo perfora» está pendiente de Victor);
+- un precio fechado **antes de abrir el lote** no dice nada de su stop
+  (`precios_del_lote`, con `punto_en_el_tiempo.descargado_a_tiempo`: la cotización
+  de la caché pedida un momento antes de anotar la compra cuenta; sin fecha, también,
+  fail-safe). Un cierre de la lista de antes de comprar perforaba el stop de un lote
+  abierto hace una hora: «Vender» en Mi cartera, Inicio y la fila, hasta 7 días con la
+  lista caducada (cartera H4). El símbolo está perforado si lo está alguno de sus
+  lotes con sus precios; se sirve el stop del perforado más alto, o el más alto;
+- `sin_comprobar` dice también «sin precio desde que abriste el lote» cuando todo lo
+  que hay es de antes de la compra;
+- cada fila de `/api/portfolio` trae `stop_estado` (`perforado`, `por_encima`,
+  `sin_comprobar`), `stop_motivo` y `stop_precio` (el precio que decide ese estado),
+  y la pantalla lee eso (`atencion.estadoDelStop`): la fila y la línea salen del mismo
+  cálculo. `stop_perforado` y `stop_perforado_por` siguen, con la misma regla; la
+  tabla escribe la fecha del precio que perfora y, sin cotización, el cierre con que
+  se comprobó;
+- cada posición del repaso trae `pendiente`: del mercado de la lista, pero una lista
+  parcial aún no la ha puntuado (`pendientes_de_la_lista`); salía `en_lista: false`
+  como una de otro mercado, y Explorar la pintaba «Fuera de EE. UU. — S&P 500»
+  (costuras H2). `repaso.lista` trae `completa`, `puntuadas` y `pedidas`;
+- Inicio y Mi cartera solo dicen «la regla no manda vender ni reducir ninguna» de las
+  posiciones que la lista decide como posición (`atencion.alcanceDeLaRegla`); de las
+  demás nombran por qué solo se ha mirado su stop (fuera de la lista, abierta después
+  de calcularla, aún sin puntuar, sin datos) y, con la lista caducada, de cuándo es la
+  regla, también sin ninguna venta. «Tu cartera» rotula «solo su límite de pérdida»;
+- el motor decide con el stop de cada lote: con varios lotes y alguno sin stop
+  guardado, `posiciones_para_decidir` (con el servicio, en la ficha y en la lista
+  del día) agrega el más protector de TODOS, el recalculado desde el coste de ese
+  lote incluido (`portfolio.stop_del_lote`, el del repaso), y lo marca
+  (`stop_recalculado`; la traza dice «el de uno sin stop guardado, recalculado desde
+  su coste» y `levels.stop_fijado_al_abrir` es falso). Con el más alto de los fijados,
+  KO con un lote de stop 70 y otro viejo sin stop y coste 130 decidía «Mantener… ni ha
+  llegado a tu stop» a 104 mientras Inicio decía «KO bajó de tu límite de pérdida»
+  (119,60; costuras H1). Un solo lote sin stop no cambia (el motor ya lo recalculaba
+  desde su coste) y en una reconstrucción del pasado tampoco: el recalculado usaría la
+  volatilidad de la caché de hoy. El golden master no cambia: no tiene ninguna posición
+  de varios lotes con uno sin stop;
+- la ficha (`/api/empresa/{symbol}/analisis`) sirve además `repaso`, el de su posición
+  (fuera de `analisis`: es de ahora y no se congela), y «Qué dice la app» avisa con él:
+  si aun así el repaso lo da por perforado o sin comprobar (otro precio, la lista
+  guardada), la ficha no escribe «ni ha llegado a tu stop»;
+- en Inicio, la tarjeta de idea lee el repaso de `/api/portfolio` cuando ha llegado,
+  el mismo que «Tu cartera» (costuras H3).
 
 ## Contribución al riesgo: `portfolio_risk.contribucion_al_riesgo`
 

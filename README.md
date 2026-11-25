@@ -703,6 +703,19 @@ El repaso mira lo mismo que el Portafolio (revisión 13):
   `stop_perforado_por`). La línea de Mi cartera e Inicio lo leen con
   `avisosDeCartera`, por símbolo, como «Para vender» en Explorar. Detalle en
   `docs/PORTFOLIO_RISK.md`.
+- **Una regla para el símbolo y para el lote (revisión 15):**
+  `contexto_cartera.estado_del_stop` decide el repaso de cada símbolo y la fila de
+  cada lote (`stop_estado`, `stop_motivo`, `stop_precio`). Con una cotización,
+  aunque sea vieja, el último cierre de la lista no da «por encima» (sí perfora); sin
+  ninguna cotización sigue dándolo (revisión 13, pendiente de Victor). Un precio de
+  antes de abrir el lote no cuenta para su stop. Las posiciones del mercado que una
+  lista parcial aún no ha puntuado van `pendiente`, y `repaso.lista` dice si es
+  `completa`. Inicio y Mi cartera solo afirman «la regla no manda vender ni reducir»
+  de las que la lista decide, y dicen de cuándo es la lista. La ficha
+  (`/api/empresa/{symbol}/analisis`) trae el `repaso` de su posición y avisa con él,
+  y el motor decide con el stop de cada lote: con varios lotes y alguno sin stop
+  guardado, el más protector de todos, con el recalculado desde su coste
+  (`stop_recalculado`), en vivo.
 
 ### ¿Y funcionan? El backtest de reglas
 
@@ -886,7 +899,13 @@ abiertas **ocupan presupuesto** en los cuatro límites:
   que sean malas, es que no cabe más riesgo. Eso vale también para las que
   califican fuera de la lista corta, que no pasan por el dimensionador: la
   respuesta lo dice con `shortlist.sin_hueco_de_riesgo` (`true` solo con ese
-  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 14).
+  recorte) y Explorar las pinta «Sin sitio», no «Comprar» (revisión 14). Solo con
+  la cartera medida sobre el capital (`sizing.base_cartera: capital`): sin efectivo
+  anotado, o sin sumarlo por una posición sin valorar, la cartera se mide como
+  invertida al 100 % y «no cabe» es una conclusión del supuesto, así que la bandera
+  es `null` (no se sabe) y las ideas salen con el tamaño sin calcular y «anota tu
+  efectivo», nunca «vende algo antes», como el INDETERMINADO del coste de
+  oportunidad (revisión 15).
 
 Las posiciones abiertas **no se redimensionan** aquí — qué hacer con lo que ya
 tienes es mantener o soltar, y eso lo decide `decide()` mirando la tesis. Los

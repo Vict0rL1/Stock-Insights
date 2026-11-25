@@ -536,6 +536,28 @@ describe('el contexto de una fila de la lista', () => {
     expect(tamanoDeLaLista('OTRA', { ...shortlist, sin_hueco_de_riesgo: false } as Shortlist)).toBeUndefined()
   })
 
+  it('sin efectivo anotado, «no cabe» es del supuesto: tamaño sin calcular, nunca «vende algo antes»', () => {
+    // Revisión 15, costuras H5: con la cartera medida como invertida al 100 % (sin
+    // efectivo), el backend ya no afirma que no quepa ninguna (`null`). Decía «Sin
+    // sitio… Para hacerle sitio tendrías que vender algo antes» de TODAS.
+    const supuesto = {
+      ...shortlist,
+      sizing: { recortes: RECORTES_DXCM, base_cartera: 'invertido' },
+      sin_hueco_de_riesgo: null,
+    } as unknown as Shortlist
+    for (const symbol of ['OTRA', 'DXCM']) {
+      const a = avisoDe({ decision: comprar(), tamano: tamanoDeLaLista(symbol, supuesto) })
+      const leido = [a.verbo, a.frase, ...a.pasos].join(' ')
+      expect(a.tipo).toBe('comprar_sin_tamano')
+      expect(leido).toContain('Sin efectivo anotado, tu cartera se mide como invertida al 100')
+      expect(leido).toContain('Anota tu efectivo en Mi cartera para saber si de verdad no cabe.')
+      expect(leido).not.toContain('vender algo antes')
+    }
+    // Con una posición sin valorar, el efectivo anotado no se suma: también es un supuesto.
+    const parcial = { ...supuesto, sizing: { recortes: RECORTES_DXCM, base_cartera: 'invertido_parcial' } } as unknown as Shortlist
+    expect(tamanoDeLaLista('OTRA', parcial)?.supuesto).toMatch(/^Con una posición que la lista no valora/)
+  })
+
   it('el aviso de la fila es el de su tarjeta: una idea que ya tienes habla de su stop', () => {
     // Revisión 14, H1: la tarjeta pasaba solo el tamaño y decía «Comprar … Tamaño
     // sugerido» de una idea comprada después de calcular la lista.

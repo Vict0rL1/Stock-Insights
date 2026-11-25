@@ -184,6 +184,18 @@ la tienes y su tamaño si está en la lista corta. Con `shortlist.sin_hueco_de_r
 que ya tienes supera sola el objetivo de volatilidad), las que califican fuera de la lista corta
 tampoco caben: «Sin sitio», no «Comprar» (revisión 14).
 
+Revisión 15: la bandera solo se afirma con la cartera medida sobre el capital; sin efectivo
+anotado es `null` y las ideas dicen «Tamaño sin calcular… anota tu efectivo», nunca «vende algo
+antes» (costuras H5). La ficha avisa con lo mismo que la tarjeta desde la que se llega: con el
+repaso del stop de su posición (`repaso`, el de Inicio y Mi cartera) y con el tamaño de su coste
+de oportunidad («No cabe» → «Sin sitio»; INDETERMINADO → sin tamaño), y no escribe «ni ha
+llegado a tu stop» si el repaso lo da por perforado o sin comprobar (costuras H1 y H4). En
+Inicio, la tarjeta de idea y «Tu cartera» leen el mismo repaso (costuras H3). La cabecera cuenta
+como ideas de compra solo las que siguen siéndolo: una que ya tienes no (costuras H6). «Lo que NO
+comprar» pide también `avisoDeLaFila` (costuras H7). Explorar agrupa aparte las posiciones del
+mercado que una lista parcial aún no ha puntuado («Aún sin puntuar en…»), que no son «de fuera»
+(costuras H2).
+
 ## Cómo quedó
 
 | Pieza | Commit | Notas |

@@ -46,9 +46,11 @@ function conStop(cartera: Cartera) {
   const ko = cartera.positions[0]
   cartera.positions.push(
     { ...ko, id: 2, symbol: 'STOP', name: 'Stop Corp', sector: 'Technology', quantity: 50, cost_basis: 90, price: 104,
-      stop: 110, stop_perforado: true, invested: 4500, market_value: 5200, unrealized_pnl: 700, unrealized_pct: 700 / 4500 },
+      stop: 110, stop_perforado: true, stop_estado: 'perforado', invested: 4500, market_value: 5200, unrealized_pnl: 700,
+      unrealized_pct: 700 / 4500 },
     { ...ko, id: 3, symbol: 'SHOP.TO', name: 'Shopify', currency: 'CAD', sector: 'Technology', price: null,
-      precio_estado: 'desconocido', stop: 100, stop_perforado: null, market_value: null, unrealized_pnl: null,
+      precio_estado: 'desconocido', stop: 100, stop_perforado: null, stop_estado: 'sin_comprobar',
+      stop_motivo: 'sin precio (ninguna fuente dio su cotización)', market_value: null, unrealized_pnl: null,
       unrealized_pct: null },
   )
   ko.stop_perforado = false

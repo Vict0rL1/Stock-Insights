@@ -293,7 +293,13 @@ function EstadoDelStop({ p, moneda }: { p: PortfolioPosition; moneda: string | n
   // Lo perfora otro precio que el de la fila (el último cierre de la lista, con
   // la cotización por encima): se dice cuál, como el aviso de Explorar. Sin
   // decirlo, «Perforado» junto a un precio por encima del stop parecía un error.
+  // Con su fecha: «toda cifra lleva fuente y fecha», y un cierre de antes de
+  // abrir el lote no habla de su stop (revisión 15, cartera H4).
   const por = p.stop_perforado_por
+  // Sin cotización, «en orden» lo prueba el último cierre de la lista: se dice
+  // cuál y de cuándo, como la línea de arriba (revisión 15, cartera H1).
+  const prueba = e.estado === 'en_orden' && p.stop_precio && p.stop_precio.fuente !== 'cotizacion' ? p.stop_precio : null
+  const deCuando = (fecha: string | null) => (fecha ? ` · ${fmtAntiguedad(fecha)}` : ' · sin fecha')
   return (
     <span className={e.estado === 'perforado' ? 'font-medium text-red-600' : 'text-slate-700'}>
       {fmtPrecio(p.stop, moneda)}
@@ -305,7 +311,14 @@ function EstadoDelStop({ p, moneda }: { p: PortfolioPosition; moneda: string | n
       {e.estado === 'perforado' && por && (
         <span className="block text-[10px] font-normal text-red-800">
           {etiqueta(por.fuente)}: {fmtPrecio(por.precio, moneda)}
-          {por.estado === 'viejo' ? ' (viejo)' : ''} · compruébalo en tu broker
+          {por.estado === 'viejo' ? ' (viejo)' : ''}
+          {deCuando(por.fecha)} · compruébalo en tu broker
+        </span>
+      )}
+      {prueba && (
+        <span className="block text-[10px] font-normal text-slate-500">
+          por encima con el {etiqueta(prueba.fuente)}: {fmtPrecio(prueba.precio, moneda)}
+          {deCuando(prueba.fecha)}
         </span>
       )}
       {e.estado === 'sin_comprobar' && (

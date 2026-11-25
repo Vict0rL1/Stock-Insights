@@ -11,9 +11,10 @@
  */
 import { useId } from 'react'
 import { Link } from 'react-router-dom'
-import type { AnalisisEmpresa, AnalisisEmpresaResponse } from '../../api/types'
-import { avisoDe } from '../../lib/avisos'
+import type { AnalisisEmpresa, AnalisisEmpresaResponse, RepasoDeCartera } from '../../api/types'
+import { avisoDe, carteraRepasada, tamanoDelCosteDeOportunidad } from '../../lib/avisos'
 import { etiqueta } from '../../lib/etiquetas'
+import { fmtPrecio } from '../../lib/formato'
 import { rutaCartera } from '../../lib/rutas'
 import { useLlmStatus } from '../../lib/llm'
 import { fraseDeConfianza, fraseDeLaApp } from '../../lib/queDiceLaApp'
@@ -24,20 +25,51 @@ import { BotonIA } from '../ia/ContenidoIA'
 import { ConTerminos, Termino } from '../Termino'
 import { FactoresDeConfianza, NIVEL } from './QueCambioSection'
 
-function AccionYFrase({ a, moneda }: { a: AnalisisEmpresa; moneda: string | null }) {
+/** El aviso de la ficha, con lo mismo que su tarjeta en Inicio y Explorar:
+ *
+ *  - si la tienes, el repaso del stop de su posición (`repaso`, el de Inicio y Mi
+ *    cartera: el stop de CADA lote, con la cotización y el cierre de la lista).
+ *    La decisión del análisis llevaba el stop agregado (el más alto de los
+ *    fijados): con un lote viejo sin stop y coste 130, Inicio decía «KO bajó de
+ *    tu límite de pérdida», su «Revisar» traía aquí y aquí se leía «Mantener… ni
+ *    ha llegado a tu stop» con el mismo precio (revisión 15, costuras H1). El
+ *    motor ya agrega el de cada lote; si aun así discrepan, manda el repaso;
+ *  - si es una idea, su tamaño del coste de oportunidad de la misma respuesta:
+ *    con 0 % y «No cabe», «Sin sitio», como la tarjeta de la que viene «Ver por
+ *    qué →»; decía «Comprar» en verde (revisión 15, costuras H4).
+ *
+ *  `frase`: la del aviso cuando el repaso contradice a la traza (el stop
+ *  perforado o sin comprobar con una decisión que no es vender); si no, la de la
+ *  traza (`fraseDeLaApp`). */
+export function avisoDeLaFicha(a: AnalisisEmpresa, repaso: RepasoDeCartera | undefined, moneda: string | null) {
   const d = a.decision
+  const stop = carteraRepasada(repaso) ? (repaso.posiciones.find((p) => p.symbol === a.symbol) ?? null) : null
+  const aviso = avisoDe({ decision: d, stop, tamano: tamanoDelCosteDeOportunidad(a.coste_oportunidad), moneda })
+  if (stop === null || stop.estado === 'por_encima' || d.action === 'vender') {
+    return { aviso, frase: fraseDeLaApp(d, { moneda }) }
+  }
+  const otroStop = d.levels?.stop
+  const nota =
+    typeof otroStop === 'number' && otroStop !== stop.stop
+      ? `«Lo que comprueba la app» mira otro stop (${fmtPrecio(otroStop, moneda)}); este aviso mira el de cada lote, como Inicio y Mi cartera.`
+      : null
+  return { aviso, frase: [aviso.frase, ...aviso.pasos, nota].filter(Boolean).join(' ') }
+}
+
+function AccionYFrase({ a, repaso, moneda }: { a: AnalisisEmpresa; repaso: RepasoDeCartera | undefined; moneda: string | null }) {
+  const { aviso, frase } = avisoDeLaFicha(a, repaso, moneda)
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
         {/* El mismo verbo, icono y color que en Inicio y Explorar (`AvisoDeAccion`):
             la ficha tenía su propia paleta de acciones copiada de Hoy. */}
-        <AvisoDeAccion aviso={avisoDe({ decision: d })} tamano="compacto" conFrase={false} />
+        <AvisoDeAccion aviso={aviso} tamano="compacto" conFrase={false} />
         <span className={`rounded-md px-2 py-1 text-xs font-medium ${NIVEL[a.confianza.nivel] ?? ''}`}>
           <Termino clave="confianza">Confianza</Termino> {a.confianza.nivel}
         </span>
       </div>
       <p className="mt-2 text-sm leading-relaxed text-slate-800 sm:text-base">
-        <ConTerminos texto={fraseDeLaApp(d, { moneda })} />
+        <ConTerminos texto={frase} />
       </p>
     </>
   )
@@ -62,9 +94,9 @@ export function QueDiceLaApp({
         Qué dice la app
       </h2>
       <BloqueDatos carga={carga} que="lo que dice la app">
-        {({ analisis: a }) => (
+        {({ analisis: a, repaso }) => (
           <>
-            <AccionYFrase a={a} moneda={a.mercado.precio.moneda ?? moneda} />
+            <AccionYFrase a={a} repaso={repaso} moneda={a.mercado.precio.moneda ?? moneda} />
             {/* Un sistema probado y perdedor no avisa en gris: es lo más valioso
                 que la app puede decir (como en Hoy). */}
             {a.decision.confidence === 'refutada' && (

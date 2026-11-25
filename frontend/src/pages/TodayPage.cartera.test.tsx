@@ -323,6 +323,22 @@ describe('revisión 13: el repaso dice con qué precio y qué stop, y Mi cartera
     expect(c.sinDecision.map((p) => p.symbol)).toEqual(['CASY'])
     expect(c.fuera).toEqual([])
   })
+
+  it('con la lista parcial, una posición del mercado aún sin puntuar no sale «Fuera de» (revisión 15, costuras H2)', async () => {
+    // Lo que sirve el backend con la primera pasada del día: JPM (Financials) sin
+    // puntuar, `pendiente`. Salía «Fuera de EE. UU. — S&P 500 · La lista no las
+    // puntúa ni decide sobre ellas» de una empresa del S&P 500.
+    servir((hoy) => {
+      hoy.cartera = { abiertas: 1, en_lista: 0, posiciones: [posicion({ symbol: 'JPM', en_lista: false, pendiente: true })] }
+    })
+    fireEvent.click(await screen.findByRole('button', { name: /Mi cartera \(1\)/ }, { timeout: 3000 }))
+    expect(screen.queryByRole('heading', { name: /^Fuera de/ })).toBeNull()
+    const pendientes = screen.getByRole('heading', { name: 'Aún sin puntuar en EE. UU. — S&P 500' }).parentElement!
+    expect(pendientes.textContent).toContain('JPM')
+    expect(pendientes.textContent).toContain('la lista va a medias y todavía no las ha puntuado')
+    expect(tarjeta('En cartera').textContent).toContain('1 aún sin puntuar')
+    expect(tarjeta('En cartera').textContent).not.toContain('fuera de esta lista')
+  })
 })
 
 describe('cuántas ideas de compra caben hoy', () => {

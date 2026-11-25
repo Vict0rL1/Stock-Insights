@@ -17,7 +17,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
 import type { DailySignal, Shortlist, StopDePosicion, TodayResponse } from '../api/types'
-import { ideasSinSitio, TodayPage } from './TodayPage'
+import { avisoDe } from '../lib/avisos'
+import { ideasDeCompra, ideasSinSitio, textoDeIdeas, TodayPage } from './TodayPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
 type Hoy = TodayResponse
@@ -91,6 +92,28 @@ describe('H1: una idea que ya tienes no dice «Comprar» en su tarjeta', () => {
     compradaDespues(hoy)
     // HSY, ya en cartera, es «Mantener» en su tarjeta: no una idea sin sitio.
     expect(ideasSinSitio(hoy.shortlist, hoy.cartera)).toBe(4)
+    // Ni una idea de compra: la cabecera decía «5 ideas de compra (4 sin sitio en
+    // tu cartera)», que se lee como que una sí cabe (revisión 15, costuras H6).
+    expect(ideasDeCompra(hoy.shortlist, hoy.cartera)).toBe(4)
+    expect(textoDeIdeas(ideasDeCompra(hoy.shortlist, hoy.cartera), ideasSinSitio(hoy.shortlist, hoy.cartera))).toBe(
+      '4 ideas de compra (ninguna cabe hoy en tu cartera)',
+    )
+  })
+
+  it('«Lo que NO comprar» dice de una posición lo mismo que su fila (revisión 15, costuras H7)', async () => {
+    // EBAY, en «Evitar», comprada después de calcular la lista y con el stop
+    // perforado: su fila decía «Vender» y el panel, «Evitar».
+    let ebay: StopDePosicion | null = null
+    servir((hoy) => {
+      ebay = posicion({ symbol: 'EBAY', precio: 40, stop: 45, estado: 'perforado' })
+      hoy.signals = [...hoy.signals, ...hoy.shortlist.evitar.filter((s) => !hoy.signals.some((x) => x.symbol === s.symbol))]
+      hoy.cartera = { abiertas: 1, en_lista: 1, posiciones: [ebay] }
+      hoy.lista_desfasada = { abiertas: ['EBAY'], cerradas: [], cambiadas: [], efectivo: false }
+    })
+    const panel = (await screen.findByRole('heading', { name: 'Lo que NO comprar ahora' }, { timeout: 3000 })).closest('details')!
+    const enPanel = [...panel.querySelectorAll('li')].find((li) => li.textContent?.includes('EBAY'))!.querySelector('[data-aviso]')!
+    expect(avisoDe({ stop: ebay }).tipo).toBe('vender')
+    expect(enPanel.getAttribute('data-aviso')).toBe('vender')
   })
 })
 

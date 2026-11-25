@@ -70,6 +70,8 @@ MOSTRADAS = {
     "mejor_prevista", "metrica", "registrados", "sin_resultado", "nivel", "papel", "resultado",
     "requiere", "seccion", "tendencia", "tesis", "tipo", "tipo_sorpresa", "valoracion", "posicion",
     "precio_estado", "precio_fuente", "campo", "unidad", "origen",
+    # El estado del stop de cada lote, con la regla del repaso (revisión 15, cartera H1).
+    "stop_estado",
     # Diccionarios cuyas CLAVES son el nombre de cada fila (ver `CLAVES_COMO_NOMBRE`).
     "evidencias/entradas{}",
 }

@@ -175,8 +175,9 @@ describe('un solo bloque de exposición y uno de concentración', () => {
 function conAvisos(cartera: Cartera) {
   const ko = cartera.positions[0]
   cartera.positions.push(
-    { ...ko, id: 2, symbol: 'STOP', price: 104, stop: 110, stop_perforado: true },
+    { ...ko, id: 2, symbol: 'STOP', price: 104, stop: 110, stop_perforado: true, stop_estado: 'perforado' },
     { ...ko, id: 3, symbol: 'SHOP.TO', price: null, precio_estado: 'desconocido', stop: 100, stop_perforado: null,
+      stop_estado: 'sin_comprobar', stop_motivo: 'sin precio (ninguna fuente dio su cotización)',
       market_value: null, unrealized_pnl: null, unrealized_pct: null },
     { ...ko, id: 4, quantity: 10 },
   )
@@ -218,9 +219,10 @@ describe('la línea de arriba', () => {
     // Fail-safe, como el repaso de Hoy (revisión 13): un precio rescatado de la
     // caché no dice que el precio de ahora siga por encima del stop.
     servir(rutasBase((c) => {
-      Object.assign(c.positions[0], { precio_estado: 'viejo', precio_antiguedad_segundos: 3600 })
-      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', precio_estado: 'viejo', estado: 'sin_comprobar',
-        motivo: 'solo hay un precio viejo (la cotización, hace 1 h): estaba por encima del stop, pero no se puede afirmar que lo siga' })])
+      const motivo = 'solo hay un precio viejo (la cotización, hace 1 h): estaba por encima del stop, pero no se puede afirmar que lo siga'
+      // La fila, con la misma regla que el repaso (`stop_estado`, revisión 15).
+      Object.assign(c.positions[0], { precio_estado: 'viejo', precio_antiguedad_segundos: 3600, stop_estado: 'sin_comprobar', stop_motivo: motivo })
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', precio_estado: 'viejo', estado: 'sin_comprobar', motivo })])
     }))
     pintar()
     expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
@@ -280,7 +282,7 @@ describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 14)
     // Explorar decía «Para vender 1» y Mi cartera «ninguna necesita atención».
     servir(rutasBase((c) => {
       const cierre = { precio: 117, fuente: 'cierre_de_la_lista', estado: 'valido', proveedor: 'yfinance', fecha: '2026-09-11T20:00:00+00:00' }
-      Object.assign(c.positions[0], { price: 120, stop: 118, stop_perforado: true, stop_perforado_por: cierre })
+      Object.assign(c.positions[0], { price: 120, stop: 118, stop_perforado: true, stop_perforado_por: cierre, stop_estado: 'perforado', stop_precio: cierre })
       c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true, precio: 117, precio_fuente: 'cierre_de_la_lista',
         stop: 118, estado: 'perforado',
         precios: [{ precio: 120, fuente: 'cotizacion', estado: 'valido', proveedor: 'finnhub', fecha: '2026-09-12T14:35:00+00:00' },
@@ -292,7 +294,8 @@ describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 14)
     expect(linea).toContain('VenderKO')
     expect(linea).toContain('La cotización de ahora (120,00 USD) está por encima: compruébalo en tu broker.')
     const fila = screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes('KO'))!
-    expect(texto(fila)).toContain('118,00perforadoúltimo cierre de la lista: 117,00 · compruébalo en tu broker')
+    // Con su fecha (revisión 15, cartera H4).
+    expect(texto(fila)).toMatch(/118,00perforadoúltimo cierre de la lista: 117,00 · hace \d+ días · compruébalo en tu broker/)
   })
 
   it('una venta por puntuación con el stop intacto: «Vender», como el «Para vender» de Explorar', async () => {
@@ -333,6 +336,49 @@ describe('Mi cartera dice de cada posición lo mismo que Explorar (revisión 14)
     }))
     pintar()
     expect(await screen.findByText('1 posición abierta · 1 necesita atención')).toBeInTheDocument()
-    expect(resumen().parentElement!.textContent).toContain('salen de la lista del día guardada hace 30 h, que ya caducó')
+    expect(resumen().parentElement!.textContent).toContain('sale de la lista del día guardada hace 30 h, que ya caducó')
+  })
+})
+
+describe('la línea y la fila, del mismo cálculo; la regla, solo de lo que ha mirado (revisión 15)', () => {
+  it('sin cotización, el cierre de la lista prueba «por encima»: la fila lo dice, con su precio y su fecha (cartera H1)', async () => {
+    // Lo que sirve el backend (`test_estado_por_simbolo.py`): la fila decía «sin
+    // comprobar» (sin precio propio) bajo «ninguna necesita atención».
+    const hace10h = new Date(Date.now() - 10 * 3600_000).toISOString()
+    const cierre = { precio: 58, fuente: 'cierre_de_la_lista', estado: 'valido', proveedor: 'yfinance', fecha: hace10h }
+    servir(rutasBase((c) => {
+      Object.assign(c.positions[0], { price: null, precio_estado: 'desconocido', stop: 50, stop_perforado: null,
+        stop_estado: 'por_encima', stop_motivo: null, stop_precio: cierre })
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true, precio: 58, precio_fuente: 'cierre_de_la_lista',
+        precio_fecha: hace10h, precios: [cierre as never] })],
+      { senales: [senalDePosicion('KO', { action: 'mantener', label: 'Mantener' }, 58)] })
+    }))
+    pintar()
+    expect(await screen.findByText('1 posición abierta · ninguna necesita atención')).toBeInTheDocument()
+    const fila = screen.getAllByRole('row').find((r) => r.querySelector('a')?.textContent?.includes('KO'))!
+    expect(texto(fila)).toContain('50,00por encima con el último cierre de la lista: 58,00 · hace 10 h')
+    expect(texto(fila)).not.toContain('sin comprobar')
+  })
+
+  it('con la lista caducada, «ninguna necesita atención» dice de cuándo es la regla (costuras H2)', async () => {
+    servir(rutasBase((c) => {
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })], {
+        senales: [senalDePosicion('KO', { action: 'mantener', label: 'Mantener' })],
+        lista: { mercado: 'us_sp500', as_of: new Date(Date.now() - 3 * 86400_000).toISOString(), estado: 'viejo', antiguedad_segundos: 3 * 86400 },
+      })
+    }))
+    pintar('/cartera?pestana=tesis')
+    expect(await screen.findByText('1 posición abierta · ninguna necesita atención')).toBeInTheDocument()
+    expect(texto(resumen().parentElement!)).toContain(
+      'Lo que dice la regla (vender, reducir o mantener) sale de la lista del día guardada hace 3 días, que ya caducó')
+  })
+
+  it('de una posición que la regla no decide, dice que solo se ha mirado su stop (cartera H2)', async () => {
+    servir(rutasBase((c) => {
+      c.repaso = repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: false })])
+    }))
+    pintar('/cartera?pestana=tesis')
+    expect(await screen.findByText('1 posición abierta · ninguna necesita atención')).toBeInTheDocument()
+    expect(texto(resumen().parentElement!)).toContain('De KO (no está en la lista del día) solo se ha mirado su límite de pérdida.')
   })
 })

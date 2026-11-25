@@ -83,8 +83,20 @@ def analisis(
     service: MarketDataService = Depends(get_service),
     session: Session = Depends(get_session),
 ):
-    return analizar_y_congelar(validar_simbolo(symbol), service, session, congelar=congelar, con_pares=pares,
-                               tipo_impositivo=tipo_impositivo)
+    from app.routers.portfolio import _repaso_con_la_lista_guardada
+
+    symbol = validar_simbolo(symbol)
+    respuesta = analizar_y_congelar(symbol, service, session, congelar=congelar, con_pares=pares,
+                                    tipo_impositivo=tipo_impositivo)
+    # El repaso del stop de esta posición, el MISMO de Inicio, Mi cartera y
+    # Explorar (el stop de cada lote, con la cotización y el cierre de la lista).
+    # Con un lote viejo sin stop y coste 130, Inicio decía «KO bajó de tu límite
+    # de pérdida», su «Revisar» llevaba aquí y la ficha decía «Mantener… ni ha
+    # llegado a tu stop» con el mismo precio (revisión 15, costuras H1): si la
+    # decisión y el repaso discrepan, la ficha avisa con el repaso. Fuera de
+    # `analisis`: no se congela, es de ahora, como en Hoy.
+    respuesta["repaso"] = _repaso_con_la_lista_guardada(session, service, simbolos={symbol})
+    return respuesta
 
 
 @router.get("/materialidad")

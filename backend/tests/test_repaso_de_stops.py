@@ -214,3 +214,28 @@ def test_la_lista_cacheada_con_otra_cartera_lo_dice(client, session_factory):
         s.query(Position).one().closed_at = datetime.now(timezone.utc)
         s.commit()
     assert c.get(HOY).json()["lista_desfasada"]["cerradas"] == ["KO"]
+
+
+def test_con_la_lista_parcial_una_posicion_aun_sin_puntuar_no_es_de_fuera(client, session_factory):
+    """Revisión 15, costuras H2: la primera pasada del día (40 de 502) no llega a
+    Consumer Staples, y KO salía `en_lista: False`, como una de otro mercado:
+    Explorar la pintaba «Fuera de EE. UU. — S&P 500» e Inicio afirmaba «la regla
+    no manda vender ni reducir ninguna» sin que la regla la hubiera mirado; nada
+    en `repaso.lista` decía que la lista fuera parcial."""
+    c, service = client
+    _cotiza(service, {"KO": 70.0})
+    with session_factory() as s:
+        ex._posicion(s, ex._instrumento(s, "KO", "Consumer Staples"), 10, 58.0, 50.0)
+        s.commit()
+    hoy = c.get("/api/signals/today?market=us_sp500&budget=40").json()
+    assert hoy["complete"] is False and "KO" not in {x["symbol"] for x in hoy["signals"] + hoy["unavailable"]}
+    ko = _fila(hoy, "KO")
+    assert (ko["en_lista"], ko["pendiente"], ko["estado"]) == (False, True, "por_encima")
+
+    repaso = c.get("/api/portfolio").json()["repaso"]
+    assert repaso["posiciones"][0]["pendiente"] is True
+    assert (repaso["lista"]["completa"], repaso["lista"]["puntuadas"], repaso["lista"]["pedidas"]) == (
+        False, hoy["scored"], hoy["requested"])
+    # Completa, ya no queda nada pendiente: lo que no está es de fuera o sin datos.
+    completa = _completar(c)
+    assert completa["complete"] is True and _fila(completa, "KO")["pendiente"] is False

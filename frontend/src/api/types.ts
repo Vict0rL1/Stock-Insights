@@ -391,6 +391,14 @@ export interface PortfolioPosition {
    *  último cierre de la lista con la cotización por encima (fail-safe, los
    *  mismos precios que el repaso de su símbolo). */
   stop_perforado_por?: PrecioDelStop | null
+  /** El estado del stop de ESTE lote con la misma regla que el repaso de su
+   *  símbolo (`contexto_cartera.estado_del_stop`): la fila y la línea de Mi
+   *  cartera salen del mismo cálculo. Ausente en una respuesta anterior. */
+  stop_estado?: StopDePosicion['estado']
+  /** Por qué no se pudo comprobar, si `stop_estado` es `sin_comprobar`. */
+  stop_motivo?: string | null
+  /** El precio que decide `stop_estado` (puede ser el último cierre de la lista). */
+  stop_precio?: PrecioDelStop | null
   /** Ganancia/pérdida en la base causada solo por el tipo de cambio. */
   efecto_divisa_base?: number | null
   /** `viejo` = precio rescatado de caché porque todas las fuentes fallaron. */
@@ -473,6 +481,11 @@ export interface RepasoDeCartera extends StopsDeCartera {
     as_of: string | null
     estado: 'valido' | 'viejo'
     antiguedad_segundos: number | null
+    /** `false` = parcial (una pasada a medias): las posiciones del mercado aún sin
+     *  puntuar van `pendiente`. Ausente o `null`: no se sabe. */
+    completa?: boolean | null
+    puntuadas?: number | null
+    pedidas?: number | null
   } | null
 }
 
@@ -834,6 +847,11 @@ export interface Sizing {
   controles?: ControlDeRiesgo[]
   todos_los_limites_aplicados?: boolean
   nota: string
+  /** Sobre qué se midieron los pesos de lo que ya tienes: `capital` (posiciones
+   *  más el efectivo anotado) o, sin efectivo o sin sumarlo, sobre lo invertido
+   *  (`invertido`, `invertido_parcial`, `invertido_sin_cambio`): entonces un 0 %
+   *  es una conclusión del supuesto, no del dato. Ausente: no se sabe. */
+  base_cartera?: string
 }
 
 export interface ControlDeRiesgo {
@@ -855,8 +873,11 @@ export interface Shortlist {
   nota: string
   /** La cartera que ya tienes supera sola el objetivo de volatilidad: no cabe
    *  NINGUNA idea nueva, esté o no en la lista corta («Ideas nuevas al 0 %» del
-   *  dimensionador). Ausente en una respuesta anterior: no se sabe. */
-  sin_hueco_de_riesgo?: boolean
+   *  dimensionador). Solo con la cartera medida sobre el capital
+   *  (`sizing.base_cartera: capital`); sin efectivo anotado, o sin sumarlo, es
+   *  `null`: «no cabe» sería una conclusión del supuesto de estar invertido al
+   *  100 %. Ausente en una respuesta anterior: no se sabe. */
+  sin_hueco_de_riesgo?: boolean | null
 }
 
 export interface TodayResponse {
@@ -962,6 +983,9 @@ export interface PrecioDelStop {
 export interface StopDePosicion {
   symbol: string
   en_lista: boolean
+  /** Del mercado de la lista, pero una lista parcial aún no la ha puntuado: no
+   *  es «de fuera». Ausente en una respuesta anterior. */
+  pendiente?: boolean
   /** El precio que decide el estado: el que perfora el stop o, si ninguno, el
    *  primero válido de `precios`. */
   precio: number | null
@@ -2450,6 +2474,10 @@ export interface AnalisisEmpresaResponse {
   /** Por qué no se congeló aunque se pidiera (ninguna fuente conoce el símbolo). */
   sin_congelar?: string | null
   anterior: { id: number; creado_en: string; accion: string } | null
+  /** El repaso del stop de esta posición, el de Inicio, Mi cartera y Explorar
+   *  (el stop de CADA lote), fuera de `analisis`: es de ahora y no se congela.
+   *  Sin posición abierta, `posiciones` vacío. Ausente en una respuesta anterior. */
+  repaso?: RepasoDeCartera
 }
 
 export interface DecisionHistorica {

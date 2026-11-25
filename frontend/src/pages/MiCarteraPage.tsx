@@ -3,7 +3,7 @@ import { api } from '../api/client'
 import type { Portfolio, RepasoDeCartera } from '../api/types'
 import { AvisoDeAccion } from '../components/AvisoDeAccion'
 import { ErrorDeCarga } from '../components/EstadoDato'
-import { atencionDeCartera, deLaLista } from '../components/cartera/atencion'
+import { alcanceDeLaRegla, atencionDeCartera, deLaLista } from '../components/cartera/atencion'
 import { Posiciones } from '../components/cartera/Posiciones'
 import { Riesgo } from '../components/cartera/Riesgo'
 import { TesisYVigilancia } from '../components/cartera/TesisYVigilancia'
@@ -105,15 +105,29 @@ function ResumenDeCartera({ cartera }: { cartera: CargaConReintento<Portfolio> }
           ))}
         </ul>
       )}
-      <NotaDeLaLista lista={lista} deLaLista={avisos.some(deLaLista)} />
+      <NotaDeLaLista lista={lista} deLaLista={avisos.some(deLaLista)} alcance={alcanceDeLaRegla(a)} />
     </div>
   )
 }
 
 /** De qué lista salen las decisiones que se cuentan (las ventas por
  *  puntuación): sin lista guardada no se han mirado, y se dice; de una lista
- *  vieja, de cuándo es. El repaso del stop sí es de ahora. */
-export function NotaDeLaLista({ lista, deLaLista }: { lista: RepasoDeCartera['lista']; deLaLista: boolean }) {
+ *  vieja, de cuándo es. El repaso del stop sí es de ahora.
+ *
+ *  Con `alcance` (la línea de Mi cartera), también cuando la regla no manda
+ *  nada: «ninguna necesita atención» con un «Mantener» de la lista de hace 3
+ *  días se leía como de hoy, y de las posiciones que la regla no decide (fuera
+ *  de la lista, abiertas después, aún sin puntuar) no decía que solo se había
+ *  mirado su stop (revisión 15, cartera H2 y costuras H2). */
+export function NotaDeLaLista({
+  lista,
+  deLaLista,
+  alcance,
+}: {
+  lista: RepasoDeCartera['lista']
+  deLaLista: boolean
+  alcance?: ReturnType<typeof alcanceDeLaRegla>
+}) {
   if (lista === null) {
     return (
       <p className="mt-1 text-xs leading-relaxed text-slate-600">
@@ -121,6 +135,14 @@ export function NotaDeLaLista({ lista, deLaLista }: { lista: RepasoDeCartera['li
         alguna: Explorar la calcula.
       </p>
     )
+  }
+  if (alcance) {
+    const vieja =
+      alcance.vieja && alcance.decididas > 0
+        ? `Lo que dice la regla (vender, reducir o mantener) sale de ${alcance.vieja}; el límite de pérdida sí es de ahora. Explorar la recalcula.`
+        : null
+    if (!vieja && !alcance.soloSuStop) return null
+    return <p className="mt-1 text-xs leading-relaxed text-slate-600">{[vieja, alcance.soloSuStop].filter(Boolean).join(' ')}</p>
   }
   if (!deLaLista || lista.estado !== 'viejo') return null
   return (

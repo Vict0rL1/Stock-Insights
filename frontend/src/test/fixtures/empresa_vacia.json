@@ -1324,6 +1324,13 @@
      "nueva": true,
      "origen": "analisis:14:35:00"
     },
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
     "sin_congelar": null
    },
    "status": 200
@@ -2519,6 +2526,13 @@
      }
     },
     "instantanea": null,
+    "repaso": {
+     "abiertas": 0,
+     "en_lista": 0,
+     "lista": null,
+     "posiciones": [],
+     "senales": []
+    },
     "sin_congelar": null
    },
    "status": 200

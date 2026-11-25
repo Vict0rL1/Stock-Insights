@@ -37,6 +37,7 @@
 import type {
   AlternativaDecision,
   CondicionDecision,
+  CosteOportunidad,
   DailySignal,
   Decision,
   ReglaTraza,
@@ -95,6 +96,10 @@ export interface TamanoDeLaIdea {
   /** La cartera que ya tienes no deja sitio a NINGUNA idea nueva, esté o no en la
    *  lista corta (`Shortlist.sin_hueco_de_riesgo`). Ausente = no se sabe o sí hay. */
   sinHueco?: boolean
+  /** Por qué «no cabe» sería una conclusión de un supuesto y no del dato (la
+   *  cartera medida como invertida al 100 % porque falta el efectivo): el tamaño
+   *  queda sin calcular, con este motivo, en vez de «Sin sitio». */
+  supuesto?: string
 }
 
 export interface DatosDelAviso {
@@ -242,12 +247,49 @@ export function tamanoDeLaLista(symbol: string, shortlist: Shortlist | null | un
   const ideas = shortlist.ideas ?? []
   const idea = ideas.find((i) => i.symbol === symbol)
   const sinHueco = shortlist.sin_hueco_de_riesgo === true
-  if (!idea && !sinHueco) return undefined
+  // `null`: la cartera ya supera el objetivo de volatilidad, pero medida como
+  // invertida al 100 % (sin efectivo, o sin sumarlo): «no cabe» es del supuesto.
+  const supuesto = shortlist.sin_hueco_de_riesgo === null ? supuestoDeLaBase(shortlist.sizing?.base_cartera) : undefined
+  if (!idea && !sinHueco && !supuesto) return undefined
   return {
     pesoFinalPct: idea ? idea.peso_final_pct : null,
     recortes: recortesDe(symbol, shortlist.sizing?.recortes ?? [], ideas.map((i) => i.symbol)),
     ...(sinHueco ? { sinHueco } : {}),
+    ...(supuesto ? { supuesto } : {}),
   }
+}
+
+/** Por qué la cartera se mide como invertida al 100 % (`sizing.base_cartera`).
+ *  «Sin sitio… Para hacerle sitio tendrías que vender algo antes» de TODAS las
+ *  que califican salía de ese supuesto: sin efectivo anotado, con una sola
+ *  posición; con 99.000 USD anotados, el mismo libro dejaba un 9 % a cada una, y
+ *  el coste de oportunidad de la ficha lo llama INDETERMINADO (revisión 15,
+ *  costuras H5). */
+function supuestoDeLaBase(base: string | undefined): string {
+  const porque =
+    base === 'invertido_parcial'
+      ? 'Con una posición que la lista no valora, tu efectivo anotado no se suma y tu cartera se mide como invertida al 100\u00a0%'
+      : base === 'invertido_sin_cambio'
+        ? 'Tu efectivo anotado no se puede pasar a dólares (sin tipo de cambio) y tu cartera se mide como invertida al 100\u00a0%'
+        : 'Sin efectivo anotado, tu cartera se mide como invertida al 100\u00a0%'
+  return `${porque}: así no cabe, pero es una conclusión del supuesto, no del dato. Anota tu efectivo en Mi cartera para saber si de verdad no cabe.`
+}
+
+/** El tamaño de la ficha, del coste de oportunidad de su misma respuesta (el
+ *  dimensionador con tu cartera): con 0 % y «No cabe» (NO_TRADE), «Sin sitio»
+ *  como su tarjeta; con 0 % e INDETERMINADO (sin efectivo), sin tamaño y con su
+ *  motivo. «Ver por qué →» de una idea «Sin sitio» llevaba a una ficha que decía
+ *  «Comprar» en verde (revisión 15, costuras H4). Con otro tamaño, ausente: la
+ *  ficha no dimensiona. */
+export function tamanoDelCosteDeOportunidad(co: CosteOportunidad | null | undefined): TamanoDeLaIdea | undefined {
+  if (co?.tamano?.maximo_permitido !== 0) return undefined
+  const motivo = co.veredicto?.motivo
+  if (co.veredicto?.accion === 'NO_TRADE') {
+    const recortes = co.sizing?.recortes ?? []
+    return { pesoFinalPct: 0, recortes: recortes.length > 0 ? recortes : motivo ? [motivo] : [] }
+  }
+  if (co.veredicto?.accion === 'INDETERMINADO') return { pesoFinalPct: null, recortes: [], ...(motivo ? { supuesto: motivo } : {}) }
+  return undefined
 }
 
 /** Si el repaso del stop se pudo hacer: sin él (respuesta antigua, o falló) no
@@ -535,9 +577,17 @@ function avisoDeCompra(decision: Decision, tamano: TamanoDeLaIdea | undefined, m
     )
   }
 
+  // «No cabe» por un supuesto (sin efectivo): sin tamaño, con su motivo; nunca
+  // «vende algo antes» (revisión 15, costuras H5).
+  const porSupuesto = () => {
+    cifras.push({ rotulo: 'Cuánto de tu cartera', valor: '—', nota: 'sin calcular: depende de tu efectivo' })
+    return aviso('comprar_sin_tamano', zona + salida, [refutada, `Tamaño sin calcular. ${tamano?.supuesto ?? ''}`.trim()], cifras)
+  }
+
   // Sin peso final, el bruto no se enseña como si lo fuera: es lo que permitiría
   // el stop mirando la empresa sola, antes de los topes de la cartera (ítem 2.1).
   if (peso === null || peso === undefined) {
+    if (tamano?.supuesto) return porSupuesto()
     if (tamano?.sinHueco) {
       // Sin dimensionar (fuera de la lista corta), pero no cabe ninguna idea nueva:
       // ella tampoco. Su tamaño no se calculó, y no se escribe como un cero.
@@ -559,6 +609,7 @@ function avisoDeCompra(decision: Decision, tamano: TamanoDeLaIdea | undefined, m
     )
   }
 
+  if (peso === 0 && tamano?.supuesto) return porSupuesto()
   const recortado = numero(bruto) && peso < bruto
   // Un peso de 0,04 no se escribe «0,0 %»: solo el cero es «no cabe».
   const escrito = fmtFrente(peso / 100, 0, { pct: true })

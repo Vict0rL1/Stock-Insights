@@ -13,12 +13,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { DailySignal, PortfolioPosition, StopsDeCartera } from '../api/types'
+import type { DailySignal, Portfolio, PortfolioPosition, StopsDeCartera } from '../api/types'
 import { Rutas as RutasApp } from '../App'
 import { avisosDeCartera } from '../lib/avisos'
 import hoyCompleto from '../test/fixtures/hoy_completo.json'
-import { posicionDelRepaso, repasoDe } from '../test/repaso'
-import { InicioPage } from './InicioPage'
+import { posicionDelRepaso, repasoDe, senalDePosicion } from '../test/repaso'
+import { InicioPage, valorDeLaCartera } from './InicioPage'
 import { recuentos } from './TodayPage'
 
 type Rutas = Record<string, { status: number; json: unknown }>
@@ -145,7 +145,14 @@ describe('Inicio, Mi cartera y Explorar cuentan lo mismo', () => {
 })
 
 describe('«Nada urgente» solo con todo mirado', () => {
-  const enOrden = () => cartera([lote({ id: 1, symbol: 'KO' })], repasoDe([posicionDelRepaso({ symbol: 'KO' })]))
+  // KO, en la lista y decidida por ella («mantener»): la regla sí la ha mirado.
+  const enOrden = () =>
+    cartera(
+      [lote({ id: 1, symbol: 'KO' })],
+      repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })], {
+        senales: [senalDePosicion('KO', { action: 'mantener', label: 'Mantener' })],
+      }),
+    )
 
   it('mientras las alertas cargan no lo dice; cuando llega la que saltó, sale', async () => {
     let responder: (r: Response) => void = () => {}
@@ -211,7 +218,149 @@ describe('«Nada urgente» solo con todo mirado', () => {
   })
 })
 
+/** Revisión 15, cartera H2 y costuras H2: «la regla no manda vender ni reducir
+ *  ninguna» solo de las que la lista decide como posición, y de cuándo es. */
+describe('lo que Inicio dice de la regla, solo de lo que ha mirado', () => {
+  const sinNada = {
+    '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+    '/api/theses/vigilancia': { status: 200, json: VIGILANCIA_VACIA },
+  }
+  const nadaQueDecir = async () => {
+    await within(tuCartera()).findByText(/posici(ón|ones) abiertas?/)
+    return texto(await screen.findByText(/^(Nada urgente|Ningún límite de pérdida perforado)/))
+  }
+
+  it('SHOP.TO, fuera de la lista del S&P 500: solo se ha mirado su stop, y «Tu cartera» lo dice', async () => {
+    servir({
+      ...sinNada,
+      '/api/portfolio': cartera([lote({ id: 1, symbol: 'SHOP.TO', currency: 'CAD' })],
+        repasoDe([posicionDelRepaso({ symbol: 'SHOP.TO', en_lista: false, moneda: 'CAD' })])),
+    })
+    pintar()
+    const dice = await nadaQueDecir()
+    expect(dice).not.toContain('la regla no manda vender ni reducir ninguna')
+    expect(dice).toBe(
+      'Ningún límite de pérdida perforado: todas tus posiciones siguen por encima. La regla de la lista no ha decidido ' +
+        'sobre ninguna. De SHOP.TO (no está en la lista del día) solo se ha mirado su límite de pérdida.',
+    )
+    // «SHOP.TO · Mantener» se leía como «tu regla dice mantener».
+    expect(texto(tuCartera())).toContain('SHOP.TOsolo su límite de pérdidaMantener')
+  })
+
+  it('KO, comprada después de calcular la lista (en ella, sin decisión de posición)', async () => {
+    servir({
+      ...sinNada,
+      '/api/portfolio': cartera([lote({ id: 1, symbol: 'KO' }), lote({ id: 2, symbol: 'PEP' })],
+        repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true }), posicionDelRepaso({ symbol: 'PEP', en_lista: true })], {
+          senales: [senalDePosicion('KO', { action: 'comprar', label: 'Comprar', owned: false }),
+            senalDePosicion('PEP', { action: 'mantener', label: 'Mantener' })],
+        })),
+    })
+    pintar()
+    expect(await nadaQueDecir()).toBe(
+      'Ningún límite de pérdida perforado: todas tus posiciones siguen por encima. La regla no manda vender ni reducir ' +
+        'la única que decide la lista. De KO (la lista se calculó antes de que la abrieras) solo se ha mirado ' +
+        'su límite de pérdida.',
+    )
+  })
+
+  it('con la lista parcial, la que aún no ha puntuado (JPM, del S&P 500) no es «de fuera»', async () => {
+    servir({
+      ...sinNada,
+      '/api/portfolio': cartera([lote({ id: 1, symbol: 'JPM' })],
+        repasoDe([posicionDelRepaso({ symbol: 'JPM', en_lista: false, pendiente: true })], {
+          lista: { mercado: 'us_sp500', as_of: '2026-09-12T14:00:00+00:00', estado: 'valido', antiguedad_segundos: null,
+            completa: false, puntuadas: 120, pedidas: 502 },
+        })),
+    })
+    pintar()
+    expect(await nadaQueDecir()).toContain(
+      'De JPM (la lista va a medias y aún no la ha puntuado: 120 de 502) solo se ha mirado su límite de pérdida.')
+  })
+
+  it('con la lista caducada, dice de cuándo es la regla', async () => {
+    const hace5d = new Date(Date.now() - 5 * 86400_000).toISOString()
+    servir({
+      ...sinNada,
+      '/api/portfolio': cartera([lote({ id: 1, symbol: 'KO' })],
+        repasoDe([posicionDelRepaso({ symbol: 'KO', en_lista: true })], {
+          senales: [senalDePosicion('KO', { action: 'mantener', label: 'Mantener' })],
+          lista: { mercado: 'us_sp500', as_of: hace5d, estado: 'viejo', antiguedad_segundos: 5 * 86400 },
+        })),
+    })
+    pintar()
+    expect(await nadaQueDecir()).toBe(
+      'Nada urgente: todas tus posiciones siguen por encima de su límite de pérdida y la regla no manda vender ni ' +
+        'reducir ninguna (según la lista del día guardada hace 5 días, que ya caducó: Explorar la recalcula).',
+    )
+  })
+})
+
+/** Revisión 15, costuras H3: la tarjeta de idea y «Tu cartera», del mismo repaso. */
+describe('una sola fuente en Inicio para el estado de una posición', () => {
+  const LISTA = HOY['/api/signals/today?market=us_sp500'].json as Hoy & { as_of: string }
+  const conHsy = (vigente: Hoy & { as_of: string }) =>
+    cartera([lote({ id: 7, symbol: 'HSY', price: 144, stop: 125 })],
+      repasoDe([posicionDelRepaso({ symbol: 'HSY', en_lista: true, precio: 144, stop: 125 })], {
+        lista: { mercado: 'us_sp500', as_of: vigente.as_of, estado: 'valido', antiguedad_segundos: null },
+      }))
+  const avisoDeHsy = () => screen.getByText('Hershey Company (The)').closest('li')!.querySelector('[data-aviso]')!.getAttribute('data-aviso')
+  const primeraVisita = async (vigente: Hoy) => {
+    servir({
+      '/api/signals/today?market=us_sp500&vencida=aceptar': { status: 200, json: vigente },
+      '/api/portfolio': cartera([], repasoDe([])),
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+      '/api/theses/vigilancia': { status: 200, json: VIGILANCIA_VACIA },
+    })
+    const primera = pintar()
+    await screen.findByText('Hershey Company (The)')
+    primera.unmount()
+  }
+
+  it('comprada en el minuto siguiente a recibir la lista (que no se vuelve a pedir): la tarjeta no dice «Comprar»', async () => {
+    const vigente = { ...structuredClone(LISTA), complete: true, pending: 0, cached: true, fetched_at: new Date().toISOString() }
+    await primeraVisita(vigente)
+    const fetchMock = servir({
+      '/api/portfolio': conHsy(vigente),
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+      '/api/theses/vigilancia': { status: 200, json: VIGILANCIA_VACIA },
+    })
+    pintar()
+    await within(tuCartera()).findByText('Mantener')
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).startsWith('/api/signals/today'))).toHaveLength(0)
+    // Decía «Comprar · Compra entre 141,12 y 146,88… Tamaño sugerido: 7,8 %».
+    expect(avisoDeHsy()).toBe('mantener')
+  })
+
+  it('pasado el minuto, con la lista de ahora aún en vuelo: tampoco', async () => {
+    const vigente = { ...structuredClone(LISTA), complete: true, pending: 0, cached: true, fetched_at: new Date().toISOString() }
+    await primeraVisita(vigente)
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 120_000)
+    servir({
+      '/api/signals/today?market=us_sp500': { status: 0, json: null },
+      '/api/portfolio': conHsy(vigente),
+      '/api/portfolio/alerts': { status: 200, json: { alerts: [], vigilancia: null } },
+      '/api/theses/vigilancia': { status: 200, json: VIGILANCIA_VACIA },
+    })
+    pintar()
+    await within(tuCartera()).findByText('Mantener')
+    expect(avisoDeHsy()).toBe('mantener')
+  })
+})
+
 describe('lo que Inicio afirma, solo si lo ha mirado', () => {
+  it('RY.TO con precio y sin tipo de cambio: no es «ninguna tiene precio de hoy» (revisión 15, cartera H3)', () => {
+    const c = {
+      positions: [lote({ id: 1, symbol: 'RY.TO', price: 137, currency: 'CAD', market_value: 1370, market_value_base: null,
+        sin_convertir: 'sin tipo de cambio para CAD' })],
+      summary: { total_market_value: null, priced_positions: 0, total_positions: 0, precios_viejos: [] },
+      divisas: { base: 'USD' },
+    } as unknown as Portfolio
+    expect(valorDeLaCartera(c)).toBe(' · valor desconocido: RY.TO (sin convertir)')
+    c.positions[0].price = null
+    expect(valorDeLaCartera(c)).toBe(' · valor desconocido: ninguna tiene precio de hoy')
+  })
+
   it('con una posición sin precio, el valor dice que no la cuenta', async () => {
     servir({
       '/api/portfolio': cartera(

@@ -325,12 +325,17 @@ def decide(
             reglas.append({**_regla("precio_viejo", "Precio rescatado de caché", CUMPLE,
                                     minutos=minutos_viejo), "papel": "informa"})
         lotes = position.get("lotes") or 1
+        # El stop de un lote sin stop guardado, recalculado desde su coste, es el
+        # más protector (`contexto_cartera.agregar_lotes`): no es uno fijado.
+        recalculado = bool(position.get("stop_recalculado"))
         if lotes > 1:
             sin_stop = position.get("lotes_sin_stop") or 0
             razones.append(
                 f"La posición son {lotes} lotes: coste medio ponderado y, de stop, "
-                "el más protector de los fijados"
-                + (f"; {sin_stop} sin stop guardado" if sin_stop and stop_fijado is not None else "")
+                + ("el más protector de sus lotes, el de uno sin stop guardado, recalculado desde su coste"
+                   if recalculado else
+                   "el más protector de los fijados"
+                   + (f"; {sin_stop} sin stop guardado" if sin_stop and stop_fijado is not None else ""))
                 + ". Revisa en tu broker qué lote cruza el stop."
             )
         if stop_fijado is None and stop_posicion is not None:
@@ -366,7 +371,7 @@ def decide(
                 "objetivo_pct": _pct_no_cero((objetivo / ultimo - 1) * 100, 1) if objetivo else None,
                 "ratio": niveles["ratio"],
                 "peso_bruto_pct": None,
-                "stop_fijado_al_abrir": stop_fijado is not None,
+                "stop_fijado_al_abrir": stop_fijado is not None and not recalculado,
             }
         disparadores = [
             # El texto escribe el stop SERVIDO (`levels.stop`), no el entero: con

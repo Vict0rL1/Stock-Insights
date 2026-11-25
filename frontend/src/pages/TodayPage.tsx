@@ -314,6 +314,8 @@ type Recuentos = {
   cartera: number
   /** Las abiertas que la lista de este mercado no puntúa. */
   fuera: number
+  /** Las del mercado que una lista parcial aún no ha puntuado (no son «de fuera»). */
+  pendientes: number
   vender: number
   /** Posiciones cuyo stop no se pudo comprobar (sin precio, sin stop). */
   sinComprobar: number
@@ -338,7 +340,8 @@ export function recuentos(data: TodayResponse | null): Recuentos {
     vigilar: s.filter((x) => x.decision.action === 'vigilar').length,
     evitar: s.filter((x) => x.decision.action === 'evitar').length,
     cartera: repasada ? (repaso.abiertas ?? 0) : s.filter((x) => x.decision.owned).length,
-    fuera: posiciones.filter((p) => !p.en_lista).length,
+    fuera: posiciones.filter((p) => !p.en_lista && !p.pendiente).length,
+    pendientes: posiciones.filter((p) => p.pendiente).length,
     vender: avisos.filter((a) => a.aviso.tipo === 'vender').length,
     sinComprobar: avisos.filter((a) => a.aviso.tipo === 'sin_comprobar').length,
     repasada,
@@ -356,6 +359,19 @@ export function ideasSinSitio(
 ): number {
   if (!shortlist) return 0
   return shortlist.ideas.filter((i) => avisoDeLaFila(i, { shortlist, cartera }).tipo === 'comprar_sin_sitio').length
+}
+
+/** Las ideas de la lista corta que siguen siendo de compra (su aviso es
+ *  «Comprar» o «Sin sitio»): una que ya tienes es una posición, no una idea.
+ *  Con las cuatro nuevas «Sin sitio» y la quinta comprada después, la cabecera
+ *  decía «5 ideas de compra (4 sin sitio en tu cartera)», que se lee como que
+ *  una sí cabe (revisión 15, costuras H6). */
+export function ideasDeCompra(
+  shortlist: TodayResponse['shortlist'] | null | undefined,
+  cartera?: TodayResponse['cartera'],
+): number {
+  if (!shortlist) return 0
+  return shortlist.ideas.filter((i) => avisoDeLaFila(i, { shortlist, cartera }).tipo.startsWith('comprar')).length
 }
 
 /** «5 ideas de compra (ninguna cabe hoy en tu cartera)», «(2 sin sitio en tu cartera)». */
@@ -377,20 +393,24 @@ export function miCartera(data: TodayResponse | null): {
   filas: DailySignal[]
   /** Abiertas que la lista de este mercado no puntúa. */
   fuera: StopDePosicion[]
+  /** Del mercado, pero la lista (parcial) aún no las ha puntuado: salían «Fuera
+   *  de EE. UU. — S&P 500» (revisión 15, costuras H2). */
+  pendientes: StopDePosicion[]
   /** En la lista, pero su decisión no es de posición: se abrieron después de calcularla. */
   sinDecision: StopDePosicion[]
 } {
   const s = data?.signals ?? []
   const repaso = data?.cartera
   if (repaso === undefined || repaso.abiertas === null || repaso.error) {
-    return { filas: s.filter((x) => x.decision.owned), fuera: [], sinDecision: [] }
+    return { filas: s.filter((x) => x.decision.owned), fuera: [], pendientes: [], sinDecision: [] }
   }
   const abiertas = new Set(repaso.posiciones.map((p) => p.symbol))
   const filas = s.filter((x) => x.decision.owned && abiertas.has(x.symbol))
   const decididas = new Set(filas.map((x) => x.symbol))
   return {
     filas,
-    fuera: repaso.posiciones.filter((p) => !p.en_lista),
+    fuera: repaso.posiciones.filter((p) => !p.en_lista && !p.pendiente),
+    pendientes: repaso.posiciones.filter((p) => p.pendiente === true),
     sinDecision: repaso.posiciones.filter((p) => p.en_lista && !decididas.has(p.symbol)),
   }
 }
@@ -436,7 +456,7 @@ function SummaryStrip({
   const repasoViejo = repasoEn !== null && Date.now() - repasoEn >= REVALIDAR_TRAS_MS
   // Sin lista corta no hay «0 ideas»: `?? 0` hacía pasar una respuesta sin
   // lista por un día sin ideas. Ni una cobertura de 0 sobre 0 empresas (ítem 2.1).
-  const ideas = data.shortlist ? data.shortlist.ideas.length : null
+  const ideas = data.shortlist ? ideasDeCompra(data.shortlist, data.cartera) : null
   const sinSitio = ideasSinSitio(data.shortlist, data.cartera)
   const cobertura = data.requested ? (data.scored / data.requested) * 100 : null
   const celdas: {
@@ -498,9 +518,8 @@ function SummaryStrip({
         plural(acciones.cartera, 'posición abierta', 'posiciones abiertas') +
         (!acciones.repasada
           ? ' en esta lista'
-          : acciones.fuera > 0
-            ? ` · ${acciones.fuera} fuera de esta lista`
-            : ''),
+          : (acciones.fuera > 0 ? ` · ${acciones.fuera} fuera de esta lista` : '') +
+            (acciones.pendientes > 0 ? ` · ${acciones.pendientes} aún sin puntuar` : '')),
       vista: 'cartera',
     },
     {
@@ -654,11 +673,17 @@ function IdeaCard({
 }
 
 /** Las que no hay que comprar. Va junto a las ideas a propósito: saber qué
- *  evitar es la mitad del trabajo y normalmente la que nadie enseña. */
+ *  evitar es la mitad del trabajo y normalmente la que nadie enseña.
+ *
+ *  Cada una con el aviso de su fila (`avisoDeLaFila`, con el repaso de `data`):
+ *  EBAY, comprada después de calcular la lista y con el stop perforado, era
+ *  «Vender» en su fila y «Evitar» aquí (revisión 15, costuras H7). */
 function AvoidList({
   signals,
+  data,
 }: {
   signals: (DailySignal & { conviction: Conviction })[]
+  data: Pick<TodayResponse, 'cartera' | 'shortlist'>
 }) {
   if (signals.length === 0) return null
   // Plegada, como prometía el plan (`docs/PLAN_NAVEGACION.md`): desplegada
@@ -678,7 +703,7 @@ function AvoidList({
           <li key={s.symbol} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
             {/* El mismo aviso que en el resto de la app, con su icono: un nombre
                 suelto en una lista no decía qué hacer con él. */}
-            <AvisoDeAccion aviso={avisoDe({ decision: s.decision })} tamano="compacto" conFrase={false} />
+            <AvisoDeAccion aviso={avisoDeLaFila(s, data)} tamano="compacto" conFrase={false} />
             <span className="font-medium text-slate-800">{s.symbol}</span>
             {/* El separador, al final del nombre: al saltar de línea en móvil,
                 al principio de la descripción quedaba colgando («· Information
@@ -1109,7 +1134,9 @@ function RepasoDeStops({
             {stop && <Procedencia p={stop} />}
             {stop && !stop.en_lista && (
               <span className="text-xs leading-snug text-slate-600">
-                No está en {mercado}: la lista no la puntúa, pero su stop se mira igual.
+                {stop.pendiente
+                  ? `La lista de ${mercado} va a medias y aún no la ha puntuado, pero su stop se mira igual.`
+                  : `No está en ${mercado}: la lista no la puntúa, pero su stop se mira igual.`}
               </span>
             )}
           </AvisoDeAccion>
@@ -1333,7 +1360,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
             {data
               ? [
                   data.shortlist
-                    ? textoDeIdeas(data.shortlist.ideas.length, ideasSinSitio(data.shortlist, data.cartera))
+                    ? textoDeIdeas(ideasDeCompra(data.shortlist, data.cartera), ideasSinSitio(data.shortlist, data.cartera))
                     : 'sin lista corta de ideas',
                   acciones.vender > 0 ? `${acciones.vender} para vender` : null,
                   acciones.sinComprobar > 0 ? `${acciones.sinComprobar} sin comprobar` : null,
@@ -1531,7 +1558,7 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                 </ul>
               )}
               <SizingPanel sizing={data.shortlist.sizing} />
-              <AvoidList signals={data.shortlist.evitar} />
+              <AvoidList signals={data.shortlist.evitar} data={data} />
             </div>
           ) : (
           <>
@@ -1541,6 +1568,11 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                 posiciones={cartera.sinDecision}
                 titulo={`Sin decisión de la lista de ${data.market_name}`}
                 explicacion="Están en esta lista, pero se calculó antes de que las abrieras y no las decide como posiciones tuyas: de cada una, solo su stop. Pulsa «Actualizar» para recalcularla."
+              />
+              <SoloSuStop
+                posiciones={cartera.pendientes}
+                titulo={`Aún sin puntuar en ${data.market_name}`}
+                explicacion="Son de este mercado, pero la lista va a medias y todavía no las ha puntuado: de cada una, solo su stop. Se deciden al completarla."
               />
               <SoloSuStop
                 posiciones={cartera.fuera}
@@ -1605,7 +1637,9 @@ export function TodayPage({ incrustada = false }: { incrustada?: boolean } = {})
                       ? 'No tienes posiciones abiertas.'
                       : cartera.sinDecision.length > 0
                         ? `La lista no trae decisión sobre tus posiciones de ${data.market_name}: se calculó antes de que las abrieras.`
-                        : `Ninguna de tus posiciones está en ${data.market_name}.`}
+                        : cartera.pendientes.length > 0
+                          ? `La lista de ${data.market_name} va a medias y aún no ha puntuado tus posiciones de este mercado.`
+                          : `Ninguna de tus posiciones está en ${data.market_name}.`}
                   </p>
                 ) : (
                   <p>Nada que mostrar con este filtro.</p>
