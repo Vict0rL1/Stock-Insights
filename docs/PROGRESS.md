@@ -954,6 +954,41 @@ de ellas en worktrees, cada una con tests que fallan sin el cambio; golden idén
 - Bajas: tesis y vigilancia siguen como dos listas; «PER» y «P/E» conviven en algunas pantallas;
   la primera lista de una instalación nueva cubre uno o dos sectores hasta que avanzan las pasadas.
 
+### Decimocuarta revisión (del rediseño, sobre `4ca3352`, 24–25 nov)
+
+Cuatro revisores sobre `fa287e2..4ca3352` (navegación e Inicio, carga e IA, DCF y ficha, cartera);
+48 hallazgos reproducidos, arreglados en cuatro worktrees con un test que falla sin el arreglo
+(`3aa2ae1`, `5c44517`, `4a861a7`, `1147f7f`). Golden idéntico (11 «igual») en todos.
+
+- **Una sola verdad de cada posición.** Inicio decía «En orden» de una posición que Explorar mandaba
+  vender: `/api/portfolio` sirve el repaso de Explorar (`repaso`, con la lista guardada) y Inicio y
+  Mi cartera lo leen con `atencionDeCartera`, por símbolo. Con la lista caducada, su cierre ya no
+  pasa por precio de ahora (`contexto_cartera.senales_para_el_stop`): sin cotización, «sin comprobar».
+- **Nada dice «Comprar» si no se puede** (`avisoDeLaFila`): ni una idea comprada después de calcular
+  la lista, ni las filas fuera de la lista corta cuando ninguna idea cabe
+  (`shortlist.sin_hueco_de_riesgo`), ni un stop sin repasar («Revisar», no «Mantener»).
+- **Instantáneas solo de listas completas.** Cada pasada parcial congelaba una lista a medias como la
+  del día (`instantaneas.sin_congelar`; un día sin lista completa se queda sin foto). La lista de
+  memoria envejece de verdad (vieja a las 6 h, la vigencia de la caché).
+- **IA:** delimitador de la pregunta a prueba de cierres anidados; caché por huella de lo que se le
+  manda (otra lista u otro día no aciertan); coste de cada intento a la tarifa de su modelo; la ficha
+  de una lista vieja lo dice. Con Finnhub guardado no se vuelve a bajar EDGAR, y lo que ninguna fuente
+  tiene se recuerda 24 h.
+- **DCF:** EDGAR caído es 502 con «Reintentar», no «no existe»; suelo del crecimiento declarado
+  (`CRECIMIENTO_MINIMO`, −50 %) y explicado, en vez de un 422 que abría «Tus entradas»; el 3 %
+  supuesto no pierde su procedencia al recalcular; «Reducir» dice que el stop no se comprobó.
+- **Ficha y móvil:** «Qué cambió» solo se abre con una pulsación (al volver con «atrás» congelaba dos
+  veces); un término ya no se abre y cierra al tocarlo; objetivos táctiles de 44 px en Explorar e Inicio.
+
+**Pendiente de Victor (revisión 14):** el DCF con FCF negativo enseña «Si va bien» por debajo de «Si va
+mal» (H1 de la valoración). El arreglo está preparado aparte: intercambia los supuestos de los dos
+escenarios, mide la amplitud sin signo, no da factor si el rango cruza cero y ordena bien la
+sensibilidad. Cambia el golden `dcf_modulo` en sus 4 casos `fcf_negativo` y nada más. Si se aprueba,
+la ficha (`ResumenDcf`) tendría que decir por qué «Si va mal» lleva el crecimiento alto.
+Fuera a propósito: sin clave de Finnhub no se recuerda el «no hay datos» (al añadir la clave volverían);
+un análisis congelado antiguo no se marca viejo por umbral (sería una regla nueva); y si en Explorar se
+elige otro mercado, puede decir otra cosa de una posición que Inicio (el repaso usa el mercado por defecto).
+
 ## Informe del repaso de seguridad (0.9)
 
 | Punto | Estado | Detalle |
@@ -975,7 +1010,8 @@ arregladas, capturas repetidas). Auditoría del 19 oct (A1–A7) hecha, con cuat
 adversarial arregladas (la cuarta, 22 hallazgos, en `5f6ddd3`…`f0d5757`; la quinta, 28, en
 `2536bc3`…`f8a7a7d` y el efectivo con posiciones sin valorar, que cambió el golden de
 `analisis` con el visto bueno de Victor; la sexta, 20, en `da9be69`…`2c5c6b1`; la séptima, 13 de
-14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16). Fase 3 hecha con el rediseño de la navegación del 24 nov. Lo siguiente es 2.2
+14, en `a19d927` y `8621dc7`; la octava, 12 de 12; la novena, 14 de 15; la décima, 13 de 13; la undécima, 15 de 15; la duodécima, visual, sobre la app en pantalla; la decimotercera, 16 de 16; la decimocuarta, del
+rediseño, 47 de 48, con el H1 del DCF pendiente de visto bueno). Fase 3 hecha con el rediseño de la navegación del 24 nov. Lo siguiente es 2.2
 (`AvisoAgrupado`). El entorno de Python de desarrollo está en `backend/.venv` (Python 3.11).
 
 Pendiente de Victor: `./start.sh validar` con claves (y `--grabar`); la hora real en el tipo de
@@ -995,4 +1031,5 @@ y los umbrales de la banda sin ruido de coma flotante (un cierre justo en la med
 la séptima: los stops guardados fuera de la rejilla. De la octava: el control de correlación con
 0 parejas posibles sigue `aplicado: false` en `sizing` (cambiarlo cambia el golden de `sizing`), y
 los backtests de reglas guardados se midieron además con la volatilidad vieja. De la novena: el
-stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo).
+stop por clase congelado al abrir una posición sin histórico (guardar su origen o no congelarlo). De la
+decimocuarta: el DCF con FCF negativo (escenarios intercambiados; cambia el golden `dcf_modulo`).
